@@ -211,3 +211,16 @@ def test_email_length_cap():
     from app.detect.codes import detect
 
     assert not [c for c in detect("a" * 64 + "@" + ("b" * 63 + ".") * 4 + "fi") if c.kind == "EMAIL"]
+
+
+def test_ten_new_people_compile_the_matcher_at_most_twice(vault):
+    from app.detect import vault_rec
+
+    people = ["Mikko Virtanen", "Anna Korhonen", "Juha Mäkinen", "Liisa Nieminen", "Pekka Laine",
+              "Maria Heikkinen", "Timo Koskinen", "Sari Järvinen", "Jukka Lehtonen", "Tiina Saarinen"]
+    text = "Tapaamisessa olivat " + ", ".join(people) + ". Myöhemmin Mikko Virtasen kanssa puhuttiin."
+    before = vault_rec.compiles
+    masked, spans = mask(vault, text)
+    assert vault_rec.compiles - before <= 2
+    assert len([s for s in spans if s["kind"] == "PERSON"]) >= 11
+    assert "Virtan" not in masked and "Korhon" not in masked

@@ -7,6 +7,11 @@ from . import Candidate, trie_pattern
 from .gazetteer import _sentence_start, common_word, place
 
 MAX_FORM = 256  # longer stored forms are never matched (bounds the trie)
+compiles = 0  # full-vault matcher compiles (tests assert how many a request costs)
+
+
+def _compile(table):
+    return re.compile(r"(?<![\w-])(?:" + trie_pattern(table) + r")(?![\w])") if table else None
 
 
 def matcher(vault, user_id: str, side: str = "real"):
@@ -16,17 +21,69 @@ def matcher(vault, user_id: str, side: str = "real"):
     hit = cache.get((user_id, side))
     if hit and hit[0] == ver:
         return hit[1], hit[2]
+    global compiles
     table = defaultdict(list)
     for form, eid, part, analysis, kind in vault.all_forms(user_id, side):
         if len(form) <= MAX_FORM:
             table[form].append((eid, part, analysis, kind))
-    rx = re.compile(r"(?<![\w-])(?:" + trie_pattern(table) + r")(?![\w])") if table else None
+    compiles += 1
+    rx = _compile(table)
     cache[(user_id, side)] = (ver, rx, table)
     return rx, table
 
 
+class _Hit:
+    def __init__(self, text: str, start: int, end: int):
+        self.text, self.s, self.e = text, start, end
+
+    def group(self, _=0) -> str:
+        return self.text
+
+    def start(self) -> int:
+        return self.s
+
+    def end(self) -> int:
+        return self.e
+
+
+class _Finder:
+    """finditer() over a few entities' forms: a token scan for single-word forms (no regex compile, which
+    dominates when a request brings many new people), a small regex for forms with spaces."""
+
+    TOKEN = re.compile(r"(?<![\w-])\w[\w-]*")
+
+    def __init__(self, table):
+        self.words = {f for f in table if not re.search(r"\s", f)}
+        self.multi = _compile({f: v for f, v in table.items() if f not in self.words})
+
+    def finditer(self, text: str):
+        hits = []
+        for m in self.TOKEN.finditer(text):
+            tok = m.group(0)
+            while tok:
+                if tok in self.words:
+                    hits.append(_Hit(tok, m.start(), m.start() + len(tok)))
+                    break
+                tok = tok.rpartition("-")[0]  # "Virtanen-niminen": the form may end at a hyphen
+        if self.multi:
+            hits += [_Hit(m.group(0), m.start(), m.end()) for m in self.multi.finditer(text)]
+        return sorted(hits, key=_Hit.start)
+
+
+def scoped(vault, user_id: str, entity_ids) -> tuple:
+    """Ad-hoc (finder, table) over the real forms of a few entities: finds the later mentions of
+    people created in this request without recompiling the whole vault."""
+    table = defaultdict(list)
+    kinds = {i: vault.entity(user_id, i)["kind"] for i in entity_ids}
+    for eid in entity_ids:
+        for r in vault.forms_for(eid):
+            if r["side"] == "real" and len(r["form"]) <= MAX_FORM:
+                table[r["form"]].append((eid, r["part"], r["analysis"], kinds[eid]))
+    return _Finder(table), table
+
+
 def detect(text: str, ctx) -> list[Candidate]:
-    rx, table = matcher(ctx.vault, ctx.user_id)
+    rx, table = scoped(ctx.vault, ctx.user_id, ctx.only) if ctx.only else matcher(ctx.vault, ctx.user_id)
     if not rx:
         return []
     hits = []

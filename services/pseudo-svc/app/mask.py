@@ -41,6 +41,7 @@ class Ctx:
     vault: object
     user_id: str
     session_id: str | None = None
+    only: tuple[int, ...] | None = None  # vault layer: match only these entities (ad-hoc matcher)
 
 
 def walk(value, fn, path=()):
@@ -107,7 +108,7 @@ def _surrogate_cover(vault, user_id: str, session_id: str | None, text: str) -> 
     """Regions of text that are surrogates: code surrogates, and name or address forms of entities with
     a span in this session, unless the form is also someone's real form. A surrogate-shaped name from elsewhere may be
     a real person with the same name, so it is masked."""
-    rx, table, _, _ = _surrogates(vault, user_id)
+    rx, table = vault_rec.matcher(vault, user_id, "surrogate")
     if not rx or not session_id:
         return []
     _, real = vault_rec.matcher(vault, user_id)
@@ -134,18 +135,21 @@ def _covered(c, cover: list[tuple[int, int]], text: str) -> bool:
 def mask_text(vault, user_id: str, session_id: str, text: str, path=None, layers=FULL):
     ctx = Ctx(vault, user_id, session_id)
 
-    def detect():
-        cover = _surrogate_cover(vault, user_id, session_id, text)  # per pass: new real forms count
-        cands = [c for layer in layers for c in layer.detect(text, ctx)]
-        cands = resolve([c for c in cands if not _covered(c, cover, text)], vault.never_detect(user_id))
-        return cands, [vault.entity(user_id, c.entity_id) if c.entity_id else
-                       get_or_create_entity(vault, user_id, c.kind, c.canonical, c.surface) for c in cands]
+    cover = _surrogate_cover(vault, user_id, session_id, text)
 
-    ver = vault.version.get(user_id)
-    cands, ents = detect()
-    if vault.version.get(user_id) != ver and vault_rec in layers:
-        # new people: let the vault find their later mentions (Marja Saari ... Marjan); first-pass spans stay
-        extra = [(c, e) for c, e in zip(*detect()) if not any(c.start < d.end and d.start < c.end for d in cands)]
+    def resolved(cands):
+        return resolve([c for c in cands if not _covered(c, cover, text)], vault.never_detect(user_id))
+
+    cands = resolved([c for layer in layers for c in layer.detect(text, ctx)])
+    ents = [vault.entity(user_id, c.entity_id) if c.entity_id else
+            get_or_create_entity(vault, user_id, c.kind, c.canonical, c.surface) for c in cands]
+    new = tuple(e["id"] for c, e in zip(cands, ents) if not c.entity_id)
+    if new and vault_rec in layers:
+        # new people: let the vault find their later mentions (Marja Saari ... Marjan); first-pass spans stay.
+        # Only the new entities are matched, with a small ad-hoc regex.
+        later = resolved(vault_rec.detect(text, Ctx(vault, user_id, session_id, new)))
+        extra = [(c, vault.entity(user_id, c.entity_id)) for c in later
+                 if not any(c.start < d.end and d.start < c.end for d in cands)]
         pairs = sorted([*zip(cands, ents), *extra], key=lambda ce: ce[0].start)
         cands, ents = [c for c, _ in pairs], [e for _, e in pairs]
     out, spans, pos, n = [], [], 0, 0  # n: running length of the masked output
