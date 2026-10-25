@@ -10,6 +10,7 @@ import {
   SessionManager,
 } from '@earendil-works/pi-coding-agent';
 import { type PseudoClient, type PseudoLog, pseudoExtension } from '@pa/pi-ext-pseudo';
+import { type Child, subagentsExtension } from '@pa/pi-ext-subagents';
 import { topicsExtension } from '@pa/pi-ext-topics';
 import type { Agents } from '../agents.ts';
 import { type Ask, approvalGate } from '../approval.ts';
@@ -29,6 +30,13 @@ type RegistryOptions = {
   onSettled?: Parameters<typeof topicsExtension>[0]['onSettled'];
   /** Loads `pi-ext-pseudo` per chat when set; `log` receives its logs with the chat id. */
   pseudo?: { client: PseudoClient; log: (chatId: string, ...args: Parameters<PseudoLog>) => void };
+  /** Loads `pi-ext-subagents` for profiles with `subagents: true`. */
+  subagents?: {
+    litellm: { url: string; key: string };
+    pseudoUrl?: string | undefined;
+    onState: (chatId: string, children: Pick<Child, 'id' | 'label' | 'status'>[]) => void;
+    log: (chatId: string, ...args: Parameters<PseudoLog>) => void;
+  };
 };
 type Entry = { session: Promise<AgentSession>; lastUsed: number; unsubscribe?: () => void };
 
@@ -134,7 +142,8 @@ export class SessionRegistry {
     const profile = this.opts.agents().get(agentId);
     if (!profile) throw new Error(`Agent profile ${agentId} not found`);
     const sessionManager = manager();
-    const { pseudo } = this.opts;
+    const { pseudo, subagents } = this.opts;
+    const withSubagents = profile.subagents && subagents;
     const modelRuntime = await this.modelRuntime();
     const model = modelRuntime.getModel('zdr', profile.model);
     if (!model)
@@ -171,6 +180,27 @@ export class SessionRegistry {
           : []),
         // After pseudo (the user approves real values), before the guard.
         approvalGate({ chatId, policy: profile.approval, ...this.opts.approval }),
+        ...(withSubagents
+          ? [
+              subagentsExtension({
+                chatId,
+                userId: this.opts.userId,
+                dataDir: this.opts.dataDir,
+                agentDir: this.agentDir,
+                cwd: this.cwd,
+                litellm: withSubagents.litellm,
+                pseudoUrl: withSubagents.pseudoUrl,
+                model: profile.model,
+                tools: profile.tools.allow,
+                approvalAlways: profile.approval.always.filter(
+                  (t) => !profile.approval.never.includes(t),
+                ),
+                onState: (children) => withSubagents.onState(chatId, children),
+                ask: this.opts.approval.ask,
+                log: (...args) => withSubagents.log(chatId, ...args),
+              }),
+            ]
+          : []),
         pathGuard(this.cwd),
         ...(this.opts.onSettled ? [topicsExtension({ onSettled: this.opts.onSettled })] : []),
         ...(this.opts.extensionFactories ?? []),
@@ -184,7 +214,7 @@ export class SessionRegistry {
       model,
       sessionManager,
       resourceLoader,
-      tools: profile.tools.allow,
+      tools: withSubagents ? [...profile.tools.allow, 'subagent'] : profile.tools.allow,
     });
     await session.bindExtensions({});
     return session;

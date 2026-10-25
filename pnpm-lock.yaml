@@ -199,6 +199,9 @@ importers:
       '@pa/pi-ext-pseudo':
         specifier: workspace:*
         version: link:../../packages/pi-ext-pseudo
+      '@pa/pi-ext-subagents':
+        specifier: workspace:*
+        version: link:../../packages/pi-ext-subagents
       '@pa/pi-ext-topics':
         specifier: workspace:*
         version: link:../../packages/pi-ext-topics

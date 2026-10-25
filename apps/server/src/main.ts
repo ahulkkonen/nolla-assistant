@@ -58,6 +58,13 @@ export async function start(
     skillsDir: config.skillsDir,
     onSettled: ({ sessionId }) => titles.scheduleTitleJob(sessionId),
     ...(pseudo ? { pseudo: { client: pseudo, log: pseudoLog } } : {}),
+    subagents: {
+      litellm: { url: config.litellmUrl, key: config.litellmMasterKey },
+      pseudoUrl: config.pseudoUrl,
+      onState: (chatId, children) =>
+        broadcast(rooms, chatId, { type: 'subagent.state', chatId, children }),
+      log: (chatId, level, msg, data) => app.log[level]({ chatId, ...data }, msg),
+    },
   });
   writeModelsJson(registry.agentDir, config.litellmUrl);
   const app = await buildServer({
@@ -86,6 +93,8 @@ export async function start(
     db,
     userId: config.userId,
     registry,
+    agents,
+    unattended: approvals.unattended,
     prompt: async (chatId, text) => void (await (await registry.get(chatId)).prompt(text)),
     log: app.log,
   });
