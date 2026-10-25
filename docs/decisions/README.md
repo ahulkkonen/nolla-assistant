@@ -12,3 +12,5 @@ The build plan is `docs/plan.md`. Section numbers in records refer to it.
 - `0004-litellm-openrouter-zdr.md`: LiteLLM, OpenRouter ZDR, and the Presidio backstop.
 - `0005-mcp-integrations.md`: MCP integrations (phase 6).
 - `phase-1.md` to `phase-5.md`, `phase-7.md`, `phase-8.md`: tasks, decisions, and gates per phase. Phase 6 has no phase file; see 0005.
+- `phase-9-ui.md`: production UI on shadcn/ui, design brief, review protocol and status.
+- `0006-ui-reference.md`: deep research on Claude Web and ChatGPT UI (October 2026).

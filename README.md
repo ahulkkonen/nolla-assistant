@@ -161,3 +161,4 @@ Status on 2026-10-25. The plan, section 13, defines each gate.
 | 6 | Google Workspace MCP | done, user steps open |
 | 7 | Artifacts, voice, push, palette | done, user steps open |
 | 8 | Memory | done |
+| 9 | Production UI on shadcn/ui (`docs/decisions/phase-9-ui.md`) | done, on-device checks open |
