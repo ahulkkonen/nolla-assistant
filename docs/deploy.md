@@ -119,3 +119,48 @@ The `bash` tool runs each command in a throwaway `pa-skill-runner` container. Th
    The broker gives these paths to the Docker host as bind sources. A path inside the broker container does not work.
 
 3. Deploy. Compose creates the `pa-skill-egress` and `pa-skill-proxy-only` networks. A skill with `network: [hosts]` runs on `pa-skill-proxy-only` and reaches the listed hosts through the broker's proxy.
+
+## Integrations
+
+The `mcp-workspace` service gives the agents Google Calendar (read and write), Google Drive (read) and Gmail (read). Decision `docs/decisions/0005-mcp-integrations.md` records the pin and the flags. `infra/mcp.yaml` lists the tools that the agents can use. `manage_event` always needs your approval.
+
+### Create the Google OAuth client
+
+1. In Google Cloud Console, create a project or select one.
+2. Enable these APIs: Google Calendar API, Google Drive API, Gmail API.
+3. Configure the OAuth consent screen. Add your Google address as a test user if the app is in testing mode.
+4. Create an OAuth client ID of type **Web application**.
+5. Add one authorized redirect URI: `<AUTH_ORIGIN>/api/oauth/google/callback`, for example `https://assistant.example.fi/api/oauth/google/callback`. The value must match `AUTH_ORIGIN` exactly.
+6. Add these environment variables in Coolify:
+
+   | Variable | Value |
+   |---|---|
+   | `GOOGLE_OAUTH_CLIENT_ID` | the client ID |
+   | `GOOGLE_OAUTH_CLIENT_SECRET` | the client secret. Only `mcp-workspace` receives it. |
+   | `GOOGLE_ACCOUNT_EMAIL` | your Google address |
+
+7. Deploy. Compose needs Docker Engine 26 or later for the volume `subpath` mount. `pa-server` creates `/data/mcp/workspace` at startup. `mcp-workspace` starts after `pa-server` is healthy.
+
+### Connect your Google account
+
+1. Log in to the app.
+2. Send `POST /api/integrations/google/connect` from the app (Settings, when the web UI has the button). The response holds `authUrl`.
+3. Open `authUrl` and accept the consent screen. Google redirects to `/api/oauth/google/callback`. `pa-server` forwards the request to `mcp-workspace`, then redirects you to `/?integrations=google`.
+4. `GET /api/integrations/status` returns `{"google":{"connected":true,...}}`. Open sockets receive `integrations.state`.
+
+The consent link expires after 10 minutes and works one time. If the link fails, request a new one.
+
+### Disconnect
+
+The server has no API to remove its token, so `POST /api/integrations/google/disconnect` returns 501. Do these steps:
+
+1. Remove the token file: `docker compose exec mcp-workspace sh -c 'rm /data/mcp/workspace/*.json'`.
+2. Revoke the access at <https://myaccount.google.com/permissions>.
+
+### Your own address in the vault
+
+`pa-server` adds `GOOGLE_ACCOUNT_EMAIL` to the vault as an allowlisted `EMAIL` entity at startup. Your address is in every workspace tool schema, and no masking covers tool schemas. The allowlist keeps the schemas and the tool results the same. If the startup log shows `self email allowlist failed`, allowlist the address manually in Nimisuoja.
+
+### Backups
+
+The token file is under `pa-data` at `/data/mcp/workspace`, so the nightly restic snapshot includes it. The file holds the refresh token in plain JSON (mode 600). Only the restic backup is encrypted.

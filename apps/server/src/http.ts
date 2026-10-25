@@ -9,6 +9,7 @@ import { authRoutes, requireUser } from './auth/routes.ts';
 import { attachBridge, type BridgeDeps } from './bridge.ts';
 import type { Config } from './config.ts';
 import { fileRoutes, MAX_FILE_BYTES, MAX_FILES } from './files.ts';
+import type { Integrations } from './integrations.ts';
 
 const NO_CACHE = new Set(['index.html', 'sw.js', 'manifest.webmanifest']);
 const HTML_CSP = [
@@ -29,6 +30,7 @@ const under = (path: string, prefix: string) => path === prefix || path.startsWi
 export async function buildServer({
   config,
   logStream,
+  integrations,
   ...bridge
 }: Pick<
   BridgeDeps,
@@ -43,6 +45,7 @@ export async function buildServer({
   | 'memory'
 > & {
   config: Config;
+  integrations: Integrations;
   /** Test hook: receives the pino output instead of stdout. */
   logStream?: { write(line: string): void };
 }) {
@@ -73,6 +76,7 @@ export async function buildServer({
   app.get('/healthz', async () => ({ ok: true }));
   authRoutes(app, db, config);
   fileRoutes(app, db, config.dataDir, auth);
+  integrations.routes(app, auth);
   app.get(
     '/ws',
     {
@@ -87,6 +91,9 @@ export async function buildServer({
     (socket, req) => {
       const hello: ServerMessage = { type: 'auth.state', authenticated: true, userId: req.userId };
       socket.send(JSON.stringify(hello));
+      socket.send(JSON.stringify(integrations.state()));
+      // mcp-workspace starts after pa-server, so the startup probe can miss; a change is broadcast.
+      void integrations.refresh();
       attachBridge(socket, {
         ...bridge,
         userId: req.userId,

@@ -23,7 +23,7 @@ import type { Agents } from './agents.ts';
 import { type Approvals, DENIED_REASON, TIMEOUT_REASON } from './approval.ts';
 import type { Automations } from './automations.ts';
 import { AttachmentNotFound, chatFiles, ingestAttachments } from './files.ts';
-import { MemoryError, type MemoryStore } from './memory.ts';
+import { MemoryError, type MemoryStore, PSEUDO_REQUIRED } from './memory.ts';
 import { GUARD_REASON } from './pi/guard.ts';
 import type { SessionRegistry } from './pi/registry.ts';
 import { indexChat, related, search } from './search.ts';
@@ -67,7 +67,7 @@ const ERRORS = {
   llm_failed: 'Model call failed',
   pseudo_down: 'Pseudonymization service unavailable',
   memory_full: 'Memory is full',
-  memory_conflict: 'Memory text not found',
+  memory_conflict: 'Memory changed; the write no longer applies',
 } as const;
 
 class NotFound extends Error {}
@@ -220,6 +220,14 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
     deps;
   const open = new Set<string>();
   sockets.add(socket);
+  /** Memory is per user: every open screen gets the new state. */
+  const memoryToAll = () => {
+    const msg = memory.state();
+    for (const s of sockets)
+      try {
+        send(s, msg);
+      } catch {}
+  };
   send(socket, agentsState(agents()));
   // A reload must not lose open approvals.
   for (const r of approvals.list()) send(socket, r);
@@ -473,13 +481,17 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
         return send(socket, memory.state());
       case 'memory.edit':
         memory.edit(msg.target, msg.text);
-        return send(socket, memory.state());
-      case 'memory.approve':
-        if (!memory.approve(msg.pendingId, msg.approve)) throw new NotFound();
-        return send(socket, memory.state());
+        return memoryToAll();
+      case 'memory.approve': {
+        const status = memory.approve(msg.pendingId, msg.approve);
+        if (!status) throw new NotFound();
+        // A failed write leaves the queue; this is its only report.
+        if (status === 'failed') send(socket, errorMsg('memory_conflict'));
+        return memoryToAll();
+      }
       case 'memory.consolidate':
         await memory.consolidate();
-        return send(socket, memory.state());
+        return memoryToAll();
       case 'memory.consolidation.resolve':
         if (
           !memory.resolveConsolidation(msg.id, msg.accept, {
@@ -488,7 +500,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
           })
         )
           throw new NotFound();
-        return send(socket, memory.state());
+        return memoryToAll();
       case 'vault.list':
       case 'vault.merge':
       case 'vault.split':
@@ -520,7 +532,16 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
         return send(socket, errorMsg('not_found'));
       if (err instanceof PseudoDownError) return send(socket, errorMsg('pseudo_down'));
       if (err instanceof MemoryError)
-        return send(socket, errorMsg(err.message === FULL ? 'memory_full' : 'memory_conflict'));
+        return send(
+          socket,
+          errorMsg(
+            err.message === FULL
+              ? 'memory_full'
+              : err.message === PSEUDO_REQUIRED
+                ? 'pseudo_down'
+                : 'memory_conflict',
+          ),
+        );
       log.warn({ err, type: parsed.data.type }, 'client message failed');
       send(socket, errorMsg('failed'));
     });

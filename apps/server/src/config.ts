@@ -54,6 +54,12 @@ export function loadConfig(env: Env = process.env) {
     // Dev only when unset: no masking extension and no display restoration, so real values reach
     // the model. Production always sets it (invariant 1).
     pseudoUrl: env.PSEUDO_URL || undefined,
+    // `none` disables MCP. Decision 0005.
+    mcpConfig: env.MCP_CONFIG || fileURLToPath(new URL('../../../infra/mcp.yaml', import.meta.url)),
+    // Base URL for the OAuth callback forward; unset means the origin of the `workspace` URL.
+    mcpWorkspaceUrl: env.MCP_WORKSPACE_URL || undefined,
+    // The user's own Google address: allowlisted in the vault at startup (decision 0005).
+    selfEmail: env.SELF_EMAIL || undefined,
     // Both or nothing: without them no `bash` tool exists (Pi's built-in one is never enabled).
     broker:
       env.BROKER_URL && env.BROKER_TOKEN

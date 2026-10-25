@@ -1,0 +1,20 @@
+# Tool allowlist per MCP server (plan section 10, docs/decisions/0005-mcp-integrations.md).
+# An agent sees a server only when its profile lists it in `tools.mcp`. It then sees only the tools
+# below, as `mcp__<server>__<tool>`. `write: true` puts the tool into the approval gate of every such
+# agent; `approval.never` cannot remove it.
+servers:
+  workspace:
+    url: http://mcp-workspace:8000/mcp
+    description: Google Calendar (read and write), Google Drive (read) and Gmail (read) of the user
+    # Seconds; above the server's 60 s Google API timeout.
+    timeout: 90
+    tools:
+      - { name: list_calendars, write: false }
+      - { name: get_events, write: false }
+      # create, update, delete, rsvp. send_updates defaults to "all": Google emails the attendees.
+      - { name: manage_event, write: true }
+      - { name: search_drive_files, write: false }
+      - { name: get_drive_file_content, write: false }
+      - { name: search_gmail_messages, write: false }
+      - { name: get_gmail_message_content, write: false }
+      - { name: get_gmail_messages_content_batch, write: false }

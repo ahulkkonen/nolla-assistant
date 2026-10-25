@@ -1,3 +1,4 @@
+import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openDb, users } from '@pa/db';
@@ -10,6 +11,8 @@ import { startAutomations } from './automations.ts';
 import { agentsState, type BridgeDeps, broadcast, chatRow, errorMsg } from './bridge.ts';
 import { type Config, loadConfig } from './config.ts';
 import { buildServer } from './http.ts';
+import { integrations as integrationStore } from './integrations.ts';
+import { loadMcp } from './mcp.ts';
 import { memoryStore } from './memory.ts';
 import { writeModelsJson } from './pi/models.ts';
 import { SessionRegistry } from './pi/registry.ts';
@@ -67,6 +70,17 @@ export async function start(
     (err) => agentLog(config.agentsDir, err),
   );
   const agents = () => agentMap;
+  const mcp = loadMcp(config.mcpConfig);
+  // Token directory of mcp-workspace (compose mounts this pa-data subpath; it must exist first).
+  if (mcp.has('workspace'))
+    mkdirSync(join(config.dataDir, 'mcp', 'workspace'), { recursive: true, mode: 0o700 });
+  const integrations = integrationStore({
+    workspace: mcp.get('workspace'),
+    callbackBase: config.mcpWorkspaceUrl,
+    selfEmail: config.selfEmail,
+    sendAll,
+    log: () => app.log,
+  });
   const approvals = approvalStore((chatId, msg) => broadcast(rooms, chatId, msg));
   const pseudoLog = (chatId: string, ...[level, msg, data]: Parameters<PseudoLog>) => {
     app.log[level]({ chatId, ...data }, msg);
@@ -94,6 +108,7 @@ export async function start(
     approval: { ask: approvals.ask, timeoutMs: config.approvalTimeoutMs },
     skillsDir: config.skillsDir,
     broker: config.broker,
+    mcp,
     onSettled: ({ sessionId }) => titles.scheduleTitleJob(sessionId),
     ...(pseudo ? { pseudo: { client: pseudo, log: pseudoLog } } : {}),
     memory: {
@@ -120,6 +135,7 @@ export async function start(
     sockets,
     memory,
     automations: () => automations,
+    integrations,
     ...(logStream ? { logStream } : {}),
     ...(pseudo ? { pseudo } : {}),
   });
@@ -144,6 +160,9 @@ export async function start(
     log: app.log,
   });
   checkBash();
+  if (!pseudo) app.log.warn('memory disabled: PSEUDO_URL unset');
+  if (pseudo && config.selfEmail) void allowlistSelf(pseudo, config.selfEmail, app.log);
+  void integrations.refresh();
   await app.listen({ port: config.port, host: config.host });
   const timer = setInterval(() => void registry.evictIdle(), 5 * 60_000);
   timer.unref();
@@ -162,6 +181,27 @@ export async function start(
     sqlite.close();
   };
   return { app, registry, db, close };
+}
+
+/**
+ * The user's own address is in every workspace tool schema (decision 0005), which no masking
+ * covers. Allowlisting it keeps results and schemas consistent. Retries while the sidecar starts.
+ */
+async function allowlistSelf(
+  pseudo: PseudoClient,
+  email: string,
+  log: { warn: (o: object, m: string) => void },
+) {
+  for (let i = 0; i < 30; i++) {
+    try {
+      const { ids } = await pseudo.vaultSeed([{ kind: 'EMAIL', canonical: email }]);
+      if (ids[0] !== undefined) await pseudo.vaultUpdate(ids[0], { allowlisted: true });
+      return;
+    } catch (err) {
+      if (i === 29) log.warn({ error: String(err) }, 'self email allowlist failed');
+      await new Promise((r) => setTimeout(r, 10_000).unref());
+    }
+  }
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

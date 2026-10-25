@@ -4,6 +4,7 @@ model: zdr/strong
 prompt: prompts/assistant.md
 tools:
   allow: [read, write, edit, recall, memory]
+  mcp: [workspace]
 approval:
   always: [write, edit]
   never: [read, recall, memory]

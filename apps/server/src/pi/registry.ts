@@ -16,6 +16,7 @@ import { type Child, subagentsExtension } from '@pa/pi-ext-subagents';
 import { topicsExtension } from '@pa/pi-ext-topics';
 import type { Agents } from '../agents.ts';
 import { type Ask, approvalGate } from '../approval.ts';
+import { allowedToolNames, type McpServers, mcpExtension, writeTools } from '../mcp.ts';
 import type { MemoryStore } from '../memory.ts';
 import { pathGuard } from './guard.ts';
 
@@ -31,11 +32,13 @@ type RegistryOptions = {
   /** `sandbox-broker`; unset means no `bash` tool at all. */
   broker?: { url: string; token: string } | undefined;
   extensionFactories?: InlineExtension[];
+  /** `infra/mcp.yaml`; a profile reaches the servers named in `tools.mcp`. */
+  mcp?: McpServers;
   /** Called at every `agent_settled` through `pi-ext-topics`; `sessionId` is the chat id. */
   onSettled?: Parameters<typeof topicsExtension>[0]['onSettled'];
   /** Loads `pi-ext-pseudo` per chat when set; `log` receives its logs with the chat id. */
   pseudo?: { client: PseudoClient; log: (chatId: string, ...args: Parameters<PseudoLog>) => void };
-  /** Loads `pi-ext-memory`; `onChange` runs after each write or parked write. */
+  /** Loads `pi-ext-memory` when `pseudo` is set; `onChange` runs after each write or parked write. */
   memory?: {
     store: MemoryStore;
     onChange: (chatId: string) => void;
@@ -163,6 +166,14 @@ export class SessionRegistry {
     // Pi's built-in `bash` is never enabled (invariant 8): `bash` stays only with the broker tool.
     const tools = profile.tools.allow.filter((t) => t !== 'bash' || broker);
     const skills = new Set(profile.skills);
+    const mcp = (profile.tools.mcp ?? []).flatMap((n) => this.opts.mcp?.get(n) ?? []);
+    const mcpTools = mcp.flatMap(allowedToolNames);
+    // MCP writes always ask (decision 0005); `never` cannot remove them.
+    const mcpWrites = mcp.flatMap(writeTools);
+    const policy = {
+      always: [...profile.approval.always, ...mcpWrites],
+      never: profile.approval.never.filter((t) => !mcpWrites.includes(t)),
+    };
     const resourceLoader = new DefaultResourceLoader({
       cwd: this.cwd,
       agentDir: this.agentDir,
@@ -195,7 +206,7 @@ export class SessionRegistry {
         // After pseudo (the user approves real values), before the guard.
         approvalGate({
           chatId,
-          policy: profile.approval,
+          policy,
           ask: this.opts.approval.ask,
           timeoutMs: this.opts.approval.timeoutMs,
         }),
@@ -233,13 +244,14 @@ export class SessionRegistry {
             ]
           : []),
         pathGuard(this.cwd),
-        ...(memory
+        // Fail closed: without the sidecar nothing could be masked (invariant 1).
+        ...(memory && pseudo
           ? [
               memoryExtension({
                 userId: this.opts.userId,
                 chatId,
                 files: { read: async (t) => memory.store.read(t) },
-                mask: pseudo ? async (t) => (await pseudo.client.mask(chatId, t)).masked : (t) => t,
+                mask: async (t) => (await pseudo.client.mask(chatId, t)).masked,
                 recentTitles: async () => memory.store.recentTitles(chatId),
                 recall: (q, o) => memory.store.recall(q, o),
                 park: async (w) => {
@@ -256,6 +268,8 @@ export class SessionRegistry {
             ]
           : []),
         ...(this.opts.onSettled ? [topicsExtension({ onSettled: this.opts.onSettled })] : []),
+        // Only adds tools; the pseudo and approval handlers above see MCP calls too.
+        ...(mcp.length ? [mcpExtension(mcp, resolve(this.agentDir, 'mcp.log'))] : []),
         ...(this.opts.extensionFactories ?? []),
       ],
     });
@@ -267,7 +281,7 @@ export class SessionRegistry {
       model,
       sessionManager,
       resourceLoader,
-      tools: withSubagents ? [...tools, 'subagent'] : tools,
+      tools: [...tools, ...(withSubagents ? ['subagent'] : []), ...mcpTools],
     });
     await session.bindExtensions({});
     return session;

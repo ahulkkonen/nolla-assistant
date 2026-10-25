@@ -227,6 +227,7 @@ test('masked-only: 10-turn tool conversation, then restart and chat.open', async
     AUTH_PASSWORD_HASH: await hashPassword(PASSWORD),
     PSEUDO_URL: sc.url,
     USER_ID: USER,
+    MCP_CONFIG: 'none',
   });
   const logStream = { write: (l: string) => void logs.push(l) };
   const boot = async () => {

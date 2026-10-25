@@ -4,6 +4,7 @@ model: zdr/strong
 prompt: prompts/research.md
 tools:
   allow: [read, write, edit, bash, recall, memory]
+  mcp: [workspace]
 approval:
   always: [write, edit, bash]
   # Children ask for their own gated tools.

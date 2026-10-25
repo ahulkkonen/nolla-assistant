@@ -56,11 +56,13 @@ type PendingSeed = Omit<VaultPendingRow, 'id' | 'session_id'>;
  * values to surrogates; entity ids are 1-based dictionary positions. Offsets are UTF-16 code units
  * (native JS string indexes), as the contract requires. `passthrough` makes `/mask`
  * return its input unchanged (for seeding a leak). Vault entities appear on their first mask (or
- * seed); `pending` fills the pending lane.
+ * seed); `pending` fills the pending lane. `learn` adds every unknown email and `Name Surname`
+ * pair seen by `/mask` to the dictionary with a generated surrogate (digits keep surrogates from
+ * matching again).
  */
 export async function startFakeSidecar(
   dictionary: Record<string, string>,
-  opts: { pending?: PendingSeed[] } = {},
+  opts: { pending?: PendingSeed[]; learn?: boolean } = {},
 ) {
   const byLength = (a: Pair, b: Pair) => b.from.length - a.from.length;
   const entries = Object.entries(dictionary);
@@ -158,12 +160,35 @@ export async function startFakeSidecar(
     }
   };
 
+  const LEARN = /[\w.+-]+@[\w-]+(?:\.[\w-]+)+|\b[A-ZÅÄÖ][a-zåäö]+ [A-ZÅÄÖ][a-zåäö]+\b/g;
+  const learn = (v: Json) => {
+    const known = new Set([...toFake.map((p) => p.from), ...toReal.map((p) => p.from)]);
+    const strings = (x: Json): string[] =>
+      typeof x === 'string'
+        ? [x]
+        : x && typeof x === 'object'
+          ? Object.values(x).flatMap(strings)
+          : [];
+    for (const s of strings(v).flatMap((t) => t.match(LEARN) ?? [])) {
+      if (known.has(s)) continue;
+      const id = nextId++;
+      const to = s.includes('@') ? `henkilo${id}@example.invalid` : `Testi${id} Henkilö${id}`;
+      dictionary[s] = to;
+      toFake.push({ from: s, to, id });
+      toReal.push({ from: to, to: s, id });
+      known.add(s).add(to);
+    }
+    toFake.sort(byLength);
+    toReal.sort(byLength);
+  };
+
   const handle = (path: string, body: any) => {
     const hits: Hit[] = [];
     if (path.startsWith('/vault/')) return vault(path, body);
     switch (path) {
       case '/mask': {
         const value: Json = 'text' in body ? body.text : body.json;
+        if (opts.learn && !state.passthrough) learn(value);
         const live = toFake.filter((p) => !ignored.has(p.id));
         const masked = state.passthrough ? value : deep(value, live, hits);
         const spans = hits.map(({ start, end, pair }) => ({

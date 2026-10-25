@@ -1,0 +1,22 @@
+{
+  "name": "@pa/mcp-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "@pa/fake-llm": "workspace:*",
+    "@pa/pi-ext-pseudo": "workspace:*",
+    "@pa/protocol": "workspace:*",
+    "@pa/server": "workspace:*",
+    "@types/node": "26.6.5",
+    "@types/ws": "8.18.2",
+    "typescript": "5.9.3",
+    "vitest": "4.1.12",
+    "ws": "8.22.0",
+    "zod": "4.6.7"
+  }
+}
