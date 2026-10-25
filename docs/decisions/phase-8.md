@@ -43,3 +43,16 @@ gate is evaluated in order after phases 6 and 7.
 |---|---|---|---|---|
 | 1 | `pi-ext-memory` (injection, `recall`, `memory`, taint), server wiring, `memory.*` handlers, consolidation job | Opus | `packages/pi-ext-memory`, `apps/server/src/memory.ts`, `bridge.ts`, `registry.ts`, `packages/db` (`memoryConsolidations`) | tests: injected message is masked and byte-stable across two turns; `recall` finds a seeded fact from a chat dated 8 days ago; a `memory` write in a tainted turn lands in `memoryPending` and applies after `memory.approve`; an over-cap write errors; consolidation produces a diff |
 | 2 | Memory screen (two editors with counters, pending writes, consolidation diff) | Opus + UI review, after 1 | `apps/web`, `tests/e2e` | UI review pass |
+
+## Status (2026-10-25)
+
+Tasks 1 and 2 are done. Commits: `f94d7b6` (server, `replace` field), `a222eb4` (web).
+
+Gate checks in `packages/pi-ext-memory` and `apps/server/src/memory.test.ts`: the injected
+memory message is masked and byte-stable across turns; `recall` finds a seeded fact from a chat
+dated 8 days ago; a write in a tainted turn parks in `memoryPending` and applies after
+`memory.approve`; an over-cap write is refused; consolidation produces a diff with `baseHash`.
+
+Web: the memory screen shows two editors with counters, pending writes with a diff, the
+consolidation proposal, and a chat chip for each memory change. Unsaved drafts block
+navigation until confirmed. The UI review verdict is recorded in `phase-7.md`.

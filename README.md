@@ -159,5 +159,5 @@ Status on 2026-10-25. The plan, section 13, defines each gate.
 | 4 | Titles, topics, search, backups | done |
 | 5 | Agents, subagents, sandbox, automations | done |
 | 6 | Google Workspace MCP | done, user steps open |
-| 7 | Artifacts, voice, push, palette | in progress |
-| 8 | Memory | in progress |
+| 7 | Artifacts, voice, push, palette | done, user steps open |
+| 8 | Memory | done |
