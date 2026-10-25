@@ -6,7 +6,7 @@ ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 RUN npm install -g corepack && corepack enable && corepack prepare pnpm@12.15.0 --activate
 WORKDIR /app
 
-FROM base AS deps
+FROM base AS manifests
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml .npmrc ./
 COPY apps/server/package.json apps/server/
 COPY packages/db/package.json packages/db/
@@ -14,12 +14,16 @@ COPY packages/protocol/package.json packages/protocol/
 COPY packages/pi-ext-pseudo/package.json packages/pi-ext-pseudo/
 COPY packages/pi-ext-topics/package.json packages/pi-ext-topics/
 COPY packages/pi-ext-memory/package.json packages/pi-ext-memory/
+COPY packages/pi-ext-sandbox/package.json packages/pi-ext-sandbox/
+COPY packages/pi-ext-subagents/package.json packages/pi-ext-subagents/
 COPY tests/contract/package.json tests/contract/
 COPY tests/fake-llm/package.json tests/fake-llm/
 COPY apps/web/package.json apps/web/
 # Optional workspace (services/sandbox-broker): copied only when present.
 RUN --mount=type=bind,source=services,target=/src \
     [ ! -f /src/sandbox-broker/package.json ] || { mkdir -p services/sandbox-broker && cp /src/sandbox-broker/package.json services/sandbox-broker/; }
+
+FROM manifests AS deps
 RUN pnpm install --frozen-lockfile
 
 FROM deps AS web
@@ -34,19 +38,35 @@ COPY apps/server/src/embeddings.ts apps/server/src/embeddings.ts
 COPY scripts/download-models.mjs scripts/download-models.mjs
 RUN node scripts/download-models.mjs /app/models
 
-FROM deps AS prod
+# From manifests, not deps: a --prod install on top of a full install keeps the dev packages.
+FROM manifests AS prod
 COPY apps/server apps/server
 COPY packages/protocol packages/protocol
 COPY packages/db packages/db
 COPY packages/pi-ext-pseudo packages/pi-ext-pseudo
 COPY packages/pi-ext-topics packages/pi-ext-topics
 COPY packages/pi-ext-memory packages/pi-ext-memory
+COPY packages/pi-ext-sandbox packages/pi-ext-sandbox
+COPY packages/pi-ext-subagents packages/pi-ext-subagents
 # Not `pnpm deploy`: it copies workspace packages into node_modules, where Node refuses to strip types.
 RUN pnpm install --frozen-lockfile --prod --filter @pa/server...
+# Prune what the server never loads. onnxruntime-node ships binaries for every OS/arch (~230 MB unused);
+# onnxruntime-web is the browser/wasm backend, never selected by transformers in Node.
+# better-sqlite3 prebuilds: only the glibc build for this arch loads (musl/darwin/win32/other arch are dead);
+# deps/ and src/ are the C sources used by node-gyp, which never runs here.
+RUN set -e; cd node_modules/.pnpm; \
+    ort=$(echo onnxruntime-node@*/node_modules/onnxruntime-node/bin/napi-v6); \
+    other=$([ "$(uname -m)" = aarch64 ] && echo x64 || echo arm64); \
+    rm -rf "$ort/darwin" "$ort/win32" "$ort/linux/$other"; \
+    rm -rf onnxruntime-web@*; \
+    sqlite=$(echo better-sqlite3@*/node_modules/better-sqlite3); \
+    arch=$([ "$(uname -m)" = aarch64 ] && echo arm64 || echo x64); \
+    find "$sqlite/prebuilds" -type f ! -name "linux-$arch.node" -delete; \
+    rm -rf "$sqlite/deps" "$sqlite/src"
 
 FROM base AS runtime
 # git versions the memory files (phase-8 decision 1).
-RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends git && apt-get clean && rm -rf /var/lib/apt/lists/* /usr/share/doc /usr/share/man /usr/share/info
 RUN useradd --uid 10001 --user-group --no-create-home app && mkdir /data && chown app:app /data
 COPY --from=prod --chown=app:app /app/node_modules /app/node_modules
 COPY --from=prod --chown=app:app /app/apps/server /app/apps/server
@@ -55,6 +75,8 @@ COPY --from=prod --chown=app:app /app/packages/db /app/packages/db
 COPY --from=prod --chown=app:app /app/packages/pi-ext-pseudo /app/packages/pi-ext-pseudo
 COPY --from=prod --chown=app:app /app/packages/pi-ext-topics /app/packages/pi-ext-topics
 COPY --from=prod --chown=app:app /app/packages/pi-ext-memory /app/packages/pi-ext-memory
+COPY --from=prod --chown=app:app /app/packages/pi-ext-sandbox /app/packages/pi-ext-sandbox
+COPY --from=prod --chown=app:app /app/packages/pi-ext-subagents /app/packages/pi-ext-subagents
 COPY --chown=app:app infra/models.json /app/infra/models.json
 COPY --chown=app:app agents /app/agents
 COPY --chown=app:app automations /app/automations
