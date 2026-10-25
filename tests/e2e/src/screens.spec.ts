@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { deflateSync } from 'node:zlib';
+import AxeBuilder from '@axe-core/playwright';
 import type { Page } from '@playwright/test';
 import {
   acceptProposal,
@@ -31,6 +32,21 @@ const sizes = [
   { width: 1440, height: 900 },
 ];
 
+/**
+ * Axe scan of the screen just shot; the sandboxed artifact iframe is not app UI. A serious or
+ * critical violation fails the test only with `AXE_STRICT=1`. Without it the violations are
+ * printed and the test passes, until phase 9 fixes the current screens; then strict becomes
+ * the default (docs/decisions/phase-9-ui.md, decision 6).
+ */
+const axe = async (page: Page, name: string) => {
+  const { violations } = await new AxeBuilder({ page }).exclude('iframe[sandbox]').analyze();
+  const found = violations
+    .filter((v) => v.impact === 'serious' || v.impact === 'critical')
+    .map((v) => `${v.id} (${v.impact}) ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`);
+  if (process.env.AXE_STRICT === '1') expect(found, `axe: ${name}`).toEqual([]);
+  else for (const f of found) console.warn(`axe: ${name}: ${f}`);
+};
+
 const shot = async (page: Page, screen: string, w: number, scheme: string) => {
   // Let transitions and the caret settle.
   await page.waitForTimeout(400);
@@ -41,6 +57,7 @@ const shot = async (page: Page, screen: string, w: number, scheme: string) => {
   const path = join(DIR, `${screen}-${w}-${scheme}.png`);
   await page.screenshot({ path, fullPage: false });
   expect(existsSync(path)).toBe(true);
+  await axe(page, `${screen}-${w}-${scheme}`);
 };
 
 const send = async (page: Page, text: string) => {

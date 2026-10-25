@@ -37,7 +37,7 @@ export default defineConfig({
         importScripts: ['push-sw.js'],
         // The app's own chunks; Mermaid's lazy chunks (`assets/lazy/`) and the artifact runtime
         // are fetched (and cached) on first use instead of adding ~5 MB to the install.
-        globPatterns: ['index.html', 'assets/*.{js,css}', '*.{png,webmanifest}'],
+        globPatterns: ['index.html', 'assets/*.{js,css,woff2}', '*.{png,webmanifest}'],
         globIgnores: ['assets/lazy/**', 'assets/artifact-runtime-*.js'],
         runtimeCaching: [
           {
@@ -49,6 +49,8 @@ export default defineConfig({
       },
     }),
   ],
+  // The shadcn/ui import alias `@/` from tsconfig.json `paths`.
+  resolve: { tsconfigPaths: true },
   build: {
     rolldownOptions: {
       output: {

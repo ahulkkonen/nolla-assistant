@@ -1,4 +1,76 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+
+/* Dark follows html[data-theme] (App.tsx), or the OS setting while data-theme is unset. */
+@custom-variant dark {
+  &:where([data-theme="dark"], [data-theme="dark"] *) {
+    @slot;
+  }
+  @media (prefers-color-scheme: dark) {
+    &:where(:root:not([data-theme]), :root:not([data-theme]) *) {
+      @slot;
+    }
+  }
+}
+
+/* State variants of the shadcn/ui kit (copied from shadcn/tailwind.css, shadcn 4.22.0). */
+@custom-variant data-open {
+  &:where([data-state="open"]),
+  &:where([data-open]:not([data-open="false"])) {
+    @slot;
+  }
+}
+@custom-variant data-closed {
+  &:where([data-state="closed"]),
+  &:where([data-closed]:not([data-closed="false"])) {
+    @slot;
+  }
+}
+@custom-variant data-checked {
+  &:where([data-state="checked"]),
+  &:where([data-checked]:not([data-checked="false"])) {
+    @slot;
+  }
+}
+@custom-variant data-unchecked {
+  &:where([data-state="unchecked"]),
+  &:where([data-unchecked]:not([data-unchecked="false"])) {
+    @slot;
+  }
+}
+@custom-variant data-selected {
+  &:where([data-selected="true"]) {
+    @slot;
+  }
+}
+@custom-variant data-disabled {
+  &:where([data-disabled="true"]),
+  &:where([data-disabled]:not([data-disabled="false"])) {
+    @slot;
+  }
+}
+@custom-variant data-active {
+  &:where([data-state="active"]),
+  &:where([data-active]:not([data-active="false"])) {
+    @slot;
+  }
+}
+@custom-variant data-horizontal {
+  &:where([data-orientation="horizontal"]) {
+    @slot;
+  }
+}
+@custom-variant data-vertical {
+  &:where([data-orientation="vertical"]) {
+    @slot;
+  }
+}
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
 
 @theme {
   /* Only these colours exist: the default palette is removed. */
@@ -12,12 +84,14 @@
   --color-fg-muted: #5c5c66;
   --color-border: #dcdce0;
   --color-user-bubble: #efeff1;
+  --color-destructive: #c0262d;
+  --color-black: #000000;
 
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 14px;
 
-  --font-sans: Inter, system-ui, sans-serif;
+  --font-sans: "Inter Variable", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
 
   --text-*: initial;
@@ -57,7 +131,55 @@
   }
 }
 
+/*
+ * shadcn/ui colour roles. The values alias the app tokens above, so dark mode comes from the
+ * same `--color-*` overrides. Two kit roles are not mapped because their names are taken:
+ * `--color-accent` keeps the app meaning (the blue action colour), and a `--color-secondary`
+ * would turn `text-secondary` (a font size) into a colour. The kit's `bg-accent` is therefore
+ * blue and its `bg-secondary` is empty until the design brief renames these tokens.
+ */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+}
+
+:root {
+  --background: var(--color-bg);
+  --foreground: var(--color-fg);
+  --card: var(--color-bg-raised);
+  --card-foreground: var(--color-fg);
+  --popover: var(--color-bg-raised);
+  --popover-foreground: var(--color-fg);
+  --primary: var(--color-accent);
+  --primary-foreground: var(--color-accent-fg);
+  --secondary: var(--color-bg-sunken);
+  --secondary-foreground: var(--color-fg);
+  --muted: var(--color-bg-sunken);
+  --muted-foreground: var(--color-fg-muted);
+  --accent-foreground: var(--color-accent-fg);
+  --border: var(--color-border);
+  --input: var(--color-border);
+  --ring: var(--color-accent);
+  --radius: var(--radius-lg);
+}
+
 @layer base {
+  /* Kit components carry data-slot; this gives them shadcn's border default only. */
+  [data-slot] {
+    border-color: var(--color-border);
+  }
   @media (prefers-color-scheme: dark) {
     html:not([data-theme]) {
       --color-accent: #93b2ff;
@@ -69,6 +191,7 @@
       --color-fg-muted: #a3a3ad;
       --color-border: #3a3a40;
       --color-user-bubble: #2e2e33;
+      --color-destructive: #ff8b85;
       color-scheme: dark;
     }
   }
@@ -82,6 +205,7 @@
     --color-fg-muted: #a3a3ad;
     --color-border: #3a3a40;
     --color-user-bubble: #2e2e33;
+    --color-destructive: #ff8b85;
     color-scheme: dark;
   }
   html[data-theme="light"] {
