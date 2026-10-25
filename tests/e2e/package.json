@@ -1,0 +1,16 @@
+{
+  "name": "@pa/e2e",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "playwright test",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@pa/fake-llm": "workspace:*",
+    "@pa/server": "workspace:*",
+    "@playwright/test": "1.64.1",
+    "@types/node": "26.6.5",
+    "typescript": "5.9.3"
+  }
+}
