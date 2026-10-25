@@ -42,7 +42,7 @@ const mac = /Mac|iPhone|iPad/.test(globalThis.navigator?.platform ?? '');
 export const MOD = mac ? '⌘' : 'Ctrl+';
 
 /** Group label (brief 7.5): 12/16 500 muted, padding 16 12 4. */
-const groupLabel = 'flex items-center px-3 pt-4 pb-1 text-micro text-muted-foreground';
+const groupLabel = 'mx-2 flex items-center px-3 pt-4 pb-1 text-micro text-muted-foreground';
 
 function ChatRow({
   chat,
@@ -278,13 +278,13 @@ export function Sidebar({
           className={rail}
           onClick={() => setSidebarOpen(true)}
         >
-          <PanelLeft size={20} />
+          <PanelLeft size={20} className="size-5" />
         </IconButton>
         <IconButton label={UNTITLED} tipSide="right" className={rail} onClick={newChat}>
-          <SquarePen size={20} />
+          <SquarePen size={20} className="size-5" />
         </IconButton>
         <IconButton label="Hae keskusteluja" tipSide="right" className={rail} onClick={search}>
-          <Search size={20} />
+          <Search size={20} className="size-5" />
         </IconButton>
         <div className="mt-auto pb-[max(env(safe-area-inset-bottom),8px)]">
           <SettingsButton className={rail} tipSide="right" />
@@ -342,7 +342,7 @@ export function Sidebar({
         </Button>
         {drawer && (
           <IconButton label="Sulje" className="size-11" onClick={onNavigate}>
-            <X size={20} />
+            <X size={20} className="size-5" />
           </IconButton>
         )}
         {/* The drawer (phones) has no keyboard to list shortcuts for. */}
@@ -425,7 +425,7 @@ export function Sidebar({
                   aria-expanded={isOpen}
                   onClick={() => toggleTopic(t.id)}
                   className={cn(
-                    'flex w-full items-center gap-1 rounded-md px-1 text-micro text-muted-foreground hover:bg-sidebar-accent hover:text-foreground',
+                    'flex w-full items-center gap-1 rounded-md px-3 text-micro text-muted-foreground hover:bg-sidebar-accent hover:text-foreground',
                     drawer ? 'h-11' : 'h-7',
                   )}
                 >
@@ -437,7 +437,7 @@ export function Sidebar({
                     )}
                   />
                   <span className="min-w-0 flex-1 truncate text-left">{t.name}</span>
-                  <span className="pr-2 tabular-nums">
+                  <span className="tabular-nums">
                     {rows.length}
                     <span className="sr-only"> keskustelua</span>
                   </span>

@@ -458,26 +458,33 @@ for (const scheme of ['light', 'dark'] as const) {
           await shot(page, 'agent-picker', vp.width, scheme);
         });
 
-        test('subagents-row', async ({ app, page }) => {
-          const tasks = ['Verot', 'Asuminen', 'Liikenne'].map((label) => ({
-            label,
-            task: `Tiivistä aihe ${label}`,
-          }));
-          app.llm.push({ toolCalls: [{ name: 'subagent', args: { mode: 'parallel', tasks } }] });
-          for (const _ of tasks) app.llm.push({ text: 'Tiivistelmä.' });
-          app.llm.push({ text: 'Valmis.' });
-          const hold = await holdAfter(page, 'subagent.state');
-          await app.login(page);
-          await page.getByRole('button', { name: 'Agentti: Avustaja' }).click();
-          await page.getByRole('menuitemradio', { name: 'Tutkija' }).click();
-          await sendMessage(page, 'Tiivistä kolme aihetta');
-          await hold.reached;
-          const row = page.getByRole('button', { name: '3 aliagenttia jonossa' });
-          await row.click();
-          await expect(page.getByText('Asuminen')).toBeVisible();
-          await shot(page, 'subagents-row', vp.width, scheme);
-          hold.release();
-          await expect(page.locator('.md').last()).toHaveText('Valmis.', { timeout: 30_000 });
+        test.describe('subagents', () => {
+          // Known flake (docs/decisions/phase-7.md): under parallel load the FIFO fake LLM
+          // sometimes hands a scripted turn to another call and two children never finish.
+          // It passes alone; a retry starts a fresh server and queue.
+          test.describe.configure({ retries: 2 });
+
+          test('subagents-row', async ({ app, page }) => {
+            const tasks = ['Verot', 'Asuminen', 'Liikenne'].map((label) => ({
+              label,
+              task: `Tiivistä aihe ${label}`,
+            }));
+            app.llm.push({ toolCalls: [{ name: 'subagent', args: { mode: 'parallel', tasks } }] });
+            for (const _ of tasks) app.llm.push({ text: 'Tiivistelmä.' });
+            app.llm.push({ text: 'Valmis.' });
+            const hold = await holdAfter(page, 'subagent.state');
+            await app.login(page);
+            await page.getByRole('button', { name: 'Agentti: Avustaja' }).click();
+            await page.getByRole('menuitemradio', { name: 'Tutkija' }).click();
+            await sendMessage(page, 'Tiivistä kolme aihetta');
+            await hold.reached;
+            const row = page.getByRole('button', { name: '3 aliagenttia jonossa' });
+            await row.click();
+            await expect(page.getByText('Asuminen')).toBeVisible();
+            await shot(page, 'subagents-row', vp.width, scheme);
+            hold.release();
+            await expect(page.locator('.md').last()).toHaveText('Valmis.', { timeout: 30_000 });
+          });
         });
 
         test.describe('automation', () => {

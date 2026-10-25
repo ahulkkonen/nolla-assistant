@@ -1,6 +1,7 @@
 import { AlertCircle, ArrowDown } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { type UiMessage, useStore } from '../store.ts';
 import { openChat, sendUserMessage } from '../ws.ts';
 import { ApprovalCard } from './ApprovalCard.tsx';
@@ -90,6 +91,45 @@ export function Thread() {
   const lastUser = messages.findLastIndex((m) => m.role === 'user');
   const lastAssistant =
     stream || running ? -1 : messages.findLastIndex((m) => m.role === 'assistant');
+  // A tool-only assistant message and the reply after it are one turn (8 px in-turn gap).
+  const turns: { role: UiMessage['role']; items: { m: UiMessage; i: number }[] }[] = [];
+  messages.forEach((m, i) => {
+    const turn = turns.at(-1);
+    const prev = turn?.items.at(-1)?.m;
+    if (turn && m.role === 'assistant' && turn.role === 'assistant' && prev && !prev.text)
+      turn.items.push({ m, i });
+    else turns.push({ role: m.role, items: [{ m, i }] });
+  });
+  const lastTurn = turns.at(-1);
+  const joinLive =
+    !!(stream || running) && lastTurn?.role === 'assistant' && !lastTurn.items.at(-1)?.m.text;
+  const liveView =
+    (stream || running) &&
+    (stream?.text || stream?.tools.length ? (
+      <MessageView
+        role="assistant"
+        text={stream.text}
+        annotations={stream.annotations}
+        tools={stream.tools}
+        subagents={subagents}
+        live
+      />
+    ) : (
+      // Before the first token: three 6 px dots; the action row's 32 px is kept.
+      <div className="flex flex-col gap-2">
+        <span role="status" aria-label="Vastaus tulossa" className="flex h-7 items-center gap-1.5">
+          {[0, 150, 300].map((d) => (
+            <span
+              key={d}
+              style={{ animationDelay: `${d}ms` }}
+              className="size-1.5 animate-pulse rounded-full bg-muted-foreground"
+            />
+          ))}
+        </span>
+        <div className="h-8" />
+      </div>
+    ));
+
   const retryLast = () => {
     const prev = previousUser(messages, messages.length);
     if (prev) void sendUserMessage(prev.text, prev.attachments);
@@ -109,24 +149,41 @@ export function Thread() {
         className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-4"
       >
         <div className="mx-auto flex w-full max-w-(--thread-max) flex-col gap-6 py-6">
-          {messages.map((m, i) => {
-            const prev = m.role === 'assistant' ? previousUser(messages, i) : undefined;
+          {turns.map((t, n) => {
+            const last = n === turns.length - 1;
             return (
-              <article key={m.id} data-message-id={m.id} className="animate-fade-in">
-                <h2 className="sr-only">{m.role === 'user' ? 'Sinä sanoit' : 'Avustaja sanoi'}</h2>
-                <MessageView
-                  id={m.id}
-                  role={m.role}
-                  text={m.text}
-                  annotations={m.annotations}
-                  attachments={m.attachments}
-                  tools={m.tools}
-                  latest={i === lastUser || i === lastAssistant}
-                  {...(m.role === 'user' ? { onEdit: (t: string) => void sendUserMessage(t) } : {})}
-                  {...(prev
-                    ? { onRetry: () => void sendUserMessage(prev.text, prev.attachments) }
-                    : {})}
-                />
+              <article
+                key={t.items[0]?.m.id}
+                // After a user turn 40 px (48 on phones): its action row sits in the gap.
+                className={cn(
+                  'flex flex-col gap-2 animate-fade-in',
+                  t.role === 'user' && 'mb-4 max-md:mb-6',
+                )}
+              >
+                <h2 className="sr-only">{t.role === 'user' ? 'Sinä sanoit' : 'Avustaja sanoi'}</h2>
+                {t.items.map(({ m, i }) => {
+                  const prev = m.role === 'assistant' ? previousUser(messages, i) : undefined;
+                  return (
+                    <div key={m.id} data-message-id={m.id}>
+                      <MessageView
+                        id={m.id}
+                        role={m.role}
+                        text={m.text}
+                        annotations={m.annotations}
+                        attachments={m.attachments}
+                        tools={m.tools}
+                        latest={i === lastUser || i === lastAssistant}
+                        {...(m.role === 'user'
+                          ? { onEdit: (text: string) => void sendUserMessage(text) }
+                          : {})}
+                        {...(prev
+                          ? { onRetry: () => void sendUserMessage(prev.text, prev.attachments) }
+                          : {})}
+                      />
+                    </div>
+                  );
+                })}
+                {last && joinLive && liveView}
               </article>
             );
           })}
@@ -153,37 +210,10 @@ export function Thread() {
           {subagents.length > 0 && !stream?.tools.some((t) => t.name === 'subagent') && (
             <SubagentRow items={subagents} />
           )}
-          {(stream || running) && (
+          {(stream || running) && !joinLive && (
             <article>
               <h2 className="sr-only">Avustaja sanoi</h2>
-              {stream?.text || stream?.tools.length ? (
-                <MessageView
-                  role="assistant"
-                  text={stream.text}
-                  annotations={stream.annotations}
-                  tools={stream.tools}
-                  subagents={subagents}
-                  live
-                />
-              ) : (
-                // Before the first token: three 6 px dots; the action row's 32 px is kept.
-                <div className="flex flex-col gap-2">
-                  <span
-                    role="status"
-                    aria-label="Vastaus tulossa"
-                    className="flex h-7 items-center gap-1.5"
-                  >
-                    {[0, 150, 300].map((d) => (
-                      <span
-                        key={d}
-                        style={{ animationDelay: `${d}ms` }}
-                        className="size-1.5 animate-pulse rounded-full bg-muted-foreground"
-                      />
-                    ))}
-                  </span>
-                  <div className="h-8" />
-                </div>
-              )}
+              {liveView}
             </article>
           )}
           {failed && !stream && !running && (

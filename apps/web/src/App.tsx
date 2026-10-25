@@ -184,11 +184,11 @@ function Shell() {
         {mobile ? (
           <header className="z-(--z-header) box-content flex h-12 shrink-0 items-center gap-1 border-b border-border bg-background px-1 pt-[env(safe-area-inset-top)]">
             <IconButton label="Valikko" onClick={() => setSidebarOpen(true)}>
-              <Menu size={20} />
+              <Menu size={20} className="size-5" />
             </IconButton>
             <h1 className="min-w-0 flex-1 truncate text-center text-heading">{title}</h1>
             <IconButton label={UNTITLED} onClick={() => useStore.getState().setActive(null)}>
-              <SquarePen size={20} />
+              <SquarePen size={20} className="size-5" />
             </IconButton>
           </header>
         ) : (

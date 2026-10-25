@@ -353,6 +353,8 @@ export function MessageView({
 }: Props) {
   const user = role === 'user';
   const [saw, setSaw] = useState(false);
+  const globalSaw = useStore((s) => s.showModelSaw);
+  const pressed = saw || globalSaw;
   const [editing, setEditing] = useState(false);
   const [sheet, setSheet] = useState(false);
   const press = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -368,7 +370,7 @@ export function MessageView({
   return (
     <SawContext.Provider value={saw}>
       <div
-        className={cn('group flex flex-col gap-2', user && 'items-end')}
+        className={cn('group relative flex flex-col gap-2', user && 'items-end')}
         // Long-press 500 ms on touch opens the action sheet (brief 7.7).
         onPointerDown={(e) => {
           if (e.pointerType !== 'touch' || !actions) return;
@@ -412,13 +414,16 @@ export function MessageView({
             </div>
           )
         ) : (
-          <MarkdownText text={text} annotations={annotations} live={!!live} />
+          // Before the first token nothing shows here: the tool row or the dots carry it.
+          text && <MarkdownText text={text} annotations={annotations} live={!!live} />
         )}
         {/* 32 px, reserved while streaming so nothing jumps. */}
         {(live || actions) && (
           <div
             className={cn(
               'flex h-8 items-center gap-1 transition-opacity duration-100 [-webkit-touch-callout:none] max-md:h-11',
+              // A user turn's row sits in the 40 px gap below the bubble (Thread.tsx).
+              user && 'absolute top-full right-0 mt-1',
               // Hover devices: on hover or focus, except under the latest assistant turn.
               !(latest && !user) &&
                 '[@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:focus-within:opacity-100',
@@ -441,12 +446,16 @@ export function MessageView({
                 )}
                 {annotations.length > 0 && (
                   <IconButton
-                    label={saw ? 'Näytä alkuperäiset' : 'Mitä malli näki'}
-                    aria-pressed={saw}
+                    label={pressed ? 'Näytä alkuperäiset' : 'Mitä malli näki'}
+                    aria-pressed={pressed}
                     className={small}
-                    onClick={() => setSaw(!saw)}
+                    onClick={() => {
+                      // The global setting also counts as on; turning off clears both.
+                      if (pressed) useStore.getState().setShowModelSaw(false);
+                      setSaw(!pressed);
+                    }}
                   >
-                    {saw ? <EyeOff size={16} /> : <Eye size={16} />}
+                    {pressed ? <EyeOff size={16} /> : <Eye size={16} />}
                   </IconButton>
                 )}
               </>

@@ -57,7 +57,7 @@ export function SettingsButton({
       {...(tipSide ? { tipSide } : {})}
       onClick={() => useStore.setState({ settingsOpen: true })}
     >
-      <Settings size={iconSize} />
+      <Settings size={iconSize} className={iconSize === 20 ? 'size-5' : 'size-4'} />
     </IconButton>
   );
 }

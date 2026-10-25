@@ -48,19 +48,20 @@ export function AgentPicker() {
           <ChevronDown size={16} />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent
-        side="top"
-        align="start"
-        collisionPadding={8}
-        className="w-auto min-w-48"
-      >
+      <DropdownMenuContent side="top" align="start" collisionPadding={8} className="w-[260px]">
         <DropdownMenuRadioGroup
           value={current}
           onValueChange={(id) => useStore.getState().setPendingAgentId(id)}
         >
           {agents.map((a) => (
-            <DropdownMenuRadioItem key={a.id} value={a.id}>
-              {a.name}
+            <DropdownMenuRadioItem key={a.id} value={a.id} className="py-2">
+              <span className="flex min-w-0 flex-col">
+                {a.name}
+                {/* Profiles have no description field; the model and subagents describe it. */}
+                <span className="truncate text-meta text-muted-foreground">
+                  {a.model} · aliagentit {a.subagents ? 'käytössä' : 'ei käytössä'}
+                </span>
+              </span>
             </DropdownMenuRadioItem>
           ))}
         </DropdownMenuRadioGroup>

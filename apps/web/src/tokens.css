@@ -322,10 +322,17 @@
 }
 
 @layer base {
+  /* Tailwind 4 borders default to currentColor; ours are --border (7.4). */
+  *,
+  ::before,
+  ::after {
+    border-color: var(--border);
+  }
+  /* html stays at the browser's 16 px, so rem sizes (44 px targets, 264 sidebar) hold. */
   html {
+    background: var(--background);
     -webkit-tap-highlight-color: transparent;
   }
-  html,
   body {
     background: var(--background);
     color: var(--foreground);
@@ -333,8 +340,6 @@
     font-size: var(--text-body);
     line-height: var(--text-body--line-height);
     font-weight: var(--font-weight-normal);
-  }
-  body {
     overscroll-behavior: none;
   }
   button {

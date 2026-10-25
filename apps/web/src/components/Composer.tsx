@@ -238,7 +238,7 @@ export function Composer() {
             {chips.map((c) => (
               <li
                 key={c.key}
-                className="relative flex h-10 items-center gap-2 overflow-hidden rounded-md border border-border pr-1 pl-1"
+                className="relative flex h-10 items-center gap-2 rounded-md border border-border pr-1 pl-1 max-md:h-11"
               >
                 {c.preview ? (
                   <img src={c.preview} alt="" className="size-8 rounded-xs object-cover" />
@@ -255,7 +255,7 @@ export function Composer() {
                   <span
                     role="progressbar"
                     aria-label="Lähetetään"
-                    className="absolute inset-x-0 bottom-0 h-0.5 animate-pulse bg-primary"
+                    className="absolute inset-x-2 bottom-0 h-0.5 animate-pulse rounded-full bg-primary"
                   />
                 )}
               </li>

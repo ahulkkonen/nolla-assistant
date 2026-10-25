@@ -45,7 +45,7 @@ export function Login() {
   return (
     <main className="flex h-dvh justify-center px-6 pt-[20dvh] md:items-center md:pt-0">
       <div className="w-full max-w-sm md:max-w-[400px] md:rounded-xl md:border md:border-border md:bg-card md:p-8 md:shadow-sm">
-        <h1 className="mb-6 text-title">Assistant</h1>
+        <h1 className="mb-6 text-title">Avustaja</h1>
         <form onSubmit={onSubmit} className="flex flex-col gap-2">
           <label htmlFor="password" className="text-ui">
             Salasana
