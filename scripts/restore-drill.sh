@@ -16,6 +16,8 @@ export AUTH_ORIGIN=http://127.0.0.1:$PORT AUTH_PASSKEY_RP_ID=127.0.0.1
 export COOKIE_SECRET=drill-cookie-secret-0123456789abcdef0123 USER_ID=drill MODEL=zdr/strong
 export PSEUDO_VAULT_KEY=drill-vault-key OPENROUTER_API_KEY=unused
 export LITELLM_URL=http://127.0.0.1:9 LITELLM_MASTER_KEY=drill-key
+# Required by mcp-workspace, which the drill does not start. Its token volume is not drilled.
+export GOOGLE_OAUTH_CLIENT_ID=unused GOOGLE_OAUTH_CLIENT_SECRET=unused USER_GOOGLE_EMAIL=unused@example.invalid
 PW=drill-password
 AUTH_PASSWORD_HASH=$(printf %s "$PW" | node scripts/hash-password.mjs)
 export AUTH_PASSWORD_HASH

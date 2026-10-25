@@ -52,12 +52,20 @@ export async function boot(turns: FakeTurn[], env: Record<string, string> = {}) 
     () => llm.close(),
     () => rmSync(dataDir, { recursive: true, force: true }),
   );
+  /** Server log lines (pino JSON), also echoed to stdout. */
+  const logs: string[] = [];
+  const logStream = {
+    write: (line: string) => {
+      logs.push(line);
+      process.stdout.write(line);
+    },
+  };
   const run = async () => {
-    const srv = await start(config);
+    const srv = await start(config, logStream);
     cleanups.push(srv.close);
     return srv;
   };
-  return { llm, config, run };
+  return { llm, config, run, logs };
 }
 
 export const api = (port: number, path: string, init: RequestInit = {}) =>

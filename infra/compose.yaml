@@ -21,7 +21,7 @@ services:
       PSEUDO_URL: ${PSEUDO_URL:-http://pseudo-svc:8000}
       BROKER_URL: ${BROKER_URL:-http://sandbox-broker:8100}
       BROKER_TOKEN: ${BROKER_TOKEN}
-      SELF_EMAIL: ${GOOGLE_ACCOUNT_EMAIL:-}
+      SELF_EMAIL: ${USER_GOOGLE_EMAIL:-}
     # ports: no mapping. Coolify's proxy attaches to container port 3000.
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
@@ -138,9 +138,19 @@ services:
     mem_limit: 100m
     networks: [internal]
 
+  # One-shot: a new named volume is root-owned; mcp-workspace and backup run as uid 10001.
+  mcp-workspace-init:
+    image: ghcr.io/taylorwilsdon/google_workspace_mcp:2.1.0@sha256:866733722037ce39de0b4fa6db15c88578876f00eda448799a489d463f334aa3
+    entrypoint: ["sh", "-c", "chown 10001:10001 /data/mcp/workspace && chmod 700 /data/mcp/workspace"]
+    user: "0:0"
+    restart: "no"
+    network_mode: none
+    volumes: [mcp-workspace-data:/data/mcp/workspace]
+
   # Google Calendar, Drive (read) and Gmail (read) over MCP (plan §10, decision 0005). Single-user
-  # mode has no MCP-level auth: the `mcp` network (pa-server only) is the access control. Tokens are
-  # plain JSON under pa-data:/mcp/workspace (pa-server creates the directory), so restic backs them up.
+  # mode has no MCP-level auth: the `mcp` network (pa-server only) is the access control. Never
+  # attach it to Coolify's proxy network. Tokens are plain JSON in mcp-workspace-data; the backup
+  # service snapshots that volume read-only.
   mcp-workspace:
     image: ghcr.io/taylorwilsdon/google_workspace_mcp:2.1.0@sha256:866733722037ce39de0b4fa6db15c88578876f00eda448799a489d463f334aa3
     entrypoint: ["/app/.venv/bin/python", "main.py"]
@@ -150,6 +160,7 @@ services:
       - --single-user
       - --tool-tier
       - core
+      # --permissions selects the services; --tools cannot be combined with it (main.py exits).
       - --permissions
       - calendar:full
       - drive:readonly
@@ -163,26 +174,22 @@ services:
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     user: "10001:10001"
-    volumes:
-      - type: volume
-        source: pa-data
-        target: /data/mcp/workspace
-        volume: { subpath: mcp/workspace }
+    volumes: [mcp-workspace-data:/data/mcp/workspace]
     environment:
       HOME: /home/app
       WORKSPACE_MCP_HOST: 0.0.0.0
       WORKSPACE_MCP_PORT: "8000"
       WORKSPACE_MCP_BASE_URI: http://mcp-workspace
-      GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
-      GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
+      GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:?set GOOGLE_OAUTH_CLIENT_ID}
+      GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:?set GOOGLE_OAUTH_CLIENT_SECRET}
       GOOGLE_OAUTH_REDIRECT_URI: ${AUTH_ORIGIN}/api/oauth/google/callback
-      USER_GOOGLE_EMAIL: ${GOOGLE_ACCOUNT_EMAIL:-}
+      USER_GOOGLE_EMAIL: ${USER_GOOGLE_EMAIL:?set USER_GOOGLE_EMAIL}
       WORKSPACE_MCP_CREDENTIALS_DIR: /data/mcp/workspace
       WORKSPACE_MCP_DISABLE_LOCAL_FILES: "true"
       # The hop from pa-server is plain HTTP on the mcp network.
       OAUTHLIB_INSECURE_TRANSPORT: "1"
     depends_on:
-      pa-server: { condition: service_healthy }
+      mcp-workspace-init: { condition: service_completed_successfully }
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
       interval: 30s
@@ -203,7 +210,9 @@ services:
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     user: "10001:10001"
-    volumes: [pa-data:/data]
+    volumes:
+      - pa-data:/data
+      - { type: volume, source: mcp-workspace-data, target: /backup-extra/mcp-workspace, read_only: true }
     environment:
       S3_ENDPOINT: ${S3_ENDPOINT}
       S3_BUCKET: ${S3_BUCKET}
@@ -219,6 +228,7 @@ services:
 
 volumes:
   pa-data:
+  mcp-workspace-data:
 
 networks:
   internal:

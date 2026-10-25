@@ -50,6 +50,9 @@ describe.skipIf(!hasDocker)(
         // compose.yaml requires these for services this suite does not start.
         PSEUDO_VAULT_KEY: process.env.PSEUDO_VAULT_KEY ?? 'x'.repeat(40),
         BROKER_TOKEN: process.env.BROKER_TOKEN ?? 'x'.repeat(40),
+        GOOGLE_OAUTH_CLIENT_ID: process.env.GOOGLE_OAUTH_CLIENT_ID ?? 'unused',
+        GOOGLE_OAUTH_CLIENT_SECRET: process.env.GOOGLE_OAUTH_CLIENT_SECRET ?? 'unused',
+        USER_GOOGLE_EMAIL: process.env.USER_GOOGLE_EMAIL ?? 'unused@example.invalid',
       };
       compose('up', '-d', '--wait', '--wait-timeout', '120', ...SERVICES);
       // The override publishes 4000 on an ephemeral loopback port; ask compose which one.

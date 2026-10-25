@@ -164,11 +164,16 @@ export function memoryStore(deps: {
         action: memoryPending.action,
         target: memoryPending.target,
         text: memoryPending.text,
+        replace: memoryPending.replace,
         chatId: memoryPending.chatId,
       })
       .from(memoryPending)
       .where(pendingWhere())
-      .all(),
+      .all()
+      .map(({ replace, ...p }) => {
+        const old = p.action === 'remove' ? p.text : replace;
+        return old == null ? p : { ...p, replace: old };
+      }),
     consolidation:
       db
         .select({ id: memoryConsolidations.id, diff: memoryConsolidations.diff })

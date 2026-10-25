@@ -106,6 +106,34 @@ test('tool_result passes image blocks through untouched (accepted gap)', async (
   expect(result.content).toEqual([image, { type: 'text', text: 'Pekka Laaksonen' }]);
 });
 
+test('tool_result masks nested text of resource blocks; binary data and types stay', async () => {
+  const resource = {
+    type: 'resource',
+    resource: { uri: 'file:///Matti Virtanen.txt', mimeType: 'text/plain', text: 'Matti Virtanen' },
+  };
+  const { result, sessionFile } = await runTool({
+    content: [resource, { type: 'text', text: 'ok' }],
+    structuredContent: {
+      content: [{ type: 'image', data: 'TWF0dGkgVmlydGFuZW4=', mimeType: 'image/png' }],
+      note: 'Matti Virtanen',
+    },
+    details: {},
+  });
+  expect(result.content[0]).toEqual({
+    type: 'resource',
+    resource: {
+      uri: 'file:///Pekka Laaksonen.txt',
+      mimeType: 'text/plain',
+      text: 'Pekka Laaksonen',
+    },
+  });
+  expect(result.structuredContent).toEqual({
+    content: [{ type: 'image', data: 'TWF0dGkgVmlydGFuZW4=', mimeType: 'image/png' }],
+    note: 'Pekka Laaksonen',
+  });
+  noReal(sessionFile());
+});
+
 test('edit tool: the real diff in details never reaches the session file', async () => {
   const { cwd, session, sessionFile } = await boot([
     {

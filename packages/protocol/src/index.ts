@@ -323,6 +323,8 @@ export const ServerMessage = z.discriminatedUnion('type', [
         action: z.enum(['add', 'replace', 'remove']),
         target: z.enum(['user', 'memory']),
         text: z.string(),
+        /** The old text: `replace`'s target, or the text `remove` deletes. */
+        replace: z.string().optional(),
         chatId: id64,
       }),
     ),

@@ -68,6 +68,8 @@ export async function startFakeWorkspace(opts: { events?: FakeEvent[]; connected
     created: [] as Record<string, unknown>[],
     /** Query strings that reached `/oauth2callback`. */
     callbacks: [] as string[],
+    /** Consent URL in the auth-required error. */
+    authUrl: AUTH_URL,
   };
   const guarded =
     <A>(name: string, fn: (args: A) => ReturnType<typeof wrap>) =>
@@ -75,7 +77,7 @@ export async function startFakeWorkspace(opts: { events?: FakeEvent[]; connected
       if (!state.connected)
         return error(
           `Error calling tool '${name}': **ACTION REQUIRED: Google Authentication Needed for Google Calendar for '${ACCOUNT}'**\n\n` +
-            `1. Open this URL in your browser to authorize Google Calendar access using all required permissions:\n   Authorization URL: ${AUTH_URL}\n` +
+            `1. Open this URL in your browser to authorize Google Calendar access using all required permissions:\n   Authorization URL: ${state.authUrl}\n` +
             '2. After successful authorization, **retry their original command**.',
         );
       if (state.failing.has(name))
@@ -147,6 +149,11 @@ export async function startFakeWorkspace(opts: { events?: FakeEvent[]; connected
     const url = new URL(req.url ?? '/', 'http://fake');
     if (url.pathname === '/oauth2callback') {
       state.callbacks.push(url.search.slice(1));
+      // The real server answers 500 for an unknown or used state.
+      if (url.searchParams.get('state') !== 'abc123') {
+        res.writeHead(500, { 'content-type': 'text/html' });
+        return res.end('<p>Invalid or expired OAuth state parameter</p>');
+      }
       state.connected = true;
       res.writeHead(200, { 'content-type': 'text/html' });
       return res.end('<p>Authenticated</p>');

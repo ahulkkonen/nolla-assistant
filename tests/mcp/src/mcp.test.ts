@@ -1,9 +1,10 @@
 // Phase-6 gate (plan section 13, decision 0005): MCP writes need approval and run with real values;
 // MCP results are masked before they reach the session or the model.
-import { readdirSync, readFileSync } from 'node:fs';
+import { cpSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { FakeTurn } from '@pa/fake-llm';
-import { bootPseudo, runCleanups } from '@pa/server/src/test-utils.ts';
+import { bootPseudo, cleanups, runCleanups } from '@pa/server/src/test-utils.ts';
 import { afterEach, expect, test } from 'vitest';
 import { startWorkspaceConfig } from '../fixtures/fake-workspace-server.ts';
 
@@ -12,9 +13,9 @@ afterEach(runCleanups);
 const USER = { 'Aleksi Hulkkonen': 'Matti Virtanen' };
 const ALLOWED = ['list_calendars', 'get_events', 'manage_event'];
 
-async function bootMcp(turns: FakeTurn[]) {
+async function bootMcp(turns: FakeTurn[], env: Record<string, string> = {}) {
   const { ws, yaml } = await startWorkspaceConfig({}, ALLOWED, ['manage_event']);
-  const b = await bootPseudo({ ...USER }, turns, { learn: true }, { MCP_CONFIG: yaml });
+  const b = await bootPseudo({ ...USER }, turns, { learn: true }, { MCP_CONFIG: yaml, ...env });
   const jsonl = () => {
     const files = readdirSync(b.srv.registry.sessionDir, { recursive: true, encoding: 'utf8' });
     return files
@@ -23,8 +24,26 @@ async function bootMcp(turns: FakeTurn[]) {
       .join('\n');
   };
   const sent = () => b.llm.requests.map((r) => JSON.stringify(r.body)).join('\n');
-  return { ...b, ws, jsonl, sent };
+  const entities = async () =>
+    (
+      (await (await fetch(`${b.sc.url}/vault/entities?user_id=x`)).json()) as {
+        entities: unknown[];
+      }
+    ).entities.length;
+  return { ...b, ws, jsonl, sent, entities };
 }
+
+const CREATE: FakeTurn[] = [
+  {
+    toolCalls: [
+      {
+        name: 'mcp__workspace__manage_event',
+        args: { action: 'create', summary: 'Kahvit', attendees: ['henkilo2@example.invalid'] },
+      },
+    ],
+  },
+  { text: 'Selvä.' },
+];
 
 test('(a) manage_event asks with real values and the server gets real values', async () => {
   // The fake sidecar learns the address first (id 2), so the model sees `henkilo2@example.invalid`.
@@ -110,4 +129,87 @@ test('(e) an MCP error result is a tool error and the chat continues', async () 
   expect((await c.next('tool.end')).status).toBe('error');
   await c.idle();
   expect(JSON.stringify(llm.requests[1]?.body)).toContain('Google API error 500');
+});
+
+test('(a) denial: the server gets nothing', async () => {
+  const { c, chat, ws } = await bootMcp(CREATE);
+  c.send({
+    type: 'user.message',
+    chatId: chat.id,
+    text: 'Varaa kahvit: kaisa.nieminen@example.fi',
+  });
+  const req = await c.next('approval.request');
+  c.send({ type: 'approval.respond', requestId: req.requestId, approve: false });
+  expect((await c.next('tool.end')).status).toBe('denied');
+  await c.idle();
+  expect(ws.state.created).toEqual([]);
+});
+
+test('(a) approval.never cannot remove an MCP write from the gate', async () => {
+  const agents = mkdtempSync(join(tmpdir(), 'pa-agents-'));
+  cleanups.push(() => rmSync(agents, { recursive: true, force: true }));
+  cpSync(new URL('../../../agents', import.meta.url), agents, { recursive: true });
+  const file = join(agents, 'assistant.yaml');
+  writeFileSync(
+    file,
+    readFileSync(file, 'utf8').replace(/never: \[/, 'never: [mcp__workspace__manage_event, '),
+  );
+  expect(readFileSync(file, 'utf8')).toContain('never: [mcp__workspace__manage_event,');
+  const { c, chat, ws } = await bootMcp(CREATE, { AGENTS_DIR: agents });
+  c.send({
+    type: 'user.message',
+    chatId: chat.id,
+    text: 'Varaa kahvit: kaisa.nieminen@example.fi',
+  });
+  const req = await c.next('approval.request');
+  expect(req.tool).toBe('mcp__workspace__manage_event');
+  c.send({ type: 'approval.respond', requestId: req.requestId, approve: false });
+  await c.idle();
+  expect(ws.state.created).toEqual([]);
+});
+
+test('(d) a call to a server tool outside mcp.yaml fails and never reaches the server', async () => {
+  const { c, chat, llm } = await bootMcp([
+    {
+      toolCalls: [
+        {
+          name: 'mcp__workspace__send_gmail_message',
+          args: { to: 'a@b.fi', subject: 's', body: 'b' },
+        },
+      ],
+    },
+    { text: 'En voi.' },
+  ]);
+  c.send({ type: 'user.message', chatId: chat.id, text: 'Lähetä viesti' });
+  expect((await c.next('tool.end')).status).toBe('error');
+  await c.idle();
+  expect(JSON.stringify(llm.requests[1]?.body)).toContain('not found');
+});
+
+test('(b) get_events adds vault entities', async () => {
+  const { c, chat, entities } = await bootMcp([
+    { toolCalls: [{ name: 'mcp__workspace__get_events', args: { detailed: true } }] },
+    { text: 'Yksi tapaaminen.' },
+  ]);
+  c.send({ type: 'user.message', chatId: chat.id, text: 'Mitä kalenterissa?' });
+  await c.next('tool.start');
+  const before = await entities();
+  await c.idle();
+  expect(await entities()).toBeGreaterThan(before);
+});
+
+test('server down: the chat still works and the missing tools are logged', async () => {
+  const { ws, yaml } = await startWorkspaceConfig({}, ALLOWED, ['manage_event']);
+  await ws.close();
+  const { c, chat, logs } = await bootPseudo(
+    { ...USER },
+    [{ text: 'Hei.' }],
+    {},
+    { MCP_CONFIG: yaml },
+  );
+  c.send({ type: 'user.message', chatId: chat.id, text: 'Hei' });
+  await c.idle();
+  const warn = logs.find((l) => l.includes('mcp tools missing'));
+  expect(warn).toBeDefined();
+  expect(warn).toContain('mcp__workspace__manage_event');
 });

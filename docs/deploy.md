@@ -137,9 +137,10 @@ The `mcp-workspace` service gives the agents Google Calendar (read and write), G
    |---|---|
    | `GOOGLE_OAUTH_CLIENT_ID` | the client ID |
    | `GOOGLE_OAUTH_CLIENT_SECRET` | the client secret. Only `mcp-workspace` receives it. |
-   | `GOOGLE_ACCOUNT_EMAIL` | your Google address |
+   | `USER_GOOGLE_EMAIL` | your Google address. `pa-server` receives it as `SELF_EMAIL`. |
 
-7. Deploy. Compose needs Docker Engine 26 or later for the volume `subpath` mount. `pa-server` creates `/data/mcp/workspace` at startup. `mcp-workspace` starts after `pa-server` is healthy.
+7. In Coolify, do not attach `mcp-workspace` to the proxy network and do not give it a domain. Its `/mcp` endpoint has no authentication. Only the `mcp` network (shared with `pa-server`) protects it.
+8. Deploy. The one-shot `mcp-workspace-init` service gives the `mcp-workspace-data` volume to uid 10001, then `mcp-workspace` starts.
 
 ### Connect your Google account
 
@@ -152,15 +153,25 @@ The consent link expires after 10 minutes and works one time. If the link fails,
 
 ### Disconnect
 
-The server has no API to remove its token, so `POST /api/integrations/google/disconnect` returns 501. Do these steps:
+The server has no API to remove its token. Do these steps:
 
 1. Remove the token file: `docker compose exec mcp-workspace sh -c 'rm /data/mcp/workspace/*.json'`.
 2. Revoke the access at <https://myaccount.google.com/permissions>.
 
 ### Your own address in the vault
 
-`pa-server` adds `GOOGLE_ACCOUNT_EMAIL` to the vault as an allowlisted `EMAIL` entity at startup. Your address is in every workspace tool schema, and no masking covers tool schemas. The allowlist keeps the schemas and the tool results the same. If the startup log shows `self email allowlist failed`, allowlist the address manually in Nimisuoja.
+`pa-server` adds `USER_GOOGLE_EMAIL` (as `SELF_EMAIL`) to the vault as an allowlisted `EMAIL` entity at startup. Your address is in every workspace tool schema, and no masking covers tool schemas. The allowlist keeps the schemas and the tool results the same. If the startup log shows `self email allowlist failed`, allowlist the address manually in Nimisuoja.
 
 ### Backups
 
-The token file is under `pa-data` at `/data/mcp/workspace`, so the nightly restic snapshot includes it. The file holds the refresh token in plain JSON (mode 600). Only the restic backup is encrypted.
+The token file is in the `mcp-workspace-data` volume. The file holds the refresh token in plain JSON (mode 600). The `backup` service mounts the volume read-only at `/backup-extra/mcp-workspace`, and the nightly restic snapshot includes it. Only the restic backup is encrypted.
+
+`scripts/restore.sh` does not restore the token volume, because the backup service mounts it read-only. After the main restore, run the script once more with the volume mounted read-write:
+
+```sh
+docker run --rm --env-file restore.env \
+  -v <project>_mcp-workspace-data:/backup-extra/mcp-workspace \
+  --entrypoint /scripts/restore.sh <project>-backup mcp
+```
+
+`restore.env` holds `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY` and `RESTIC_PASSWORD`. If you skip this step, connect your Google account again. The restore drill does not cover the token volume.

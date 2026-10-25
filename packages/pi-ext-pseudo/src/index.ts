@@ -57,21 +57,32 @@ export function pseudoExtension(opts: {
 
     pi.on('tool_result', async (event): Promise<ToolResultEventResult> => {
       // `details` is persisted too (the edit tool puts the real diff there). Images pass through
-      // unmasked: an accepted phase-3 gap (phase-3.md).
+      // unmasked: an accepted phase-3 gap (phase-3.md). Other non-text blocks (MCP `resource`,
+      // `resource_link`, ...) go through /mask as JSON; binary `data`/`blob` and `type` stay as they are.
+      const bin: string[] = [];
+      const other = (b: { type: string }) => b.type !== 'text' && b.type !== 'image';
       const value: { [k: string]: Json } = {
         content: event.content.flatMap((b) => (b.type === 'text' ? [b.text] : [])),
+        blocks: event.content.filter(other).map((b) => stash(b as unknown as Json, bin)),
       };
       if (event.structuredContent !== undefined)
-        value.structuredContent = event.structuredContent as Json;
+        value.structuredContent = stash(event.structuredContent as Json, bin);
       if (event.details !== undefined) value.details = event.details as Json;
       try {
         const { masked } = await client.mask(sessionId, value);
         const texts = (masked.content as string[]).values();
+        const blocks = (masked.blocks as Json[]).values();
         return {
           content: event.content.map((b) =>
-            b.type === 'text' ? { ...b, text: texts.next().value ?? '' } : b,
+            b.type === 'text'
+              ? { ...b, text: texts.next().value ?? '' }
+              : other(b)
+                ? (unstash(blocks.next().value ?? null, bin) as unknown as typeof b)
+                : b,
           ),
-          structuredContent: masked.structuredContent,
+          ...(masked.structuredContent !== undefined
+            ? { structuredContent: unstash(masked.structuredContent, bin) }
+            : {}),
           // Pi keeps the old value when `details` is undefined, so null clears it.
           details: masked.details ?? null,
         } as ToolResultEventResult;
@@ -131,4 +142,27 @@ function withImages(out: Msg, original: Msg | undefined): Msg {
   if (Array.isArray(src) && Array.isArray(out.content))
     out.content = out.content.map((b: unknown, i: number) => (isImage(src[i]) ? src[i] : b));
   return out;
+}
+
+const BLOCK_TYPES = new Set(['text', 'image', 'audio', 'resource', 'resource_link']);
+const BIN = '\u0000bin:';
+const keep = (k: string, x: string) =>
+  k === 'data' || k === 'blob' || (k === 'type' && BLOCK_TYPES.has(x));
+/** Replaces binary `data`/`blob` and block `type` values with placeholders that /mask leaves alone. */
+function stash(v: Json, out: string[]): Json {
+  if (Array.isArray(v)) return v.map((x) => stash(x, out));
+  if (!v || typeof v !== 'object') return v;
+  return Object.fromEntries(
+    Object.entries(v).map(([k, x]) =>
+      typeof x === 'string' && keep(k, x)
+        ? [k, `${BIN}${out.push(x) - 1}`]
+        : [k, stash(x as Json, out)],
+    ),
+  );
+}
+function unstash(v: Json, out: string[]): Json {
+  if (typeof v === 'string' && v.startsWith(BIN)) return out[Number(v.slice(BIN.length))] ?? '';
+  if (Array.isArray(v)) return v.map((x) => unstash(x, out));
+  if (!v || typeof v !== 'object') return v;
+  return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, unstash(x as Json, out)]));
 }
