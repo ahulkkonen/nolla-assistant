@@ -9,7 +9,10 @@ import { buildServer } from './http.ts';
 import { writeModelsJson } from './pi/models.ts';
 import { SessionRegistry } from './pi/registry.ts';
 
-export async function start(config: Config = loadConfig()) {
+export async function start(
+  config: Config = loadConfig(),
+  logStream?: { write(line: string): void },
+) {
   const { db, sqlite } = openDb(join(config.dataDir, 'app.db'));
   db.insert(users)
     .values({ id: config.userId, createdAt: new Date().toISOString() })
@@ -32,7 +35,14 @@ export async function start(config: Config = loadConfig()) {
     ...(pseudo ? { pseudo: { client: pseudo, log: pseudoLog } } : {}),
   });
   writeModelsJson(registry.agentDir, config.litellmUrl);
-  const app = await buildServer({ registry, db, config, rooms, ...(pseudo ? { pseudo } : {}) });
+  const app = await buildServer({
+    registry,
+    db,
+    config,
+    rooms,
+    ...(logStream ? { logStream } : {}),
+    ...(pseudo ? { pseudo } : {}),
+  });
   await app.listen({ port: config.port, host: config.host });
   const timer = setInterval(() => void registry.evictIdle(), 5 * 60_000);
   timer.unref();

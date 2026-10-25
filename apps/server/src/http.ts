@@ -28,12 +28,17 @@ const under = (path: string, prefix: string) => path === prefix || path.startsWi
 
 export async function buildServer({
   config,
+  logStream,
   ...bridge
-}: Pick<BridgeDeps, 'registry' | 'db' | 'pseudo' | 'rooms'> & { config: Config }) {
+}: Pick<BridgeDeps, 'registry' | 'db' | 'pseudo' | 'rooms'> & {
+  config: Config;
+  /** Test hook: receives the pino output instead of stdout. */
+  logStream?: { write(line: string): void };
+}) {
   const { db } = bridge;
   const { trustProxy: tp } = config;
   const app = Fastify({
-    logger: { level: config.logLevel },
+    logger: { level: config.logLevel, ...(logStream ? { stream: logStream } : {}) },
     // Fastify 5.12 treats a numeric trustProxy as "trust nothing", so a hop count is a function.
     trustProxy: typeof tp === 'number' ? (_addr: string, hop: number) => hop < tp : tp,
   });

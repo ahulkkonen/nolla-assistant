@@ -1,0 +1,20 @@
+{
+  "name": "@pa/masked-only-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@pa/fake-llm": "workspace:*",
+    "@pa/pi-ext-pseudo": "workspace:*",
+    "@pa/protocol": "workspace:*",
+    "@pa/server": "workspace:*",
+    "@types/node": "26.6.5",
+    "@types/ws": "8.18.2",
+    "typescript": "5.9.3",
+    "vitest": "4.1.12",
+    "ws": "8.22.0"
+  }
+}
