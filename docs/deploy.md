@@ -118,4 +118,4 @@ The `bash` tool runs each command in a throwaway `pa-skill-runner` container. Th
 
    The broker gives these paths to the Docker host as bind sources. A path inside the broker container does not work.
 
-3. Deploy. The broker creates the `pa-skill-egress` network when a skill with `network: internet` runs for the first time.
+3. Deploy. Compose creates the `pa-skill-egress` and `pa-skill-proxy-only` networks. A skill with `network: [hosts]` runs on `pa-skill-proxy-only` and reaches the listed hosts through the broker's proxy.

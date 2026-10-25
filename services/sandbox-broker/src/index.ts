@@ -9,6 +9,7 @@ import Fastify from 'fastify';
 import { Agent, request } from 'undici';
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
+import { createProxy } from './proxy.ts';
 
 export type BrokerConfig = {
   token: string;
@@ -20,9 +21,14 @@ export type BrokerConfig = {
   hostDataDir: string;
   skillsDir: string;
   hostSkillsDir: string;
+  /** Egress proxy for `network: [hosts]`: listen port, and the host name runners reach it by. */
+  proxyPort: number;
+  proxyHost: string;
 };
 
 export const EGRESS_NETWORK = 'pa-skill-egress';
+/** Internal Docker network (no gateway): runners with a host list reach only the broker's proxy. */
+export const PROXY_NETWORK = 'pa-skill-proxy-only';
 const RUNNER_UID = 10001;
 const ID = /^[A-Za-z0-9_-]{1,64}$/;
 const SKILL = /^[a-z0-9-]{1,64}$/;
@@ -45,6 +51,8 @@ export function loadConfig(env = process.env): BrokerConfig {
     hostDataDir: env.HOST_DATA_DIR || dataDir,
     skillsDir,
     hostSkillsDir: env.HOST_SKILLS_DIR || skillsDir,
+    proxyPort: Number(env.EGRESS_PROXY_PORT ?? 3128),
+    proxyHost: env.EGRESS_PROXY_HOST ?? 'sandbox-broker',
   };
 }
 
@@ -65,9 +73,11 @@ const RunBody = z.object({
 });
 type RunBody = z.infer<typeof RunBody>;
 
-export type Network = 'none' | 'internet';
+export type Network = 'none' | 'internet' | string[];
 
-/** Reads the `sandbox:` block of skills/<skill>/SKILL.md. Anything but `network: internet` is `none`. */
+const HOST = /^(\*\.)?[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i;
+
+/** Reads the `sandbox:` block of skills/<skill>/SKILL.md. `network: internet`, a list of hosts, or `none` (also for anything invalid). */
 export function skillPolicy(skillsDir: string, skill: string | undefined) {
   const none = { network: 'none' as Network, bin: false };
   if (!skill) return none;
@@ -80,19 +90,36 @@ export function skillPolicy(skillsDir: string, skill: string | undefined) {
   }
   const fm = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text)?.[1];
   const meta = fm ? (parseYaml(fm) as { sandbox?: { network?: unknown } } | null) : null;
-  // ponytail: host allowlists (`network: [hosts]`) need an egress proxy; phase 7. Fail closed.
-  const network: Network = meta?.sandbox?.network === 'internet' ? 'internet' : 'none';
+  const n = meta?.sandbox?.network;
+  const network: Network =
+    n === 'internet'
+      ? 'internet'
+      : Array.isArray(n) && n.length > 0 && n.every((h) => typeof h === 'string' && HOST.test(h))
+        ? (n as string[])
+        : 'none'; // fail closed
   return { network, bin: existsSync(join(dir, 'bin')) };
 }
 
 /** Docker Engine API `POST /containers/create` body for one run. */
-export function containerConfig(cfg: BrokerConfig, body: RunBody) {
+export function containerConfig(cfg: BrokerConfig, body: RunBody, proxyToken?: string) {
   const policy = skillPolicy(cfg.skillsDir, body.skill);
   const binds = [`${join(cfg.hostDataDir, 'work', body.userId)}:/work:rw`];
   if (body.skill && policy.bin)
     binds.push(`${join(cfg.hostSkillsDir, body.skill, 'bin')}:/skill/bin:ro`);
+  const hosts = Array.isArray(policy.network) && proxyToken !== undefined;
+  const proxy = `http://${proxyToken}@${cfg.proxyHost}:${cfg.proxyPort}`;
   return {
     Image: cfg.image,
+    Env: hosts
+      ? [
+          `HTTP_PROXY=${proxy}`,
+          `HTTPS_PROXY=${proxy}`,
+          `http_proxy=${proxy}`,
+          `https_proxy=${proxy}`,
+          'NO_PROXY=',
+          'no_proxy=',
+        ]
+      : [],
     Cmd: ['bash', '-lc', body.command],
     User: `${RUNNER_UID}:${RUNNER_UID}`,
     WorkingDir: posix.join('/work', body.cwd ?? '.'),
@@ -107,7 +134,7 @@ export function containerConfig(cfg: BrokerConfig, body: RunBody) {
     Tty: false,
     HostConfig: {
       Binds: binds,
-      NetworkMode: policy.network === 'internet' ? EGRESS_NETWORK : 'none',
+      NetworkMode: policy.network === 'internet' ? EGRESS_NETWORK : hosts ? PROXY_NETWORK : 'none', // a host list without a proxy token fails closed
       Memory: 512 * 1024 * 1024,
       MemorySwap: 512 * 1024 * 1024, // equal to Memory: no swap
       NanoCpus: 2e9,
@@ -142,10 +169,11 @@ export function dockerClient(socketPath: string) {
 }
 type Docker = ReturnType<typeof dockerClient>;
 
-async function ensureEgressNetwork(docker: Docker) {
+async function ensureNetwork(docker: Docker, name: string, internal: boolean) {
   const res = await docker.call('POST', '/networks/create', {
-    Name: EGRESS_NETWORK,
+    Name: name,
     Driver: 'bridge',
+    Internal: internal,
   });
   await res.body.dump();
   // 409: already exists (a concurrent run created it).
@@ -183,7 +211,13 @@ async function* demux(stream: AsyncIterable<Buffer>) {
     if (rest[name]) yield { stream: name, line: rest[name], bytes: 0 };
 }
 
-async function* run(cfg: BrokerConfig, docker: Docker, body: RunBody, gone: AbortSignal) {
+async function* run(
+  cfg: BrokerConfig,
+  docker: Docker,
+  body: RunBody,
+  gone: AbortSignal,
+  startProxy: () => Promise<ReturnType<typeof createProxy>>,
+) {
   const work = join(cfg.dataDir, 'work', body.userId);
   mkdirSync(work, { recursive: true });
   // uid 10001 is shared: pa-server (infra/Dockerfile.server) and the runner both run as it, so the
@@ -193,8 +227,29 @@ async function* run(cfg: BrokerConfig, docker: Docker, body: RunBody, gone: Abor
   } catch {
     // Not root (tests on a workstation): Docker Desktop maps ownership itself.
   }
-  const config = containerConfig(cfg, body);
-  if (config.HostConfig.NetworkMode === EGRESS_NETWORK) await ensureEgressNetwork(docker);
+  const policy = skillPolicy(cfg.skillsDir, body.skill);
+  const reg = Array.isArray(policy.network)
+    ? (await startProxy()).register(policy.network)
+    : undefined;
+  try {
+    yield* runContainer(cfg, docker, body, gone, reg?.token);
+  } finally {
+    reg?.forget();
+  }
+}
+
+async function* runContainer(
+  cfg: BrokerConfig,
+  docker: Docker,
+  body: RunBody,
+  gone: AbortSignal,
+  proxyToken: string | undefined,
+) {
+  const config = containerConfig(cfg, body, proxyToken);
+  if (config.HostConfig.NetworkMode === EGRESS_NETWORK)
+    await ensureNetwork(docker, EGRESS_NETWORK, false);
+  if (config.HostConfig.NetworkMode === PROXY_NETWORK)
+    await ensureNetwork(docker, PROXY_NETWORK, true);
   const { Id: id } = (await docker.ok('POST', '/containers/create', config)) as { Id: string };
   // Force removal kills a running container; the log stream then ends.
   const remove = () =>
@@ -280,7 +335,23 @@ export async function build(cfg: BrokerConfig) {
   for (const c of stale) await docker.ok('DELETE', `/containers/${c.Id}?force=1`);
   const runs = semaphore(MAX_RUNS, QUEUE_WAIT_MS);
   const app = Fastify({ logger: false });
-  app.addHook('onClose', () => docker.close());
+  // The proxy starts on the first run that needs it.
+  let proxy: Promise<ReturnType<typeof createProxy>> | undefined;
+  const startProxy = () => {
+    proxy ??= (async () => {
+      const p = createProxy();
+      await p.listen(cfg.proxyPort);
+      return p;
+    })();
+    proxy.catch(() => {
+      proxy = undefined;
+    });
+    return proxy;
+  };
+  app.addHook('onClose', async () => {
+    await (await proxy?.catch(() => undefined))?.close();
+    await docker.close();
+  });
   app.get('/healthz', async () => ({ ok: true }));
   app.post('/run', async (req, reply) => {
     const given = req.headers['x-broker-token'];
@@ -300,7 +371,7 @@ export async function build(cfg: BrokerConfig) {
     });
     const ndjson = async function* () {
       try {
-        for await (const ev of run(cfg, docker, parsed.data, gone.signal))
+        for await (const ev of run(cfg, docker, parsed.data, gone.signal, startProxy))
           yield `${JSON.stringify(ev)}\n`;
       } catch (err) {
         req.log.error({ err }, 'run failed');

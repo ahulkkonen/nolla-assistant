@@ -52,8 +52,10 @@ services:
   # Runs `bash` tool commands in throwaway pa-skill-runner containers (phase-5 decision 3). The only
   # service with the Docker socket. Root in the container because the socket is root-owned; all
   # capabilities dropped except CHOWN and DAC_OVERRIDE (it creates /data/work/<userId> for uid 10001).
-  # Skill containers with `network: internet` join `pa-skill-egress`; the broker creates that
-  # network on first use, because compose creates only networks that a service joins.
+  # Skill containers with `network: internet` join `pa-skill-egress`. Containers with
+  # `network: [hosts]` join the internal network `pa-skill-proxy-only` (no gateway) and reach the
+  # internet only through the broker's allowlist proxy on port 3128, which the broker reaches
+  # through `pa-skill-egress`. Both names are fixed because the broker refers to them.
   sandbox-broker:
     build: { context: .., dockerfile: infra/Dockerfile.broker }
     restart: unless-stopped
@@ -76,7 +78,7 @@ services:
       SKILL_RUNNER_IMAGE: ${SKILL_RUNNER_IMAGE:-pa-skill-runner:latest}
     # healthcheck: from the image
     mem_limit: 128m
-    networks: [internal]
+    networks: [internal, skill-egress, skill-proxy-only]
 
   # Model egress (plan §4, decision 0004). The only service holding OPENROUTER_API_KEY.
   litellm:
@@ -166,3 +168,5 @@ volumes:
 
 networks:
   internal:
+  skill-egress: { name: pa-skill-egress }
+  skill-proxy-only: { name: pa-skill-proxy-only, internal: true }

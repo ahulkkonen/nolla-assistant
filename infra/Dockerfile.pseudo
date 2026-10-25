@@ -33,6 +33,10 @@ COPY --chown=app:app services/pseudo-svc/presidio-fi.yaml /srv/presidio-fi.yaml
 ENV PATH=/opt/venv/bin:$PATH PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \
     OMORFI_MODELS=/opt/omorfi VAULT_PATH=/data/vault.db PSEUDO_REQUIRE_LAYERS=omorfi,voikko,ner
 WORKDIR /srv
+# Precompute the case forms of the top 3,000 first names and surnames (Omorfi generation costs 20-30 ms per
+# name at request time); the surrogate pool is restricted to these names. See docs/decisions/phase-7.md.
+COPY services/pseudo-svc/scripts /srv/scripts
+RUN python scripts/precompute_forms.py 3000 && chown -R app:app /srv/data/forms && rm -rf /srv/scripts
 USER app
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=3s --start-period=120s --start-interval=2s \

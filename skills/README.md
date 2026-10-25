@@ -23,8 +23,9 @@ sandbox:
 |---|---|
 | `none` | The container has no network. This is the default. |
 | `internet` | The container is on the `pa-skill-egress` network and can reach the internet. |
+| `[host, ...]` | The container is on the internal network `pa-skill-proxy-only`, which has no route out. It reaches only the listed hosts, through the broker's proxy (`HTTP_PROXY`/`HTTPS_PROXY`). |
 
-A list of hosts is not supported yet (phase 7). The broker uses `none` for a list, for an unknown value and for an unknown skill.
+A list entry is a host name (`example.com`) or a subdomain pattern (`"*.wikipedia.org"`, which does not match `wikipedia.org` itself). The proxy allows `https` (port 443) and `http` (port 80) only, and refuses hosts that resolve to private addresses. Quote a pattern in YAML. The broker uses `none` for an empty or invalid list, for an unknown value and for an unknown skill.
 
 ## Review rule
 

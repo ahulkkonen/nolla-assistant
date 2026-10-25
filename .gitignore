@@ -16,3 +16,4 @@ tests/e2e/screenshots/*-diff.png
 .DS_Store
 tests/pii/last-run.json
 services/pseudo-svc/.venv/
+services/pseudo-svc/data/forms/

@@ -1,11 +1,13 @@
 // Phase-5 sandbox gate (plan §13): the real broker against the local Docker daemon.
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, realpathSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { build, dockerClient } from '@pa/sandbox-broker';
+import { build, dockerClient, PROXY_NETWORK, skillPolicy } from '@pa/sandbox-broker';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import { allowed } from '../../../services/sandbox-broker/src/proxy.ts';
 
 const root = fileURLToPath(new URL('../../../', import.meta.url));
 const TOKEN = 's'.repeat(32);
@@ -14,6 +16,39 @@ const IMAGE = 'pa-skill-runner:test';
 const hasDocker = spawnSync('docker', ['info'], { stdio: 'ignore' }).status === 0;
 const SKIP_NOTE = 'SKIPPED: docker not on PATH or daemon not running';
 if (!hasDocker) process.stderr.write(`[sandbox] ${SKIP_NOTE}\n`);
+
+const freePort = () =>
+  new Promise<number>((resolve) => {
+    const s = createServer().listen(0, () => {
+      const { port } = s.address() as { port: number };
+      s.close(() => resolve(port));
+    });
+  });
+
+// The broker runs in this process, but the runner sits on an internal network that cannot reach the
+// host. A relay container on that network (alias `broker-relay`) and on the default bridge forwards
+// to the in-process proxy: it stands in for the broker container, which is on both networks too.
+const relayScript = (port: number) => `
+import asyncio
+async def pipe(a, b):
+    try:
+        while d := await a.read(65536):
+            b.write(d)
+            await b.drain()
+    finally:
+        b.close()
+async def handle(r, w):
+    try:
+        R, W = await asyncio.open_connection('host.docker.internal', ${port})
+    except Exception:
+        w.close()
+        return
+    await asyncio.gather(pipe(r, W), pipe(R, w), return_exceptions=True)
+async def main():
+    s = await asyncio.start_server(handle, '0.0.0.0', ${port})
+    await s.serve_forever()
+asyncio.run(main())
+`;
 
 const socket = () => {
   const host = spawnSync(
@@ -32,6 +67,12 @@ describe.skipIf(!hasDocker)(hasDocker ? 'sandbox broker (docker)' : `sandbox ${S
   let dataDir = '';
   let cfg: Parameters<typeof build>[0];
   let n = 0;
+  let relayId = '';
+  const online = () =>
+    fetch('https://example.com', { signal: AbortSignal.timeout(5000) }).then(
+      () => true,
+      () => false,
+    );
   const containers = (label: string) => {
     const filters = encodeURIComponent(JSON.stringify({ label: [label] }));
     return docker.ok('GET', `/containers/json?all=1&filters=${filters}`);
@@ -49,7 +90,10 @@ describe.skipIf(!hasDocker)(hasDocker ? 'sandbox broker (docker)' : `sandbox ${S
     if (b.status !== 0) throw new Error(`skill-runner build failed:\n${b.stderr}`);
     // realpath: Docker Desktop resolves bind sources on the host (/var -> /private/var on macOS).
     dataDir = realpathSync(mkdtempSync(join(tmpdir(), 'pa-sandbox-')));
+    const proxyPort = await freePort();
     cfg = {
+      proxyPort,
+      proxyHost: 'broker-relay',
       token: TOKEN,
       dockerSocket: socket(),
       image: IMAGE,
@@ -60,8 +104,26 @@ describe.skipIf(!hasDocker)(hasDocker ? 'sandbox broker (docker)' : `sandbox ${S
     };
     app = await build(cfg);
     docker = dockerClient(cfg.dockerSocket);
+    const net = await docker.call('POST', '/networks/create', {
+      Name: PROXY_NETWORK,
+      Driver: 'bridge',
+      Internal: true,
+    });
+    await net.body.dump();
+    const relay = await docker.ok('POST', '/containers/create', {
+      Image: IMAGE,
+      Cmd: ['python3', '-c', relayScript(proxyPort)],
+      HostConfig: { NetworkMode: PROXY_NETWORK, ExtraHosts: ['host.docker.internal:host-gateway'] },
+      NetworkingConfig: { EndpointsConfig: { [PROXY_NETWORK]: { Aliases: ['broker-relay'] } } },
+    });
+    relayId = relay.Id;
+    const bridge = await docker.call('POST', '/networks/bridge/connect', { Container: relayId });
+    await bridge.body.dump();
+    await docker.ok('POST', `/containers/${relayId}/start`);
   });
   afterAll(async () => {
+    if (relayId)
+      await docker?.call('DELETE', `/containers/${relayId}?force=1`).then((r) => r.body.dump());
     await app?.close();
     await docker?.close();
   });
@@ -93,19 +155,63 @@ describe.skipIf(!hasDocker)(hasDocker ? 'sandbox broker (docker)' : `sandbox ${S
     expect(output).toMatch(/resolve|network|connect/i);
   });
 
-  test('web-digest skill: internet', async (ctx) => {
-    const { end, output } = await run({
-      command: 'curl -sS -m 10 -o /dev/null https://example.com',
-      skill: 'web-digest',
+  // web-digest declares network: [example.com, "*.wikipedia.org"]
+  describe('host allowlist (web-digest)', () => {
+    const skill = 'web-digest';
+    const curl = (args: string) => run({ command: `curl -sS -m 10 -o /dev/null ${args}`, skill });
+
+    test('listed host over https works', async (ctx) => {
+      const { end, output } = await curl('https://example.com');
+      if (end.exit !== 0 && !(await online())) ctx.skip('host is offline');
+      expect(end.exit, output).toBe(0);
     });
-    if (end.exit !== 0) {
-      const online = await fetch('https://example.com', { signal: AbortSignal.timeout(5000) }).then(
-        () => true,
-        () => false,
-      );
-      if (!online) ctx.skip('host is offline; internet assertion skipped');
-    }
-    expect(end.exit, output).toBe(0);
+
+    test('listed host over plain http works', async (ctx) => {
+      const { end, output } = await curl('http://example.com');
+      if (end.exit !== 0 && !(await online())) ctx.skip('host is offline');
+      expect(end.exit, output).toBe(0);
+    });
+
+    test('unlisted host is refused by the proxy with 403', async () => {
+      const { end, output } = await curl('https://openrouter.ai');
+      expect(end.exit).not.toBe(0);
+      // curl 7.x prints "Received HTTP code 403 from proxy after CONNECT", curl 8.x "CONNECT tunnel failed, response 403"
+      expect(output).toMatch(/403 from proxy after CONNECT|CONNECT tunnel failed, response 403/);
+      const http = await run({
+        command: 'curl -sS -m 10 -o /dev/null -w "%{http_code}" http://openrouter.ai',
+        skill,
+      });
+      expect(http.output).toBe('403');
+    });
+
+    test('non-443 port on a listed host is refused', async () => {
+      const { end, output } = await curl('https://example.com:8443');
+      expect(end.exit).not.toBe(0);
+      expect(output).toMatch(/403/);
+    });
+
+    test('bypassing the proxy fails: the network has no route out', async () => {
+      const { end, output } = await curl("--noproxy '*' https://example.com");
+      expect(end.exit).not.toBe(0);
+      expect(output).toMatch(/resolve|connect|network|unreachable/i);
+      // Unsetting the variables in the command changes nothing either.
+      const raw = await run({
+        command:
+          'unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy; curl -sS -m 5 http://example.com',
+        skill,
+      });
+      expect(raw.end.exit).not.toBe(0);
+    });
+
+    test('a wrong token is refused', async () => {
+      const { output } = await run({ command: 'echo $HTTPS_PROXY', skill });
+      expect(output).toMatch(/^http:\/\/[0-9a-f]{48}@broker-relay:\d+$/);
+      const stale = await run({
+        command: `curl -sS -m 10 -o /dev/null -x ${output.trim().replace(/@/, 'x@')} https://example.com`,
+        skill,
+      });
+      expect(stale.output).toMatch(/403/);
+    });
   });
 
   test('read-only root filesystem', async () => {
@@ -179,5 +285,37 @@ describe.skipIf(!hasDocker)(hasDocker ? 'sandbox broker (docker)' : `sandbox ${S
       payload: { userId: 'u1', chatId: 'c', command: 'true' },
     });
     expect(res.statusCode).toBe(401);
+  });
+});
+
+describe('skill policy and host matching', () => {
+  test('allowed: exact and *.suffix, not the apex', () => {
+    expect(allowed(['example.com'], 'example.com')).toBe(true);
+    expect(allowed(['example.com'], 'www.example.com')).toBe(false);
+    expect(allowed(['*.wikipedia.org'], 'fi.wikipedia.org')).toBe(true);
+    expect(allowed(['*.wikipedia.org'], 'wikipedia.org')).toBe(false);
+    expect(allowed(['*.wikipedia.org'], 'evilwikipedia.org')).toBe(false);
+    expect(allowed(['Example.com'], 'EXAMPLE.com.')).toBe(true);
+  });
+
+  test('skillPolicy: list, internet, invalid and unknown', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pa-skills-'));
+    const make = (name: string, network: string) => {
+      mkdirSync(join(dir, name));
+      writeFileSync(
+        join(dir, name, 'SKILL.md'),
+        `---\nname: ${name}\nsandbox:\n  network: ${network}\n---\n`,
+      );
+      return skillPolicy(dir, name).network;
+    };
+    expect(make('a', '[example.com, "*.wikipedia.org"]')).toEqual([
+      'example.com',
+      '*.wikipedia.org',
+    ]);
+    expect(make('b', 'internet')).toBe('internet');
+    expect(make('c', '[]')).toBe('none');
+    expect(make('d', '["not a host"]')).toBe('none');
+    expect(make('e', '["*"]')).toBe('none');
+    expect(skillPolicy(dir, 'missing').network).toBe('none');
   });
 });

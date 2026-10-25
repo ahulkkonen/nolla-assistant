@@ -5,6 +5,8 @@ its models are present in OMORFI_MODELS. Suffix rules fill every case Omorfi
 does not return, and handle names missing from its lexicon.
 """
 
+import gzip
+import json
 import os
 import re
 from functools import lru_cache
@@ -195,9 +197,24 @@ def rule_forms(name: str, kind: str = "last") -> dict[str, str]:
     return _clitics(_compound(name, kind), name)
 
 
+FORMS_DIR = Path(__file__).resolve().parents[1] / "data" / "forms"
+
+
+@lru_cache(maxsize=2)
+def table(kind: str) -> dict[str, dict[str, str]]:
+    """Forms precomputed at image build by scripts/precompute_forms.py; empty when the file is absent."""
+    try:
+        with gzip.open(FORMS_DIR / f"{kind}.json.gz", "rt", encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {}
+
+
 @lru_cache(maxsize=20000)
 def generate_forms(name: str, kind: str = "last") -> dict[str, str]:
     """Map case key -> surface form. Omorfi output wins; rules fill the gaps."""
+    if name in table(kind):
+        return table(kind)[name]
     om = omorfi()
     rules = _compound(name, kind)
     return _clitics({**rules, **(om.forms(name, kind, rules) if om else {})}, name)

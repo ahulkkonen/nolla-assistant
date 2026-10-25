@@ -43,6 +43,8 @@ def pools() -> dict:
     db = names()
     rows = [("first", n, c, g) for n, (c, g) in db["first"].items() if c >= FIRST_MIN and n.isalpha()]
     rows += [("last", n, c, None) for n, c in db["last"].items() if c >= LAST_MIN and n.isalpha()]
+    pre = {k: forms.table(k) for k in ("first", "last")}  # precomputed names only, when the tables exist
+    rows = [r for r in rows if not pre[r[0]] or r[1] in pre[r[0]]]
     for kind, n, c, g in rows:
         cls, hv, gr = forms.classify(n, kind), forms.harmony(n), forms.grades(n, kind)
         for key in dict.fromkeys(keys(kind, g, cls, hv, gr)):
@@ -169,7 +171,7 @@ def make_surrogate(vault, user_id: str, kind: str, canonical: str, gen: int):
             if any(s == lemma for (_, s), (_, lemma) in zip(surr, parts)):
                 continue
             om = forms.omorfi()
-            if om and not all(om.prefix(s, part_kind(p)) for p, s in surr):
+            if om and not all(s in forms.table(part_kind(p)) or om.prefix(s, part_kind(p)) for p, s in surr):
                 continue  # surrogates only from names Omorfi knows (0003)
             rows = name_rows(surr)
             text = " ".join(s for _, s in surr)

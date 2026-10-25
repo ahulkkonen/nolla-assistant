@@ -31,8 +31,13 @@ Gate command: `pnpm typecheck && pnpm lint && pnpm test && pnpm test:sandbox` (D
    the skill name and applies its policy; unknown skill → `network: none`.
    **Implemented (task 2):** `network: none` (default) and `network: internet` (full egress on the
    bridge network `pa-skill-egress`, created by the broker on first use). Docker has no
-   per-container egress allowlist, so `network: [hosts]` needs an allowlisting egress proxy; that is
-   a phase-7 item. Until then a host list fails closed to `none`. The gate needs only `none`.
+   per-container egress allowlist, so `network: [hosts]` goes through an allowlisting proxy.
+   **Updated (phase 7):** allowlists are enforced through the broker's HTTP CONNECT and HTTP forward
+   proxy (port 3128) on an `internal: true` network, `pa-skill-proxy-only`. The runner has no route
+   out of that network, so unsetting `HTTP_PROXY` does not help: the only reachable peer is the
+   proxy. Each run gets a random token in the proxy URL userinfo; the proxy checks the target host
+   against that run's list, answers 403 otherwise, and forgets the token when the run ends. An
+   invalid or empty list still fails closed to `none`.
    Bind sources are host paths: compose passes `HOST_DATA_DIR` and `HOST_SKILLS_DIR` (docs/deploy.md).
 5. **Subagents** (`pi-ext-subagents`): adapted from Pi's example (contract note §12). Children are
    `node <pi cli> --mode rpc --no-session`? No: children need their own JSONL under the parent's chat
