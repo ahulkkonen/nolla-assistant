@@ -195,6 +195,10 @@ export const ServerMessage = z.discriminatedUnion('type', [
     userId: z.string().optional(),
   }),
   z.object({
+    type: z.literal('integrations.state'),
+    google: z.object({ connected: z.boolean() }),
+  }),
+  z.object({
     type: z.literal('agents.state'),
     agents: z.array(
       z.object({ id: id64, name: z.string(), model: z.string(), subagents: z.boolean() }),

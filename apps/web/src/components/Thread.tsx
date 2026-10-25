@@ -77,7 +77,10 @@ export function Thread() {
             ))}
           </nav>
         )}
-        {subagents.length > 0 && <SubagentRow items={subagents} />}
+        {/* Normally the `subagent` tool row carries it; standalone only before that row exists. */}
+        {subagents.length > 0 && !stream?.tools.some((t) => t.name === 'subagent') && (
+          <SubagentRow items={subagents} />
+        )}
         {(stream || running) && (
           <div className="min-h-6">
             {stream?.text || stream?.tools.length ? (
@@ -86,6 +89,7 @@ export function Thread() {
                 text={stream.text}
                 annotations={stream.annotations}
                 tools={stream.tools}
+                subagents={subagents}
                 live
               />
             ) : (

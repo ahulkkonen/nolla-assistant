@@ -12,12 +12,15 @@ const STATUS = {
 /** One collapsed line for a subagent run, styled like a tool row; expands to each child. */
 export function SubagentRow({ items }: { items: SubagentChild[] }) {
   const [open, setOpen] = useState(false);
-  const active = items.filter((c) => c.status === 'queued' || c.status === 'running').length;
-  const failed = items.some((c) => c.status === 'error');
+  const count = (status: SubagentChild['status']) =>
+    items.filter((c) => c.status === status).length;
+  const [running, queued] = [count('running'), count('queued')];
+  const active = running + queued;
+  const failed = count('error') > 0;
   const { Icon } = STATUS[active ? 'running' : failed ? 'error' : 'done'];
   const text = active
-    ? `${active} aliagenttia käynnissä`
-    : `${items.length} aliagenttia valmis${failed ? ', virheitä' : ''}`;
+    ? [running && `${running} käynnissä`, queued && `${queued} jonossa`].filter(Boolean).join(', ')
+    : `${items.length} aliagenttia valmiina${failed ? ', virheitä' : ''}`;
   return (
     <div className="text-secondary text-fg-muted">
       <button

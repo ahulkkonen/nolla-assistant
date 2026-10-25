@@ -24,7 +24,8 @@ type Of<T extends ServerMessage['type']> = Extract<ServerMessage, { type: T }>;
 type TopicState = Of<'topic.state'>;
 type SearchResults = Of<'search.results'>;
 type RelatedState = Of<'chat.related'>;
-export type Approval = Of<'approval.request'>;
+/** `expired`: shown as a one-line row until the next message in that chat. */
+export type Approval = Of<'approval.request'> & { expired?: true };
 export type Agent = Of<'agents.state'>['agents'][number];
 export type SubagentChild = Of<'subagent.state'>['children'][number];
 export type Automation = Of<'automations.state'>['automations'][number];
@@ -56,6 +57,7 @@ type State = {
   automations: Automation[] | null;
   setPendingAgentId(id: string): void;
   dropApproval(requestId: string): void;
+  expireApproval(requestId: string): void;
   /** Last `vault.state`; null until the first one arrives. */
   vault: { entities: VaultEntity[]; pending: VaultPending[] } | null;
   topics: TopicState['topics'];
@@ -241,7 +243,7 @@ export const useStore = create<State>()((set, get) => {
             // An idle chat waits for nothing: a stop drops its approval without a message.
             ...(msg.state === 'idle'
               ? {
-                  approvals: st.approvals.filter((a) => a.chatId !== msg.chatId),
+                  approvals: st.approvals.filter((a) => a.chatId !== msg.chatId || a.expired),
                   subagents: omit(st.subagents, msg.chatId),
                 }
               : {}),
@@ -253,7 +255,9 @@ export const useStore = create<State>()((set, get) => {
             approvals: [...st.approvals.filter((a) => a.requestId !== msg.requestId), msg],
           }));
         case 'approval.resolved':
-          return get().dropApproval(msg.requestId);
+          return msg.outcome === 'expired'
+            ? get().expireApproval(msg.requestId)
+            : get().dropApproval(msg.requestId);
         case 'subagent.state':
           return set((st) => ({ subagents: { ...st.subagents, [msg.chatId]: msg.children } }));
         case 'automations.state':
@@ -282,9 +286,16 @@ export const useStore = create<State>()((set, get) => {
     setPendingAgentId: (pendingAgentId) => set({ pendingAgentId }),
     dropApproval: (requestId) =>
       set((st) => ({ approvals: st.approvals.filter((a) => a.requestId !== requestId) })),
+    expireApproval: (requestId) =>
+      set((st) => ({
+        approvals: st.approvals.map((a) =>
+          a.requestId === requestId ? { ...a, expired: true as const } : a,
+        ),
+      })),
     setArchivedView: (archivedView) => set({ archivedView }),
     addLocalMessage: (chatId, m) =>
       set((st) => ({
+        approvals: st.approvals.filter((a) => a.chatId !== chatId || !a.expired),
         messages: { ...st.messages, [chatId]: [...(st.messages[chatId] ?? []), m] },
       })),
     pushError(message) {

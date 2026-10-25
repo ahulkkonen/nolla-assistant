@@ -310,11 +310,33 @@ for (const scheme of ['light', 'dark'] as const) {
           app.llm.push({ text: 'Selvä, en kirjoittanut.' });
           await app.login(page);
           await sendMessage(page, 'Kirjoita kirje');
-          const card = page.getByRole('region', { name: 'Hyväksyntä: write' });
+          const card = page.getByRole('alertdialog', { name: /write/ });
           await expect(card.getByRole('button', { name: 'Näytä lisää' })).toBeVisible();
           await shot(page, 'approval-card', vp.width, scheme);
           await card.getByRole('button', { name: 'Hylkää' }).click();
           await expect(page.locator('.md').last()).toHaveText('Selvä, en kirjoittanut.');
+        });
+
+        test.describe('short approval timeout', () => {
+          test.use({ approvalTimeoutMs: 1500 });
+
+          test('approval-expired', async ({ app, page }) => {
+            app.llm.push({
+              toolCalls: [{ name: 'write', args: { path: 'kirje.txt', content: 'Hei' } }],
+            });
+            app.llm.push({ text: 'Hyväksyntä vanheni, en kirjoittanut tiedostoa.' });
+            await app.login(page);
+            await sendMessage(page, 'Kirjoita kirje');
+            await expect(page.getByRole('alertdialog')).toBeVisible();
+            await expect(page.getByText('Hyväksyntä vanheni: write')).toBeVisible({
+              timeout: 10_000,
+            });
+            await expect(page.locator('.md').last()).toHaveText(
+              'Hyväksyntä vanheni, en kirjoittanut tiedostoa.',
+            );
+            await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+            await shot(page, 'approval-expired', vp.width, scheme);
+          });
         });
 
         test('agent-picker', async ({ app, page }) => {
@@ -338,7 +360,7 @@ for (const scheme of ['light', 'dark'] as const) {
           await page.getByRole('menuitemradio', { name: 'Tutkija' }).click();
           await sendMessage(page, 'Tiivistä kolme aihetta');
           await hold.reached;
-          const row = page.getByRole('button', { name: '3 aliagenttia käynnissä' });
+          const row = page.getByRole('button', { name: '3 jonossa' });
           await row.click();
           await expect(page.getByText('Asuminen')).toBeVisible();
           await shot(page, 'subagents-row', vp.width, scheme);
@@ -352,7 +374,7 @@ for (const scheme of ['light', 'dark'] as const) {
           test('settings-automations', async ({ app, page }) => {
             await app.login(page);
             await openSettings(page, 'Automaatiot');
-            await expect(page.getByText('0 3 1 1 *').filter({ visible: true })).toBeVisible();
+            await expect(page.getByText('1.1. klo 3.00').filter({ visible: true })).toBeVisible();
             await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
             await shot(page, 'settings-automations', vp.width, scheme);
           });

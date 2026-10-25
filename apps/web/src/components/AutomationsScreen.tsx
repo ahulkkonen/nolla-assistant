@@ -1,15 +1,16 @@
 import { Play } from 'lucide-react';
 import { useEffect } from 'react';
+import { cronText } from '../cron.ts';
 import { type Automation, useStore } from '../store.ts';
 import { send } from '../ws.ts';
-import { IconButton } from './IconButton.tsx';
+import { IconButton, Tip } from './IconButton.tsx';
 
 export const AUTOMATIONS_TITLE = 'Automaatiot';
 
 const rtf = new Intl.RelativeTimeFormat('fi', { numeric: 'auto' });
-/** "5 minuuttia sitten", "eilen"; `–` for never. */
+/** "5 minuuttia sitten", "eilen"; "ei vielä ajettu" for never. */
 export function ago(iso: string | null, now = Date.now()) {
-  if (!iso) return '–';
+  if (!iso) return 'ei vielä ajettu';
   const s = (Date.parse(iso) - now) / 1000;
   for (const [unit, size] of [
     ['day', 86_400],
@@ -22,6 +23,22 @@ export function ago(iso: string | null, now = Date.now()) {
 
 const STATUS: Record<string, string> = { ok: 'onnistui', error: 'virhe', running: 'käynnissä' };
 const status = (s: string | null) => (s ? (STATUS[s] ?? s) : '–');
+const DELIVER = { chat: 'keskustelu', push: 'ilmoitus', both: 'molemmat' } as const;
+const deliver = (a: Automation) => (a.deliver ? DELIVER[a.deliver] : '–');
+
+/** Finnish schedule; the raw expression in the tooltip. */
+function Cron({ cron }: { cron: string }) {
+  return (
+    <Tip label={cron}>
+      <span
+        tabIndex={0}
+        className="underline decoration-border decoration-dotted underline-offset-2"
+      >
+        {cronText(cron)}
+      </span>
+    </Tip>
+  );
+}
 
 function RunButton({ a }: { a: Automation }) {
   return (
@@ -57,6 +74,7 @@ export function AutomationsScreen() {
                   <th className="py-2 pr-4 font-normal">Nimi</th>
                   <th className="py-2 pr-4 font-normal">Ajastus</th>
                   <th className="py-2 pr-4 font-normal">Agentti</th>
+                  <th className="py-2 pr-4 font-normal">Toimitus</th>
                   <th className="py-2 pr-4 font-normal">Käytössä</th>
                   <th className="py-2 pr-4 font-normal">Viimeksi</th>
                   <th className="py-2 pr-4 font-normal">Tulos</th>
@@ -69,8 +87,11 @@ export function AutomationsScreen() {
                 {automations.map((a) => (
                   <tr key={a.id} className="border-t border-border">
                     <td className="py-1 pr-4 font-mono">{a.id}</td>
-                    <td className="py-1 pr-4 font-mono text-fg-muted">{a.cron}</td>
+                    <td className="py-1 pr-4 text-fg-muted">
+                      <Cron cron={a.cron} />
+                    </td>
                     <td className="py-1 pr-4">{agentName(a.agentId)}</td>
+                    <td className="py-1 pr-4 text-fg-muted">{deliver(a)}</td>
                     <td className="py-1 pr-4 text-fg-muted">{a.enabled ? 'kyllä' : 'ei'}</td>
                     <td className="py-1 pr-4 text-fg-muted">{ago(a.lastRunAt)}</td>
                     <td className="py-1 pr-4 text-fg-muted">{status(a.lastStatus)}</td>
@@ -90,7 +111,7 @@ export function AutomationsScreen() {
                   <div className="min-w-0 flex-1">
                     <div className="truncate font-mono">{a.id}</div>
                     <div className="text-secondary text-fg-muted">
-                      <span className="font-mono">{a.cron}</span> · {agentName(a.agentId)} ·{' '}
+                      <Cron cron={a.cron} /> · {agentName(a.agentId)} · {deliver(a)} ·{' '}
                       {a.enabled ? 'käytössä' : 'ei käytössä'} · {ago(a.lastRunAt)} ·{' '}
                       {status(a.lastStatus)}
                     </div>

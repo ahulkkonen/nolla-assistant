@@ -50,12 +50,15 @@ export const test = base.extend<{
   app: App;
   pseudo: 'off' | 'full' | 'empty';
   automation: boolean;
+  approvalTimeoutMs: number;
 }>({
   // Starts the fake sidecar and sets PSEUDO_URL: `full` has DICT plus one pending item.
   pseudo: ['off', { option: true }],
   // Writes AUTOMATION into the run's own AUTOMATIONS_DIR (always a temp dir, empty by default).
   automation: [false, { option: true }],
-  app: async ({ pseudo, automation }, use) => {
+  // 0 keeps the server default (10 minutes).
+  approvalTimeoutMs: [0, { option: true }],
+  app: async ({ pseudo, automation, approvalTimeoutMs }, use) => {
     const llm = await startFakeLlm([]);
     const sidecar =
       pseudo === 'off'
@@ -85,6 +88,7 @@ export const test = base.extend<{
         USER_ID: 'aleksi',
         LOG_LEVEL: 'warn',
         AUTOMATIONS_DIR: join(dataDir, 'automations'),
+        ...(approvalTimeoutMs ? { APPROVAL_TIMEOUT_MS: String(approvalTimeoutMs) } : {}),
         ...(sidecar ? { PSEUDO_URL: sidecar.url } : {}),
       }),
     );

@@ -227,7 +227,7 @@ test.describe('approval', () => {
     await app.login(page);
     await page.getByLabel('Viesti').fill('Kirjoita kirje Matti Virtanen');
     await page.getByLabel('Viesti').press('ControlOrMeta+Enter');
-    const card = page.getByRole('region', { name: 'Hyväksyntä: write' });
+    const card = page.getByRole('alertdialog', { name: /write/ });
     await expect(card).toContainText('Hei Matti Virtanen');
     const body = JSON.stringify(app.llm.requests[0]?.body);
     expect(body).toContain('Pekka Laaksonen');
@@ -263,7 +263,8 @@ test.describe('automations', () => {
     await app.login(page);
     await openSettings(page, 'Automaatiot');
     const row = page.getByRole('row', { name: /aamu/ });
-    await expect(row).toContainText('0 3 1 1 *');
+    await expect(row).toContainText('1.1. klo 3.00');
+    await expect(row).toContainText('ei vielä ajettu');
     await expect(row).toContainText('Avustaja');
     await row.getByRole('button', { name: 'Suorita nyt: aamu' }).click();
     await expect(row).toContainText(/käynnissä|onnistui/);

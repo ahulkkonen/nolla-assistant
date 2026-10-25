@@ -1,6 +1,6 @@
-import { Ban, Check, ChevronRight, LoaderCircle, X } from 'lucide-react';
+import { Ban, Check, ChevronRight, Clock, LoaderCircle, X } from 'lucide-react';
 import { useState } from 'react';
-import type { ToolView } from '../store.ts';
+import { type ToolView, useStore } from '../store.ts';
 
 const STATUS = {
   running: { Icon: LoaderCircle, text: 'käynnissä' },
@@ -11,7 +11,20 @@ const STATUS = {
 
 export function ToolRow({ tool }: { tool: ToolView }) {
   const [open, setOpen] = useState(false);
-  const { Icon, text } = STATUS[tool.status];
+  // A gated call waits for the user, not the tool: no spinner.
+  const waiting = useStore(
+    (s) =>
+      tool.status === 'running' &&
+      s.approvals.some(
+        (a) =>
+          !a.expired &&
+          a.chatId === s.activeChatId &&
+          (a.callId ? a.callId === tool.callId : a.tool === tool.name),
+      ),
+  );
+  const { Icon, text } = waiting
+    ? { Icon: Clock, text: 'odottaa hyväksyntää' }
+    : STATUS[tool.status];
   const detail = [tool.argsPreview, tool.summary].filter(Boolean);
   return (
     <div className="text-secondary text-fg-muted">
@@ -21,7 +34,10 @@ export function ToolRow({ tool }: { tool: ToolView }) {
         onClick={() => setOpen(!open)}
         className="flex max-w-full items-center gap-2 rounded-sm py-1 hover:text-fg"
       >
-        <Icon size={16} className={tool.status === 'running' ? 'animate-spin' : undefined} />
+        <Icon
+          size={16}
+          className={tool.status === 'running' && !waiting ? 'animate-spin' : undefined}
+        />
         <span className="truncate font-mono">{tool.name}</span>
         <span>{text}</span>
         <ChevronRight

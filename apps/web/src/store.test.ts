@@ -92,9 +92,16 @@ describe('store reducers', () => {
       });
     req('r1');
     req('r2');
-    apply({ type: 'approval.resolved', chatId: 'c', requestId: 'r1', outcome: 'expired' });
-    expect(useStore.getState().approvals.map((a) => a.requestId)).toEqual(['r2']);
+    req('r3');
+    apply({ type: 'approval.resolved', chatId: 'c', requestId: 'r1', outcome: 'denied' });
+    apply({ type: 'approval.resolved', chatId: 'c', requestId: 'r2', outcome: 'expired' });
+    const ids = () => useStore.getState().approvals.map((a) => [a.requestId, !!a.expired]);
+    expect(ids()).toEqual([
+      ['r2', true],
+      ['r3', false],
+    ]);
+    // Idle drops open cards; the expired row stays until the next message.
     apply({ type: 'agent.status', chatId: 'c', state: 'idle' });
-    expect(useStore.getState().approvals).toEqual([]);
+    expect(ids()).toEqual([['r2', true]]);
   });
 });

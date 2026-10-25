@@ -5,8 +5,9 @@ import { Popover } from 'radix-ui';
 import { type ComponentProps, memo, type ReactNode, useMemo, useRef, useState } from 'react';
 import Markdown, { type ExtraProps } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { type ToolView, useStore } from '../store.ts';
+import { type SubagentChild, type ToolView, useStore } from '../store.ts';
 import { IconButton, Tip } from './IconButton.tsx';
+import { SubagentRow } from './SubagentRow.tsx';
 import { ToolRow } from './ToolRow.tsx';
 
 function CopyButton({ text, className }: { text: () => string; className: string }) {
@@ -205,6 +206,8 @@ type Props = {
   tools?: ToolView[];
   /** Still streaming: no hover actions yet. */
   live?: boolean;
+  /** Live children of a `subagent` call: that tool's row becomes the subagent row. */
+  subagents?: SubagentChild[];
 };
 
 export function MessageView({
@@ -214,6 +217,7 @@ export function MessageView({
   attachments = [],
   tools = [],
   live,
+  subagents = [],
 }: Props) {
   const user = role === 'user';
   return (
@@ -227,9 +231,13 @@ export function MessageView({
       )}
       {tools.length > 0 && (
         <div className="flex flex-col">
-          {tools.map((t) => (
-            <ToolRow key={t.callId} tool={t} />
-          ))}
+          {tools.map((t) =>
+            t.name === 'subagent' && subagents.length ? (
+              <SubagentRow key={t.callId} items={subagents} />
+            ) : (
+              <ToolRow key={t.callId} tool={t} />
+            ),
+          )}
         </div>
       )}
       {user ? (

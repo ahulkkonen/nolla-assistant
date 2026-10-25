@@ -11,7 +11,7 @@ import {
   Search,
   SquarePen,
 } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { firstUserLine, useStore } from '../store.ts';
 import { openChat, runSearch, send } from '../ws.ts';
 import { IconButton } from './IconButton.tsx';
@@ -133,6 +133,11 @@ export function Sidebar({ expanded, onNavigate }: { expanded: boolean; onNavigat
   const proposals = useStore((s) => s.proposals.length);
   const [query, setQuery] = useState('');
   const [collapsed, setCollapsed] = useState(loadCollapsed);
+  const searching = useStore((s) => s.screen === 'search');
+  // The results page has its own field; two filled fields would read as two searches.
+  useEffect(() => {
+    if (searching) setQuery('');
+  }, [searching]);
 
   const toggleTopic = (id: string) => {
     const next = collapsed.includes(id) ? collapsed.filter((x) => x !== id) : [...collapsed, id];
