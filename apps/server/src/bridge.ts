@@ -412,7 +412,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
           deps.automations()?.state() ?? { type: 'automations.state', automations: [] },
         );
       case 'automations.run':
-        if (!(await deps.automations()?.runNow(msg.id))) throw new NotFound();
+        if (!deps.automations()?.runNow(msg.id)) throw new NotFound();
         return send(socket, deps.automations()?.state() ?? errorMsg('failed'));
       case 'topic.list':
         return send(socket, topicState(db, userId));

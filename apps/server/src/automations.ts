@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { existsSync, readdirSync, readFileSync, watch } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, watch } from 'node:fs';
 import { basename, join } from 'node:path';
 import { automationRuns, chats, type Db, topics } from '@pa/db';
 import type { ServerMessage } from '@pa/protocol';
@@ -8,7 +8,10 @@ import type { FastifyBaseLogger } from 'fastify';
 import cron from 'node-cron';
 import { parse } from 'yaml';
 import { z } from 'zod';
+import type { Agents } from './agents.ts';
+import { transcript } from './bridge.ts';
 import type { SessionRegistry } from './pi/registry.ts';
+import { indexChat } from './search.ts';
 
 export const TOPIC_NAME = 'Automaatiot';
 
@@ -30,6 +33,8 @@ const AutomationFile = z.object({
   prompt: z.string().min(1),
   deliver: z.enum(['chat', 'push', 'both']).default('chat'),
   enabled: z.boolean().default(true),
+  /** Gated tools that run without asking; any other gated tool is denied (nobody is there to approve). */
+  autoApprove: z.array(z.string()).default([]),
 });
 export type Automation = z.infer<typeof AutomationFile>;
 
@@ -59,6 +64,9 @@ export type AutomationsDeps = {
   db: Db;
   userId: string;
   registry: SessionRegistry;
+  agents: () => Agents;
+  /** The approval store's unattended map: chatId to auto-approved tools, set during a run. */
+  unattended: Map<string, string[]>;
   /** Sends `text` to the chat's session the way `user.message` does. Resolves when the run ends. */
   prompt: (chatId: string, text: string) => Promise<void>;
   log: FastifyBaseLogger;
@@ -66,10 +74,21 @@ export type AutomationsDeps = {
 
 export type Automations = ReturnType<typeof startAutomations>;
 
-export function startAutomations({ dir, db, userId, registry, prompt, log }: AutomationsDeps) {
+export function startAutomations({
+  dir,
+  db,
+  userId,
+  registry,
+  agents,
+  unattended,
+  prompt,
+  log,
+}: AutomationsDeps) {
   let list: Automation[] = [];
   let tasks: { stop(): void }[] = [];
   let closed = false;
+  const running = new Set<string>();
+  mkdirSync(dir, { recursive: true });
 
   const topicId = () => {
     const found = db
@@ -98,9 +117,16 @@ export function startAutomations({ dir, db, userId, registry, prompt, log }: Aut
       .run();
   };
 
-  const fire = async (a: Automation) => {
+  /** Returns true when skipped because the automation is already running. */
+  const fire = async (a: Automation): Promise<boolean> => {
+    if (running.has(a.id)) {
+      log.info({ id: a.id }, 'automation still running, skipped');
+      return true;
+    }
+    running.add(a.id);
     let chatId: string | null = null;
     try {
+      if (!agents().has(a.agentId)) throw new Error(`agent ${a.agentId} not found`);
       const now = new Date();
       const at = now.toLocaleString('sv-SE', { timeZone: a.timezone }).slice(0, 16);
       const title = `${a.id} ${at}`;
@@ -120,23 +146,49 @@ export function startAutomations({ dir, db, userId, registry, prompt, log }: Aut
           updatedAt: now.toISOString(),
         })
         .run();
-      await registry.create(chatId, a.agentId);
+      unattended.set(chatId, a.autoApprove);
+      const session = await registry.create(chatId, a.agentId);
       if (a.deliver !== 'chat') log.info({ id: a.id }, 'push not available until phase 7');
       await prompt(chatId, a.prompt);
+      const last = session.messages.findLast((m) => m.role === 'assistant');
+      if (last && 'stopReason' in last && last.stopReason === 'error')
+        throw new Error(last.errorMessage ?? 'model call failed');
+      // The bridge indexes on `agent_settled`, but no socket listens to this chat.
+      indexChat(db, userId, chatId, transcript(session)).catch((err: unknown) =>
+        log.warn(
+          { id: a.id, chatId, error: err instanceof Error ? err.message : 'unknown' },
+          'index failed',
+        ),
+      );
       record(a.id, 'ok', chatId, null);
       log.info({ id: a.id, chatId }, 'automation ran');
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err);
-      record(a.id, 'error', chatId, error);
       log.warn({ id: a.id, chatId, error }, 'automation failed');
+      try {
+        record(a.id, 'error', chatId, error);
+      } catch (recordErr) {
+        log.warn(
+          { id: a.id, error: recordErr instanceof Error ? recordErr.message : 'unknown' },
+          'recording automation run failed',
+        );
+      }
+    } finally {
+      if (chatId) unattended.delete(chatId);
+      running.delete(a.id);
     }
+    return false;
   };
 
   const schedule = () => {
     for (const t of tasks) t.stop();
     list = loadAutomations(dir, (file, err) =>
       log.warn({ file, error: err instanceof Error ? err.message : String(err) }, 'bad automation'),
-    );
+    ).filter((a) => {
+      const known = agents().has(a.agentId);
+      if (!known) log.warn({ id: a.id, agentId: a.agentId }, 'automation skipped: unknown agent');
+      return known;
+    });
     tasks = list
       .filter((a) => a.enabled)
       .map((a) => cron.schedule(a.cron, () => fire(a), { timezone: a.timezone, noOverlap: true }));
@@ -144,12 +196,10 @@ export function startAutomations({ dir, db, userId, registry, prompt, log }: Aut
   schedule();
 
   let timer: NodeJS.Timeout | undefined;
-  const watcher = existsSync(dir)
-    ? watch(dir, () => {
-        clearTimeout(timer);
-        timer = setTimeout(() => !closed && schedule(), 1000);
-      })
-    : undefined;
+  const watcher = watch(dir, () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => !closed && schedule(), 1000);
+  });
 
   return {
     state(): ServerMessage {
@@ -169,21 +219,23 @@ export function startAutomations({ dir, db, userId, registry, prompt, log }: Aut
           agentId,
           enabled,
           lastRunAt: runs.get(id)?.lastRunAt ?? null,
-          lastStatus: runs.get(id)?.lastStatus ?? null,
+          lastStatus: running.has(id) ? 'running' : (runs.get(id)?.lastStatus ?? null),
           lastChatId: runs.get(id)?.lastChatId ?? null,
         })),
       };
     },
-    /** Runs one automation now, even when disabled. Returns false for an unknown id. */
-    async runNow(id: string) {
+    /** Starts one run in the background, even when disabled. Undefined for an unknown id. */
+    runNow(id: string) {
       const a = list.find((x) => x.id === id);
-      if (a) await fire(a);
-      return !!a;
+      if (!a) return undefined;
+      if (running.has(id)) return { skipped: true };
+      void fire(a);
+      return { skipped: false };
     },
     close() {
       closed = true;
       clearTimeout(timer);
-      watcher?.close();
+      watcher.close();
       for (const t of tasks) t.stop();
     },
   };

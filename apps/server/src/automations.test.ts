@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { automationRuns, chats, topics } from '@pa/db';
 import { eq } from 'drizzle-orm';
 import { afterEach, expect, test, vi } from 'vitest';
+import { UNATTENDED_REASON } from './approval.ts';
 import { start } from './main.ts';
 import { boot, cleanups, connect, runCleanups } from './test-utils.ts';
 
@@ -86,8 +87,14 @@ test('automations run as chats under Automaatiot', { timeout: 30_000 }, async ()
 
   expect(logs.filter((l) => l.includes('bad automation')).length).toBeGreaterThan(0);
   c.send({ type: 'automations.run', id: 'later' });
-  const state = await c.next('automations.state');
-  expect(state.automations.find((a) => a.id === 'later')?.lastStatus).toBe('ok');
+  expect(
+    (await c.next('automations.state')).automations.find((x) => x.id === 'later'),
+  ).toMatchObject({
+    lastStatus: 'running',
+  });
+  const status = () =>
+    srv.db.select().from(automationRuns).where(eq(automationRuns.id, 'later')).get()?.lastStatus;
+  await vi.waitFor(() => expect(status()).toBe('ok'), { timeout: 5000, interval: 100 });
   expect(
     inTopic(
       `later ${new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Helsinki' }).slice(0, 16)}`,
@@ -95,4 +102,36 @@ test('automations run as chats under Automaatiot', { timeout: 30_000 }, async ()
   ).toBeGreaterThan(0);
   c.send({ type: 'automations.run', id: 'nope' });
   await expect(c.next('automations.state')).rejects.toThrow('not_found');
+});
+
+test.each([
+  ['', false],
+  ['autoApprove: [write]\n', true],
+])('unattended approval (%j)', { timeout: 30_000 }, async (extra, written) => {
+  const dir = mkdtempSync(join(tmpdir(), 'pa-auto-'));
+  cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+  writeFileSync(join(dir, 'wr.yaml'), `${file('0 0 1 1 *', 'wr')}${extra}`);
+  const b = await boot(
+    [
+      { toolCalls: [{ name: 'write', args: { path: 'auto.txt', content: 'x' } }] },
+      { text: 'Valmis.' },
+    ],
+    { AUTOMATIONS_DIR: dir },
+  );
+  const srv = await start(b.config);
+  cleanups.push(srv.close);
+  const c = await connect(b.config.port);
+  c.send({ type: 'automations.run', id: 'wr' });
+  await c.next('automations.state');
+  await vi.waitFor(
+    () =>
+      expect(
+        srv.db.select().from(automationRuns).where(eq(automationRuns.id, 'wr')).get(),
+      ).toMatchObject({
+        lastStatus: 'ok',
+      }),
+    { timeout: 5000, interval: 100 },
+  );
+  expect(existsSync(join(srv.registry.cwd, 'auto.txt'))).toBe(written);
+  expect(JSON.stringify(b.llm.requests[1]?.body).includes(UNATTENDED_REASON)).toBe(!written);
 });
