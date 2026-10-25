@@ -8,6 +8,7 @@ import { type Config, loadConfig } from './config.ts';
 import { buildServer } from './http.ts';
 import { writeModelsJson } from './pi/models.ts';
 import { SessionRegistry } from './pi/registry.ts';
+import { titleJobs } from './topics.ts';
 
 export async function start(
   config: Config = loadConfig(),
@@ -32,6 +33,7 @@ export async function start(
     dataDir: config.dataDir,
     userId: config.userId,
     model: config.model,
+    onSettled: ({ sessionId }) => titles.scheduleTitleJob(sessionId),
     ...(pseudo ? { pseudo: { client: pseudo, log: pseudoLog } } : {}),
   });
   writeModelsJson(registry.agentDir, config.litellmUrl);
@@ -43,6 +45,16 @@ export async function start(
     ...(logStream ? { logStream } : {}),
     ...(pseudo ? { pseudo } : {}),
   });
+  const titles = titleJobs({
+    db,
+    registry,
+    rooms,
+    userId: config.userId,
+    litellmUrl: config.litellmUrl,
+    litellmMasterKey: config.litellmMasterKey,
+    pseudo,
+    log: app.log,
+  });
   await app.listen({ port: config.port, host: config.host });
   const timer = setInterval(() => void registry.evictIdle(), 5 * 60_000);
   timer.unref();
@@ -51,11 +63,12 @@ export async function start(
   const close = async () => {
     clearInterval(timer);
     clearInterval(purge);
+    await titles.close();
     await registry.dispose();
     await app.close();
     sqlite.close();
   };
-  return { app, registry, close };
+  return { app, registry, db, close };
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

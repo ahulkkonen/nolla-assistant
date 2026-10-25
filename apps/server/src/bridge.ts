@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { AgentSession, AgentSessionEvent } from '@earendil-works/pi-coding-agent';
-import { chats, type Db } from '@pa/db';
+import { chats, type Db, topicProposals, topics } from '@pa/db';
 import {
   type PseudoClient,
   PseudoDownError,
@@ -21,6 +21,7 @@ import type { FastifyBaseLogger } from 'fastify';
 import { AttachmentNotFound, chatFiles, ingestAttachments } from './files.ts';
 import { GUARD_REASON } from './pi/guard.ts';
 import type { SessionRegistry } from './pi/registry.ts';
+import { topicState } from './topics.ts';
 
 export type Socket = {
   send(data: string): void;
@@ -77,7 +78,14 @@ export function broadcast(rooms: BridgeDeps['rooms'], chatId: string, msg: Serve
   if (room.size === 0) rooms.delete(chatId);
 }
 
-const summary = (r: ChatRow): ChatSummary => ({
+export const chatRow = (db: Db, userId: string, chatId: string) =>
+  db
+    .select()
+    .from(chats)
+    .where(and(eq(chats.id, chatId), eq(chats.userId, userId)))
+    .get();
+
+export const summary = (r: ChatRow): ChatSummary => ({
   id: r.id,
   title: r.title,
   topicId: r.topicId,
@@ -87,7 +95,7 @@ const summary = (r: ChatRow): ChatSummary => ({
   updatedAt: r.updatedAt,
 });
 
-function textOf(m: AgentMessage): string {
+export function textOf(m: AgentMessage): string {
   if (!('content' in m)) return '';
   if (typeof m.content === 'string') return m.content;
   return m.content.map((b) => (b.type === 'text' ? b.text : '')).join('');
@@ -176,13 +184,15 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
   const open = new Set<string>();
 
   const owned = (chatId: string) => {
-    const r = db
-      .select()
-      .from(chats)
-      .where(and(eq(chats.id, chatId), eq(chats.userId, userId)))
-      .get();
+    const r = chatRow(db, userId, chatId);
     if (!r) throw new NotFound();
     return r;
+  };
+
+  /** To the chat's room, and to this socket when it has not joined the room. */
+  const notify = (chatId: string, msg: ServerMessage) => {
+    broadcast(rooms, chatId, msg);
+    if (!rooms.get(chatId)?.has(socket)) send(socket, msg);
   };
 
   const update = (chatId: string, set: Partial<ChatRow>) => {
@@ -193,7 +203,25 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
       .returning()
       .get();
     if (!r) throw new NotFound();
-    send(socket, { type: 'chat.updated', chat: summary(r) });
+    notify(chatId, { type: 'chat.updated', chat: summary(r) });
+  };
+
+  /** Moves a pending proposal of this user to `status`. */
+  const resolveProposal = (id: number, status: 'accepted' | 'rejected') => {
+    const p = db
+      .update(topicProposals)
+      .set({ status })
+      .where(
+        and(
+          eq(topicProposals.id, id),
+          eq(topicProposals.userId, userId),
+          eq(topicProposals.status, 'pending'),
+        ),
+      )
+      .returning()
+      .get();
+    if (!p) throw new NotFound();
+    return p;
   };
 
   const join = (chatId: string, session: AgentSession) => {
@@ -288,8 +316,11 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
       }
       case 'chat.archive':
         return update(msg.chatId, { archived: msg.archived });
-      case 'chat.rename':
-        return update(msg.chatId, { title: msg.title, titleLocked: true });
+      case 'chat.rename': {
+        owned(msg.chatId);
+        const titleMasked = pseudo ? (await pseudo.mask(msg.chatId, msg.title)).masked : msg.title;
+        return update(msg.chatId, { title: msg.title, titleMasked, titleLocked: true });
+      }
       case 'chat.pin':
         return update(msg.chatId, { pinned: msg.pinned });
       case 'user.message': {
@@ -320,6 +351,38 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
         owned(msg.chatId);
         if (registry.has(msg.chatId)) await (await registry.get(msg.chatId)).abort();
         return;
+      case 'topic.list':
+        return send(socket, topicState(db, userId));
+      case 'topic.accept': {
+        let topicId = msg.mergeIntoTopicId;
+        if (
+          topicId &&
+          !db
+            .select({ id: topics.id })
+            .from(topics)
+            .where(and(eq(topics.id, topicId), eq(topics.userId, userId)))
+            .get()
+        )
+          throw new NotFound();
+        const p = resolveProposal(msg.proposalId, 'accepted');
+        if (!topicId) {
+          topicId = randomUUID();
+          db.insert(topics)
+            .values({
+              id: topicId,
+              userId,
+              name: msg.name?.trim() || p.name,
+              description: p.why,
+              createdAt: new Date().toISOString(),
+            })
+            .run();
+        }
+        update(p.chatId, { topicId });
+        return notify(p.chatId, topicState(db, userId));
+      }
+      case 'topic.reject':
+        resolveProposal(msg.proposalId, 'rejected');
+        return send(socket, topicState(db, userId));
       case 'vault.list':
       case 'vault.merge':
       case 'vault.split':

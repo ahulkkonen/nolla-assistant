@@ -10,6 +10,7 @@ import {
   SessionManager,
 } from '@earendil-works/pi-coding-agent';
 import { type PseudoClient, type PseudoLog, pseudoExtension } from '@pa/pi-ext-pseudo';
+import { topicsExtension } from '@pa/pi-ext-topics';
 import { pathGuard } from './guard.ts';
 
 type RegistryOptions = {
@@ -17,6 +18,8 @@ type RegistryOptions = {
   userId: string;
   model: string;
   extensionFactories?: InlineExtension[];
+  /** Called at every `agent_settled` through `pi-ext-topics`; `sessionId` is the chat id. */
+  onSettled?: Parameters<typeof topicsExtension>[0]['onSettled'];
   /** Loads `pi-ext-pseudo` per chat when set; `log` receives its logs with the chat id. */
   pseudo?: { client: PseudoClient; log: (chatId: string, ...args: Parameters<PseudoLog>) => void };
 };
@@ -138,6 +141,7 @@ export class SessionRegistry {
             ]
           : []),
         pathGuard(this.cwd),
+        ...(this.opts.onSettled ? [topicsExtension({ onSettled: this.opts.onSettled })] : []),
         ...(this.opts.extensionFactories ?? []),
       ],
     });
