@@ -58,7 +58,7 @@ describe('store reducers', () => {
   it('shows an error toast and dismisses it after 6 s', () => {
     vi.useFakeTimers();
     useStore.getState().apply({ type: 'error', code: 'failed', message: 'Request failed' });
-    expect(useStore.getState().errors.map((e) => e.message)).toEqual(['Request failed']);
+    expect(useStore.getState().errors.map((e) => e.message)).toEqual(['Toiminto epäonnistui.']);
     vi.advanceTimersByTime(6000);
     expect(useStore.getState().errors).toEqual([]);
     vi.useRealTimers();

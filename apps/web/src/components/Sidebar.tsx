@@ -86,22 +86,22 @@ function ChatRow({
       >
         {label ?? UNTITLED}
       </button>
-      <div className="flex opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100">
+      <div className="absolute right-1 hidden rounded-md bg-bg-sunken group-focus-within:flex group-hover:flex [@media(hover:none)]:flex">
         <IconButton
           label={chat.pinned ? 'Irrota' : 'Kiinnitä'}
-          className="size-8"
+          className="size-8 max-md:size-11"
           onClick={() => send({ type: 'chat.pin', chatId: chat.id, pinned: !chat.pinned })}
         >
           {chat.pinned ? <PinOff size={16} /> : <Pin size={16} />}
         </IconButton>
         <IconButton
           label={chat.archived ? 'Palauta' : 'Arkistoi'}
-          className="size-8"
+          className="size-8 max-md:size-11"
           onClick={() => send({ type: 'chat.archive', chatId: chat.id, archived: !chat.archived })}
         >
           {chat.archived ? <ArchiveRestore size={16} /> : <Archive size={16} />}
         </IconButton>
-        <IconButton label="Nimeä uudelleen" className="size-8" onClick={startEdit}>
+        <IconButton label="Nimeä uudelleen" className="size-8 max-md:size-11" onClick={startEdit}>
           <Pencil size={16} />
         </IconButton>
       </div>

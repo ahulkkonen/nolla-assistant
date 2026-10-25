@@ -57,6 +57,16 @@ const omit = <T>(rec: Record<string, T>, key: string) => {
   return rest;
 };
 
+/** Finnish text per server error code; unknown codes show the server text. */
+const ERROR_TEXT: Record<string, string> = {
+  llm_failed: 'Mallin kutsu epäonnistui.',
+  prompt_failed: 'Viestin lähetys epäonnistui.',
+  not_found: 'Keskustelua ei löydy.',
+  bad_message: 'Virheellinen viesti.',
+  not_implemented: 'Ei vielä tuettu.',
+  failed: 'Toiminto epäonnistui.',
+};
+
 let toastId = 0;
 
 export const useStore = create<State>()((set, get) => {
@@ -154,7 +164,7 @@ export const useStore = create<State>()((set, get) => {
             streaming: msg.state === 'idle' ? omit(st.streaming, msg.chatId) : st.streaming,
           }));
         case 'error':
-          return get().pushError(msg.message);
+          return get().pushError(ERROR_TEXT[msg.code] ?? msg.message);
         default:
           return;
       }

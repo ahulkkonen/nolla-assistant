@@ -60,7 +60,7 @@ function Shell() {
           <Sidebar expanded={sidebarOpen} />
         </div>
       )}
-      <main className="flex min-w-0 flex-1 flex-col">
+      <main className="relative flex min-w-0 flex-1 flex-col">
         {mobile && (
           <header className="flex shrink-0 items-center gap-1 border-b border-border px-2 pt-[env(safe-area-inset-top)]">
             <IconButton label="Valikko" onClick={() => setSidebarOpen(true)}>
@@ -72,10 +72,13 @@ function Shell() {
             </IconButton>
           </header>
         )}
-        <div className={clsx('flex min-h-0 flex-1 flex-col', empty && 'justify-center')}>
+        <div
+          className={clsx('flex min-h-0 flex-1 flex-col', empty && 'justify-end md:justify-center')}
+        >
           {!empty && <Thread />}
           <Composer />
         </div>
+        <Toasts />
       </main>
     </div>
   );
@@ -106,7 +109,7 @@ export function App() {
   return (
     <Tooltip.Provider delayDuration={400}>
       {auth === 'in' ? <Shell /> : auth === 'out' ? <Login /> : null}
-      <Toasts />
+      {auth !== 'in' && <Toasts />}
     </Tooltip.Provider>
   );
 }

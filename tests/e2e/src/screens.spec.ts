@@ -177,9 +177,11 @@ for (const scheme of ['light', 'dark'] as const) {
           // No scripted turn: fake-llm answers 500 and the server sends `llm_failed`.
           await app.login(page);
           await send(page, 'Hei');
-          await expect(page.getByRole('status').getByText('Model call failed')).toBeVisible({
-            timeout: 30_000,
-          });
+          await expect(page.getByRole('status').getByText('Mallin kutsu epäonnistui.')).toBeVisible(
+            {
+              timeout: 30_000,
+            },
+          );
           await shot(page, 'error-toast', vp.width, scheme);
         });
 

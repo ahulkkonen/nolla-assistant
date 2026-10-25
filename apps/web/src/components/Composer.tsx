@@ -123,7 +123,11 @@ export function Composer() {
                     className="shrink-0 animate-spin text-fg-muted"
                   />
                 )}
-                <IconButton label="Poista liite" className="size-7" onClick={() => remove([c.key])}>
+                <IconButton
+                  label="Poista liite"
+                  className="size-7 max-md:size-11"
+                  onClick={() => remove([c.key])}
+                >
                   <X size={16} />
                 </IconButton>
               </li>

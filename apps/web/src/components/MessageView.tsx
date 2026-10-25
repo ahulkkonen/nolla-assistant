@@ -8,12 +8,12 @@ import type { ToolView } from '../store.ts';
 import { IconButton } from './IconButton.tsx';
 import { ToolRow } from './ToolRow.tsx';
 
-function CopyButton({ text, className }: { text: () => string; className?: string }) {
+function CopyButton({ text, className }: { text: () => string; className: string }) {
   const [done, setDone] = useState(false);
   return (
     <IconButton
       label={done ? 'Kopioitu' : 'Kopioi'}
-      className={clsx('size-8', className)}
+      className={className}
       onClick={() => {
         void navigator.clipboard.writeText(text()).then(() => {
           setDone(true);
@@ -36,7 +36,10 @@ function Pre(props: ComponentProps<'pre'>) {
       >
         {props.children}
       </pre>
-      <CopyButton text={() => ref.current?.textContent ?? ''} className="absolute top-1 right-1" />
+      <CopyButton
+        text={() => ref.current?.textContent ?? ''}
+        className="absolute top-1 right-1 size-8 max-md:size-11"
+      />
     </div>
   );
 }
@@ -112,7 +115,7 @@ export function MessageView({ role, text, attachments = [], tools = [], live }: 
       {/* Out of flow: the 24 px row sits in the thread gap. User copy waits for phase 7 edit. */}
       {!user && !live && text && (
         <div className="absolute top-full left-0 opacity-0 transition-opacity duration-(--duration) group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100">
-          <CopyButton text={() => text} className="size-6!" />
+          <CopyButton text={() => text} className="relative size-6 after:absolute after:-inset-2" />
         </div>
       )}
     </div>
