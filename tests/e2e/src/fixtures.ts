@@ -41,7 +41,7 @@ export const test = base.extend<{ app: App }>({
         LITELLM_MASTER_KEY: KEY,
         AUTH_ORIGIN: `http://127.0.0.1:${port}`,
         COOKIE_SECRET: 'e'.repeat(40),
-        AUTH_PASSWORD_HASH: hashPassword(PASSWORD),
+        AUTH_PASSWORD_HASH: await hashPassword(PASSWORD),
         WEB_DIST: join(WEB, 'dist'),
         HOST: '127.0.0.1',
         PORT: String(port),

@@ -10,6 +10,8 @@ function required(env: Env, name: string): string {
   return v;
 }
 
+const LOOPBACK = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
+
 /** Returns a frozen config; throws when a required value is missing or invalid. */
 export function loadConfig(env: Env = process.env) {
   const port = Number(env.PORT ?? 3000);
@@ -17,7 +19,12 @@ export function loadConfig(env: Env = process.env) {
   const userId = env.USER_ID ?? 'aleksi';
   if (!/^[A-Za-z0-9_-]{1,64}$/.test(userId))
     throw new Error('USER_ID must match [A-Za-z0-9_-]{1,64}');
-  const authOrigin = required(env, 'AUTH_ORIGIN');
+  const origin = new URL(required(env, 'AUTH_ORIGIN'));
+  if (origin.protocol !== 'http:' && origin.protocol !== 'https:')
+    throw new Error('AUTH_ORIGIN must be http or https');
+  if (origin.protocol === 'http:' && !LOOPBACK.has(origin.hostname))
+    throw new Error('AUTH_ORIGIN must be https unless the host is loopback');
+  const trust = env.TRUST_PROXY;
   const cookieSecret = required(env, 'COOKIE_SECRET');
   if (cookieSecret.length < 32) throw new Error('COOKIE_SECRET must be at least 32 characters');
   return Object.freeze({
@@ -28,11 +35,13 @@ export function loadConfig(env: Env = process.env) {
     litellmMasterKey: required(env, 'LITELLM_MASTER_KEY'),
     userId,
     model: env.MODEL ?? 'zdr/strong',
-    authOrigin,
-    passkeyRpId: env.AUTH_PASSKEY_RP_ID ?? new URL(authOrigin).hostname,
+    authOrigin: origin.origin,
+    passkeyRpId: env.AUTH_PASSKEY_RP_ID || origin.hostname,
     passwordHash: env.AUTH_PASSWORD_HASH || undefined,
     cookieSecret,
-    cookieSecure: authOrigin.startsWith('https'),
+    cookieSecure: origin.protocol === 'https:',
+    // Fastify `trustProxy`: unset is false, digits are a hop count, anything else an address/CIDR.
+    trustProxy: !trust ? false : /^\d+$/.test(trust) ? Number(trust) : trust,
     webDist: env.WEB_DIST || undefined,
     logLevel: env.LOG_LEVEL ?? 'info',
   });

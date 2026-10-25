@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { authSessions, type Db } from '@pa/db';
-import { eq } from 'drizzle-orm';
+import { eq, lt } from 'drizzle-orm';
 import type { FastifyRequest } from 'fastify';
 
 export const SESSION_COOKIE = 'pa_session';
@@ -39,7 +39,7 @@ export function createSession(db: Db, userId: string): string {
 export function getUser(
   db: Db,
   req: FastifyRequest,
-): { userId: string; token: string; refreshed: boolean } | null {
+): { userId: string; token: string; refreshed: boolean; createdAt: string } | null {
   const token = req.cookies[SESSION_COOKIE];
   if (!token) return null;
   const id = hash(token);
@@ -52,18 +52,24 @@ export function getUser(
     return null;
   }
   const refreshed = left < REFRESH_BELOW;
-  db.update(authSessions)
-    .set({
-      lastSeenAt: new Date(now).toISOString(),
-      ...(refreshed ? { expiresAt: new Date(now + TTL).toISOString() } : {}),
-    })
-    .where(eq(authSessions.id, id))
-    .run();
-  return { userId: row.userId, token, refreshed };
+  if (refreshed || now - Date.parse(row.lastSeenAt) > 60_000)
+    db.update(authSessions)
+      .set({
+        lastSeenAt: new Date(now).toISOString(),
+        ...(refreshed ? { expiresAt: new Date(now + TTL).toISOString() } : {}),
+      })
+      .where(eq(authSessions.id, id))
+      .run();
+  return { userId: row.userId, token, refreshed, createdAt: row.createdAt };
 }
 
 export function destroySession(db: Db, token: string): void {
   db.delete(authSessions)
     .where(eq(authSessions.id, hash(token)))
     .run();
+}
+
+/** Deletes expired sessions of all users (housekeeping, not a user query). */
+export function purgeExpiredSessions(db: Db): void {
+  db.delete(authSessions).where(lt(authSessions.expiresAt, new Date().toISOString())).run();
 }

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { type Db, passkeys } from '@pa/db';
 import {
   type AuthenticationResponseJSON,
@@ -22,6 +23,7 @@ import {
 declare module 'fastify' {
   interface FastifyRequest {
     userId: string;
+    sessionCreatedAt: string;
   }
 }
 
@@ -31,18 +33,31 @@ type AuthConfig = Pick<
 >;
 
 const CHALLENGE_COOKIE = 'pa_challenge';
+const CHALLENGE_PATH = '/api/auth/passkey';
+const CHALLENGE_TTL_MS = 5 * 60_000;
+const MAX_CHALLENGES = 10_000;
+const FRESH_MS = 10 * 60_000;
 const RP_NAME = 'Personal Assistant';
 
-/** 5 attempts per minute per key. */
-// ponytail: in-memory, per process; IPs that stop sending keep one stale entry. Move to the DB or prune on a timer if this ever faces many IPs.
-function limiter(max = 5, windowMs = 60_000) {
-  const hits = new Map<string, number[]>();
-  return (key: string) => {
-    const now = Date.now();
-    const recent = (hits.get(key) ?? []).filter((t) => now - t < windowMs);
-    recent.push(now);
-    hits.set(key, recent);
-    return recent.length > max;
+type Purpose = 'reg' | 'auth';
+
+/** Counts failed attempts per key; blocked after `max` failures in `windowMs`. */
+function limiter(app: FastifyInstance, max = 5, windowMs = 60_000) {
+  const fails = new Map<string, number[]>();
+  const recent = (key: string, now = Date.now()) =>
+    (fails.get(key) ?? []).filter((t) => now - t < windowMs);
+  const prune = setInterval(() => {
+    for (const key of fails.keys()) {
+      const r = recent(key);
+      if (r.length) fails.set(key, r);
+      else fails.delete(key);
+    }
+  }, windowMs);
+  prune.unref();
+  app.addHook('onClose', async () => clearInterval(prune));
+  return {
+    blocked: (key: string) => recent(key).length >= max,
+    fail: (key: string) => fails.set(key, [...recent(key), Date.now()]),
   };
 }
 
@@ -53,7 +68,14 @@ export const requireUser =
     if (!user) return reply.code(401).send({ error: 'unauthorized' });
     if (user.refreshed) reply.setCookie(SESSION_COOKIE, user.token, sessionCookie(secure));
     req.userId = user.userId;
+    req.sessionCreatedAt = user.createdAt;
   };
+
+/** preHandler after `requireUser`: 403 unless the session was created in the last 10 minutes. */
+const requireFresh = async (req: FastifyRequest, reply: FastifyReply) => {
+  if (Date.now() - Date.parse(req.sessionCreatedAt) >= FRESH_MS)
+    return reply.code(403).send({ error: 'reauth' });
+};
 
 const responseBody = {
   body: {
@@ -65,30 +87,45 @@ const responseBody = {
 
 export function authRoutes(app: FastifyInstance, db: Db, config: AuthConfig) {
   const auth = requireUser(db, config.cookieSecure);
-  const passwordLimit = limiter();
-  const passkeyLimit = limiter();
+  const passwordLimit = limiter(app);
+  // Shared by passkey login options and verify; only failed verifications count.
+  const passkeyLimit = limiter(app);
+  const challenges = new Map<string, { challenge: string; purpose: Purpose; expiresAt: number }>();
   app.decorateRequest('userId', '');
+  app.decorateRequest('sessionCreatedAt', '');
 
   const login = (reply: FastifyReply, userId: string) =>
     reply
       .setCookie(SESSION_COOKIE, createSession(db, userId), sessionCookie(config.cookieSecure))
       .send({ userId });
 
-  const setChallenge = (reply: FastifyReply, challenge: string) =>
-    reply.setCookie(CHALLENGE_COOKIE, challenge, {
+  /** Stores the challenge server-side; the signed cookie carries only a random id. */
+  const setChallenge = (reply: FastifyReply, challenge: string, purpose: Purpose) => {
+    const now = Date.now();
+    for (const [id, c] of challenges) if (c.expiresAt <= now) challenges.delete(id);
+    const id = randomUUID();
+    challenges.set(id, { challenge, purpose, expiresAt: now + CHALLENGE_TTL_MS });
+    return reply.setCookie(CHALLENGE_COOKIE, id, {
       ...sessionCookie(config.cookieSecure),
-      path: '/api/auth/passkey',
-      maxAge: 300,
+      path: CHALLENGE_PATH,
+      maxAge: CHALLENGE_TTL_MS / 1000,
       signed: true,
     });
+  };
 
-  /** Reads and clears the signed challenge; undefined when missing or tampered. */
-  const takeChallenge = (req: FastifyRequest, reply: FastifyReply) => {
-    reply.clearCookie(CHALLENGE_COOKIE, { path: '/api/auth/passkey' });
+  /** Consumes the challenge; undefined when missing, tampered, expired or for another purpose. */
+  const takeChallenge = (req: FastifyRequest, reply: FastifyReply, purpose: Purpose) => {
+    reply.clearCookie(CHALLENGE_COOKIE, { path: CHALLENGE_PATH });
     const raw = req.cookies[CHALLENGE_COOKIE];
     const u = raw ? req.unsignCookie(raw) : undefined;
-    return u?.valid ? (u.value ?? undefined) : undefined;
+    if (!u?.valid || !u.value) return undefined;
+    const c = challenges.get(u.value);
+    challenges.delete(u.value);
+    return c && c.purpose === purpose && c.expiresAt > Date.now() ? c.challenge : undefined;
   };
+
+  const full = (reply: FastifyReply) =>
+    challenges.size >= MAX_CHALLENGES ? reply.code(503).send({ error: 'busy' }) : undefined;
 
   app.post<{ Body: { password: string } }>(
     '/api/auth/password',
@@ -102,16 +139,22 @@ export function authRoutes(app: FastifyInstance, db: Db, config: AuthConfig) {
       },
     },
     async (req, reply) => {
-      if (passwordLimit(req.ip)) return reply.code(429).send({ error: 'rate_limited' });
-      if (!config.passwordHash || !verifyPassword(config.passwordHash, req.body.password))
+      if (passwordLimit.blocked(req.ip)) return reply.code(429).send({ error: 'rate_limited' });
+      if (!config.passwordHash || !(await verifyPassword(config.passwordHash, req.body.password))) {
+        passwordLimit.fail(req.ip);
         return reply.code(401).send({ error: 'invalid' });
+      }
       return login(reply, config.userId);
     },
   );
 
   app.get('/api/auth/me', { preHandler: auth }, async (req) => ({
     userId: req.userId,
-    passkeys: await db.$count(passkeys, eq(passkeys.userId, req.userId)),
+    passkeys: db
+      .select({ id: passkeys.id, createdAt: passkeys.createdAt, lastUsedAt: passkeys.lastUsedAt })
+      .from(passkeys)
+      .where(eq(passkeys.userId, req.userId))
+      .all(),
   }));
 
   app.post('/api/auth/logout', { preHandler: auth }, async (req, reply) => {
@@ -119,27 +162,46 @@ export function authRoutes(app: FastifyInstance, db: Db, config: AuthConfig) {
     return reply.clearCookie(SESSION_COOKIE, { path: '/' }).code(204).send();
   });
 
-  app.post('/api/auth/passkey/register/options', { preHandler: auth }, async (req, reply) => {
-    const existing = db
-      .select({ id: passkeys.id, transports: passkeys.transports })
-      .from(passkeys)
-      .where(eq(passkeys.userId, req.userId))
-      .all();
-    const options = await generateRegistrationOptions({
-      rpName: RP_NAME,
-      rpID: config.passkeyRpId,
-      userName: req.userId,
-      userID: new TextEncoder().encode(req.userId),
-      excludeCredentials: existing.map((p) => ({ id: p.id, transports: p.transports ?? [] })),
-    });
-    return setChallenge(reply, options.challenge).send(options);
-  });
+  app.delete<{ Params: { id: string } }>(
+    '/api/auth/passkey/:id',
+    { preHandler: auth },
+    async (req, reply) => {
+      const gone = db
+        .delete(passkeys)
+        .where(and(eq(passkeys.id, req.params.id), eq(passkeys.userId, req.userId)))
+        .returning({ id: passkeys.id })
+        .get();
+      return gone ? reply.code(204).send() : reply.code(404).send({ error: 'not_found' });
+    },
+  );
+
+  app.post(
+    '/api/auth/passkey/register/options',
+    { preHandler: [auth, requireFresh] },
+    async (req, reply) => {
+      if (full(reply)) return reply;
+      const existing = db
+        .select({ id: passkeys.id, transports: passkeys.transports })
+        .from(passkeys)
+        .where(eq(passkeys.userId, req.userId))
+        .all();
+      const options = await generateRegistrationOptions({
+        rpName: RP_NAME,
+        rpID: config.passkeyRpId,
+        userName: req.userId,
+        userID: new TextEncoder().encode(req.userId),
+        excludeCredentials: existing.map((p) => ({ id: p.id, transports: p.transports ?? [] })),
+        authenticatorSelection: { residentKey: 'required', userVerification: 'required' },
+      });
+      return setChallenge(reply, options.challenge, 'reg').send(options);
+    },
+  );
 
   app.post<{ Body: { response: RegistrationResponseJSON } }>(
     '/api/auth/passkey/register/verify',
-    { preHandler: auth, schema: responseBody },
+    { preHandler: [auth, requireFresh], schema: responseBody },
     async (req, reply) => {
-      const challenge = takeChallenge(req, reply);
+      const challenge = takeChallenge(req, reply, 'reg');
       if (!challenge) return reply.code(400).send({ error: 'invalid' });
       const result = await verifyRegistrationResponse({
         response: req.body.response,
@@ -149,6 +211,9 @@ export function authRoutes(app: FastifyInstance, db: Db, config: AuthConfig) {
       }).catch(() => undefined);
       if (!result?.verified) return reply.code(400).send({ error: 'invalid' });
       const { credential } = result.registrationInfo;
+      // Credential ids are global, so this lookup is by id alone.
+      if (db.select({ id: passkeys.id }).from(passkeys).where(eq(passkeys.id, credential.id)).get())
+        return reply.code(409).send({ error: 'exists' });
       db.insert(passkeys)
         .values({
           id: credential.id,
@@ -163,23 +228,32 @@ export function authRoutes(app: FastifyInstance, db: Db, config: AuthConfig) {
     },
   );
 
-  app.post('/api/auth/passkey/login/options', async (_req, reply) => {
-    const options = await generateAuthenticationOptions({ rpID: config.passkeyRpId });
-    return setChallenge(reply, options.challenge).send(options);
+  app.post('/api/auth/passkey/login/options', async (req, reply) => {
+    if (passkeyLimit.blocked(req.ip)) return reply.code(429).send({ error: 'rate_limited' });
+    if (full(reply)) return reply;
+    const options = await generateAuthenticationOptions({
+      rpID: config.passkeyRpId,
+      userVerification: 'required',
+    });
+    return setChallenge(reply, options.challenge, 'auth').send(options);
   });
 
   app.post<{ Body: { response: AuthenticationResponseJSON } }>(
     '/api/auth/passkey/login/verify',
     { schema: responseBody },
     async (req, reply) => {
-      if (passkeyLimit(req.ip)) return reply.code(429).send({ error: 'rate_limited' });
-      const challenge = takeChallenge(req, reply);
+      if (passkeyLimit.blocked(req.ip)) return reply.code(429).send({ error: 'rate_limited' });
+      const reject = () => {
+        passkeyLimit.fail(req.ip);
+        return reply.code(401).send({ error: 'invalid' });
+      };
+      const challenge = takeChallenge(req, reply, 'auth');
       const id = req.body.response.id;
       const row =
         typeof id === 'string'
           ? db.select().from(passkeys).where(eq(passkeys.id, id)).get()
           : undefined;
-      if (!challenge || !row) return reply.code(401).send({ error: 'invalid' });
+      if (!challenge || !row) return reject();
       const result = await verifyAuthenticationResponse({
         response: req.body.response,
         expectedChallenge: challenge,
@@ -192,7 +266,7 @@ export function authRoutes(app: FastifyInstance, db: Db, config: AuthConfig) {
           transports: row.transports ?? [],
         },
       }).catch(() => undefined);
-      if (!result?.verified) return reply.code(401).send({ error: 'invalid' });
+      if (!result?.verified) return reject();
       db.update(passkeys)
         .set({
           counter: result.authenticationInfo.newCounter,

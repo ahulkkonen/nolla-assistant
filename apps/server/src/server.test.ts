@@ -15,7 +15,7 @@ import { start } from './main.ts';
 const KEY = 'sk-test-master';
 const SCRIPTED = 'Hei! Miten voin auttaa?';
 const PASSWORD = 'correct horse';
-const PASSWORD_HASH = hashPassword(PASSWORD);
+const PASSWORD_HASH = await hashPassword(PASSWORD);
 const cleanups: (() => Promise<void> | void)[] = [];
 afterEach(async () => {
   for (const c of cleanups.splice(0).reverse()) await c();
@@ -206,7 +206,18 @@ test('auth: cookie required, password login, rate limit, logout', { timeout: 30_
   expect(await res.json()).toEqual({ userId: 'aleksi' });
   expect(res.headers.getSetCookie()[0]).toMatch(/^pa_session=.+HttpOnly; SameSite=Strict/);
   const me = await api(port, '/api/auth/me', { headers: { cookie } });
-  expect(await me.json()).toEqual({ userId: 'aleksi', passkeys: 0 });
+  expect(await me.json()).toEqual({ userId: 'aleksi', passkeys: [] });
+  expect(me.headers.get('x-frame-options')).toBe('DENY');
+  const reg = await api(port, '/api/auth/passkey/register/options', {
+    method: 'POST',
+    headers: { cookie },
+  });
+  expect(reg.status).toBe(200);
+  expect(
+    ((await reg.json()) as { authenticatorSelection: unknown }).authenticatorSelection,
+  ).toMatchObject({ residentKey: 'required' });
+  const del = await api(port, '/api/auth/passkey/nope', { method: 'DELETE', headers: { cookie } });
+  expect(del.status).toBe(404);
 
   const c = await connect(port, undefined, cookie);
   expect(await c.next('auth.state')).toEqual({
@@ -215,9 +226,10 @@ test('auth: cookie required, password login, rate limit, logout', { timeout: 30_
     userId: 'aleksi',
   });
 
-  expect((await login(port, 'wrong')).res.status).toBe(401);
-  for (let i = 0; i < 3; i++) await login(port, 'wrong');
+  // Only failures count: five 401s, then 429 even for the right password.
+  for (let i = 0; i < 5; i++) expect((await login(port, 'wrong')).res.status).toBe(401);
   expect((await login(port, 'wrong')).res.status).toBe(429);
+  expect((await login(port)).res.status).toBe(429);
 
   const out = await api(port, '/api/auth/logout', { method: 'POST', headers: { cookie } });
   expect(out.status).toBe(204);
@@ -249,6 +261,14 @@ test('attachments: image and txt reach the model; owner-only download', {
 
   const got = await api(port, `/api/files/${files[0]?.id}`, { headers: { cookie } });
   expect(got.headers.get('content-type')).toBe('image/png');
+  expect(got.headers.get('content-disposition')).toMatch(/^inline;/);
+  expect(got.headers.get('content-security-policy')).toBe("sandbox; default-src 'none'");
+  const txt = await api(port, `/api/files/${files[1]?.id}`, { headers: { cookie } });
+  expect(txt.headers.get('content-disposition')).toBe("attachment; filename*=UTF-8''note.txt");
+  const fake = new FormData();
+  fake.append('files', new Blob(['not a png'], { type: 'image/png' }), 'x.png');
+  const bad = await api(port, '/api/files', { method: 'POST', body: fake, headers: { cookie } });
+  expect(bad.status).toBe(415);
   expect(Buffer.from(await got.arrayBuffer()).equals(png)).toBe(true);
   expect((await api(port, `/api/files/${randomUUID()}`, { headers: { cookie } })).status).toBe(404);
 

@@ -393,9 +393,11 @@ function history(session: AgentSession, files: ReturnType<typeof chatFiles>): Me
         .filter((f) => f.createdAt > prev && f.createdAt <= m.createdAt)
         .map(({ createdAt: _, ...ref }) => ref);
       prev = m.createdAt;
-      const doc = m.attachments.find((a) => a.kind === 'document');
-      const cut = doc ? m.text.indexOf(`\n\n[Liite: ${doc.name}]\n`) : -1;
-      if (cut >= 0) m.text = m.text.slice(0, cut);
+      const cuts = m.attachments
+        .filter((a) => a.kind === 'document')
+        .map((a) => m.text.indexOf(`\n\n[Liite: ${a.name}]\n`))
+        .filter((i) => i >= 0);
+      if (cuts.length) m.text = m.text.slice(0, Math.min(...cuts));
     }
     return [m];
   });

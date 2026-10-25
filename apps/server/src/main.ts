@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openDb, users } from '@pa/db';
+import { purgeExpiredSessions } from './auth/session.ts';
 import { type Config, loadConfig } from './config.ts';
 import { buildServer } from './http.ts';
 import { writeModelsJson } from './pi/models.ts';
@@ -12,6 +13,7 @@ export async function start(config: Config = loadConfig()) {
     .values({ id: config.userId, createdAt: new Date().toISOString() })
     .onConflictDoNothing()
     .run();
+  purgeExpiredSessions(db);
   const registry = new SessionRegistry({
     dataDir: config.dataDir,
     userId: config.userId,
@@ -22,8 +24,11 @@ export async function start(config: Config = loadConfig()) {
   await app.listen({ port: config.port, host: config.host });
   const timer = setInterval(() => void registry.evictIdle(), 5 * 60_000);
   timer.unref();
+  const purge = setInterval(() => purgeExpiredSessions(db), 60 * 60_000);
+  purge.unref();
   const close = async () => {
     clearInterval(timer);
+    clearInterval(purge);
     await registry.dispose();
     await app.close();
     sqlite.close();

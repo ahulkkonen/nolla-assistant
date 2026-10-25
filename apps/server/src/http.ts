@@ -11,17 +11,49 @@ import type { Config } from './config.ts';
 import { fileRoutes, MAX_FILE_BYTES, MAX_FILES } from './files.ts';
 
 const NO_CACHE = new Set(['index.html', 'sw.js', 'manifest.webmanifest']);
+const HTML_CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' https://fonts.gstatic.com",
+  "img-src 'self' data: blob:",
+  "connect-src 'self'",
+  "worker-src 'self'",
+  "frame-ancestors 'none'",
+  "base-uri 'none'",
+  "form-action 'self'",
+].join('; ');
+
+const under = (path: string, prefix: string) => path === prefix || path.startsWith(`${prefix}/`);
 
 export async function buildServer({
   config,
   ...bridge
 }: Pick<BridgeDeps, 'registry' | 'db'> & { config: Config }) {
   const { db } = bridge;
-  const app = Fastify({ logger: { level: config.logLevel } });
+  const { trustProxy: tp } = config;
+  const app = Fastify({
+    logger: { level: config.logLevel },
+    // Fastify 5.12 treats a numeric trustProxy as "trust nothing", so a hop count is a function.
+    trustProxy: typeof tp === 'number' ? (_addr: string, hop: number) => hop < tp : tp,
+  });
   const rooms = new Map<string, Set<Socket>>();
   const auth = requireUser(db, config.cookieSecure);
   await app.register(cookie, { secret: config.cookieSecret });
-  await app.register(multipart, { limits: { fileSize: MAX_FILE_BYTES, files: MAX_FILES } });
+  await app.register(multipart, {
+    limits: { fileSize: MAX_FILE_BYTES, files: MAX_FILES, fields: 5, fieldSize: 128, parts: 15 },
+  });
+  app.addHook('onSend', async (_req, reply) => {
+    reply.header('X-Content-Type-Options', 'nosniff');
+    reply.header('Referrer-Policy', 'no-referrer');
+    reply.header('X-Frame-Options', 'DENY');
+    reply.header('Permissions-Policy', 'camera=(), geolocation=()');
+    if (config.cookieSecure) reply.header('Strict-Transport-Security', 'max-age=31536000');
+    // HTML only; /api/files/:id sets its own sandbox CSP and never serves text/html.
+    const type = String(reply.getHeader('content-type') ?? '');
+    if (type.startsWith('text/html') && !reply.hasHeader('content-security-policy'))
+      reply.header('Content-Security-Policy', HTML_CSP);
+  });
   await app.register(websocket);
   app.get('/healthz', async () => ({ ok: true }));
   authRoutes(app, db, config);
@@ -61,8 +93,8 @@ export async function buildServer({
       const path = req.url.split('?')[0] ?? '';
       if (
         req.method === 'GET' &&
-        !path.startsWith('/api') &&
-        !path.startsWith('/ws') &&
+        !under(path, '/api') &&
+        !under(path, '/ws') &&
         req.headers.accept?.includes('text/html')
       )
         return reply.sendFile('index.html');

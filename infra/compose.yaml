@@ -17,6 +17,7 @@ services:
       AUTH_PASSKEY_RP_ID: ${AUTH_PASSKEY_RP_ID}
       AUTH_PASSWORD_HASH: ${AUTH_PASSWORD_HASH}
       COOKIE_SECRET: ${COOKIE_SECRET}
+      TRUST_PROXY: "1"
       USER_ID: ${USER_ID}
       MODEL: ${MODEL}
     # ports: no mapping. Coolify's proxy attaches to container port 3000.

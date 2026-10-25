@@ -15,10 +15,12 @@ Gate command: `pnpm typecheck && pnpm lint && pnpm test && pnpm --filter @pa/e2e
 3. **Session cookie** `pa_session`: 32 random bytes base64url, stored hashed (sha256) in table
    `authSessions` with `expiresAt`; `HttpOnly; SameSite=Strict; Secure` (Secure off when
    `AUTH_ORIGIN` is http); 30-day rolling expiry, refreshed when < 15 days remain.
-4. **Password fallback**: `AUTH_PASSWORD_HASH` env in the form `scrypt$<saltB64>$<hashB64>`; verify
-   with `node:crypto` `scryptSync` and `timingSafeEqual`. `scripts/hash-password.mjs` produces it.
+4. **Password fallback**: `AUTH_PASSWORD_HASH` env in the form `scrypt$N$r$p$<saltB64>$<hashB64>`
+   (N=131072, r=8, p=1). Verification reads the parameters from the string and uses async
+   `node:crypto` `scrypt` and `timingSafeEqual`. `scripts/hash-password.mjs` produces it; it reads
+   the password from stdin only (prompt with echo off on a terminal).
 5. **Passkeys**: `@simplewebauthn/server` 14.0.3 / `@simplewebauthn/browser` 14.0.0. Registration
-   requires an existing authenticated session. Table `passkeys` (`id`, `userId`, `publicKey`,
+   requires an authenticated session created less than 10 minutes ago (else 403 `reauth`). Table `passkeys` (`id`, `userId`, `publicKey`,
    `counter`, `transports`, `createdAt`, `lastUsedAt`).
 6. **Attachments**: `POST /api/files` (multipart, ≤ 25 MB per file, ≤ 10 files) stores to
    `DATA_DIR/files/<userId>/<fileId>` and inserts `files` (`chatId` nullable until a message uses
@@ -37,10 +39,11 @@ Gate command: `pnpm typecheck && pnpm lint && pnpm test && pnpm --filter @pa/e2e
 | Method, path | Auth | Body → response |
 |---|---|---|
 | `POST /api/auth/password` | no | `{ password }` → 200 `{ userId }` sets cookie; 401 `{ error: 'invalid' }`; rate limit 5/min per IP |
-| `GET /api/auth/me` | cookie | 200 `{ userId, passkeys: number }`; 401 |
+| `GET /api/auth/me` | cookie | 200 `{ userId, passkeys: { id, createdAt, lastUsedAt }[] }`; 401 |
 | `POST /api/auth/logout` | cookie | 204, clears cookie |
-| `POST /api/auth/passkey/register/options` | cookie | → `PublicKeyCredentialCreationOptionsJSON` |
-| `POST /api/auth/passkey/register/verify` | cookie | `{ response }` → 200 `{ ok: true }` |
+| `POST /api/auth/passkey/register/options` | cookie, session < 10 min old | → `PublicKeyCredentialCreationOptionsJSON`; 403 `{ error: 'reauth' }` |
+| `POST /api/auth/passkey/register/verify` | cookie, session < 10 min old | `{ response }` → 200 `{ ok: true }`; 403 `{ error: 'reauth' }`; 409 duplicate credential |
+| `DELETE /api/auth/passkey/:id` | cookie | 204; 404 when not owned |
 | `POST /api/auth/passkey/login/options` | no | → `PublicKeyCredentialRequestOptionsJSON`; challenge in a short-lived `pa_challenge` cookie |
 | `POST /api/auth/passkey/login/verify` | no | `{ response }` → 200 `{ userId }` sets cookie; 401 |
 | `POST /api/files` | cookie | multipart `files[]`, optional `chatId` field → 200 `{ files: AttachmentRef[] }` |
