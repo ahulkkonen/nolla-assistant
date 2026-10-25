@@ -82,7 +82,7 @@ export function reportFocus(hidden = document.hidden) {
 
 export function respondApproval(requestId: string, approve: boolean) {
   send({ type: 'approval.respond', requestId, approve });
-  useStore.getState().dropApproval(requestId);
+  useStore.getState().decideApproval(requestId, approve);
 }
 
 function open() {

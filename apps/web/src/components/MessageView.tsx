@@ -76,26 +76,31 @@ function Pre(props: ComponentProps<'pre'>) {
       content,
     });
   };
+  // Brief 7.5: --muted, radius 12, a 36 px header (language, actions), body 16, scrolls sideways.
   return (
-    <div className="relative">
-      <pre
-        ref={ref}
-        translate="no"
-        className={cn(
-          'overflow-x-auto rounded-lg bg-muted p-4 font-mono',
-          kind ? 'pr-20 max-md:pr-24' : 'pr-12',
-        )}
-      >
-        {props.children}
-      </pre>
-      <div className="absolute top-1 right-1 flex">
+    <div className="overflow-hidden rounded-lg bg-muted">
+      <div className="flex h-9 items-center gap-1 pr-1 pl-4 max-md:h-12">
+        <span className="min-w-0 flex-1 truncate font-sans text-micro text-muted-foreground">
+          {lang || 'koodi'}
+        </span>
         {kind && (
-          <IconButton label="Avaa artefaktina" className="size-8 max-md:size-11" onClick={open}>
+          <IconButton label="Avaa artefaktina" className="size-7" onClick={open}>
             <PanelRight size={16} />
           </IconButton>
         )}
-        <CopyButton text={() => ref.current?.textContent ?? ''} className="size-8 max-md:size-11" />
+        <CopyButton text={() => ref.current?.textContent ?? ''} className="size-7" />
       </div>
+      <pre
+        ref={ref}
+        translate="no"
+        role="region"
+        aria-label={lang ? `Koodi: ${lang}` : 'Koodi'}
+        // A scrollable region must be focusable (brief 7.8).
+        tabIndex={0}
+        className="overflow-x-auto px-4 pb-4 font-mono"
+      >
+        {props.children}
+      </pre>
     </div>
   );
 }
@@ -286,6 +291,8 @@ type Props = {
   tools?: ToolView[];
   /** Still streaming: the caret shows and the action row is only reserved. */
   live?: boolean;
+  /** While live, keep the empty action row (default); off when an approval card follows. */
+  reserve?: boolean;
   /** The latest turn of its role: its actions show without hover (brief 7.5). */
   latest?: boolean;
   /** Live children of a `subagent` call: that tool's row becomes the subagent row. */
@@ -346,6 +353,7 @@ export function MessageView({
   attachments = [],
   tools = [],
   live,
+  reserve = true,
   latest,
   subagents = [],
   onEdit,
@@ -418,7 +426,7 @@ export function MessageView({
           text && <MarkdownText text={text} annotations={annotations} live={!!live} />
         )}
         {/* 32 px, reserved while streaming so nothing jumps. */}
-        {(live || actions) && (
+        {((live && reserve) || actions) && (
           <div
             className={cn(
               'flex h-8 items-center gap-1 transition-opacity duration-100 [-webkit-touch-callout:none] max-md:h-11',

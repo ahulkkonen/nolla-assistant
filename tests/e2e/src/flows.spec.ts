@@ -236,7 +236,7 @@ test.describe('approval', () => {
     await app.login(page);
     await page.getByLabel('Viesti').fill('Kirjoita kirje Matti Virtanen');
     await page.getByLabel('Viesti').press('ControlOrMeta+Enter');
-    const card = page.getByRole('alertdialog', { name: /write/ });
+    const card = page.getByRole('region', { name: /write/ });
     await expect(card).toContainText('Hei Matti Virtanen');
     const body = JSON.stringify(app.llm.requests[0]?.body);
     expect(body).toContain('Pekka Laaksonen');
@@ -366,7 +366,8 @@ test('artifact panel: an html reply opens in a sandboxed iframe', async ({ app, 
   await page.getByLabel('Viesti').fill('Tee sivu');
   await page.getByLabel('Viesti').press('ControlOrMeta+Enter');
   const panel = page.getByRole('complementary', { name: 'Artefaktit' });
-  await expect(panel.getByRole('tab', { name: 'Hei artefakti' })).toBeVisible();
+  // The panel header names the artifact; its tabs are Esikatselu and Koodi (brief 7.5).
+  await expect(panel.getByRole('heading', { name: 'Hei artefakti' })).toBeVisible();
   const frame = panel.locator('iframe');
   await expect(frame).toHaveAttribute('sandbox', 'allow-scripts');
   await expect(frame.contentFrame().getByRole('heading', { name: 'Hei artefakti' })).toBeVisible();

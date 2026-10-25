@@ -1,64 +1,50 @@
-import { clsx } from 'clsx';
+import { Brain } from 'lucide-react';
 import { useState } from 'react';
+import { Button } from '@/components/ui/button';
 import { type MemoryChip, useStore } from '../store.ts';
+import { DiffLine } from './MemoryScreen.tsx';
 
-function Line({ line }: { line: string }) {
-  const removed = line.startsWith('-');
-  return (
-    <span className={clsx('min-w-0', removed && 'line-through')}>
-      <span className="sr-only">{removed ? 'poistettu: ' : 'lisätty: '}</span>
-      <span aria-hidden>{removed ? '− ' : '+ '}</span>
-      {line.slice(1)}
-    </span>
-  );
-}
+const SHOWN = 3;
 
-/** Under the last message after an agent memory write: what changed, inline, plus a link. */
+/**
+ * Under the last message after an agent memory write (brief 7.5): a 32 px row with the status
+ * and "Avaa muisti", the changed lines below in the diff style.
+ */
 export function MemoryChipRow({ chip }: { chip: MemoryChip }) {
   const [open, setOpen] = useState(false);
-  const [first, ...rest] = chip.lines;
+  const lines = open ? chip.lines : chip.lines.slice(0, SHOWN);
+  const hidden = chip.lines.length - SHOWN;
   return (
-    <div className="flex flex-col gap-1 text-meta text-muted-foreground">
-      {/* Phones: status and link on the first line, the change below; one line on wider screens. */}
-      <p className="flex flex-wrap items-center gap-x-2">
+    <div className="flex flex-col gap-1">
+      <p className="flex min-h-8 flex-wrap items-center gap-x-2 text-meta text-muted-foreground">
+        <Brain size={16} className="shrink-0" />
         <span>
           {chip.kind === 'pending' ? 'Muistikirjoitus odottaa hyväksyntää' : 'Muisti päivitetty'}
         </span>
-        {(first || rest.length > 0) && (
-          <span className="flex min-w-0 items-baseline gap-2 max-md:order-last max-md:basis-full">
-            {first && (
-              <span className="flex min-w-0 max-w-full items-baseline truncate rounded-sm bg-muted px-1 font-mono">
-                <Line line={first} />
-              </span>
-            )}
-            {rest.length > 0 && (
-              <button
-                type="button"
-                aria-expanded={open}
-                onClick={() => setOpen(!open)}
-                className="shrink-0 underline underline-offset-2 hover:text-foreground max-md:min-h-11"
-              >
-                {open ? 'Näytä vähemmän' : `+${rest.length} muuta`}
-              </button>
-            )}
-          </span>
-        )}
-        <button
-          type="button"
+        <Button
+          variant="link"
+          className="text-meta max-md:min-h-11"
           onClick={() => useStore.getState().setScreen('memory')}
-          className="inline-flex items-center underline underline-offset-2 hover:text-foreground max-md:min-h-11"
         >
           Avaa muisti
-        </button>
+        </Button>
       </p>
-      {open && (
-        <ul className="flex flex-col gap-1 font-mono">
-          {rest.map((l) => (
-            <li key={l} className="break-words">
-              <Line line={l} />
-            </li>
+      {lines.length > 0 && (
+        <div className="flex flex-col gap-0.5 font-mono text-[13px] leading-5">
+          {lines.map((l) => (
+            <DiffLine key={l} sign={l[0] ?? ' '} text={l.slice(1)} />
           ))}
-        </ul>
+        </div>
+      )}
+      {hidden > 0 && (
+        <Button
+          variant="link"
+          aria-expanded={open}
+          className="self-start text-meta max-md:min-h-11"
+          onClick={() => setOpen(!open)}
+        >
+          {open ? 'Näytä vähemmän' : `+${hidden} muuta`}
+        </Button>
       )}
     </div>
   );

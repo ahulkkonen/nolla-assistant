@@ -175,7 +175,15 @@ function Integrations() {
   return (
     <Row
       label="Google Workspace"
-      helper={google === null ? 'Tarkistetaan…' : google.connected ? 'Yhdistetty' : 'Ei yhdistetty'}
+      helper={
+        <>
+          <span className="block">
+            {google === null ? 'Tarkistetaan…' : google.connected ? 'Yhdistetty' : 'Ei yhdistetty'}
+          </span>
+          Yhteyden voi katkaista Google-tilin asetuksista: Tietoturva → Yhteydet kolmansien
+          osapuolten sovelluksiin.
+        </>
+      }
     >
       {google && !google.connected && (
         <Button variant="outline" size="sm" disabled={busy} onClick={() => void connect()}>
@@ -333,10 +341,6 @@ export function SettingsDialog() {
             </Section>
             <Section title="Integraatiot">
               <Integrations />
-              <p className="py-3 text-meta text-muted-foreground">
-                Yhteyden voi katkaista Google-tilin asetuksista: Tietoturva → Yhteydet kolmansien
-                osapuolten sovelluksiin.
-              </p>
             </Section>
             <Section title="Avaimet">
               <Row label="Pääsyavain" helper="Kirjaudu ilman salasanaa tällä laitteella.">

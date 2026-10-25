@@ -1,23 +1,30 @@
-import { Check, ChevronRight, Clock, LoaderCircle, X } from 'lucide-react';
-import { useState } from 'react';
+import { Check, Clock, Loader2, X } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 import type { SubagentChild } from '../store.ts';
+import { CollapsibleRow } from './ToolRow.tsx';
 
+/** Status per child (brief 7.5): icon and badge. */
 const STATUS = {
-  queued: { Icon: Clock, text: 'jonossa' },
-  running: { Icon: LoaderCircle, text: 'käynnissä' },
-  done: { Icon: Check, text: 'valmis' },
-  error: { Icon: X, text: 'virhe' },
+  queued: { Icon: Clock, icon: 'text-muted-foreground', text: 'jonossa', badge: 'secondary' },
+  running: {
+    Icon: Loader2,
+    icon: 'animate-spin text-muted-foreground',
+    text: 'käynnissä',
+    badge: 'info',
+  },
+  done: { Icon: Check, icon: 'text-success', text: 'valmis', badge: 'success' },
+  error: { Icon: X, icon: 'text-destructive', text: 'virhe', badge: 'destructive' },
 } as const;
 
-/** One collapsed line for a subagent run, styled like a tool row; expands to each child. */
+/** A subagent run as a tool-row variant; expands to one 32 px row per child. */
 export function SubagentRow({ items }: { items: SubagentChild[] }) {
-  const [open, setOpen] = useState(false);
   const count = (status: SubagentChild['status']) =>
     items.filter((c) => c.status === status).length;
   const [running, queued] = [count('running'), count('queued')];
   const active = running + queued;
   const failed = count('error') > 0;
-  const { Icon } = STATUS[active ? 'running' : failed ? 'error' : 'done'];
+  const head = STATUS[active ? 'running' : failed ? 'error' : 'done'];
   const noun = (n: number) => (n === 1 ? 'aliagentti' : 'aliagenttia');
   // The noun goes with the first count only: "1 aliagentti käynnissä, 2 jonossa".
   const text = active
@@ -29,34 +36,22 @@ export function SubagentRow({ items }: { items: SubagentChild[] }) {
         .join(', ')
     : `${items.length} aliagenttia valmiina${failed ? ', virheitä' : ''}`;
   return (
-    <div className="text-meta text-muted-foreground">
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => setOpen(!open)}
-        className="flex max-w-full items-center gap-2 rounded-sm py-1 hover:text-foreground max-md:min-h-11"
-      >
-        <Icon size={16} className={active ? 'animate-spin' : undefined} />
-        <span>{text}</span>
-        <ChevronRight
-          size={16}
-          className={`transition-transform duration-(--duration) ${open ? 'rotate-90' : ''}`}
-        />
-      </button>
-      {open && (
-        <ul className="mt-1 mb-2 flex flex-col gap-1 rounded-md bg-muted p-3">
-          {items.map((c) => {
-            const s = STATUS[c.status];
-            return (
-              <li key={c.id} className="flex items-center gap-2">
-                <s.Icon size={16} className={c.status === 'running' ? 'animate-spin' : undefined} />
-                <span className="min-w-0 flex-1 truncate text-foreground">{c.label}</span>
-                <span>{s.text}</span>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </div>
+    <CollapsibleRow
+      icon={<head.Icon size={16} className={cn('shrink-0', head.icon)} />}
+      label={<span>{text}</span>}
+    >
+      <ul className="flex flex-col rounded-md bg-muted p-1">
+        {items.map((c) => {
+          const s = STATUS[c.status];
+          return (
+            <li key={c.id} className="flex h-8 items-center gap-2 px-2 max-md:h-11">
+              <s.Icon size={16} className={cn('shrink-0', s.icon)} />
+              <span className="min-w-0 flex-1 truncate text-ui">{c.label}</span>
+              <Badge variant={s.badge}>{s.text}</Badge>
+            </li>
+          );
+        })}
+      </ul>
+    </CollapsibleRow>
   );
 }

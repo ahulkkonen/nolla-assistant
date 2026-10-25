@@ -143,7 +143,7 @@ export function AutomationsScreen() {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className="truncate font-mono font-medium">{a.id}</span>
-                    <Result a={a} />
+                    {a.lastStatus && <Result a={a} />}
                   </div>
                   <div className="text-meta text-muted-foreground">
                     <Cron cron={a.cron} /> · {agentName(a.agentId)} · {deliver(a)} ·{' '}

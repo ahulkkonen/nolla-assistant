@@ -68,9 +68,11 @@ const send = async (page: Page, text: string) => {
 /**
  * fake-llm streams a whole turn at once, so a running state is gone before a screenshot.
  * This forwards server frames until the first frame of `type`, then holds the rest until
- * `release()`. Call it before the page opens the WebSocket.
+ * `release()`. It holds once: a later frame of `type` (after the release) must pass, or the
+ * rest of the turn would stay held. Call it before the page opens the WebSocket.
  */
 const holdAfter = async (page: Page, type: string) => {
+  let armed = true;
   let holding = false;
   const held: (string | Buffer)[] = [];
   let deliver: (m: string | Buffer) => void = () => {};
@@ -82,7 +84,8 @@ const holdAfter = async (page: Page, type: string) => {
     server.onMessage((m) => {
       if (holding) return void held.push(m);
       ws.send(m);
-      if (typeof m === 'string' && JSON.parse(m).type === type) {
+      if (armed && typeof m === 'string' && JSON.parse(m).type === type) {
+        armed = false;
         holding = true;
         seen();
       }
@@ -455,12 +458,14 @@ for (const scheme of ['light', 'dark'] as const) {
         });
 
         test('approval-card', async ({ app, page }) => {
-          const content = `Hei,\n\n${'tämä on pitkä kirje, jonka avustaja haluaa kirjoittaa tiedostoon. '.repeat(4)}`;
+          // Long enough to pass the 6-line clamp at every width.
+          const content = `Hei,\n\n${'tämä on pitkä kirje, jonka avustaja haluaa kirjoittaa tiedostoon. '.repeat(8)}`;
           app.llm.push({ toolCalls: [{ name: 'write', args: { path: 'kirje.txt', content } }] });
           app.llm.push({ text: 'Selvä, en kirjoittanut.' });
           await app.login(page);
           await sendMessage(page, 'Kirjoita kirje');
-          const card = page.getByRole('alertdialog', { name: /write/ });
+          // Inline, not a modal (brief 7.5): a labelled region.
+          const card = page.getByRole('region', { name: /write/ });
           await expect(card.getByRole('button', { name: 'Näytä lisää' })).toBeVisible();
           await shot(page, 'approval-card', vp.width, scheme);
           await card.getByRole('button', { name: 'Hylkää' }).click();
@@ -477,8 +482,9 @@ for (const scheme of ['light', 'dark'] as const) {
             app.llm.push({ text: 'Hyväksyntä vanheni, en kirjoittanut tiedostoa.' });
             await app.login(page);
             await sendMessage(page, 'Kirjoita kirje');
-            await expect(page.getByRole('alertdialog')).toBeVisible();
-            await expect(page.getByText('Hyväksyntä vanheni: write')).toBeVisible({
+            await expect(page.getByRole('region', { name: /write/ })).toBeVisible();
+            // The card goes; its tool row carries the outcome (brief 7.5).
+            await expect(page.getByRole('button', { name: /^write vanhentunut/ })).toBeVisible({
               timeout: 10_000,
             });
             await expect(page.locator('.md').last()).toHaveText(

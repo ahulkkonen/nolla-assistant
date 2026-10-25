@@ -29,7 +29,7 @@ export function Page({
         {/* Phones: the top bar carries the title; only an action keeps this row. */}
         <div className={cn('flex items-center gap-4', !action && 'max-md:hidden')}>
           <h1 className="min-w-0 flex-1 text-title max-md:hidden">{title}</h1>
-          {action}
+          {action && <div className="ml-auto">{action}</div>}
         </div>
         <div className="flex flex-col gap-8">{children}</div>
       </div>

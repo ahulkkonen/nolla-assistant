@@ -20,7 +20,7 @@ import { Sidebar, UNTITLED } from './components/Sidebar.tsx';
 import { Thread } from './components/Thread.tsx';
 import { TOPICS_TITLE, TopicsScreen } from './components/TopicsScreen.tsx';
 import { VAULT_TITLE, VaultScreen } from './components/VaultScreen.tsx';
-import { useMobile } from './media.ts';
+import { useMedia, useMobile } from './media.ts';
 import { resyncPush } from './push.ts';
 import { firstUserLine, useStore } from './store.ts';
 import { connect, openChat, reportFocus } from './ws.ts';
@@ -104,6 +104,10 @@ function Shell() {
   // 768–1023 px: the rail stays and the sidebar opens over the content (brief 7.4).
   const overlay = useRef(globalThis.matchMedia?.('(max-width: 1023.98px)'));
   const drawer = mobile || !!overlay.current?.matches;
+  // 1024–1279 px: the sidebar steps down to the rail while the side panel is open (brief 7.4).
+  const wide = useMedia('(min-width: 1280px)');
+  const panel = useStore((s) => !!s.openArtifact);
+  const docked = sidebarOpen && !drawer && (wide || !panel);
   const openDrawer = useRef(() => setSidebarOpen(true)).current;
   useEdgeSwipe(mobile && !sidebarOpen, openDrawer);
   const swipe = useRef<number | null>(null);
@@ -174,10 +178,10 @@ function Shell() {
         <div
           className={cn(
             'z-(--z-sidebar) shrink-0 overflow-hidden transition-[width] duration-200 ease-drawer',
-            sidebarOpen && !drawer ? 'w-66' : 'w-14',
+            docked ? 'w-66' : 'w-14',
           )}
         >
-          <Sidebar expanded={sidebarOpen && !drawer} />
+          <Sidebar expanded={docked} />
         </div>
       )}
       <main className="relative flex min-w-0 flex-1 flex-col">

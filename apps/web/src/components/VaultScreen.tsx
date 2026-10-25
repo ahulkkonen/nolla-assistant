@@ -259,7 +259,11 @@ export function VaultScreen() {
                     {entities.map((e) => {
                       const { quick, more } = rowActions(e);
                       return (
-                        <TableRow key={e.id} className="group/row">
+                        <TableRow
+                          key={e.id}
+                          className="group/row"
+                          data-state={picked.includes(e.id) ? 'selected' : undefined}
+                        >
                           <TableCell>{check(e)}</TableCell>
                           <TableCell className="font-medium">{e.canonical}</TableCell>
                           <TableCell>

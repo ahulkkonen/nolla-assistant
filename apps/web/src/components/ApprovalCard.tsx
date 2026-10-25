@@ -1,24 +1,35 @@
-import { Clock } from 'lucide-react';
-import { useEffect, useId, useRef, useState } from 'react';
+import { Clock, ShieldAlert } from 'lucide-react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { type Approval, useStore } from '../store.ts';
 import { respondApproval } from '../ws.ts';
 
-const LONG = 160;
-
+/** An argument value: mono, clamped at 6 lines with a fade and "Näytä lisää" (brief 7.5). */
 function Value({ text }: { text: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [clamped, setClamped] = useState(false);
   const [more, setMore] = useState(false);
-  const long = text.length > LONG;
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (el && !more) setClamped(el.scrollHeight > el.clientHeight + 1);
+  }, [text, more]);
   return (
-    <dd className="min-w-0 flex-1 font-mono text-meta break-words whitespace-pre-wrap">
-      {long && !more ? `${text.slice(0, LONG)}…` : text}
-      {long && (
-        <button
-          type="button"
-          onClick={() => setMore(!more)}
-          className="ml-2 font-sans text-muted-foreground underline underline-offset-2 hover:text-foreground max-md:ml-0 max-md:flex max-md:min-h-11 max-md:items-center"
-        >
+    <dd className="min-w-0">
+      <div
+        ref={ref}
+        className={cn(
+          'font-mono text-[13px] leading-5 break-words whitespace-pre-wrap text-foreground',
+          !more && 'line-clamp-6',
+          !more && clamped && '[mask-image:linear-gradient(to_bottom,black_60%,transparent)]',
+        )}
+      >
+        {text}
+      </div>
+      {(clamped || more) && (
+        <Button variant="link" className="text-meta max-md:min-h-11" onClick={() => setMore(!more)}>
           {more ? 'Näytä vähemmän' : 'Näytä lisää'}
-        </button>
+        </Button>
       )}
     </dd>
   );
@@ -28,30 +39,21 @@ const show = (v: unknown) => (typeof v === 'string' ? v : JSON.stringify(v, null
 const clock = (iso: string) =>
   new Date(iso).toLocaleTimeString('fi-FI', { hour: '2-digit', minute: '2-digit' });
 
-/** The real (unmasked) arguments of a gated tool call, with approve and deny. */
+/**
+ * The real (unmasked) arguments of a gated tool call, inline in the thread. Focus stays where it
+ * is, so a typed Enter never approves; the thread announces the request (Thread.tsx). After a
+ * decision the card goes and its tool row shows the outcome.
+ */
 export function ApprovalCard({ a }: { a: Approval }) {
   const titleId = useId();
-  const approve = useRef<HTMLButtonElement>(null);
-  // The server denies at `expiresAt`; the card turns into the expired row at the same moment.
+  // The server denies at `expiresAt`; the tool row turns "vanhentunut" at the same moment.
   useEffect(() => {
-    if (a.expired) return;
     const t = setTimeout(
       () => useStore.getState().expireApproval(a.requestId),
       Math.max(0, Date.parse(a.expiresAt) - Date.now()),
     );
     return () => clearTimeout(t);
-  }, [a.requestId, a.expiresAt, a.expired]);
-  useEffect(() => {
-    if (!a.expired) approve.current?.focus();
-  }, [a.expired]);
-
-  if (a.expired)
-    return (
-      <p className="flex items-center gap-2 text-meta text-muted-foreground">
-        <Clock size={16} />
-        Hyväksyntä vanheni: <span className="font-mono">{a.tool}</span>
-      </p>
-    );
+  }, [a.requestId, a.expiresAt]);
 
   const args =
     a.args && typeof a.args === 'object' && !Array.isArray(a.args)
@@ -61,41 +63,35 @@ export function ApprovalCard({ a }: { a: Approval }) {
 
   return (
     <section
-      role="alertdialog"
       aria-labelledby={titleId}
-      className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4"
+      className="flex flex-col gap-3 rounded-lg border border-warning-line bg-card p-4"
     >
-      <h2 id={titleId} aria-live="assertive" className="font-medium">
-        Hyväksytäänkö työkalu <span className="font-mono">{a.tool}</span>?
+      <h2 id={titleId} className="flex items-center gap-2 text-heading">
+        <ShieldAlert size={16} className="shrink-0 text-warning" />
+        <span>
+          Hyväksytäänkö työkalu <span className="font-mono">{a.tool}</span>?
+        </span>
       </h2>
       {reason && <p className="text-meta text-muted-foreground">{reason}</p>}
-      <dl className="flex flex-col gap-1">
+      <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1">
         {args.map(([k, v]) => (
-          <div key={k} className="flex gap-3 max-md:flex-col max-md:gap-0">
-            <dt className="w-24 shrink-0 truncate font-mono max-md:w-auto text-meta text-muted-foreground">
+          <div key={k} className="contents">
+            <dt className="max-w-32 truncate font-mono text-[13px] leading-5 text-muted-foreground">
               {k}
             </dt>
             <Value text={show(v)} />
           </div>
         ))}
       </dl>
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        <p className="mr-auto text-meta text-muted-foreground">Vanhenee klo {clock(a.expiresAt)}</p>
-        <button
-          type="button"
-          onClick={() => respondApproval(a.requestId, false)}
-          className="h-10 rounded-md border border-border px-4 font-medium hover:bg-accent max-md:h-11"
-        >
+      <div className="flex flex-wrap items-center gap-2 max-md:grid max-md:grid-cols-2">
+        <p className="mr-auto flex items-center gap-1.5 text-meta text-muted-foreground tabular-nums max-md:col-span-2">
+          <Clock size={16} />
+          Vanhenee klo {clock(a.expiresAt)}
+        </p>
+        <Button variant="outline" onClick={() => respondApproval(a.requestId, false)}>
           Hylkää
-        </button>
-        <button
-          ref={approve}
-          type="button"
-          onClick={() => respondApproval(a.requestId, true)}
-          className="h-10 rounded-md bg-primary px-4 font-medium text-primary-foreground max-md:h-11"
-        >
-          Hyväksy
-        </button>
+        </Button>
+        <Button onClick={() => respondApproval(a.requestId, true)}>Hyväksy</Button>
       </div>
     </section>
   );

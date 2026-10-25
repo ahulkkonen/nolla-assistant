@@ -1,9 +1,13 @@
-import { clsx } from 'clsx';
-import { LoaderCircle } from 'lucide-react';
+import { Info, LoaderCircle } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Textarea } from '@/components/ui/textarea';
+import { cn } from '@/lib/utils';
 import { firstUserLine, type MemoryState, pendingLines, useStore } from '../store.ts';
 import { openChat, send } from '../ws.ts';
 import { ConfirmDialog } from './ConfirmDialog.tsx';
+import { Page, useSlow } from './Page.tsx';
 import { UNTITLED } from './Sidebar.tsx';
 
 export const MEMORY_TITLE = 'Muisti';
@@ -20,11 +24,6 @@ const PLACEHOLDER = {
   user: 'Kerro itsestäsi: kuka olet, mitä toivot vastauksilta, pysyvät ohjeet.',
   memory: 'Agentti lisää tänne pysyviä tietoja. Voit muokata niitä itse.',
 } as const;
-
-const primary =
-  'h-10 rounded-md bg-primary px-4 font-medium text-primary-foreground disabled:opacity-50 max-md:h-11';
-const secondary =
-  'h-10 rounded-md border border-border px-4 font-medium hover:bg-accent disabled:opacity-50 max-md:h-11';
 
 /**
  * The proposed file from the server's whole-file unified diff (context and `+` lines of that
@@ -43,39 +42,53 @@ export function proposed(diff: string, file: string, current: string): string {
   return out.join('\n');
 }
 
+/**
+ * One diff line (brief 7.5): added on --success-subtle with "+", removed on --destructive-subtle
+ * with "−", no strike-through; the sign is announced as a word.
+ */
+export function DiffLine({ sign, text }: { sign: string; text: string }) {
+  return (
+    <div
+      className={cn(
+        'flex gap-2 rounded-xs px-2 break-words whitespace-pre-wrap',
+        sign === '+' && 'bg-success-subtle',
+        sign === '-' && 'bg-destructive-subtle',
+      )}
+    >
+      <span
+        aria-hidden="true"
+        className={cn(
+          'w-3 shrink-0 select-none',
+          sign === '+' && 'text-success',
+          sign === '-' && 'text-destructive',
+        )}
+      >
+        {sign === '-' ? '−' : sign.trim()}
+      </span>
+      <span className="min-w-0 flex-1">
+        {(sign === '+' || sign === '-') && (
+          <span className="sr-only">{sign === '+' ? 'Lisätty: ' : 'Poistettu: '}</span>
+        )}
+        {text || ' '}
+      </span>
+    </div>
+  );
+}
+
+/** A unified diff in mono 13/20; each file's name as a micro label. */
 function Diff({ diff }: { diff: string }) {
   return (
-    <div className="overflow-x-auto rounded-md border border-border bg-card p-3 font-mono text-meta">
+    <div className="flex flex-col gap-0.5 overflow-x-auto font-mono text-[13px] leading-5">
       {diff.split('\n').map((line, i) => {
         if (line.startsWith('--- ') || line.startsWith('@@')) return null;
         const key = `${i}:${line}`;
         if (line.startsWith('+++ b/'))
           return (
-            <div key={key} className="pt-2 font-sans text-muted-foreground first:pt-0">
+            <div key={key} className="pt-2 font-sans text-micro text-muted-foreground first:pt-0">
               {line.slice(6)}
             </div>
           );
-        const sign = line[0] ?? ' ';
-        return (
-          <div
-            key={key}
-            className={clsx(
-              'flex gap-2 whitespace-pre-wrap break-words',
-              sign === '+' && 'bg-muted',
-              sign === '-' && 'text-muted-foreground line-through',
-            )}
-          >
-            <span aria-hidden className="w-3 shrink-0 select-none no-underline">
-              {sign.trim()}
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="sr-only">
-                {sign === '+' ? 'lisätty: ' : sign === '-' ? 'poistettu: ' : ''}
-              </span>
-              {line.slice(1) || ' '}
-            </span>
-          </div>
-        );
+        return <DiffLine key={key} sign={line[0] ?? ' '} text={line.slice(1)} />;
       })}
     </div>
   );
@@ -89,54 +102,47 @@ function PendingItem({ p }: { p: MemoryState['pending'][number] }) {
   const lines = pendingLines(p);
   const long = lines.length > 3 || p.text.length > 240;
   return (
-    <li className="flex flex-col gap-2 rounded-lg border border-border bg-card p-4">
-      <div className="text-meta text-muted-foreground">
-        {ACTION[p.action]} · {TARGET[p.target]} ·{' '}
-        <button
-          type="button"
-          onClick={() => openChat(p.chatId)}
-          className="underline underline-offset-2 hover:text-foreground"
-        >
+    <li className="flex flex-col gap-3 rounded-lg border bg-card p-4">
+      <div className="flex flex-wrap items-center gap-x-1 text-meta text-muted-foreground">
+        {ACTION[p.action]} · {TARGET[p.target]} ·
+        <Button variant="link" className="text-meta" onClick={() => openChat(p.chatId)}>
           {chatTitle ?? UNTITLED}
-        </button>
+        </Button>
       </div>
-      <div className={clsx(!open && long && 'max-h-24 overflow-hidden')}>
+      <div
+        className={cn(
+          !open &&
+            long &&
+            'max-h-24 overflow-hidden [mask-image:linear-gradient(to_bottom,black_60%,transparent)]',
+        )}
+      >
         <Diff diff={lines.join('\n')} />
       </div>
       {long && (
-        <button
-          type="button"
-          onClick={() => setOpen(!open)}
-          className="self-start text-meta text-muted-foreground underline underline-offset-2 hover:text-foreground"
-        >
+        <Button variant="link" className="self-start text-meta" onClick={() => setOpen(!open)}>
           {open ? 'Näytä vähemmän' : 'Näytä lisää'}
-        </button>
+        </Button>
       )}
-      <div className="flex justify-end gap-2">
-        <button
-          type="button"
-          className={secondary}
+      <div className="flex justify-end gap-2 max-md:grid max-md:grid-cols-2">
+        <Button
+          variant="ghost"
           onClick={() => send({ type: 'memory.approve', pendingId: p.id, approve: false })}
         >
           Hylkää
-        </button>
-        <button
-          type="button"
-          className={primary}
-          onClick={() => send({ type: 'memory.approve', pendingId: p.id, approve: true })}
-        >
+        </Button>
+        <Button onClick={() => send({ type: 'memory.approve', pendingId: p.id, approve: true })}>
           Hyväksy
-        </button>
+        </Button>
       </div>
     </li>
   );
 }
 
+/** A memory file as a card (brief 7.5): heading, counter, mono textarea, "Tallenna". */
 function Pane({
   target,
   value,
   dirty,
-  saved,
   readOnly,
   onChange,
   onSave,
@@ -144,45 +150,40 @@ function Pane({
   target: Target;
   value: string;
   dirty: boolean;
-  /** "Tallennettu" for 2 s after the server echoed a save. */
-  saved: boolean;
   readOnly: boolean;
   onChange: (text: string) => void;
   /** Undefined while the panes hold a consolidation draft (saved together by "Hyväksy"). */
   onSave: (() => void) | undefined;
 }) {
   const over = value.length > CAPS[target];
+  const near = value.length >= CAPS[target] * 0.9;
   const id = `memory-${target}`;
   const canSave = !!onSave && dirty && !over;
   return (
-    <section className="flex flex-col gap-2">
-      <div className="flex items-baseline justify-between gap-2">
-        <label htmlFor={id} className="font-medium">
+    <section className="flex flex-col gap-3 rounded-lg border bg-card p-4">
+      <div className="flex items-baseline justify-between gap-3">
+        <label htmlFor={id} className="text-heading">
           {LABEL[target]}
         </label>
-        <span className="flex items-baseline gap-2">
-          {saved && (
-            <span role="status" className="text-meta text-muted-foreground">
-              Tallennettu
-            </span>
+        <span
+          id={`${id}-count`}
+          className={cn(
+            'text-meta text-muted-foreground tabular-nums',
+            near && 'text-warning',
+            over && 'font-medium text-destructive',
           )}
-          <span
-            id={`${id}-count`}
-            className={clsx('text-meta text-foreground tabular-nums', over && 'font-medium')}
-          >
-            {value.length} / {CAPS[target]}
-            {over && ' · liian pitkä'}
-          </span>
+        >
+          {value.length} / {CAPS[target]}
+          {over && ' · liian pitkä'}
         </span>
       </div>
-      <textarea
+      <Textarea
         id={id}
         value={value}
         readOnly={readOnly}
         placeholder={PLACEHOLDER[target]}
         aria-invalid={over || undefined}
         aria-describedby={`${id}-count`}
-        rows={target === 'user' ? 8 : 12}
         spellCheck={false}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => {
@@ -191,20 +192,15 @@ function Pane({
             if (canSave) onSave();
           }
         }}
-        className={clsx(
-          'w-full rounded-md border border-border p-3 font-mono text-meta placeholder:text-muted-foreground',
-          readOnly ? 'resize-none bg-muted' : 'resize-y bg-card',
+        className={cn(
+          'field-sizing-fixed min-h-60 font-mono text-[14px] leading-[22px] max-md:text-[16px]',
+          readOnly ? 'resize-none bg-muted hover:border-border' : 'resize-y',
         )}
       />
       {onSave && !readOnly && (
-        <button
-          type="button"
-          className={`${primary} self-end`}
-          disabled={!canSave}
-          onClick={onSave}
-        >
+        <Button className="self-end" disabled={!canSave} onClick={onSave}>
           Tallenna
-        </button>
+        </Button>
       )}
     </section>
   );
@@ -217,7 +213,6 @@ export function MemoryScreen() {
   // Panes hold the consolidation proposal as editable drafts.
   const [editing, setEditing] = useState(false);
   const [consolidating, setConsolidating] = useState(false);
-  const [saved, setSaved] = useState<Target | null>(null);
   /** Where the user tried to go with unsaved drafts; the dialog asks before leaving. */
   const [leave, setLeave] = useState<Pick<
     ReturnType<typeof useStore.getState>,
@@ -228,26 +223,21 @@ export function MemoryScreen() {
     !!mem && (['user', 'memory'] as const).some((t) => drafts[t] !== null && drafts[t] !== mem[t]);
   const dirtyRef = useRef(dirty);
   dirtyRef.current = dirty;
+  const slow = useSlow(!mem);
 
   useEffect(() => send({ type: 'memory.list' }), []);
-  // A save is done when the server echoes the text; an error toast also ends the wait.
+  // A save is done when the server echoes the text (a "Tallennettu" toast); an error toast also
+  // ends the wait.
   useEffect(() => {
     setConsolidating(false);
     if (!mem || editing) return;
-    setDrafts((d) => {
-      for (const t of ['user', 'memory'] as const)
-        if (d[t] !== null && d[t] === mem[t]) setSaved(t);
-      return {
-        user: d.user === mem.user ? null : d.user,
-        memory: d.memory === mem.memory ? null : d.memory,
-      };
-    });
+    if ((['user', 'memory'] as const).some((t) => drafts[t] !== null && drafts[t] === mem[t]))
+      useStore.getState().notify('Tallennettu');
+    setDrafts((d) => ({
+      user: d.user === mem.user ? null : d.user,
+      memory: d.memory === mem.memory ? null : d.memory,
+    }));
   }, [mem, errors]);
-  useEffect(() => {
-    if (!saved) return;
-    const t = setTimeout(() => setSaved(null), 2000);
-    return () => clearTimeout(t);
-  }, [saved]);
 
   // Unsaved drafts: the browser asks on unload; any in-app navigation is undone and asked here.
   useEffect(() => {
@@ -268,9 +258,15 @@ export function MemoryScreen() {
 
   if (!mem)
     return (
-      <div className="min-h-0 flex-1 overflow-y-auto px-4">
-        <p className="mx-auto w-full max-w-3xl py-6 text-muted-foreground">Ladataan…</p>
-      </div>
+      <Page title={MEMORY_TITLE} wide>
+        {/* Memory panes load as one 240 px block each (brief 7.5), after 300 ms. */}
+        {slow && (
+          <div aria-hidden="true" className="grid gap-6 xl:grid-cols-2">
+            <Skeleton className="h-60 rounded-lg" />
+            <Skeleton className="h-60 rounded-lg" />
+          </div>
+        )}
+      </Page>
     );
 
   const c = mem.consolidation;
@@ -300,9 +296,8 @@ export function MemoryScreen() {
   };
   const overCap = text('user').length > CAPS.user || text('memory').length > CAPS.memory;
   const consolidate = (
-    <button
-      type="button"
-      className={`${secondary} flex items-center gap-2`}
+    <Button
+      variant="outline"
       disabled={consolidating}
       onClick={() => {
         setConsolidating(true);
@@ -311,94 +306,83 @@ export function MemoryScreen() {
     >
       {consolidating && <LoaderCircle size={16} className="animate-spin" />}
       {consolidating ? 'Tiivistetään…' : 'Tiivistä nyt'}
-    </button>
+    </Button>
   );
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto px-4">
-      <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 py-6">
-        {/* On phones the row exists only for the button (the top bar has the title). */}
-        <div
-          className={clsx(
-            'flex items-center justify-between gap-2 max-md:justify-end',
-            c && 'max-md:hidden',
-          )}
+    <Page title={MEMORY_TITLE} wide {...(c ? {} : { action: consolidate })}>
+      {mem.pending.length > 0 && (
+        <section aria-labelledby="pending-writes" className="flex flex-col gap-3">
+          <h2 id="pending-writes" className="text-heading">
+            Odottavat kirjoitukset
+          </h2>
+          <ul className="flex flex-col gap-2">
+            {mem.pending.map((p) => (
+              <PendingItem key={p.id} p={p} />
+            ))}
+          </ul>
+        </section>
+      )}
+      {c && (
+        <section
+          aria-labelledby="consolidation"
+          className="flex flex-col gap-3 rounded-lg border bg-card p-4"
         >
-          <h1 className="font-semibold max-md:hidden">{MEMORY_TITLE}</h1>
-          {!c && consolidate}
-        </div>
-        {mem.pending.length > 0 && (
-          <section aria-labelledby="pending-writes" className="flex flex-col gap-2">
-            <h2 id="pending-writes" className="text-meta text-muted-foreground">
-              Odottavat kirjoitukset
-            </h2>
-            <ul className="flex flex-col gap-2">
-              {mem.pending.map((p) => (
-                <PendingItem key={p.id} p={p} />
-              ))}
-            </ul>
-          </section>
-        )}
-        {c ? (
-          <section aria-labelledby="consolidation" className="flex flex-col gap-2">
-            <h2 id="consolidation" className="text-meta text-muted-foreground">
-              Tiivistysehdotus
-            </h2>
+          <h2 id="consolidation" className="text-heading">
+            Tiivistysehdotus
+          </h2>
+          {editing ? (
+            <p className="text-meta text-muted-foreground">
+              Muokkaat ehdotusta alla. Hyväksy tallentaa molemmat tiedostot.
+            </p>
+          ) : (
+            <Diff diff={c.diff} />
+          )}
+          <div className="flex justify-end gap-2 max-md:grid max-md:grid-cols-3">
+            <Button variant="ghost" onClick={() => resolve(false)}>
+              Hylkää
+            </Button>
             {editing ? (
-              <p className="text-meta text-muted-foreground">
-                Muokkaat ehdotusta alla. Hyväksy tallentaa molemmat tiedostot.
-              </p>
-            ) : (
-              <Diff diff={c.diff} />
-            )}
-            <div className="flex flex-wrap justify-end gap-2">
-              <button type="button" className={secondary} onClick={() => resolve(false)}>
-                Hylkää
-              </button>
-              {editing ? (
-                <button
-                  type="button"
-                  className={secondary}
-                  onClick={() => {
-                    setEditing(false);
-                    setDrafts({ user: null, memory: null });
-                  }}
-                >
-                  Peruuta muokkaus
-                </button>
-              ) : (
-                <button type="button" className={secondary} onClick={startEdit}>
-                  Muokkaa
-                </button>
-              )}
-              <button
-                type="button"
-                className={primary}
-                disabled={editing && overCap}
-                onClick={() => resolve(true)}
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setEditing(false);
+                  setDrafts({ user: null, memory: null });
+                }}
               >
-                Hyväksy
-              </button>
-            </div>
-          </section>
-        ) : null}
+                Peruuta muokkaus
+              </Button>
+            ) : (
+              <Button variant="outline" onClick={startEdit}>
+                Muokkaa
+              </Button>
+            )}
+            <Button disabled={editing && overCap} onClick={() => resolve(true)}>
+              Hyväksy
+            </Button>
+          </div>
+        </section>
+      )}
+      <div className="flex flex-col gap-3">
         {c && !editing && (
-          <p className="text-meta text-muted-foreground">
+          <p className="flex items-center gap-2 rounded-lg bg-info-subtle px-3 py-2 text-meta text-foreground">
+            <Info size={16} className="shrink-0 text-info" />
             Ratkaise tiivistysehdotus ennen muokkausta.
           </p>
         )}
-        {(['user', 'memory'] as const).map((t) => (
-          <Pane
-            key={t}
-            target={t}
-            value={text(t)}
-            dirty={drafts[t] !== null && drafts[t] !== mem[t]}
-            saved={saved === t}
-            readOnly={!!c && !editing}
-            onChange={(v) => setDrafts((d) => ({ ...d, [t]: v }))}
-            onSave={editing ? undefined : () => save(t)}
-          />
-        ))}
+        <div className="grid gap-6 xl:grid-cols-2">
+          {(['user', 'memory'] as const).map((t) => (
+            <Pane
+              key={t}
+              target={t}
+              value={text(t)}
+              dirty={drafts[t] !== null && drafts[t] !== mem[t]}
+              readOnly={!!c && !editing}
+              onChange={(v) => setDrafts((d) => ({ ...d, [t]: v }))}
+              onSave={editing ? undefined : () => save(t)}
+            />
+          ))}
+        </div>
       </div>
       <ConfirmDialog
         open={!!leave}
@@ -414,6 +398,6 @@ export function MemoryScreen() {
       >
         Muistiin tehdyt muokkaukset menetetään.
       </ConfirmDialog>
-    </div>
+    </Page>
   );
 }

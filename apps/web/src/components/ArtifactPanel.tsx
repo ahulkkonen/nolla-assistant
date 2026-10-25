@@ -1,8 +1,17 @@
 import type { Artifact } from '@pa/protocol';
-import { clsx } from 'clsx';
-import { Check, Copy, Download, ExternalLink, X } from 'lucide-react';
+import { Check, ChevronDown, Copy, Download, ExternalLink, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import runtimeUrl from '../artifact-runtime.ts?worker&url';
+import { useMedia } from '../media.ts';
 import { useStore } from '../store.ts';
 import { IconButton } from './IconButton.tsx';
 
@@ -10,8 +19,8 @@ const EMPTY: Artifact[] = [];
 const CSP =
   "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; form-action 'none'; base-uri 'none'";
 const CSP_META = `<meta http-equiv="Content-Security-Policy" content="${CSP}">`;
-/** Follows the app theme for default text and canvas colours; never forces a background. */
-const SCHEME_META = '<meta name="color-scheme" content="light dark">';
+/** The artifact keeps its own white page in both schemes (brief 7.5). */
+const SCHEME_META = '<meta name="color-scheme" content="light">';
 /** The open-in-tab wrapper runs no script; it only frames the sandboxed document. */
 const WRAPPER_CSP = "default-src 'none'; frame-src 'self' about:; style-src 'unsafe-inline'";
 const EXT: Record<string, string> = { html: 'html', react: 'jsx', mermaid: 'mmd' };
@@ -76,7 +85,7 @@ const escapeHtml = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 /** The sandboxed document for an artifact; `code` and `file` have none. */
-async function documentFor(a: Artifact, dark: boolean): Promise<string | null> {
+async function documentFor(a: Artifact): Promise<string | null> {
   if (a.kind === 'html') {
     // Our CSP is always the first element, before anything of the artifact's (even a <script>
     // ahead of <head>); a later, looser policy cannot widen it.
@@ -96,17 +105,13 @@ async function documentFor(a: Artifact, dark: boolean): Promise<string | null> {
     mermaid.initialize({
       startOnLoad: false,
       securityLevel: 'strict',
-      theme: dark ? 'dark' : 'default',
+      theme: 'default',
     });
     const { svg } = await mermaid.render(`m${a.id.replace(/\W/g, '')}`, a.content);
     return page(svg, BASE_STYLE);
   }
   return null;
 }
-
-/** Whether the page is dark now (system preference unless the user chose a theme). */
-const isDark = (theme: string) =>
-  theme === 'dark' || (theme === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
 
 function download(a: Artifact) {
   const ext = EXT[a.kind] ?? a.language ?? 'txt';
@@ -133,24 +138,25 @@ function openInTab(a: Artifact, doc: string | null) {
 }
 
 /**
- * Right panel beside the thread above 1200 px, a full-screen sheet below; one tab per artifact of
- * the chat.
+ * The side panel (brief 7.4, 7.5): docked right from 1024 px (440, at 1280 px
+ * clamp(440px, 40vw, 640px)), a full-screen sheet below. Header: title, Esikatselu / Koodi, actions.
  */
 export function ArtifactPanel() {
   const open = useStore((s) => s.openArtifact);
   const list = useStore((s) => (s.openArtifact ? s.artifacts[s.openArtifact.chatId] : undefined));
-  const theme = useStore((s) => s.theme);
+  const docked = useMedia('(min-width: 1024px)');
   const artifacts = list ?? EMPTY;
   const a = artifacts.find((x) => x.id === open?.id);
   const [doc, setDoc] = useState<{ id: string; html: string | null; error?: string } | null>(null);
   const [copied, setCopied] = useState(false);
+  const [tab, setTab] = useState<'preview' | 'code'>('preview');
 
   // Keyed by content, not object identity: a streaming upsert of another artifact must not reload
   // this one. The old document stays up until the new one is ready.
   useEffect(() => {
     if (!a) return;
     let live = true;
-    documentFor(a, isDark(theme)).then(
+    documentFor(a).then(
       (html) => live && setDoc({ id: a.id, html }),
       (err: unknown) =>
         live &&
@@ -159,81 +165,140 @@ export function ArtifactPanel() {
     return () => {
       live = false;
     };
-  }, [a?.id, a?.content, a?.kind, theme]);
+  }, [a?.id, a?.content, a?.kind]);
 
   if (!open || !a) return null;
   const close = () => useStore.setState({ openArtifact: null });
   const ready = doc?.id === a.id ? doc : null;
   const plain = a.kind === 'code' || a.kind === 'file';
-
-  return (
-    <aside
-      aria-label="Artefaktit"
-      className="fixed inset-0 z-30 flex flex-col bg-card pt-[env(safe-area-inset-top)] xl:static xl:z-auto xl:w-120 xl:shrink-0 xl:border-l xl:border-border"
+  const title = <span className="truncate">{a.title}</span>;
+  const code = (
+    <pre
+      translate="no"
+      role={plain ? 'region' : undefined}
+      aria-label={plain ? `${a.title}: koodi` : undefined}
+      // A scrollable region must be focusable (brief 7.8).
+      tabIndex={0}
+      className="size-full overflow-auto rounded-lg bg-muted p-4 font-mono text-code whitespace-pre"
     >
-      <div className="flex items-center gap-1 border-b border-border px-2 py-1">
-        <div role="tablist" className="flex min-w-0 flex-1 gap-1 overflow-x-auto">
-          {artifacts.map((x) => (
-            <button
-              key={x.id}
-              type="button"
-              role="tab"
-              aria-selected={x.id === a.id}
-              onClick={() => useStore.setState({ openArtifact: { chatId: open.chatId, id: x.id } })}
-              className={clsx(
-                'h-9 max-w-48 shrink-0 truncate rounded-md px-3 text-meta max-md:h-11',
-                x.id === a.id
-                  ? 'bg-muted text-foreground'
-                  : 'text-muted-foreground hover:text-foreground',
-              )}
+      {a.content}
+    </pre>
+  );
+  const preview = ready?.error ? (
+    <p className="p-1 text-muted-foreground">Artefaktin näyttäminen epäonnistui: {ready.error}</p>
+  ) : ready?.html ? (
+    // Its own white page in both schemes, inset 12 with radius 12 and a border.
+    <iframe
+      title={a.title}
+      sandbox="allow-scripts"
+      srcDoc={ready.html}
+      className="block size-full rounded-lg border bg-white"
+    />
+  ) : (
+    <p className="p-1 text-muted-foreground">Ladataan…</p>
+  );
+
+  const panel = (
+    <Tabs
+      value={tab}
+      onValueChange={(v) => setTab(v as 'preview' | 'code')}
+      className="h-full gap-0"
+      asChild
+    >
+      <aside aria-label="Artefaktit" className="flex h-full min-h-0 flex-col bg-card">
+        {/* Phones: the tabs take a second row so the title keeps its width. */}
+        <div className="flex min-h-12 shrink-0 flex-wrap items-center gap-x-2 border-b px-3">
+          <h2 className="flex h-12 min-w-0 flex-1 items-center text-ui font-semibold">
+            {artifacts.length > 1 ? (
+              // More than one artifact in the chat: the title picks between them.
+              <DropdownMenu modal={false}>
+                <DropdownMenuTrigger className="flex min-w-0 items-center gap-1 rounded-md hover:text-muted-foreground">
+                  {title}
+                  <ChevronDown size={16} className="shrink-0 text-muted-foreground" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-auto min-w-56">
+                  <DropdownMenuRadioGroup
+                    value={a.id}
+                    onValueChange={(id) =>
+                      useStore.setState({ openArtifact: { chatId: open.chatId, id } })
+                    }
+                  >
+                    {artifacts.map((x) => (
+                      <DropdownMenuRadioItem key={x.id} value={x.id}>
+                        {x.title}
+                      </DropdownMenuRadioItem>
+                    ))}
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              title
+            )}
+          </h2>
+          {!plain && (
+            <TabsList className="max-md:order-last max-md:mb-2 max-md:w-full">
+              <TabsTrigger value="preview">Esikatselu</TabsTrigger>
+              <TabsTrigger value="code">Koodi</TabsTrigger>
+            </TabsList>
+          )}
+          <div className="flex">
+            <IconButton
+              label={copied ? 'Kopioitu' : 'Kopioi'}
+              className="size-8"
+              onClick={() =>
+                void navigator.clipboard.writeText(a.content).then(() => {
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 1500);
+                })
+              }
             >
-              {x.title}
-            </button>
-          ))}
+              {copied ? <Check size={16} /> : <Copy size={16} />}
+            </IconButton>
+            <IconButton label="Lataa" className="size-8" onClick={() => download(a)}>
+              <Download size={16} />
+            </IconButton>
+            <IconButton
+              label="Avaa uudessa ikkunassa"
+              className="size-8"
+              disabled={!plain && !ready?.html}
+              onClick={() => openInTab(a, plain ? null : (ready?.html ?? null))}
+            >
+              <ExternalLink size={16} />
+            </IconButton>
+            <IconButton label="Sulje artefaktit" className="size-8" onClick={close}>
+              <X size={16} />
+            </IconButton>
+          </div>
         </div>
-        <IconButton
-          label={copied ? 'Kopioitu' : 'Kopioi'}
-          onClick={() =>
-            void navigator.clipboard.writeText(a.content).then(() => {
-              setCopied(true);
-              setTimeout(() => setCopied(false), 1500);
-            })
-          }
-        >
-          {copied ? <Check size={16} /> : <Copy size={16} />}
-        </IconButton>
-        <IconButton label="Lataa" onClick={() => download(a)}>
-          <Download size={16} />
-        </IconButton>
-        <IconButton
-          label="Avaa uudessa välilehdessä"
-          disabled={!plain && !ready?.html}
-          onClick={() => openInTab(a, plain ? null : (ready?.html ?? null))}
-        >
-          <ExternalLink size={16} />
-        </IconButton>
-        <IconButton label="Sulje artefaktit" onClick={close}>
-          <X size={20} />
-        </IconButton>
-      </div>
-      <div role="tabpanel" aria-label={a.title} className="min-h-0 flex-1 overflow-auto">
-        {a.kind === 'code' || a.kind === 'file' ? (
-          <pre className="p-4 font-mono text-meta whitespace-pre">{a.content}</pre>
-        ) : ready?.error ? (
-          <p className="p-4 text-muted-foreground">
-            Artefaktin näyttäminen epäonnistui: {ready.error}
-          </p>
-        ) : ready?.html ? (
-          <iframe
-            title={a.title}
-            sandbox="allow-scripts"
-            srcDoc={ready.html}
-            className="block size-full border-0 bg-card"
-          />
+        {plain ? (
+          <div className="min-h-0 flex-1 p-3">{code}</div>
         ) : (
-          <p className="p-4 text-muted-foreground">Ladataan…</p>
+          <>
+            <TabsContent value="preview" className="min-h-0 flex-1 p-3">
+              {preview}
+            </TabsContent>
+            <TabsContent value="code" className="min-h-0 flex-1 p-3">
+              {code}
+            </TabsContent>
+          </>
         )}
-      </div>
-    </aside>
+      </aside>
+    </Tabs>
+  );
+
+  if (docked)
+    return <div className="w-110 shrink-0 border-l xl:w-[clamp(440px,40vw,640px)]">{panel}</div>;
+  return (
+    <Sheet open onOpenChange={(o) => !o && close()}>
+      <SheetContent
+        side="right"
+        showCloseButton={false}
+        className="gap-0 p-0 pt-[env(safe-area-inset-top)] data-[side=right]:w-full data-[side=right]:sm:max-w-none"
+      >
+        <SheetTitle className="sr-only">{a.title}</SheetTitle>
+        <SheetDescription className="sr-only">Artefakti</SheetDescription>
+        {panel}
+      </SheetContent>
+    </Sheet>
   );
 }

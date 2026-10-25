@@ -26,8 +26,11 @@ type Of<T extends ServerMessage['type']> = Extract<ServerMessage, { type: T }>;
 type TopicState = Of<'topic.state'>;
 type SearchResults = Of<'search.results'>;
 type RelatedState = Of<'chat.related'>;
-/** `expired`: shown as a one-line row until the next message in that chat. */
-export type Approval = Of<'approval.request'> & { expired?: true };
+/**
+ * `expired` / `denied`: decided; the card is gone and its tool row says "vanhentunut" or
+ * "hylätty" until the next message in that chat (brief 7.5).
+ */
+export type Approval = Of<'approval.request'> & { expired?: true; denied?: true };
 export type Agent = Of<'agents.state'>['agents'][number];
 export type SubagentChild = Of<'subagent.state'>['children'][number];
 export type Automation = Of<'automations.state'>['automations'][number];
@@ -107,7 +110,8 @@ type State = {
   sttLanguage: 'fi' | 'en' | 'sv';
   setStt(patch: Partial<Pick<State, 'sttAutoSend' | 'sttLanguage'>>): void;
   setPendingAgentId(id: string): void;
-  dropApproval(requestId: string): void;
+  /** Approved: the card goes and the tool row runs; denied: remembered for the tool row. */
+  decideApproval(requestId: string, approved: boolean): void;
   expireApproval(requestId: string): void;
   /** Last `vault.state`; null until the first one arrives. */
   vault: { entities: VaultEntity[]; pending: VaultPending[] } | null;
@@ -384,7 +388,9 @@ export const useStore = create<State>()((set, get) => {
             // An idle chat waits for nothing: a stop drops its approval without a message.
             ...(msg.state === 'idle'
               ? {
-                  approvals: st.approvals.filter((a) => a.chatId !== msg.chatId || a.expired),
+                  approvals: st.approvals.filter(
+                    (a) => a.chatId !== msg.chatId || a.expired || a.denied,
+                  ),
                   subagents: omit(st.subagents, msg.chatId),
                 }
               : {}),
@@ -398,7 +404,7 @@ export const useStore = create<State>()((set, get) => {
         case 'approval.resolved':
           return msg.outcome === 'expired'
             ? get().expireApproval(msg.requestId)
-            : get().dropApproval(msg.requestId);
+            : get().decideApproval(msg.requestId, msg.outcome === 'approved');
         case 'subagent.state':
           return set((st) => ({ subagents: { ...st.subagents, [msg.chatId]: msg.children } }));
         case 'memory.state':
@@ -485,8 +491,14 @@ export const useStore = create<State>()((set, get) => {
           openArtifact: { chatId, id: known?.id ?? a.id },
         };
       }),
-    dropApproval: (requestId) =>
-      set((st) => ({ approvals: st.approvals.filter((a) => a.requestId !== requestId) })),
+    decideApproval: (requestId, approved) =>
+      set((st) => ({
+        approvals: approved
+          ? st.approvals.filter((a) => a.requestId !== requestId)
+          : st.approvals.map((a) =>
+              a.requestId === requestId ? { ...a, denied: true as const } : a,
+            ),
+      })),
     expireApproval: (requestId) =>
       set((st) => ({
         approvals: st.approvals.map((a) =>
@@ -496,7 +508,7 @@ export const useStore = create<State>()((set, get) => {
     setArchivedView: (archivedView) => set({ archivedView }),
     addLocalMessage: (chatId, m) =>
       set((st) => ({
-        approvals: st.approvals.filter((a) => a.chatId !== chatId || !a.expired),
+        approvals: st.approvals.filter((a) => a.chatId !== chatId || (!a.expired && !a.denied)),
         memoryChip: omit(st.memoryChip, chatId),
         failed: omit(st.failed, chatId),
         messages: { ...st.messages, [chatId]: [...(st.messages[chatId] ?? []), m] },

@@ -238,7 +238,7 @@ export function Composer() {
             {chips.map((c) => (
               <li
                 key={c.key}
-                className="relative flex h-10 items-center gap-2 rounded-md border border-border pr-1 pl-1 max-md:h-11"
+                className="relative flex h-10 items-center gap-2 rounded-md border border-border pr-1 pl-1 max-md:h-11 max-md:gap-1 max-md:pr-0"
               >
                 {c.preview ? (
                   <img src={c.preview} alt="" className="size-8 rounded-xs object-cover" />
@@ -247,7 +247,7 @@ export function Composer() {
                     <FileText size={16} className="text-muted-foreground" />
                   </span>
                 )}
-                <span className="max-w-40 truncate text-meta max-md:max-w-28">{c.name}</span>
+                <span className="max-w-40 truncate text-meta max-md:max-w-18">{c.name}</span>
                 <IconButton label="Poista liite" className="size-6" onClick={() => remove([c.key])}>
                   <X size={16} />
                 </IconButton>

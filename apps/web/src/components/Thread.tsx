@@ -66,7 +66,8 @@ export function Thread() {
   const failed = useStore((s) => (chatId ? s.failed[chatId] : undefined));
   // Filtered here, not in the selector: a new array per call would re-render forever.
   const allApprovals = useStore((s) => s.approvals);
-  const approvals = allApprovals.filter((a) => a.chatId === chatId);
+  // Open requests only: a decided one is shown by its tool row.
+  const approvals = allApprovals.filter((a) => a.chatId === chatId && !a.expired && !a.denied);
   const scroller = useRef<HTMLElement>(null);
   const pinned = useRef(true);
   const [away, setAway] = useState(false);
@@ -103,32 +104,43 @@ export function Thread() {
   const lastTurn = turns.at(-1);
   const joinLive =
     !!(stream || running) && lastTurn?.role === 'assistant' && !lastTurn.items.at(-1)?.m.text;
-  const liveView =
-    (stream || running) &&
-    (stream?.text || stream?.tools.length ? (
-      <MessageView
-        role="assistant"
-        text={stream.text}
-        annotations={stream.annotations}
-        tools={stream.tools}
-        subagents={subagents}
-        live
-      />
-    ) : (
-      // Before the first token: three 6 px dots; the action row's 32 px is kept.
-      <div className="flex flex-col gap-2">
-        <span role="status" aria-label="Vastaus tulossa" className="flex h-7 items-center gap-1.5">
-          {[0, 150, 300].map((d) => (
-            <span
-              key={d}
-              style={{ animationDelay: `${d}ms` }}
-              className="size-1.5 animate-pulse rounded-full bg-muted-foreground"
-            />
-          ))}
-        </span>
-        <div className="h-8" />
-      </div>
-    ));
+  const cards = approvals.map((a) => <ApprovalCard key={a.requestId} a={a} />);
+  const liveView = (stream || running) && (
+    <>
+      {stream?.text || stream?.tools.length ? (
+        <MessageView
+          role="assistant"
+          text={stream.text}
+          annotations={stream.annotations}
+          tools={stream.tools}
+          subagents={subagents}
+          live
+          // A pending approval card follows in the same turn; no reserved row in between.
+          reserve={!approvals.length}
+        />
+      ) : (
+        // Before the first token: three 6 px dots; the action row's 32 px is kept.
+        <div className="flex flex-col gap-2">
+          <span
+            role="status"
+            aria-label="Vastaus tulossa"
+            className="flex h-7 items-center gap-1.5"
+          >
+            {[0, 150, 300].map((d) => (
+              <span
+                key={d}
+                style={{ animationDelay: `${d}ms` }}
+                className="size-1.5 animate-pulse rounded-full bg-muted-foreground"
+              />
+            ))}
+          </span>
+          <div className="h-8" />
+        </div>
+      )}
+      {/* The approval card sits in the turn of its tool row (8 px gap), never as a modal. */}
+      {cards}
+    </>
+  );
 
   const retryLast = () => {
     const prev = previousUser(messages, messages.length);
@@ -213,7 +225,7 @@ export function Thread() {
             <SubagentRow items={subagents} />
           )}
           {(stream || running) && !joinLive && (
-            <article>
+            <article className="flex flex-col gap-2">
               <h2 className="sr-only">Avustaja sanoi</h2>
               {liveView}
             </article>
@@ -230,9 +242,7 @@ export function Thread() {
               </Button>
             </div>
           )}
-          {approvals.map((a) => (
-            <ApprovalCard key={a.requestId} a={a} />
-          ))}
+          {!(stream || running) && cards}
         </div>
       </section>
       {away && (

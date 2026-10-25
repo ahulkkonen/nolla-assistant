@@ -105,13 +105,19 @@ describe('store reducers', () => {
     req('r3');
     apply({ type: 'approval.resolved', chatId: 'c', requestId: 'r1', outcome: 'denied' });
     apply({ type: 'approval.resolved', chatId: 'c', requestId: 'r2', outcome: 'expired' });
-    const ids = () => useStore.getState().approvals.map((a) => [a.requestId, !!a.expired]);
+    const state = (a: { expired?: true; denied?: true }) =>
+      a.expired ? 'expired' : a.denied ? 'denied' : 'open';
+    const ids = () => useStore.getState().approvals.map((a) => [a.requestId, state(a)]);
     expect(ids()).toEqual([
-      ['r2', true],
-      ['r3', false],
+      ['r1', 'denied'],
+      ['r2', 'expired'],
+      ['r3', 'open'],
     ]);
-    // Idle drops open cards; the expired row stays until the next message.
+    // Idle drops open cards; decided ones stay for their tool rows until the next message.
     apply({ type: 'agent.status', chatId: 'c', state: 'idle' });
-    expect(ids()).toEqual([['r2', true]]);
+    expect(ids()).toEqual([
+      ['r1', 'denied'],
+      ['r2', 'expired'],
+    ]);
   });
 });

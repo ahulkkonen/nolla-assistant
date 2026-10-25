@@ -273,7 +273,12 @@ export function Sidebar({
           label="Avaa sivupalkki"
           tipSide="right"
           className={rail}
-          onClick={() => setSidebarOpen(true)}
+          onClick={() => {
+            // Already open: the side panel holds the sidebar at the rail (1024–1279 px); the
+            // sidebar wins and the panel closes, so the thread keeps its 480 px.
+            if (useStore.getState().sidebarOpen) useStore.setState({ openArtifact: null });
+            setSidebarOpen(true);
+          }}
         >
           <PanelLeft size={20} className="size-5" />
         </IconButton>
