@@ -157,8 +157,9 @@ export function TopicsScreen() {
                       <div className="truncate text-secondary text-fg-muted">{t.description}</div>
                     )}
                   </div>
-                  <span className="text-fg-muted tabular-nums" title="Keskusteluja">
+                  <span className="text-fg-muted tabular-nums">
                     {t.count}
+                    <span className="sr-only"> keskustelua</span>
                   </span>
                 </li>
               ))}

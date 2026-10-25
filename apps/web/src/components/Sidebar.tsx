@@ -97,7 +97,7 @@ function ChatRow({
       >
         {label ?? UNTITLED}
       </button>
-      <div className="absolute right-1 hidden rounded-md bg-bg-sunken group-focus-within:flex group-hover:flex [@media(hover:none)]:flex">
+      <div className="absolute right-1 hidden rounded-md bg-bg-sunken before:absolute before:inset-y-0 before:-left-6 before:w-6 before:bg-linear-to-l before:from-bg-sunken group-focus-within:flex group-hover:flex [@media(hover:none)]:flex">
         <IconButton
           label={chat.pinned ? 'Irrota' : 'Kiinnitä'}
           className="size-8 max-md:size-11"
@@ -130,6 +130,7 @@ export function Sidebar({ expanded, onNavigate }: { expanded: boolean; onNavigat
   const messages = useStore((s) => s.messages);
   const chatScreen = useStore((s) => s.screen === 'chat');
   const topics = useStore((s) => s.topics);
+  const proposals = useStore((s) => s.proposals.length);
   const [query, setQuery] = useState('');
   const [collapsed, setCollapsed] = useState(loadCollapsed);
 
@@ -260,7 +261,12 @@ export function Sidebar({ expanded, onNavigate }: { expanded: boolean; onNavigat
       </div>
       {archivedView && <p className="px-4 py-1 text-secondary text-fg-muted">Arkistoidut</p>}
       <ul className="min-h-0 flex-1 overflow-y-auto pb-2">
-        {pinned.map(row)}
+        {pinned.length > 0 && (
+          <li>
+            <h3 className="flex h-9 items-center px-4 text-secondary text-fg-muted">Kiinnitetyt</h3>
+            <ul>{pinned.map(row)}</ul>
+          </li>
+        )}
         {groups.map(({ t, rows }) => {
           // A search shows every match, so groups open while filtering.
           const isOpen = !!q || !collapsed.includes(t.id);
@@ -281,7 +287,10 @@ export function Sidebar({ expanded, onNavigate }: { expanded: boolean; onNavigat
                     )}
                   />
                   <span className="min-w-0 flex-1 truncate text-left">{t.name}</span>
-                  <span className="tabular-nums">{rows.length}</span>
+                  <span className="tabular-nums">
+                    {rows.length}
+                    <span className="sr-only"> keskustelua</span>
+                  </span>
                 </button>
               </h3>
               {isOpen && <ul>{rows.map(row)}</ul>}
@@ -289,6 +298,20 @@ export function Sidebar({ expanded, onNavigate }: { expanded: boolean; onNavigat
           );
         })}
         {loose.map(row)}
+        {proposals > 0 && (
+          <li className="px-2 pt-2">
+            <button
+              type="button"
+              onClick={() => {
+                useStore.getState().setScreen('topics');
+                onNavigate?.();
+              }}
+              className="flex h-9 w-full items-center rounded-md px-2 text-secondary text-fg-muted hover:bg-bg-sunken hover:text-fg"
+            >
+              Aihe-ehdotuksia: {proposals}
+            </button>
+          </li>
+        )}
       </ul>
       <div className="flex items-center gap-1 border-t border-border p-2 pb-[max(env(safe-area-inset-bottom),8px)]">
         <button

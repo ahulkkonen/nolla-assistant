@@ -3,6 +3,8 @@ import { Menu, SquarePen } from 'lucide-react';
 import { Dialog, Tooltip } from 'radix-ui';
 import { useEffect, useSyncExternalStore } from 'react';
 import { HttpError, me } from './api.ts';
+import { AGENTS_TITLE, AgentsScreen } from './components/AgentsScreen.tsx';
+import { AUTOMATIONS_TITLE, AutomationsScreen } from './components/AutomationsScreen.tsx';
 import { Composer } from './components/Composer.tsx';
 import { IconButton } from './components/IconButton.tsx';
 import { Login } from './components/Login.tsx';
@@ -25,7 +27,13 @@ const useMobile = () =>
     () => mobileQuery?.matches ?? false,
   );
 
-const SCREEN_TITLE = { vault: VAULT_TITLE, search: SEARCH_TITLE, topics: TOPICS_TITLE };
+const SCREEN_TITLE = {
+  vault: VAULT_TITLE,
+  search: SEARCH_TITLE,
+  topics: TOPICS_TITLE,
+  agents: AGENTS_TITLE,
+  automations: AUTOMATIONS_TITLE,
+};
 
 function Shell() {
   const mobile = useMobile();
@@ -33,6 +41,7 @@ function Shell() {
   const setSidebarOpen = useStore((s) => s.setSidebarOpen);
   const screen = useStore((s) => s.screen);
   const title = useStore((s) => {
+    if (s.screen === 'search' && s.search) return `Haku: ${s.search.q}`;
     if (s.screen !== 'chat') return SCREEN_TITLE[s.screen];
     const id = s.activeChatId;
     if (!id) return UNTITLED;
@@ -82,6 +91,8 @@ function Shell() {
         {screen === 'vault' && <VaultScreen />}
         {screen === 'search' && <SearchScreen />}
         {screen === 'topics' && <TopicsScreen />}
+        {screen === 'agents' && <AgentsScreen />}
+        {screen === 'automations' && <AutomationsScreen />}
         {/* Hidden, not unmounted, on the vault screen: the composer owns the global shortcuts. */}
         <div
           className={clsx(

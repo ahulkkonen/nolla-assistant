@@ -1,7 +1,10 @@
 import { useEffect, useRef } from 'react';
 import { useStore } from '../store.ts';
 import { openChat } from '../ws.ts';
+import { ApprovalCard } from './ApprovalCard.tsx';
 import { MessageView } from './MessageView.tsx';
+import { UNTITLED } from './Sidebar.tsx';
+import { SubagentRow } from './SubagentRow.tsx';
 
 const EMPTY: never[] = [];
 
@@ -12,6 +15,10 @@ export function Thread() {
   const running = useStore((s) => (chatId ? s.agentStatus[chatId] === 'running' : false));
   const related = useStore((s) => (chatId ? s.related[chatId] : undefined)) ?? EMPTY;
   const scrollTo = useStore((s) => s.scrollTo);
+  const subagents = useStore((s) => (chatId ? s.subagents[chatId] : undefined)) ?? EMPTY;
+  // Filtered here, not in the selector: a new array per call would re-render forever.
+  const allApprovals = useStore((s) => s.approvals);
+  const approvals = allApprovals.filter((a) => a.chatId === chatId);
   const scroller = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
 
@@ -19,7 +26,7 @@ export function Thread() {
   useEffect(() => {
     const el = scroller.current;
     if (el && pinned.current) el.scrollTop = el.scrollHeight;
-  }, [messages, stream?.text, stream?.tools, running]);
+  }, [messages, stream?.text, stream?.tools, running, allApprovals, subagents]);
 
   // A search hit opens at its message once the chat's messages are in.
   useEffect(() => {
@@ -63,13 +70,14 @@ export function Thread() {
                 key={r.chatId}
                 type="button"
                 onClick={() => openChat(r.chatId)}
-                className="h-8 max-w-60 truncate rounded-md border border-border px-3 hover:bg-bg-sunken hover:text-fg"
+                className="h-8 max-w-60 truncate rounded-md border border-border px-3 hover:bg-bg-sunken hover:text-fg max-md:h-11"
               >
-                {r.title || 'Nimetön keskustelu'}
+                {r.title || UNTITLED}
               </button>
             ))}
           </nav>
         )}
+        {subagents.length > 0 && <SubagentRow items={subagents} />}
         {(stream || running) && (
           <div className="min-h-6">
             {stream?.text || stream?.tools.length ? (
@@ -97,6 +105,9 @@ export function Thread() {
             )}
           </div>
         )}
+        {approvals.map((a) => (
+          <ApprovalCard key={a.requestId} a={a} />
+        ))}
       </div>
     </div>
   );

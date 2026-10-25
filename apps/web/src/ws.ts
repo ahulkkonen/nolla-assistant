@@ -46,12 +46,17 @@ export function openChat(chatId: string, messageId?: string | null) {
   send({ type: 'chat.open', chatId });
 }
 
-/** Sends `chat.create` and resolves with the id from the next `chat.created`. */
+/** Sends `chat.create` with the picked agent; resolves with the id from the next `chat.created`. */
 export function createChat(): Promise<string> {
   return new Promise((resolve) => {
     createWaiters.push(resolve);
-    send({ type: 'chat.create' });
+    send({ type: 'chat.create', agentId: useStore.getState().pendingAgentId });
   });
+}
+
+export function respondApproval(requestId: string, approve: boolean) {
+  send({ type: 'approval.respond', requestId, approve });
+  useStore.getState().dropApproval(requestId);
 }
 
 function open() {

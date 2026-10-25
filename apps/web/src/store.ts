@@ -24,6 +24,10 @@ type Of<T extends ServerMessage['type']> = Extract<ServerMessage, { type: T }>;
 type TopicState = Of<'topic.state'>;
 type SearchResults = Of<'search.results'>;
 type RelatedState = Of<'chat.related'>;
+export type Approval = Of<'approval.request'>;
+export type Agent = Of<'agents.state'>['agents'][number];
+export type SubagentChild = Of<'subagent.state'>['children'][number];
+export type Automation = Of<'automations.state'>['automations'][number];
 
 type State = {
   auth: 'unknown' | 'out' | 'in';
@@ -40,7 +44,18 @@ type State = {
   /** Annotated spans show the surrogate the model saw instead of the real value. */
   showModelSaw: boolean;
   /** What `main` shows. Choosing a chat returns to `chat`. */
-  screen: 'chat' | 'vault' | 'search' | 'topics';
+  screen: 'chat' | 'vault' | 'search' | 'topics' | 'agents' | 'automations';
+  agents: Agent[];
+  /** Agent for the next `chat.create` (the empty chat's picker). */
+  pendingAgentId: string;
+  /** Open approval requests of every chat, oldest first. */
+  approvals: Approval[];
+  /** Live subagent children per chat; cleared when the chat goes idle. */
+  subagents: Record<string, SubagentChild[]>;
+  /** Last `automations.state`; null until the first one arrives. */
+  automations: Automation[] | null;
+  setPendingAgentId(id: string): void;
+  dropApproval(requestId: string): void;
   /** Last `vault.state`; null until the first one arrives. */
   vault: { entities: VaultEntity[]; pending: VaultPending[] } | null;
   topics: TopicState['topics'];
@@ -130,6 +145,11 @@ export const useStore = create<State>()((set, get) => {
     archivedView: false,
     activeChatId: null,
     screen: 'chat',
+    agents: [],
+    pendingAgentId: 'assistant',
+    approvals: [],
+    subagents: {},
+    automations: null,
     vault: null,
     topics: [],
     proposals: [],
@@ -155,6 +175,7 @@ export const useStore = create<State>()((set, get) => {
             chats: sortChats([msg.chat, ...st.chats.filter((c) => c.id !== msg.chat.id)]),
             activeChatId: msg.chat.id,
             messages: { ...st.messages, [msg.chat.id]: st.messages[msg.chat.id] ?? [] },
+            pendingAgentId: 'assistant',
           }));
         case 'chat.updated':
           return set((st) => {
@@ -217,7 +238,26 @@ export const useStore = create<State>()((set, get) => {
             agentStatus: { ...st.agentStatus, [msg.chatId]: msg.state },
             // A turn that ended without a final (error, abort) must not leave a stale stream.
             streaming: msg.state === 'idle' ? omit(st.streaming, msg.chatId) : st.streaming,
+            // An idle chat waits for nothing: a stop drops its approval without a message.
+            ...(msg.state === 'idle'
+              ? {
+                  approvals: st.approvals.filter((a) => a.chatId !== msg.chatId),
+                  subagents: omit(st.subagents, msg.chatId),
+                }
+              : {}),
           }));
+        case 'agents.state':
+          return set({ agents: msg.agents });
+        case 'approval.request':
+          return set((st) => ({
+            approvals: [...st.approvals.filter((a) => a.requestId !== msg.requestId), msg],
+          }));
+        case 'approval.resolved':
+          return get().dropApproval(msg.requestId);
+        case 'subagent.state':
+          return set((st) => ({ subagents: { ...st.subagents, [msg.chatId]: msg.children } }));
+        case 'automations.state':
+          return set({ automations: msg.automations });
         case 'topic.state':
           return set({ topics: msg.topics, proposals: msg.proposals });
         case 'search.results':
@@ -239,6 +279,9 @@ export const useStore = create<State>()((set, get) => {
     setActive: (activeChatId) => set({ activeChatId, screen: 'chat' }),
     setScreen: (screen) => set({ screen }),
     setScrollTo: (scrollTo) => set({ scrollTo }),
+    setPendingAgentId: (pendingAgentId) => set({ pendingAgentId }),
+    dropApproval: (requestId) =>
+      set((st) => ({ approvals: st.approvals.filter((a) => a.requestId !== requestId) })),
     setArchivedView: (archivedView) => set({ archivedView }),
     addLocalMessage: (chatId, m) =>
       set((st) => ({

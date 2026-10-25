@@ -77,4 +77,24 @@ describe('store reducers', () => {
     expect(useStore.getState().errors).toEqual([]);
     vi.useRealTimers();
   });
+
+  it('keeps approval cards until answered, resolved or the chat goes idle', () => {
+    const { apply } = useStore.getState();
+    const req = (requestId: string) =>
+      apply({
+        type: 'approval.request',
+        chatId: 'c',
+        requestId,
+        tool: 'write',
+        args: { path: 'a.txt' },
+        reason: '',
+        expiresAt: '2099-01-01T00:00:00.000Z',
+      });
+    req('r1');
+    req('r2');
+    apply({ type: 'approval.resolved', chatId: 'c', requestId: 'r1', outcome: 'expired' });
+    expect(useStore.getState().approvals.map((a) => a.requestId)).toEqual(['r2']);
+    apply({ type: 'agent.status', chatId: 'c', state: 'idle' });
+    expect(useStore.getState().approvals).toEqual([]);
+  });
 });

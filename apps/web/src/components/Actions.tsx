@@ -27,7 +27,7 @@ export function ActionRow({ actions }: { actions: Action[] }) {
   );
 }
 
-const menuItem =
+export const menuItem =
   'flex h-11 cursor-default items-center gap-3 rounded-sm px-3 outline-none data-[disabled]:text-fg-muted data-[highlighted]:bg-bg-sunken';
 
 export function ActionMenu({ label, actions }: { label: string; actions: Action[] }) {

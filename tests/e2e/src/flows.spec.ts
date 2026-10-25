@@ -153,7 +153,8 @@ test('keyboard: [ toggles sidebar, Tab reaches send with focus ring', async ({ a
   // Send is disabled when empty, so type first.
   await page.getByLabel('Viesti').fill('x');
   await page.keyboard.press('Tab'); // attach
-  await page.keyboard.press('Tab'); // model button is disabled, so next is send
+  await page.keyboard.press('Tab'); // agent picker (a new chat can still choose)
+  await page.keyboard.press('Tab'); // send
   const sendBtn = page.getByRole('button', { name: 'Lähetä' });
   await expect(sendBtn).toBeFocused();
   expect(await sendBtn.evaluate((el) => el.matches(':focus-visible'))).toBe(true);
@@ -209,4 +210,62 @@ test('search finds the chat by a word from its message and opens it', async ({ a
   await hit.click();
   await expect(page.getByRole('main').getByText(TAX.ask)).toBeVisible();
   await page.getByLabel('Hae keskusteluja').fill('');
+});
+
+test.describe('approval', () => {
+  test.use({ pseudo: 'full' });
+
+  test('card shows real args while the model saw surrogates; approve runs the tool', async ({
+    app,
+    page,
+  }) => {
+    // The model writes with the surrogate; the gate restores it before asking.
+    app.llm.push({
+      toolCalls: [{ name: 'write', args: { path: 'kirje.txt', content: 'Hei Pekka Laaksonen' } }],
+    });
+    app.llm.push({ text: 'Kirjoitettu.' });
+    await app.login(page);
+    await page.getByLabel('Viesti').fill('Kirjoita kirje Matti Virtanen');
+    await page.getByLabel('Viesti').press('ControlOrMeta+Enter');
+    const card = page.getByRole('region', { name: 'Hyväksyntä: write' });
+    await expect(card).toContainText('Hei Matti Virtanen');
+    const body = JSON.stringify(app.llm.requests[0]?.body);
+    expect(body).toContain('Pekka Laaksonen');
+    expect(body).not.toContain('Matti Virtanen');
+    await card.getByRole('button', { name: 'Hyväksy' }).click();
+    await expect(card).toHaveCount(0);
+    await expect(page.locator('.md').last()).toHaveText('Kirjoitettu.');
+    await expect(page.getByRole('button', { name: /^write valmis/ })).toBeVisible();
+  });
+});
+
+test('agent picker: a new chat is created with the picked agent', async ({ app, page }) => {
+  app.llm.push({ text: 'Tutkitaan.' });
+  await app.login(page);
+  await page.getByRole('button', { name: 'Agentti: Avustaja' }).click();
+  await page.getByRole('menuitemradio', { name: 'Tutkija' }).click();
+  await expect(page.getByRole('button', { name: 'Agentti: Tutkija' })).toBeVisible();
+  await page.getByLabel('Viesti').fill('Tutki tätä');
+  await page.getByLabel('Viesti').press('ControlOrMeta+Enter');
+  await expect(page.locator('.md').last()).toHaveText('Tutkitaan.');
+  // The chip now reads the chat's own agentId from the server and is locked.
+  const chip = page.getByRole('button', { name: 'Agentti: Tutkija' });
+  await expect(chip).toHaveAttribute('aria-disabled', 'true');
+  await page.getByRole('button', { name: 'Uusi keskustelu' }).first().click();
+  await expect(page.getByRole('button', { name: 'Agentti: Avustaja' })).toBeVisible();
+});
+
+test.describe('automations', () => {
+  test.use({ automation: true });
+
+  test('settings lists the automation and runs it now', async ({ app, page }) => {
+    app.llm.push({ text: 'Huomenta.' });
+    await app.login(page);
+    await openSettings(page, 'Automaatiot');
+    const row = page.getByRole('row', { name: /aamu/ });
+    await expect(row).toContainText('0 3 1 1 *');
+    await expect(row).toContainText('Avustaja');
+    await row.getByRole('button', { name: 'Suorita nyt: aamu' }).click();
+    await expect(row).toContainText(/käynnissä|onnistui/);
+  });
 });

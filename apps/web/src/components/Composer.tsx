@@ -5,6 +5,7 @@ import { uploadFiles } from '../api.ts';
 import { useShortcuts } from '../shortcuts.ts';
 import { useStore } from '../store.ts';
 import { createChat, send } from '../ws.ts';
+import { AgentPicker } from './AgentPicker.tsx';
 import { IconButton } from './IconButton.tsx';
 
 type Chip = { key: string; name: string; preview?: string; ref?: AttachmentRef };
@@ -174,8 +175,9 @@ export function Composer() {
               e.target.value = '';
             }}
           />
-          {/* Static until phase 5 gives the agent picker a menu. */}
-          <span className="ml-auto px-2 text-secondary text-fg-muted">Assistant</span>
+          <div className="ml-auto">
+            <AgentPicker />
+          </div>
           {running && chatId ? (
             <IconButton
               label="Pysäytä"

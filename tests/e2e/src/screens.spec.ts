@@ -256,6 +256,116 @@ for (const scheme of ['light', 'dark'] as const) {
           await shot(page, 'related-chats', vp.width, scheme);
         });
 
+        test('topics-list', async ({ app, page }) => {
+          await app.login(page);
+          await taxChat(app, page);
+          await openSettings(page, 'Aiheet');
+          await acceptProposal(page);
+          await expect(
+            page.getByRole('region', { name: 'Omat aiheet' }).getByText('Verot', { exact: true }),
+          ).toBeVisible();
+          await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+          await shot(page, 'topics-list', vp.width, scheme);
+        });
+
+        test('sidebar-topics-collapsed', async ({ app, page }) => {
+          await app.login(page);
+          await taxChat(app, page);
+          await openSettings(page, 'Aiheet');
+          await acceptProposal(page);
+          await showSidebar(page);
+          const group = page.getByRole('button', { name: /^Verot/ });
+          await group.click();
+          await expect(group).toHaveAttribute('aria-expanded', 'false');
+          await page.mouse.move(vp.width - 8, vp.height / 2);
+          await shot(page, 'sidebar-topics-collapsed', vp.width, scheme);
+        });
+
+        test('sidebar-pinned', async ({ app, page }) => {
+          await app.login(page);
+          await taxChat(app, page);
+          await showSidebar(page);
+          const row = page.locator('nav li', {
+            has: page.getByRole('button', { name: TAX.title }),
+          });
+          await row.hover();
+          await row.getByRole('button', { name: 'Kiinnitä' }).click();
+          await expect(page.getByRole('heading', { name: 'Kiinnitetyt' })).toBeVisible();
+          await page.mouse.move(vp.width - 8, vp.height / 2);
+          await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+          await shot(page, 'sidebar-pinned', vp.width, scheme);
+        });
+
+        test('search-empty', async ({ app, page }) => {
+          await app.login(page);
+          await search(page, 'hammaslääkäri');
+          await expect(page.getByText('Ei osumia.')).toBeVisible();
+          await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+          await shot(page, 'search-empty', vp.width, scheme);
+        });
+
+        test('approval-card', async ({ app, page }) => {
+          const content = `Hei,\n\n${'tämä on pitkä kirje, jonka avustaja haluaa kirjoittaa tiedostoon. '.repeat(4)}`;
+          app.llm.push({ toolCalls: [{ name: 'write', args: { path: 'kirje.txt', content } }] });
+          app.llm.push({ text: 'Selvä, en kirjoittanut.' });
+          await app.login(page);
+          await sendMessage(page, 'Kirjoita kirje');
+          const card = page.getByRole('region', { name: 'Hyväksyntä: write' });
+          await expect(card.getByRole('button', { name: 'Näytä lisää' })).toBeVisible();
+          await shot(page, 'approval-card', vp.width, scheme);
+          await card.getByRole('button', { name: 'Hylkää' }).click();
+          await expect(page.locator('.md').last()).toHaveText('Selvä, en kirjoittanut.');
+        });
+
+        test('agent-picker', async ({ app, page }) => {
+          await app.login(page);
+          await page.getByRole('button', { name: 'Agentti: Avustaja' }).click();
+          await expect(page.getByRole('menuitemradio', { name: 'Tutkija' })).toBeVisible();
+          await shot(page, 'agent-picker', vp.width, scheme);
+        });
+
+        test('subagents-row', async ({ app, page }) => {
+          const tasks = ['Verot', 'Asuminen', 'Liikenne'].map((label) => ({
+            label,
+            task: `Tiivistä aihe ${label}`,
+          }));
+          app.llm.push({ toolCalls: [{ name: 'subagent', args: { mode: 'parallel', tasks } }] });
+          for (const _ of tasks) app.llm.push({ text: 'Tiivistelmä.' });
+          app.llm.push({ text: 'Valmis.' });
+          const hold = await holdAfter(page, 'subagent.state');
+          await app.login(page);
+          await page.getByRole('button', { name: 'Agentti: Avustaja' }).click();
+          await page.getByRole('menuitemradio', { name: 'Tutkija' }).click();
+          await sendMessage(page, 'Tiivistä kolme aihetta');
+          await hold.reached;
+          const row = page.getByRole('button', { name: '3 aliagenttia käynnissä' });
+          await row.click();
+          await expect(page.getByText('Asuminen')).toBeVisible();
+          await shot(page, 'subagents-row', vp.width, scheme);
+          hold.release();
+          await expect(page.locator('.md').last()).toHaveText('Valmis.', { timeout: 30_000 });
+        });
+
+        test.describe('automation', () => {
+          test.use({ automation: true });
+
+          test('settings-automations', async ({ app, page }) => {
+            await app.login(page);
+            await openSettings(page, 'Automaatiot');
+            await expect(page.getByText('0 3 1 1 *').filter({ visible: true })).toBeVisible();
+            await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+            await shot(page, 'settings-automations', vp.width, scheme);
+          });
+        });
+
+        test('settings-agents', async ({ app, page }) => {
+          await app.login(page);
+          await openSettings(page, 'Agentit');
+          await expect(page.getByText('Tutkija')).toBeVisible();
+          await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+          await shot(page, 'settings-agents', vp.width, scheme);
+        });
+
         test.describe('pseudo empty', () => {
           test.use({ pseudo: 'empty' });
 

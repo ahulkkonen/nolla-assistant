@@ -1,5 +1,17 @@
 import { clsx } from 'clsx';
-import { KeyRound, LogOut, Monitor, Moon, Settings, ShieldCheck, Sun, Tags, X } from 'lucide-react';
+import {
+  Bot,
+  CalendarClock,
+  KeyRound,
+  LogOut,
+  Monitor,
+  Moon,
+  Settings,
+  ShieldCheck,
+  Sun,
+  Tags,
+  X,
+} from 'lucide-react';
 import { Dialog } from 'radix-ui';
 import { useRef, useState } from 'react';
 import { logout, passkeyRegister } from '../api.ts';
@@ -104,6 +116,8 @@ export function SettingsDialog({ onNavigate }: { onNavigate?: () => void }) {
               [
                 ['vault', ShieldCheck, 'Nimisuoja'],
                 ['topics', Tags, 'Aiheet'],
+                ['agents', Bot, 'Agentit'],
+                ['automations', CalendarClock, 'Automaatiot'],
               ] as const
             ).map(([screen, Icon, label]) => (
               <button

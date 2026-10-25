@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -38,10 +38,24 @@ export type App = {
   login: (page: Page) => Promise<void>;
 };
 
-export const test = base.extend<{ app: App; pseudo: 'off' | 'full' | 'empty' }>({
+/** One automation for `automation: true` (never fires by itself: 1 January at 03:00). */
+export const AUTOMATION = `id: aamu
+cron: '0 3 1 1 *'
+agentId: assistant
+prompt: Anna lyhyt aamukatsaus.
+deliver: chat
+`;
+
+export const test = base.extend<{
+  app: App;
+  pseudo: 'off' | 'full' | 'empty';
+  automation: boolean;
+}>({
   // Starts the fake sidecar and sets PSEUDO_URL: `full` has DICT plus one pending item.
   pseudo: ['off', { option: true }],
-  app: async ({ pseudo }, use) => {
+  // Writes AUTOMATION into the run's own AUTOMATIONS_DIR (always a temp dir, empty by default).
+  automation: [false, { option: true }],
+  app: async ({ pseudo, automation }, use) => {
     const llm = await startFakeLlm([]);
     const sidecar =
       pseudo === 'off'
@@ -53,6 +67,8 @@ export const test = base.extend<{ app: App; pseudo: 'off' | 'full' | 'empty' }>(
             });
     const dataDir = mkdtempSync(join(tmpdir(), 'pa-e2e-'));
     mkdirSync(join(dataDir, 'work/aleksi'), { recursive: true });
+    mkdirSync(join(dataDir, 'automations'));
+    if (automation) writeFileSync(join(dataDir, 'automations/aamu.yaml'), AUTOMATION);
     const port = await freePort();
     process.env.LITELLM_MASTER_KEY = KEY;
     const srv = await start(
@@ -68,6 +84,7 @@ export const test = base.extend<{ app: App; pseudo: 'off' | 'full' | 'empty' }>(
         PORT: String(port),
         USER_ID: 'aleksi',
         LOG_LEVEL: 'warn',
+        AUTOMATIONS_DIR: join(dataDir, 'automations'),
         ...(sidecar ? { PSEUDO_URL: sidecar.url } : {}),
       }),
     );
@@ -88,7 +105,10 @@ export const test = base.extend<{ app: App; pseudo: 'off' | 'full' | 'empty' }>(
 });
 
 /** Opens a settings entry; settings sits in the drawer under 768 px, in the sidebar above. */
-export const openSettings = async (page: Page, entry: 'Nimisuoja' | 'Aiheet') => {
+export const openSettings = async (
+  page: Page,
+  entry: 'Nimisuoja' | 'Aiheet' | 'Agentit' | 'Automaatiot',
+) => {
   const menu = page.getByRole('button', { name: 'Valikko' });
   if (await menu.isVisible()) await menu.click();
   await page.getByRole('button', { name: 'Asetukset' }).click();

@@ -150,6 +150,15 @@ export const ClientMessage = z.discriminatedUnion('type', [
     text: z.string().max(2500),
   }),
   z.object({ type: z.literal('memory.approve'), pendingId: z.int(), approve: z.boolean() }),
+  z.object({ type: z.literal('memory.consolidate') }),
+  /** Accepts (optionally with the user's edited texts) or rejects a consolidation proposal. */
+  z.object({
+    type: z.literal('memory.consolidation.resolve'),
+    id: z.int(),
+    accept: z.boolean(),
+    user: z.string().max(1500).optional(),
+    memory: z.string().max(2500).optional(),
+  }),
   z.object({ type: z.literal('topic.list') }),
   z.object({ type: z.literal('automations.list') }),
   z.object({ type: z.literal('automations.run'), id: id64 }),
