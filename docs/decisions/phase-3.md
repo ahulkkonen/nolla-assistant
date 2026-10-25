@@ -12,11 +12,13 @@ Research notes: `0003-finnish-pii-stack.md` (detection stack, pins), `0004-litel
 ## Sidecar API contract (`pseudo-svc`, internal network, no auth beyond the network)
 
 All bodies are JSON. `user_id` is required on every call (invariant 6). `session_id` is the Pi chat id.
+**All offsets are UTF-16 code units** (JavaScript string indexing). The Python side converts with
+`len(s[:i].encode('utf-16-le')) // 2`.
 
 | Method, path | Request | Response |
 |---|---|---|
 | `POST /mask` | `{ user_id, session_id, text }` or `{ user_id, session_id, json: <any JSON> }` | `{ masked: string \| json, spans: [{ start, end, entity_id, kind, surrogate, real_form, detector, score, pending: bool }] }`. Spans are offsets in **masked** text. Pending (low-confidence) spans are masked but also queued in the pending lane. |
-| `POST /unmask` | `{ user_id, text }` or `{ user_id, json }` | `{ restored: string \| json, spans: [{ start, end, entity_id, surrogate_form }], unresolved: [{ start, end, form }] }`. Offsets in **restored** text. Longest-match-first over surrogate forms. |
+| `POST /unmask` | `{ user_id, text }` or `{ user_id, json }` | `{ restored: string \| json, spans: [{ start, end, entity_id, surrogate_form }], unresolved: [{ start, end, form }], hold: int }`. Offsets in **restored** text. Longest-match-first over surrogate forms. `hold` = length of the longest suffix of the input text that is a proper prefix of some surrogate form of this user (0 when none); the bridge holds back that many characters of a streaming delta. For `json` input `hold` is 0. |
 | `POST /scan` | `{ user_id, session_id, messages: [{ role, content }] }` | `{ messages, leaked: [{ message_index, start, end, kind, entity_id }] }`: every found real value is masked through the vault and reported. |
 | `GET /vault/entities?user_id=` | | `{ entities: [{ id, kind, canonical, surrogate, mode, pinned, allowlisted, seen_count, last_seen }], pending: [{ id, kind, text, detector, score, session_id }] }` |
 | `POST /vault/merge` | `{ user_id, from_ids: [], into_id }` | `{ ok: true }` |
@@ -38,6 +40,10 @@ The user's own name: the vault holds a `self` entity whose surrogate is the conf
 | `tool_result` | `POST /mask` with `json: { content, structuredContent }`; return both fields masked (never only `content`) |
 | `context_with_system` | `POST /scan` on all messages; return the scanned messages; log every `leaked` item at `warn` with kind and entity id only |
 | display (bridge) | `POST /unmask` per delta with a 24-character hold-back; attach `annotations` `{ start, end, entityId, modelSaw }` |
+
+Known gaps (accepted for phase 3): images (user attachments and tool-result image blocks) are not
+pseudonymized; the vault has no OCR. A failed `/scan` leaves the context unchanged (fail-open) because
+ingest masking already holds and blocking would stop compaction; it logs a warn.
 
 Fail closed: if `pseudo-svc` is unreachable, `input` returns `{ action: 'handled' }` and the bridge
 sends `error` code `pseudo_down`; `tool_call` blocks with reason `pseudo_down`.
