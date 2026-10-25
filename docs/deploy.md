@@ -183,7 +183,8 @@ LiteLLM egress. Only the OpenRouter key is real; nothing leaves the machine exce
 
 1. Copy `.env.example` to `.env`. Fill in `OPENROUTER_API_KEY`, `LITELLM_MASTER_KEY`,
    `PSEUDO_VAULT_KEY`, `BROKER_TOKEN`, `COOKIE_SECRET` and `AUTH_PASSWORD_HASH`
-   (`node scripts/hash-password.mjs`). Keep `AUTH_ORIGIN=http://localhost:3000`.
+   (`node scripts/hash-password.mjs`). Write each `$` of the hash as `$$`, because compose
+   interpolates `$name` in `.env`. Keep `AUTH_ORIGIN=http://localhost:3000`.
 2. Google Workspace is optional. Without a client, set `GOOGLE_OAUTH_CLIENT_ID=unused`,
    `GOOGLE_OAUTH_CLIENT_SECRET=unused` and `USER_GOOGLE_EMAIL=you@example.com`. The
    Google tools then show "Ei yhdistetty".
