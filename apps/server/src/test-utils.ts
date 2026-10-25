@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type FakeTurn, startFakeLlm } from '@pa/fake-llm';
 import { startFakeSidecar } from '@pa/pi-ext-pseudo/fake-sidecar';
+import { startFakeBroker } from '@pa/pi-ext-sandbox/fake-broker';
 import type { ClientMessageInput, ServerMessage } from '@pa/protocol';
 import WebSocket from 'ws';
 import { hashPassword } from './auth/password.ts';
@@ -121,4 +122,19 @@ export async function bootPseudo(
   const sc = await startFakeSidecar(dictionary, opts);
   cleanups.push(sc.close);
   return { ...(await bootChat(turns, { PSEUDO_URL: sc.url })), sc };
+}
+
+const TOKEN = 'broker-test-token';
+
+/** Boots with the fake broker rooted at the work dir; returns a socket on a new research chat. */
+export async function bootResearch(turns: FakeTurn[]) {
+  const broker = await startFakeBroker({ token: TOKEN, root: '' });
+  cleanups.push(broker.close);
+  const b = await boot(turns, { BROKER_URL: broker.url, BROKER_TOKEN: TOKEN });
+  const srv = await b.run();
+  broker.state.root = srv.registry.cwd;
+  const c = await connect(b.config.port);
+  c.send({ type: 'chat.create', agentId: 'research' });
+  const { chat } = await c.next('chat.created');
+  return { ...b, srv, c, chat, broker };
 }

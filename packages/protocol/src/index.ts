@@ -258,6 +258,8 @@ export const ServerMessage = z.discriminatedUnion('type', [
     type: z.literal('approval.request'),
     chatId: id64,
     requestId: id64,
+    /** The gated tool call; lets the client mark its tool row as waiting. */
+    callId: id64.optional(),
     tool: z.string(),
     args: z.unknown(),
     reason: z.string(),
@@ -318,6 +320,7 @@ export const ServerMessage = z.discriminatedUnion('type', [
         lastRunAt: z.string().nullable(),
         lastStatus: z.string().nullable(),
         lastChatId: z.string().nullable(),
+        deliver: z.enum(['chat', 'push', 'both']).optional(),
       }),
     ),
   }),

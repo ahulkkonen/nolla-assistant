@@ -3,8 +3,8 @@ name: Avustaja
 model: zdr/strong
 prompt: prompts/assistant.md
 tools:
-  allow: [read, write, edit]
+  allow: [read, write, edit, recall, memory]
 approval:
   always: [write, edit]
-  never: [read]
+  never: [read, recall, memory]
 subagents: false

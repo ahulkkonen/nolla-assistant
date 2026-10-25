@@ -180,18 +180,35 @@ export async function search(
   q: string,
   limit: number,
   pseudo?: PseudoClient,
+  /** `since` (ISO date) on the chunk's `createdAt`, `topic` on the chat's `topicId`. */
+  filter: { since?: string | undefined; topic?: string | undefined } = {},
 ): Promise<SearchResult[]> {
   const masked = pseudo ? (await pseudo.mask(`search:${userId}`, q)).masked : q;
   const sqlite = db.$client;
+  const conds = [
+    ...(filter.since ? ['c.createdAt >= ?'] : []),
+    ...(filter.topic ? ['h.topicId = ?'] : []),
+  ];
+  // ponytail: post-filter, so kNN `k` counts filtered-out chunks too; widen k if recall misses.
+  const where = (col: string) =>
+    conds.length
+      ? ` AND ${col} IN (SELECT c.id FROM chunks c JOIN chats h ON h.id = c.chatId WHERE ${conds.join(' AND ')})`
+      : '';
+  const params = [filter.since, filter.topic].filter((v) => v !== undefined);
   const maskedTerms = terms(masked);
   const fts = maskedTerms.length
     ? byChat(
         sqlite
           .prepare(
             `SELECT chunk_id AS id, chat_id AS chatId, message_id AS messageId, text FROM chat_fts
-             WHERE chat_fts MATCH ? AND user_id = ? ORDER BY bm25(chat_fts) LIMIT ?`,
+             WHERE chat_fts MATCH ? AND user_id = ?${where('chunk_id')} ORDER BY bm25(chat_fts) LIMIT ?`,
           )
-          .all(maskedTerms.map((t) => `"${t}"`).join(' OR '), userId, limit * 5) as Hit[],
+          .all(
+            maskedTerms.map((t) => `"${t}"`).join(' OR '),
+            userId,
+            ...params,
+            limit * 5,
+          ) as Hit[],
       )
     : [];
   const vector =
@@ -201,13 +218,14 @@ export async function search(
             .prepare(
               `WITH knn AS (SELECT chunk_id, distance FROM chunk_vec
                  WHERE embedding MATCH ? AND k = ? AND user_id = ?)
-               SELECT c.id, c.chatId, c.messageId, c.text FROM knn JOIN chunks c ON c.id = knn.chunk_id
-               ORDER BY knn.distance`,
+               SELECT k.id, k.chatId, k.messageId, k.text FROM knn JOIN chunks k ON k.id = knn.chunk_id
+               WHERE 1${where('k.id')} ORDER BY knn.distance`,
             )
             .all(
               vec((await embed([masked], 'query'))[0] as Float32Array),
               limit * 5,
               userId,
+              ...params,
             ) as Hit[],
         )
       : [];

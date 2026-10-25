@@ -32,7 +32,15 @@ export async function buildServer({
   ...bridge
 }: Pick<
   BridgeDeps,
-  'registry' | 'db' | 'pseudo' | 'rooms' | 'agents' | 'approvals' | 'automations' | 'sockets'
+  | 'registry'
+  | 'db'
+  | 'pseudo'
+  | 'rooms'
+  | 'agents'
+  | 'approvals'
+  | 'automations'
+  | 'sockets'
+  | 'memory'
 > & {
   config: Config;
   /** Test hook: receives the pino output instead of stdout. */

@@ -3,9 +3,9 @@ name: Tutkija
 model: zdr/strong
 prompt: prompts/research.md
 tools:
-  allow: [read, write, edit, bash]
+  allow: [read, write, edit, bash, recall, memory]
 approval:
   always: [write, edit, bash]
   # Children ask for their own gated tools.
-  never: [read, subagent]
+  never: [read, subagent, recall, memory]
 subagents: true

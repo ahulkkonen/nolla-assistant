@@ -9,12 +9,14 @@ import {
   ModelRuntime,
   SessionManager,
 } from '@earendil-works/pi-coding-agent';
+import { type MemoryLog, memoryExtension } from '@pa/pi-ext-memory';
 import { type PseudoClient, type PseudoLog, pseudoExtension } from '@pa/pi-ext-pseudo';
 import { sandboxExtension } from '@pa/pi-ext-sandbox';
 import { type Child, subagentsExtension } from '@pa/pi-ext-subagents';
 import { topicsExtension } from '@pa/pi-ext-topics';
 import type { Agents } from '../agents.ts';
 import { type Ask, approvalGate } from '../approval.ts';
+import type { MemoryStore } from '../memory.ts';
 import { pathGuard } from './guard.ts';
 
 type RegistryOptions = {
@@ -33,6 +35,12 @@ type RegistryOptions = {
   onSettled?: Parameters<typeof topicsExtension>[0]['onSettled'];
   /** Loads `pi-ext-pseudo` per chat when set; `log` receives its logs with the chat id. */
   pseudo?: { client: PseudoClient; log: (chatId: string, ...args: Parameters<PseudoLog>) => void };
+  /** Loads `pi-ext-memory`; `onChange` runs after each write or parked write. */
+  memory?: {
+    store: MemoryStore;
+    onChange: (chatId: string) => void;
+    log: (chatId: string, ...args: Parameters<MemoryLog>) => void;
+  };
   /** Loads `pi-ext-subagents` for profiles with `subagents: true`. */
   subagents?: {
     litellm: { url: string; key: string };
@@ -145,7 +153,7 @@ export class SessionRegistry {
     const profile = this.opts.agents().get(agentId);
     if (!profile) throw new Error(`Agent profile ${agentId} not found`);
     const sessionManager = manager();
-    const { pseudo, subagents } = this.opts;
+    const { pseudo, subagents, memory } = this.opts;
     const withSubagents = profile.subagents && subagents;
     const modelRuntime = await this.modelRuntime();
     const model = modelRuntime.getModel('zdr', profile.model);
@@ -212,7 +220,8 @@ export class SessionRegistry {
                 litellm: withSubagents.litellm,
                 pseudoUrl: withSubagents.pseudoUrl,
                 model: profile.model,
-                tools,
+                // Children never touch memory.
+                tools: tools.filter((t) => t !== 'memory' && t !== 'recall'),
                 broker,
                 approvalAlways: profile.approval.always.filter(
                   (t) => !profile.approval.never.includes(t),
@@ -224,6 +233,28 @@ export class SessionRegistry {
             ]
           : []),
         pathGuard(this.cwd),
+        ...(memory
+          ? [
+              memoryExtension({
+                userId: this.opts.userId,
+                chatId,
+                files: { read: async (t) => memory.store.read(t) },
+                mask: pseudo ? async (t) => (await pseudo.client.mask(chatId, t)).masked : (t) => t,
+                recentTitles: async () => memory.store.recentTitles(chatId),
+                recall: (q, o) => memory.store.recall(q, o),
+                park: async (w) => {
+                  const id = memory.store.park(chatId, w);
+                  memory.onChange(chatId);
+                  return id;
+                },
+                applyNow: async (w) => {
+                  memory.store.applyWrite(w, chatId);
+                  memory.onChange(chatId);
+                },
+                log: (...args) => memory.log(chatId, ...args),
+              }),
+            ]
+          : []),
         ...(this.opts.onSettled ? [topicsExtension({ onSettled: this.opts.onSettled })] : []),
         ...(this.opts.extensionFactories ?? []),
       ],

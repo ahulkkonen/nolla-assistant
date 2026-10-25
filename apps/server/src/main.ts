@@ -2,6 +2,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openDb, users } from '@pa/db';
 import { PSEUDO_DOWN, PseudoClient, type PseudoLog } from '@pa/pi-ext-pseudo';
+import type { ServerMessage } from '@pa/protocol';
 import { loadAgents, watchAgents } from './agents.ts';
 import { approvals as approvalStore } from './approval.ts';
 import { purgeExpiredSessions } from './auth/session.ts';
@@ -9,6 +10,7 @@ import { startAutomations } from './automations.ts';
 import { agentsState, type BridgeDeps, broadcast, chatRow, errorMsg } from './bridge.ts';
 import { type Config, loadConfig } from './config.ts';
 import { buildServer } from './http.ts';
+import { memoryStore } from './memory.ts';
 import { writeModelsJson } from './pi/models.ts';
 import { SessionRegistry } from './pi/registry.ts';
 import { indexIdle } from './search.ts';
@@ -28,6 +30,14 @@ export async function start(
   const rooms: BridgeDeps['rooms'] = new Map();
   let automations: ReturnType<typeof startAutomations> | undefined;
   const sockets: BridgeDeps['sockets'] = new Set();
+  const sendAll = (msg: ServerMessage) => {
+    const data = JSON.stringify(msg);
+    for (const s of sockets) {
+      try {
+        s.send(data);
+      } catch {}
+    }
+  };
   const agentLog = (file: string, err: unknown, level: 'error' | 'warn' = 'error') =>
     app.log[level](
       { file, error: err instanceof Error ? err.message : String(err) },
@@ -49,12 +59,7 @@ export async function start(
       try {
         agentMap = loadAgents(config.agentsDir, agentLog, agentMap);
         checkBash();
-        const msg = JSON.stringify(agentsState(agentMap));
-        for (const s of sockets) {
-          try {
-            s.send(msg);
-          } catch {}
-        }
+        sendAll(agentsState(agentMap));
       } catch (err) {
         agentLog(config.agentsDir, err);
       }
@@ -70,6 +75,17 @@ export async function start(
     if (msg === PSEUDO_DOWN && (data as { hook?: string } | undefined)?.hook === 'input')
       broadcast(rooms, chatId, errorMsg('pseudo_down', chatId));
   };
+  // `app` exists by the time any memory callback runs.
+  const memory = memoryStore({
+    db,
+    dataDir: config.dataDir,
+    userId: config.userId,
+    pseudo,
+    litellmUrl: config.litellmUrl,
+    litellmMasterKey: config.litellmMasterKey,
+    warn: (msg, data) => app.log.warn(data ?? {}, msg),
+    sendAll,
+  });
   const registry = new SessionRegistry({
     dataDir: config.dataDir,
     userId: config.userId,
@@ -80,6 +96,11 @@ export async function start(
     broker: config.broker,
     onSettled: ({ sessionId }) => titles.scheduleTitleJob(sessionId),
     ...(pseudo ? { pseudo: { client: pseudo, log: pseudoLog } } : {}),
+    memory: {
+      store: memory,
+      onChange: (chatId) => broadcast(rooms, chatId, memory.state()),
+      log: (chatId, level, msg, data) => app.log[level]({ chatId, ...data }, msg),
+    },
     subagents: {
       litellm: { url: config.litellmUrl, key: config.litellmMasterKey },
       pseudoUrl: config.pseudoUrl,
@@ -97,6 +118,7 @@ export async function start(
     agents,
     approvals,
     sockets,
+    memory,
     automations: () => automations,
     ...(logStream ? { logStream } : {}),
     ...(pseudo ? { pseudo } : {}),
@@ -130,6 +152,7 @@ export async function start(
   const close = async () => {
     stopWatch();
     automations?.close();
+    memory.close();
     clearInterval(timer);
     clearInterval(purge);
     await titles.close();

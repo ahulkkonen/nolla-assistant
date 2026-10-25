@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { AgentSession, AgentSessionEvent } from '@earendil-works/pi-coding-agent';
 import { chats, type Db, topicProposals, topics } from '@pa/db';
+import { FULL } from '@pa/pi-ext-memory';
 import {
   type PseudoClient,
   PseudoDownError,
@@ -22,6 +23,7 @@ import type { Agents } from './agents.ts';
 import { type Approvals, DENIED_REASON, TIMEOUT_REASON } from './approval.ts';
 import type { Automations } from './automations.ts';
 import { AttachmentNotFound, chatFiles, ingestAttachments } from './files.ts';
+import { MemoryError, type MemoryStore } from './memory.ts';
 import { GUARD_REASON } from './pi/guard.ts';
 import type { SessionRegistry } from './pi/registry.ts';
 import { indexChat, related, search } from './search.ts';
@@ -47,6 +49,7 @@ export type BridgeDeps = {
   sockets: Set<Socket>;
   /** Unset until the runner has started. */
   automations: () => Automations | undefined;
+  memory: MemoryStore;
   /** Restores surrogates for display. Unset in dev (no masking, see config `pseudoUrl`). */
   pseudo?: PseudoClient;
 };
@@ -63,6 +66,8 @@ const ERRORS = {
   prompt_failed: 'Prompt failed',
   llm_failed: 'Model call failed',
   pseudo_down: 'Pseudonymization service unavailable',
+  memory_full: 'Memory is full',
+  memory_conflict: 'Memory text not found',
 } as const;
 
 class NotFound extends Error {}
@@ -211,7 +216,8 @@ export const agentsState = (agents: Agents): ServerMessage => ({
 });
 
 export function attachBridge(socket: Socket, deps: BridgeDeps) {
-  const { registry, db, userId, dataDir, log, rooms, pseudo, agents, approvals, sockets } = deps;
+  const { registry, db, userId, dataDir, log, rooms, pseudo, agents, approvals, sockets, memory } =
+    deps;
   const open = new Set<string>();
   sockets.add(socket);
   send(socket, agentsState(agents()));
@@ -463,6 +469,26 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
       case 'topic.reject':
         resolveProposal(msg.proposalId, 'rejected');
         return send(socket, topicState(db, userId));
+      case 'memory.list':
+        return send(socket, memory.state());
+      case 'memory.edit':
+        memory.edit(msg.target, msg.text);
+        return send(socket, memory.state());
+      case 'memory.approve':
+        if (!memory.approve(msg.pendingId, msg.approve)) throw new NotFound();
+        return send(socket, memory.state());
+      case 'memory.consolidate':
+        await memory.consolidate();
+        return send(socket, memory.state());
+      case 'memory.consolidation.resolve':
+        if (
+          !memory.resolveConsolidation(msg.id, msg.accept, {
+            ...(msg.user !== undefined ? { user: msg.user } : {}),
+            ...(msg.memory !== undefined ? { memory: msg.memory } : {}),
+          })
+        )
+          throw new NotFound();
+        return send(socket, memory.state());
       case 'vault.list':
       case 'vault.merge':
       case 'vault.split':
@@ -493,6 +519,8 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
       if (err instanceof NotFound || err instanceof AttachmentNotFound)
         return send(socket, errorMsg('not_found'));
       if (err instanceof PseudoDownError) return send(socket, errorMsg('pseudo_down'));
+      if (err instanceof MemoryError)
+        return send(socket, errorMsg(err.message === FULL ? 'memory_full' : 'memory_conflict'));
       log.warn({ err, type: parsed.data.type }, 'client message failed');
       send(socket, errorMsg('failed'));
     });

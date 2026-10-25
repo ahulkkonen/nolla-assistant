@@ -95,9 +95,24 @@ export const memoryPending = sqliteTable('memoryPending', {
   id: integer().primaryKey({ autoIncrement: true }),
   userId: text().notNull(),
   chatId: chatRef(),
-  action: text().notNull(),
-  target: text().notNull(),
+  action: text({ enum: ['add', 'replace', 'remove'] }).notNull(),
+  target: text({ enum: ['user', 'memory'] }).notNull(),
   text: text().notNull(),
+  // The text `replace` swaps out; null for add and remove.
+  replace: text(),
+  // pending | applied | rejected
+  status: text().notNull().default('pending'),
+  createdAt: text().notNull(),
+});
+
+/** Weekly consolidation proposals (phase-8 decision 4); texts and `diff` are restored (real). */
+export const memoryConsolidations = sqliteTable('memoryConsolidations', {
+  id: integer().primaryKey({ autoIncrement: true }),
+  userId: text().notNull(),
+  diff: text().notNull(),
+  proposedUser: text().notNull(),
+  proposedMemory: text().notNull(),
+  // pending | accepted | rejected
   status: text().notNull().default('pending'),
   createdAt: text().notNull(),
 });

@@ -13,6 +13,7 @@ COPY packages/db/package.json packages/db/
 COPY packages/protocol/package.json packages/protocol/
 COPY packages/pi-ext-pseudo/package.json packages/pi-ext-pseudo/
 COPY packages/pi-ext-topics/package.json packages/pi-ext-topics/
+COPY packages/pi-ext-memory/package.json packages/pi-ext-memory/
 COPY tests/contract/package.json tests/contract/
 COPY tests/fake-llm/package.json tests/fake-llm/
 COPY apps/web/package.json apps/web/
@@ -39,10 +40,13 @@ COPY packages/protocol packages/protocol
 COPY packages/db packages/db
 COPY packages/pi-ext-pseudo packages/pi-ext-pseudo
 COPY packages/pi-ext-topics packages/pi-ext-topics
+COPY packages/pi-ext-memory packages/pi-ext-memory
 # Not `pnpm deploy`: it copies workspace packages into node_modules, where Node refuses to strip types.
 RUN pnpm install --frozen-lockfile --prod --filter @pa/server...
 
 FROM base AS runtime
+# git versions the memory files (phase-8 decision 1).
+RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
 RUN useradd --uid 10001 --user-group --no-create-home app && mkdir /data && chown app:app /data
 COPY --from=prod --chown=app:app /app/node_modules /app/node_modules
 COPY --from=prod --chown=app:app /app/apps/server /app/apps/server
@@ -50,6 +54,7 @@ COPY --from=prod --chown=app:app /app/packages/protocol /app/packages/protocol
 COPY --from=prod --chown=app:app /app/packages/db /app/packages/db
 COPY --from=prod --chown=app:app /app/packages/pi-ext-pseudo /app/packages/pi-ext-pseudo
 COPY --from=prod --chown=app:app /app/packages/pi-ext-topics /app/packages/pi-ext-topics
+COPY --from=prod --chown=app:app /app/packages/pi-ext-memory /app/packages/pi-ext-memory
 COPY --chown=app:app infra/models.json /app/infra/models.json
 COPY --chown=app:app agents /app/agents
 COPY --chown=app:app automations /app/automations

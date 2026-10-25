@@ -16,6 +16,7 @@
     "@fastify/websocket": "11.3.4",
     "@huggingface/transformers": "4.3.1",
     "@pa/db": "workspace:*",
+    "@pa/pi-ext-memory": "workspace:*",
     "@pa/pi-ext-pseudo": "workspace:*",
     "@pa/pi-ext-sandbox": "workspace:*",
     "@pa/pi-ext-subagents": "workspace:*",

@@ -1,23 +1,7 @@
-import { startFakeBroker } from '@pa/pi-ext-sandbox/fake-broker';
 import { afterEach, expect, test } from 'vitest';
-import { boot, cleanups, connect, runCleanups } from './test-utils.ts';
+import { boot, bootResearch, connect, runCleanups } from './test-utils.ts';
 
 afterEach(runCleanups);
-const TOKEN = 'broker-test-token';
-
-/** Boots with the fake broker rooted at the work dir; returns a socket on a new research chat. */
-async function bootResearch(turns: Parameters<typeof boot>[0]) {
-  const broker = await startFakeBroker({ token: TOKEN, root: '' });
-  cleanups.push(broker.close);
-  const b = await boot(turns, { BROKER_URL: broker.url, BROKER_TOKEN: TOKEN });
-  const srv = await b.run();
-  broker.state.root = srv.registry.cwd;
-  const c = await connect(b.config.port);
-  c.send({ type: 'chat.create', agentId: 'research' });
-  const { chat } = await c.next('chat.created');
-  return { ...b, srv, c, chat, broker };
-}
-
 test('bash runs through the broker after approval', { timeout: 30_000 }, async () => {
   const { c, chat, srv, broker } = await bootResearch([
     { toolCalls: [{ name: 'bash', args: { command: 'echo hei' } }] },

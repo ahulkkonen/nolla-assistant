@@ -33,16 +33,63 @@ const Reply = z.object({
   summary: z.string(),
 });
 
-const parse = (text: string) => {
-  try {
-    return Reply.safeParse(JSON.parse(text.replace(/^\s*```(?:json)?|```\s*$/g, ''))).data;
-  } catch {
-    // The parser error quotes the reply text: never log it.
-    return undefined;
-  }
-};
+export type ChatMessage = { role: 'system' | 'user' | 'assistant'; content: string };
 
-type ChatMessage = { role: 'system' | 'user' | 'assistant'; content: string };
+/**
+ * JSON-only calls to the LiteLLM alias `zdr/task-small`: validates the reply with `schema` and
+ * retries once with a repair message. Resolves `undefined` when the reply stays invalid.
+ */
+export function taskSmall(litellmUrl: string, litellmMasterKey: string) {
+  let jsonMode = true;
+  const complete = async (messages: ChatMessage[]): Promise<string> => {
+    for (;;) {
+      const res = await fetch(`${litellmUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${litellmMasterKey}`,
+        },
+        body: JSON.stringify({
+          model: 'zdr/task-small',
+          stream: false,
+          messages,
+          ...(jsonMode ? { response_format: { type: 'json_object' } } : {}),
+        }),
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      });
+      // The alias may reject `response_format`; the prompt asks for JSON only anyway.
+      if (res.status === 400 && jsonMode) {
+        jsonMode = false;
+        continue;
+      }
+      if (!res.ok) throw new Error(`task-small call status ${res.status}`);
+      const body = (await res.json()) as { choices?: { message?: { content?: string | null } }[] };
+      return body.choices?.[0]?.message?.content ?? '';
+    }
+  };
+  const parse = <T>(schema: z.ZodType<T>, text: string) => {
+    try {
+      return schema.safeParse(JSON.parse(text.replace(/^\s*```(?:json)?|```\s*$/g, ''))).data;
+    } catch {
+      // The parser error quotes the reply text: never log it.
+      return undefined;
+    }
+  };
+  return async <T>(schema: z.ZodType<T>, messages: ChatMessage[]): Promise<T | undefined> => {
+    const content = await complete(messages);
+    return (
+      parse(schema, content) ??
+      parse(
+        schema,
+        await complete([
+          ...messages,
+          { role: 'assistant', content },
+          { role: 'user', content: REPAIR },
+        ]),
+      )
+    );
+  };
+}
 
 /** Topics with chat counts and the pending inbox. */
 export function topicState(db: Db, userId: string): ServerMessage {
@@ -93,34 +140,7 @@ export function titleJobs(deps: {
   const lastRunChars = new Map<string, number>();
   let chain = Promise.resolve();
   let closed = false;
-  let jsonMode = true;
-
-  const complete = async (messages: ChatMessage[]): Promise<string> => {
-    for (;;) {
-      const res = await fetch(`${deps.litellmUrl}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          authorization: `Bearer ${deps.litellmMasterKey}`,
-        },
-        body: JSON.stringify({
-          model: 'zdr/task-small',
-          stream: false,
-          messages,
-          ...(jsonMode ? { response_format: { type: 'json_object' } } : {}),
-        }),
-        signal: AbortSignal.timeout(TIMEOUT_MS),
-      });
-      // The alias may reject `response_format`; the prompt asks for JSON only anyway.
-      if (res.status === 400 && jsonMode) {
-        jsonMode = false;
-        continue;
-      }
-      if (!res.ok) throw new Error(`title call status ${res.status}`);
-      const body = (await res.json()) as { choices?: { message?: { content?: string | null } }[] };
-      return body.choices?.[0]?.message?.content ?? '';
-    }
-  };
+  const ask = taskSmall(deps.litellmUrl, deps.litellmMasterKey);
 
   const run = async (chatId: string) => {
     const chat = chatRow(db, userId, chatId);
@@ -149,16 +169,7 @@ export function titleJobs(deps: {
         content: `Aiheet:\n${JSON.stringify(list)}\n\nKeskustelu:\n${transcript.slice(-TAIL_CHARS)}`,
       },
     ];
-    let content = await complete(messages);
-    let reply = parse(content);
-    if (!reply) {
-      content = await complete([
-        ...messages,
-        { role: 'assistant', content },
-        { role: 'user', content: REPAIR },
-      ]);
-      reply = parse(content);
-    }
+    const reply = await ask(Reply, messages);
     if (!reply) return log.warn({ chatId }, 'title reply invalid');
 
     const known = new Set(list.map((t) => t.id));
