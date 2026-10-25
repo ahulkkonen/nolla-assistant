@@ -5,7 +5,13 @@ import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { build, dockerClient, PROXY_NETWORK, skillPolicy } from '@pa/sandbox-broker';
+import {
+  build,
+  dockerClient,
+  EGRESS_NETWORK,
+  PROXY_NETWORK,
+  skillPolicy,
+} from '@pa/sandbox-broker';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { allowed } from '../../../services/sandbox-broker/src/proxy.ts';
 
@@ -125,6 +131,9 @@ describe.skipIf(!hasDocker)(hasDocker ? 'sandbox broker (docker)' : `sandbox ${S
     if (relayId)
       await docker?.call('DELETE', `/containers/${relayId}?force=1`).then((r) => r.body.dump());
     await app?.close();
+    // The broker created these without compose labels; `infra/compose.yaml` must own them next.
+    for (const net of [PROXY_NETWORK, EGRESS_NETWORK])
+      await docker?.call('DELETE', `/networks/${net}`).then((r) => r.body.dump());
     await docker?.close();
   });
 

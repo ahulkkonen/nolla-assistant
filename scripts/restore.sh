@@ -33,10 +33,11 @@ for db in app; do
   else echo "no litestream replica for $db.db"; fi
 done
 
-# Everything else (sessions, files, pi, memory) from the latest snapshot. A database without a
+# Everything else (sessions, files, pi, memory) from the latest snapshot. /backup-extra is a
+# read-only mount here: exclude the whole tree, or restic fails on its lchown. A database without a
 # Litestream replica falls back to its snapshot copy.
 # shellcheck disable=SC2086
-restic restore latest --tag full --target / $skip --exclude /data/vault.db --exclude '/data/vault.db-*' --exclude "$MCP"
+restic restore latest --tag full --target / $skip --exclude /data/vault.db --exclude '/data/vault.db-*' --exclude /backup-extra
 # Newest hourly vault snapshot wins over the nightly copy.
 restic restore latest --tag vault --target / || echo "no vault snapshot yet"
 find "$DATA" -type f | sed "s|^$DATA/||" | sort | sed 's/^/restored: /'
