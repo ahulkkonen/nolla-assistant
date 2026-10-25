@@ -26,7 +26,7 @@ export function AgentsScreen() {
             </li>
           ))}
         </ul>
-        <p className="pt-4 text-meta text-muted-foreground">
+        <p className="pt-4 text-meta text-balance text-muted-foreground">
           Agentit ovat tiedostoja kansiossa <span className="font-mono">agents/</span>. Muokkaa
           niitä siellä.
         </p>

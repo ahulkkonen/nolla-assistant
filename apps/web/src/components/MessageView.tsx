@@ -130,13 +130,16 @@ function Anno({ real, saw }: { real: string; saw: string }) {
     <Popover.Root>
       <Popover.Trigger asChild>{span}</Popover.Trigger>
       <Popover.Portal>
+        {/* Above the span with an arrow, as the desktop tooltip: the next line stays visible. */}
         <Popover.Content
           aria-label={hint}
+          side="top"
           sideOffset={4}
           collisionPadding={8}
           className="z-50 rounded-sm bg-primary px-2 py-1 text-micro text-primary-foreground"
         >
           {hint}
+          <Popover.Arrow className="fill-primary" />
         </Popover.Content>
       </Popover.Portal>
     </Popover.Root>

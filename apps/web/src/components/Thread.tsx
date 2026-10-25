@@ -170,10 +170,12 @@ export function Thread() {
             return (
               <article
                 key={t.items[0]?.m.id}
-                // After a user turn 40 px (48 on phones): its action row sits in the gap.
+                // After a user turn 40 px (48 on phones): its action row sits in the gap. The
+                // latest user turn shows its 44 px row on touch, so 24 px stay below the row.
                 className={cn(
                   'flex flex-col gap-2 animate-fade-in',
                   t.role === 'user' && 'mb-4 max-md:mb-6',
+                  t.role === 'user' && t.items.some(({ i }) => i === lastUser) && 'max-md:mb-12',
                 )}
               >
                 <h2 className="sr-only">{t.role === 'user' ? 'Sinä sanoit' : 'Avustaja sanoi'}</h2>

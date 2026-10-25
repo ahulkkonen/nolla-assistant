@@ -186,7 +186,13 @@ function Integrations() {
           )}
         </span>
       }
-      helper={google === null ? 'Tarkistetaan…' : 'Katkaise yhteys Google-tilin asetuksista.'}
+      helper={
+        google === null
+          ? 'Tarkistetaan…'
+          : google.connected
+            ? 'Katkaise yhteys Google-tilin asetuksista.'
+            : undefined
+      }
     >
       {google && !google.connected && (
         <Button variant="outline" size="sm" disabled={busy} onClick={() => void connect()}>
@@ -197,9 +203,17 @@ function Integrations() {
   );
 }
 
+/** The scroll body; a 16 px fade at the bottom shows that the content continues. */
 function Body({ mobile, children }: { mobile: boolean; children: ReactNode }) {
-  if (mobile) return <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>;
-  return <ScrollArea className="min-h-0 flex-1">{children}</ScrollArea>;
+  return (
+    <div className="relative min-h-0 flex-1 after:pointer-events-none after:absolute after:inset-x-0 after:bottom-0 after:h-4 after:bg-linear-to-t after:from-card after:to-transparent">
+      {mobile ? (
+        <div className="h-full overflow-y-auto">{children}</div>
+      ) : (
+        <ScrollArea className="h-full">{children}</ScrollArea>
+      )}
+    </div>
+  );
 }
 
 /** The whole settings (brief 7.5): theme, privacy, screens, voice, notifications, keys. */
