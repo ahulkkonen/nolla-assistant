@@ -6,7 +6,7 @@ import { loadAgents, watchAgents } from './agents.ts';
 import { approvals as approvalStore } from './approval.ts';
 import { purgeExpiredSessions } from './auth/session.ts';
 import { startAutomations } from './automations.ts';
-import { type BridgeDeps, broadcast, chatRow, errorMsg } from './bridge.ts';
+import { agentsState, type BridgeDeps, broadcast, chatRow, errorMsg } from './bridge.ts';
 import { type Config, loadConfig } from './config.ts';
 import { buildServer } from './http.ts';
 import { writeModelsJson } from './pi/models.ts';
@@ -27,19 +27,40 @@ export async function start(
   const pseudo = config.pseudoUrl ? new PseudoClient(config.pseudoUrl, config.userId) : undefined;
   const rooms: BridgeDeps['rooms'] = new Map();
   let automations: ReturnType<typeof startAutomations> | undefined;
-  const agentError = (file: string, err: unknown) =>
-    app.log.error({ file, error: err instanceof Error ? err.message : String(err) }, 'bad agent');
-  // Startup fails without `assistant`; a later bad edit keeps the previous profiles.
-  let agentMap = loadAgents(config.agentsDir, (file, err) =>
-    console.error('bad agent', file, err instanceof Error ? err.message : err),
+  const sockets: BridgeDeps['sockets'] = new Set();
+  const agentLog = (file: string, err: unknown, level: 'error' | 'warn' = 'error') =>
+    app.log[level](
+      { file, error: err instanceof Error ? err.message : String(err) },
+      'agent profile',
+    );
+  const checkBash = () => {
+    for (const a of agentMap.values())
+      if (!config.broker && a.tools.allow.includes('bash'))
+        agentLog(a.id, 'bash listed but BROKER_URL/BROKER_TOKEN unset: no bash tool', 'warn');
+  };
+  // Startup fails without `assistant`; a later bad edit keeps the previous profile versions.
+  // `app` does not exist yet, so the first load logs to the console.
+  let agentMap = loadAgents(config.agentsDir, (file, err, level) =>
+    console[level]('agent profile', file, err instanceof Error ? err.message : err),
   );
-  const stopWatch = watchAgents(config.agentsDir, () => {
-    try {
-      agentMap = loadAgents(config.agentsDir, agentError);
-    } catch (err) {
-      agentError(config.agentsDir, err);
-    }
-  });
+  const stopWatch = watchAgents(
+    config.agentsDir,
+    () => {
+      try {
+        agentMap = loadAgents(config.agentsDir, agentLog, agentMap);
+        checkBash();
+        const msg = JSON.stringify(agentsState(agentMap));
+        for (const s of sockets) {
+          try {
+            s.send(msg);
+          } catch {}
+        }
+      } catch (err) {
+        agentLog(config.agentsDir, err);
+      }
+    },
+    (err) => agentLog(config.agentsDir, err),
+  );
   const agents = () => agentMap;
   const approvals = approvalStore((chatId, msg) => broadcast(rooms, chatId, msg));
   const pseudoLog = (chatId: string, ...[level, msg, data]: Parameters<PseudoLog>) => {
@@ -56,6 +77,7 @@ export async function start(
     getAgentId: (chatId) => chatRow(db, config.userId, chatId)?.agentId,
     approval: { ask: approvals.ask, timeoutMs: config.approvalTimeoutMs },
     skillsDir: config.skillsDir,
+    broker: config.broker,
     onSettled: ({ sessionId }) => titles.scheduleTitleJob(sessionId),
     ...(pseudo ? { pseudo: { client: pseudo, log: pseudoLog } } : {}),
     subagents: {
@@ -74,6 +96,7 @@ export async function start(
     rooms,
     agents,
     approvals,
+    sockets,
     automations: () => automations,
     ...(logStream ? { logStream } : {}),
     ...(pseudo ? { pseudo } : {}),
@@ -98,6 +121,7 @@ export async function start(
     prompt: async (chatId, text) => void (await (await registry.get(chatId)).prompt(text)),
     log: app.log,
   });
+  checkBash();
   await app.listen({ port: config.port, host: config.host });
   const timer = setInterval(() => void registry.evictIdle(), 5 * 60_000);
   timer.unref();

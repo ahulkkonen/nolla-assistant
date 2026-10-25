@@ -43,6 +43,8 @@ export type BridgeDeps = {
   rooms: Map<string, Set<Socket>>;
   agents: () => Agents;
   approvals: Approvals;
+  /** Every open socket of this server (for `agents.state` after a profile reload). */
+  sockets: Set<Socket>;
   /** Unset until the runner has started. */
   automations: () => Automations | undefined;
   /** Restores surrogates for display. Unset in dev (no masking, see config `pseudoUrl`). */
@@ -198,20 +200,32 @@ async function release(restore: Restore, pending: string, final: boolean) {
   return { out: { text: r.text.slice(0, cut + shift), annotations }, rest: pending.slice(cut) };
 }
 
+export const agentsState = (agents: Agents): ServerMessage => ({
+  type: 'agents.state',
+  agents: [...agents.values()].map(({ id, name, model, subagents }) => ({
+    id,
+    name,
+    model,
+    subagents,
+  })),
+});
+
 export function attachBridge(socket: Socket, deps: BridgeDeps) {
-  const { registry, db, userId, dataDir, log, rooms, pseudo, agents, approvals } = deps;
+  const { registry, db, userId, dataDir, log, rooms, pseudo, agents, approvals, sockets } = deps;
   const open = new Set<string>();
-  send(socket, {
-    type: 'agents.state',
-    agents: [...agents().values()].map(({ id, name, model, subagents }) => ({
-      id,
-      name,
-      model,
-      subagents,
-    })),
-  });
+  sockets.add(socket);
+  send(socket, agentsState(agents()));
   // A reload must not lose open approvals.
   for (const r of approvals.list()) send(socket, r);
+
+  const ownTopic = (topicId: string) => {
+    const t = db
+      .select({ id: topics.id })
+      .from(topics)
+      .where(and(eq(topics.id, topicId), eq(topics.userId, userId)))
+      .get();
+    if (!t) throw new NotFound();
+  };
 
   const owned = (chatId: string) => {
     const r = chatRow(db, userId, chatId);
@@ -305,7 +319,10 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
         return send(socket, { type: 'pong' });
       case 'chat.create': {
         if (!agents().has(msg.agentId)) throw new NotFound();
+        if (msg.topicId) ownTopic(msg.topicId);
         const id = randomUUID();
+        // Session first: a failed build leaves no chat row behind.
+        const session = await registry.create(id, msg.agentId);
         const now = new Date().toISOString();
         const r = db
           .insert(chats)
@@ -321,7 +338,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
           })
           .returning()
           .get();
-        join(id, await registry.create(id, msg.agentId));
+        join(id, session);
         return send(socket, { type: 'chat.created', chat: summary(r) });
       }
       case 'chat.list': {
@@ -399,9 +416,17 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
           });
         return;
       }
-      case 'approval.respond':
-        if (!approvals.respond(msg.requestId, msg.approve)) throw new NotFound();
-        return;
+      case 'approval.respond': {
+        if (approvals.respond(msg.requestId, msg.approve)) return;
+        const chatId = approvals.resolvedChat(msg.requestId);
+        if (!chatId) throw new NotFound();
+        return send(socket, {
+          type: 'approval.resolved',
+          chatId,
+          requestId: msg.requestId,
+          outcome: 'expired',
+        });
+      }
       case 'user.stop':
         owned(msg.chatId);
         if (registry.has(msg.chatId)) await (await registry.get(msg.chatId)).abort();
@@ -418,15 +443,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
         return send(socket, topicState(db, userId));
       case 'topic.accept': {
         let topicId = msg.mergeIntoTopicId;
-        if (
-          topicId &&
-          !db
-            .select({ id: topics.id })
-            .from(topics)
-            .where(and(eq(topics.id, topicId), eq(topics.userId, userId)))
-            .get()
-        )
-          throw new NotFound();
+        if (topicId) ownTopic(topicId);
         const p = resolveProposal(msg.proposalId, 'accepted');
         if (!topicId) {
           topicId = randomUUID();
@@ -482,6 +499,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
   });
 
   socket.on('close', () => {
+    sockets.delete(socket);
     for (const chatId of open) {
       const room = rooms.get(chatId);
       room?.delete(socket);

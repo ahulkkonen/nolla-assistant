@@ -199,6 +199,9 @@ importers:
       '@pa/pi-ext-pseudo':
         specifier: workspace:*
         version: link:../../packages/pi-ext-pseudo
+      '@pa/pi-ext-sandbox':
+        specifier: workspace:*
+        version: link:../../packages/pi-ext-sandbox
       '@pa/pi-ext-subagents':
         specifier: workspace:*
         version: link:../../packages/pi-ext-subagents
@@ -398,6 +401,9 @@ importers:
       '@pa/pi-ext-pseudo':
         specifier: workspace:*
         version: link:../pi-ext-pseudo
+      '@pa/pi-ext-sandbox':
+        specifier: workspace:*
+        version: link:../pi-ext-sandbox
       typebox:
         specifier: 1.3.27
         version: 1.3.27

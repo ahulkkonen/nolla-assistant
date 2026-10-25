@@ -254,6 +254,13 @@ export const ServerMessage = z.discriminatedUnion('type', [
     reason: z.string(),
     expiresAt: z.iso.datetime(),
   }),
+  /** A pending `approval.request` ended: answered (by any client), expired, or aborted. */
+  z.object({
+    type: z.literal('approval.resolved'),
+    chatId: id64,
+    requestId: id64,
+    outcome: z.enum(['approved', 'denied', 'expired']),
+  }),
   z.object({
     type: z.literal('artifact.upsert'),
     chatId: id64,

@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { FakeTurn } from '@pa/fake-llm';
-import { afterEach, expect, test } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
 import { DENIED_REASON, TIMEOUT_REASON } from './approval.ts';
 import { boot, bootChat, bootPseudo, connect, runCleanups } from './test-utils.ts';
 
@@ -24,6 +24,7 @@ test('approve: request shows real args, then the tool runs', { timeout: 30_000 }
   expect(body(llm, 0)).toContain('Pekka Laaksonen');
   expect(body(llm, 0)).not.toContain('Matti Virtanen');
   c.send({ type: 'approval.respond', requestId: req.requestId, approve: true });
+  expect((await c.next('approval.resolved')).outcome).toBe('approved');
   expect((await c.next('tool.end')).status).toBe('ok');
   await c.idle();
   expect(readFileSync(join(srv.registry.cwd, 'muistio.txt'), 'utf8')).toBe('Matti Virtanen');
@@ -38,6 +39,33 @@ test('deny: the tool does not run and the model gets the reason', { timeout: 30_
   await c.idle();
   expect(existsSync(join(srv.registry.cwd, 'muistio.txt'))).toBe(false);
   expect(body(llm, 1)).toContain(DENIED_REASON);
+  expect((await c.next('approval.resolved')).outcome).toBe('denied');
+  // A late answer gets `expired`, not an error.
+  c.send({ type: 'approval.respond', requestId: req.requestId, approve: true });
+  expect(await c.next('approval.resolved')).toEqual({
+    type: 'approval.resolved',
+    chatId: chat.id,
+    requestId: req.requestId,
+    outcome: 'expired',
+  });
+});
+
+test('user.stop during the wait blocks the tool at once', { timeout: 30_000 }, async () => {
+  const { c, chat, srv } = await bootChat(WRITE);
+  c.send({ type: 'user.message', chatId: chat.id, text: 'Kirjoita' });
+  const req = await c.next('approval.request');
+  const t0 = Date.now();
+  c.send({ type: 'user.stop', chatId: chat.id });
+  expect(await c.next('approval.resolved')).toMatchObject({
+    requestId: req.requestId,
+    outcome: 'expired',
+  });
+  // The abort also ends the follow-up model call (`llm_failed`), so read the inbox directly.
+  await vi.waitFor(() =>
+    expect(c.inbox.some((m) => m.type === 'agent.status' && m.state === 'idle')).toBe(true),
+  );
+  expect(Date.now() - t0).toBeLessThan(5000);
+  expect(existsSync(join(srv.registry.cwd, 'muistio.txt'))).toBe(false);
 });
 
 test('a reconnecting socket gets the pending request again', { timeout: 30_000 }, async () => {

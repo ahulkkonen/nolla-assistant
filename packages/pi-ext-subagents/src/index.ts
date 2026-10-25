@@ -33,6 +33,8 @@ export type SubagentsOptions = {
   /** Default model id of the `zdr` provider, e.g. `zdr/strong`. */
   model: string;
   tools: string[];
+  /** Loads `pi-ext-sandbox` into every child; without it `bash` is removed from `tools`. */
+  broker?: { url: string; token: string } | undefined;
   /** Child tools that need the user's approval (the profile's `approval.always`). */
   approvalAlways?: string[];
   onState: (children: Pick<Child, 'id' | 'label' | 'status'>[]) => void;
@@ -77,13 +79,15 @@ const textOf = (m: Msg) =>
  */
 export function subagentsExtension(opts: SubagentsOptions): ExtensionFactory {
   const { chatId, userId, model, ask, log, timeoutMs = MINUTES_10 } = opts;
-  // Pi's built-in `bash` is never allowed (plan §2 invariant 8); children do not load the sandbox
-  // extension yet, so `--tools bash` would enable the built-in one.
-  const tools = opts.tools.filter((t) => t !== 'bash');
+  // Pi's built-in `bash` is never allowed (plan §2 invariant 8): without the sandbox extension,
+  // `--tools bash` would enable the built-in one.
+  const { broker } = opts;
+  const tools = opts.tools.filter((t) => t !== 'bash' || broker);
   const cli = piCli();
   const extensions = [
     ...(opts.pseudoUrl ? [require.resolve('@pa/pi-ext-pseudo/cli')] : []),
     fileURLToPath(new URL('./child.ts', import.meta.url)),
+    ...(broker ? [require.resolve('@pa/pi-ext-sandbox/cli')] : []),
   ];
   const sessionDir = join(opts.dataDir, 'sessions', userId, chatId, 'sub');
 
@@ -135,6 +139,7 @@ export function subagentsExtension(opts: SubagentsOptions): ExtensionFactory {
             PA_PARENT_CHAT_ID: chatId,
             PA_APPROVAL_ALWAYS: (opts.approvalAlways ?? []).join(','),
             ...(opts.pseudoUrl ? { PSEUDO_URL: opts.pseudoUrl } : {}),
+            ...(broker ? { BROKER_URL: broker.url, BROKER_TOKEN: broker.token } : {}),
           },
           stdio: ['pipe', 'pipe', 'pipe'],
         },

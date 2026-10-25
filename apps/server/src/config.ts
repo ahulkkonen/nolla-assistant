@@ -54,6 +54,11 @@ export function loadConfig(env: Env = process.env) {
     // Dev only when unset: no masking extension and no display restoration, so real values reach
     // the model. Production always sets it (invariant 1).
     pseudoUrl: env.PSEUDO_URL || undefined,
+    // Both or nothing: without them no `bash` tool exists (Pi's built-in one is never enabled).
+    broker:
+      env.BROKER_URL && env.BROKER_TOKEN
+        ? { url: env.BROKER_URL, token: env.BROKER_TOKEN }
+        : undefined,
   });
 }
 

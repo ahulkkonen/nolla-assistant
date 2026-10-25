@@ -10,6 +10,7 @@ import {
   SessionManager,
 } from '@earendil-works/pi-coding-agent';
 import { type PseudoClient, type PseudoLog, pseudoExtension } from '@pa/pi-ext-pseudo';
+import { sandboxExtension } from '@pa/pi-ext-sandbox';
 import { type Child, subagentsExtension } from '@pa/pi-ext-subagents';
 import { topicsExtension } from '@pa/pi-ext-topics';
 import type { Agents } from '../agents.ts';
@@ -25,6 +26,8 @@ type RegistryOptions = {
   getAgentId: (chatId: string) => string | undefined;
   approval: { ask: Ask; timeoutMs?: number };
   skillsDir: string;
+  /** `sandbox-broker`; unset means no `bash` tool at all. */
+  broker?: { url: string; token: string } | undefined;
   extensionFactories?: InlineExtension[];
   /** Called at every `agent_settled` through `pi-ext-topics`; `sessionId` is the chat id. */
   onSettled?: Parameters<typeof topicsExtension>[0]['onSettled'];
@@ -148,6 +151,9 @@ export class SessionRegistry {
     const model = modelRuntime.getModel('zdr', profile.model);
     if (!model)
       throw new Error(`Model ${profile.model} of agent ${agentId} not found in models.json`);
+    const { broker } = this.opts;
+    // Pi's built-in `bash` is never enabled (invariant 8): `bash` stays only with the broker tool.
+    const tools = profile.tools.allow.filter((t) => t !== 'bash' || broker);
     const skills = new Set(profile.skills);
     const resourceLoader = new DefaultResourceLoader({
       cwd: this.cwd,
@@ -179,7 +185,22 @@ export class SessionRegistry {
             ]
           : []),
         // After pseudo (the user approves real values), before the guard.
-        approvalGate({ chatId, policy: profile.approval, ...this.opts.approval }),
+        approvalGate({
+          chatId,
+          policy: profile.approval,
+          ask: this.opts.approval.ask,
+          timeoutMs: this.opts.approval.timeoutMs,
+        }),
+        ...(broker && tools.includes('bash')
+          ? [
+              sandboxExtension({
+                brokerUrl: broker.url,
+                token: broker.token,
+                userId: this.opts.userId,
+                chatId,
+              }),
+            ]
+          : []),
         ...(withSubagents
           ? [
               subagentsExtension({
@@ -191,7 +212,8 @@ export class SessionRegistry {
                 litellm: withSubagents.litellm,
                 pseudoUrl: withSubagents.pseudoUrl,
                 model: profile.model,
-                tools: profile.tools.allow,
+                tools,
+                broker,
                 approvalAlways: profile.approval.always.filter(
                   (t) => !profile.approval.never.includes(t),
                 ),
@@ -214,7 +236,7 @@ export class SessionRegistry {
       model,
       sessionManager,
       resourceLoader,
-      tools: withSubagents ? [...profile.tools.allow, 'subagent'] : profile.tools.allow,
+      tools: withSubagents ? [...tools, 'subagent'] : tools,
     });
     await session.bindExtensions({});
     return session;
