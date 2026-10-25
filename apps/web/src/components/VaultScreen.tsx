@@ -3,6 +3,7 @@ import {
   Brackets,
   Check,
   EyeOff,
+  MoreHorizontal,
   Pin,
   PinOff,
   RefreshCw,
@@ -12,6 +13,7 @@ import {
   UserRound,
   X,
 } from 'lucide-react';
+import { AlertDialog, DropdownMenu } from 'radix-ui';
 import { useEffect, useState } from 'react';
 import { useStore } from '../store.ts';
 import { send } from '../ws.ts';
@@ -31,60 +33,129 @@ const kind = (k: string) => KIND[k] ?? k;
 const MODE = { realistic: 'realistinen', placeholder: 'paikkamerkki' } as const;
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString('fi-FI') : '–');
 
-function Actions({ e }: { e: VaultEntity }) {
-  const id = e.id;
+type Action = {
+  label: string;
+  Icon: typeof Pin;
+  run?: () => void;
+  pressed?: boolean;
+};
+
+/** One list for the desktop icon row and the mobile menu. No `run` means not available yet. */
+function actionsOf(e: VaultEntity, askNeverDetect: (e: VaultEntity) => void): Action[] {
+  const entityId = e.id;
+  return [
+    {
+      label: e.pinned ? 'Poista kiinnitys' : 'Kiinnitä pseudonyymi',
+      Icon: e.pinned ? PinOff : Pin,
+      pressed: e.pinned,
+      run: () => send({ type: 'vault.pin', entityId, pinned: !e.pinned }),
+    },
+    {
+      label: 'Vaihda pseudonyymi',
+      Icon: RefreshCw,
+      run: () => send({ type: 'vault.regenerate', entityId }),
+    },
+    {
+      label: e.mode === 'realistic' ? 'Käytä paikkamerkkiä' : 'Käytä realistista nimeä',
+      Icon: e.mode === 'realistic' ? Brackets : UserRound,
+      run: () =>
+        send({
+          type: 'vault.setMode',
+          entityId,
+          mode: e.mode === 'realistic' ? 'placeholder' : 'realistic',
+        }),
+    },
+    {
+      label: e.allowlisted ? 'Suojaa taas' : 'Lähetä sellaisenaan',
+      Icon: e.allowlisted ? ShieldCheck : ShieldOff,
+      pressed: e.allowlisted,
+      run: () => send({ type: 'vault.allowlist', entityId, allowlisted: !e.allowlisted }),
+    },
+    { label: 'Älä tunnista enää', Icon: EyeOff, run: () => askNeverDetect(e) },
+    // `vault.state` carries no span ids, so a split has nothing to select yet.
+    { label: 'Jakaminen ei ole vielä käytettävissä', Icon: Split },
+  ];
+}
+
+function ActionRow({ actions }: { actions: Action[] }) {
   return (
-    <div className="flex flex-wrap">
-      <IconButton
-        label={e.pinned ? 'Poista kiinnitys' : 'Kiinnitä pseudonyymi'}
-        aria-pressed={e.pinned}
-        onClick={() => send({ type: 'vault.pin', entityId: id, pinned: !e.pinned })}
-      >
-        {e.pinned ? <PinOff size={16} /> : <Pin size={16} />}
-      </IconButton>
-      <IconButton
-        label="Vaihda pseudonyymi"
-        onClick={() => send({ type: 'vault.regenerate', entityId: id })}
-      >
-        <RefreshCw size={16} />
-      </IconButton>
-      <IconButton
-        label={e.mode === 'realistic' ? 'Käytä paikkamerkkiä' : 'Käytä realistista nimeä'}
-        onClick={() =>
-          send({
-            type: 'vault.setMode',
-            entityId: id,
-            mode: e.mode === 'realistic' ? 'placeholder' : 'realistic',
-          })
-        }
-      >
-        {e.mode === 'realistic' ? <Brackets size={16} /> : <UserRound size={16} />}
-      </IconButton>
-      <IconButton
-        label={e.allowlisted ? 'Suojaa taas' : 'Lähetä sellaisenaan'}
-        aria-pressed={e.allowlisted}
-        onClick={() => send({ type: 'vault.allowlist', entityId: id, allowlisted: !e.allowlisted })}
-      >
-        {e.allowlisted ? <ShieldCheck size={16} /> : <ShieldOff size={16} />}
-      </IconButton>
-      <IconButton
-        label="Älä tunnista enää"
-        onClick={() => {
-          if (confirm(`Lopetetaanko arvon ”${e.canonical}” tunnistus?`))
-            send({ type: 'vault.neverDetect', entityId: id });
-        }}
-      >
-        <EyeOff size={16} />
-      </IconButton>
-      {/* `vault.state` carries no span ids, so a split has nothing to select yet. */}
-      <IconButton
-        label="Jakaminen ei ole vielä käytettävissä"
-        aria-disabled
-        className="cursor-not-allowed"
-      >
-        <Split size={16} />
-      </IconButton>
+    <div className="flex">
+      {actions.map(({ label, Icon, run, pressed }) => (
+        <IconButton
+          key={label}
+          label={label}
+          {...(pressed !== undefined ? { 'aria-pressed': pressed } : {})}
+          {...(run ? { onClick: run } : { 'aria-disabled': 'true' as const })}
+        >
+          <Icon size={16} />
+        </IconButton>
+      ))}
     </div>
+  );
+}
+
+const menuItem =
+  'flex h-11 cursor-default items-center gap-3 rounded-sm px-3 outline-none data-[disabled]:text-fg-muted data-[highlighted]:bg-bg-sunken';
+
+function ActionMenu({ e, actions }: { e: VaultEntity; actions: Action[] }) {
+  return (
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger asChild>
+        <IconButton label={`Toiminnot: ${e.canonical}`}>
+          <MoreHorizontal size={20} />
+        </IconButton>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
+          align="end"
+          sideOffset={4}
+          collisionPadding={8}
+          className="z-50 min-w-60 rounded-md border border-border bg-bg-raised p-1"
+        >
+          {actions.map(({ label, Icon, run }) => (
+            <DropdownMenu.Item
+              key={label}
+              className={menuItem}
+              {...(run ? { onSelect: run } : { disabled: true })}
+            >
+              <Icon size={16} />
+              {label}
+            </DropdownMenu.Item>
+          ))}
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
+  );
+}
+
+const button = 'h-10 rounded-md px-4 font-medium';
+
+function NeverDetectDialog({ e, onClose }: { e: VaultEntity | null; onClose: () => void }) {
+  return (
+    <AlertDialog.Root open={!!e} onOpenChange={(open) => !open && onClose()}>
+      <AlertDialog.Portal>
+        <AlertDialog.Overlay className="fixed inset-0 z-40 bg-fg/30 data-[state=closed]:animate-fade-out data-[state=open]:animate-fade-in" />
+        <AlertDialog.Content className="fixed inset-x-4 top-1/2 z-50 mx-auto max-w-sm -translate-y-1/2 rounded-lg border border-border bg-bg-raised p-6 data-[state=closed]:animate-fade-out data-[state=open]:animate-fade-in">
+          <AlertDialog.Title className="mb-2 font-semibold">
+            Lopetetaanko tunnistus?
+          </AlertDialog.Title>
+          <AlertDialog.Description className="mb-6 text-fg-muted">
+            Arvoa ”{e?.canonical}” ei enää tunnisteta eikä suojata.
+          </AlertDialog.Description>
+          <div className="flex justify-end gap-2">
+            <AlertDialog.Cancel className={`${button} border border-border hover:bg-bg-sunken`}>
+              Peruuta
+            </AlertDialog.Cancel>
+            <AlertDialog.Action
+              className={`${button} bg-accent text-accent-fg`}
+              onClick={() => e && send({ type: 'vault.neverDetect', entityId: e.id })}
+            >
+              Lopeta tunnistus
+            </AlertDialog.Action>
+          </div>
+        </AlertDialog.Content>
+      </AlertDialog.Portal>
+    </AlertDialog.Root>
   );
 }
 
@@ -103,7 +174,7 @@ function PendingLane({ pending }: { pending: VaultPending[] }) {
             <div className="min-w-0 flex-1">
               <div className="truncate">{p.text}</div>
               <div className="text-secondary text-fg-muted">
-                {kind(p.kind)} · {p.detector} · {Math.round(p.score * 100)} %
+                {kind(p.kind)} · suojattu kunnes vahvistat · {Math.round(p.score * 100)} %
               </div>
             </div>
             <IconButton
@@ -143,6 +214,7 @@ export function VaultScreen() {
   const setShowModelSaw = useStore((s) => s.setShowModelSaw);
   const [picked, setPicked] = useState<number[]>([]);
   const [into, setInto] = useState<number | null>(null);
+  const [neverDetect, setNeverDetect] = useState<VaultEntity | null>(null);
 
   useEffect(() => send({ type: 'vault.list' }), []);
 
@@ -158,14 +230,17 @@ export function VaultScreen() {
     setPicked([]);
     setInto(null);
   };
+  // The label pads the 16 px box to a 40 px hit area without moving it.
   const check = (e: VaultEntity) => (
-    <input
-      type="checkbox"
-      aria-label={`Valitse ${e.canonical}`}
-      checked={picked.includes(e.id)}
-      onChange={() => toggle(e.id)}
-      className="size-4 accent-accent"
-    />
+    <label className="-m-3 flex p-3">
+      <input
+        type="checkbox"
+        aria-label={`Valitse ${e.canonical}`}
+        checked={picked.includes(e.id)}
+        onChange={() => toggle(e.id)}
+        className="size-4 accent-accent"
+      />
+    </label>
   );
 
   return (
@@ -244,7 +319,7 @@ export function VaultScreen() {
                         <td className="py-1 pr-4 text-right tabular-nums">{e.seenCount}</td>
                         <td className="py-1 pr-4 text-fg-muted tabular-nums">{when(e.lastSeen)}</td>
                         <td className="py-1">
-                          <Actions e={e} />
+                          <ActionRow actions={actionsOf(e, setNeverDetect)} />
                         </td>
                       </tr>
                     ))}
@@ -262,21 +337,27 @@ export function VaultScreen() {
                             {when(e.lastSeen)}
                           </div>
                         </div>
-                      </div>
-                      <div className="mt-2">
-                        <Actions e={e} />
+                        <ActionMenu e={e} actions={actionsOf(e, setNeverDetect)} />
                       </div>
                     </li>
                   ))}
                 </ul>
               </>
             )}
-            <p className="text-secondary text-fg-muted">
-              Tunnistus ei ole täydellinen. Tunnistamatta jääneet arvot näkyvät korostamattomina.
-            </p>
+            <ul className="flex flex-col gap-1 text-secondary text-fg-muted">
+              <li>
+                Tunnistus ei ole täydellinen. Tunnistamatta jääneet arvot näkyvät korostamattomina.
+              </li>
+              <li>Lempinimet tunnistetaan vain, jos lisäät ne käsin aliaksiksi.</li>
+              <li>
+                Pelkkä etunimi yhdistetään keskustelun viimeisimpään samannimiseen henkilöön.
+                Epäselvät tapaukset merkitään.
+              </li>
+            </ul>
           </>
         )}
       </div>
+      <NeverDetectDialog e={neverDetect} onClose={() => setNeverDetect(null)} />
     </div>
   );
 }

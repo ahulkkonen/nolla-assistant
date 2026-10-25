@@ -151,7 +151,7 @@ test('keyboard: [ toggles sidebar, Tab reaches send with focus ring', async ({ a
 });
 
 test.describe('vault', () => {
-  test.use({ pseudo: true });
+  test.use({ pseudo: 'full' });
 
   test('open from settings, merge two, confirm pending', async ({ app, page }) => {
     app.llm.push({ text: 'Selvä.' });

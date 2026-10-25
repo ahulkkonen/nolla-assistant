@@ -117,6 +117,7 @@ export function Sidebar({ expanded, onNavigate }: { expanded: boolean; onNavigat
   const sidebarOpen = useStore((s) => s.sidebarOpen);
   const setSidebarOpen = useStore((s) => s.setSidebarOpen);
   const messages = useStore((s) => s.messages);
+  const vaultScreen = useStore((s) => s.screen === 'vault');
   const [query, setQuery] = useState('');
 
   const newChat = () => {
@@ -206,7 +207,7 @@ export function Sidebar({ expanded, onNavigate }: { expanded: boolean; onNavigat
             key={chat.id}
             chat={chat}
             label={label}
-            active={chat.id === activeChatId}
+            active={chat.id === activeChatId && !vaultScreen}
             onOpen={() => open(chat.id)}
           />
         ))}

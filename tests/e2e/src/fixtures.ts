@@ -35,16 +35,19 @@ export type App = {
   login: (page: Page) => Promise<void>;
 };
 
-export const test = base.extend<{ app: App; pseudo: boolean }>({
-  // Starts the fake sidecar (DICT plus one pending item) and sets PSEUDO_URL.
-  pseudo: [false, { option: true }],
+export const test = base.extend<{ app: App; pseudo: 'off' | 'full' | 'empty' }>({
+  // Starts the fake sidecar and sets PSEUDO_URL: `full` has DICT plus one pending item.
+  pseudo: ['off', { option: true }],
   app: async ({ pseudo }, use) => {
     const llm = await startFakeLlm([]);
-    const sidecar = pseudo
-      ? await startFakeSidecar(DICT, {
-          pending: [{ kind: 'person', text: 'Koski', detector: 'gliner', score: 0.42 }],
-        })
-      : undefined;
+    const sidecar =
+      pseudo === 'off'
+        ? undefined
+        : pseudo === 'empty'
+          ? await startFakeSidecar({})
+          : await startFakeSidecar(DICT, {
+              pending: [{ kind: 'person', text: 'Koski', detector: 'gliner', score: 0.42 }],
+            });
     const dataDir = mkdtempSync(join(tmpdir(), 'pa-e2e-'));
     mkdirSync(join(dataDir, 'work/aleksi'), { recursive: true });
     const port = await freePort();

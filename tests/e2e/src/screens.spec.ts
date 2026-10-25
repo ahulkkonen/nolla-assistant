@@ -139,7 +139,7 @@ for (const scheme of ['light', 'dark'] as const) {
 
       if (vp.width !== 1024) {
         test.describe('pseudo', () => {
-          test.use({ pseudo: true });
+          test.use({ pseudo: 'full' });
 
           test('vault', async ({ app, page }) => {
             app.llm.push({ text: 'Selvä, Pekka Laaksonen.' });
@@ -150,6 +150,10 @@ for (const scheme of ['light', 'dark'] as const) {
             await expect(page.getByText('Koski')).toBeVisible();
             await expect(page.getByLabel(/^Valitse /).filter({ visible: true })).toHaveCount(3);
             await shot(page, 'vault', vp.width, scheme);
+            await page.getByRole('checkbox', { name: 'Valitse Matti Virtanen' }).check();
+            await page.getByRole('checkbox', { name: 'Valitse Liisa Korhonen' }).check();
+            await expect(page.getByRole('button', { name: 'Yhdistä', exact: true })).toBeVisible();
+            await shot(page, 'vault-merge', vp.width, scheme);
           });
 
           test('chat-annotated', async ({ app, page }) => {
@@ -162,6 +166,35 @@ for (const scheme of ['light', 'dark'] as const) {
             await page.locator('.md span[tabindex="0"]').first().focus();
             await expect(page.getByRole('tooltip')).toHaveText('Malli näki: Pekka Laaksonen');
             await shot(page, 'chat-annotated', vp.width, scheme);
+            await page.keyboard.press('Escape');
+            const menu = page.getByRole('button', { name: 'Valikko' });
+            if (await menu.isVisible()) await menu.click();
+            await page.getByRole('button', { name: 'Asetukset' }).click();
+            await page.getByLabel('Näytä mitä malli näki').check();
+            // Settings, then (under 768 px) the drawer; the gear's focus tooltip eats one Escape.
+            await expect(async () => {
+              await page.keyboard.press('Escape');
+              await expect(page.getByRole('dialog')).toHaveCount(0, { timeout: 500 });
+            }).toPass();
+            await expect(page.locator('.md').last()).toHaveText(
+              'Hei Pekka Laaksonen! Hetu 010190-900B on tallessa.',
+            );
+            // Focus returns to the gear and opens its tooltip; it is not part of this screen.
+            await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+            await shot(page, 'chat-annotated-modelsaw', vp.width, scheme);
+          });
+        });
+
+        test.describe('pseudo empty', () => {
+          test.use({ pseudo: 'empty' });
+
+          test('vault-empty', async ({ app, page }) => {
+            await app.login(page);
+            await openVault(page);
+            await expect(
+              page.getByText('Ei vielä tunnistettuja nimiä tai tunnuksia.'),
+            ).toBeVisible();
+            await shot(page, 'vault-empty', vp.width, scheme);
           });
         });
 

@@ -12,6 +12,7 @@ export function Tip({ label, children }: { label: ReactNode; children: ReactElem
       <Tooltip.Portal>
         <Tooltip.Content
           sideOffset={4}
+          collisionPadding={8}
           className="z-50 rounded-sm bg-fg px-2 py-1 text-secondary text-bg"
         >
           {label}
@@ -33,7 +34,9 @@ export function IconButton({ label, variant = 'ghost', className, type, ...rest 
           !className?.includes('size-') && 'size-9 max-md:size-11',
           variant === 'primary'
             ? 'bg-accent text-accent-fg disabled:bg-bg-sunken disabled:text-fg-muted'
-            : 'text-fg-muted hover:bg-bg-sunken hover:text-fg',
+            : rest['aria-disabled']
+              ? 'cursor-not-allowed text-fg-muted'
+              : 'text-fg-muted hover:bg-bg-sunken hover:text-fg',
           className,
         )}
         {...rest}

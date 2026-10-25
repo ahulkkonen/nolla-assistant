@@ -1,6 +1,7 @@
 import type { Annotation, AttachmentRef } from '@pa/protocol';
 import { clsx } from 'clsx';
 import { Check, Copy, FileText } from 'lucide-react';
+import { Popover } from 'radix-ui';
 import { type ComponentProps, memo, type ReactNode, useMemo, useRef, useState } from 'react';
 import Markdown, { type ExtraProps } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -44,18 +45,36 @@ function Pre(props: ComponentProps<'pre'>) {
   );
 }
 
+// Touch screens have no hover, so the hint opens on tap there.
+const touch = globalThis.matchMedia?.('(hover: none)').matches ?? false;
+
 /** A restored real value; the tooltip (or the global toggle) shows the surrogate the model saw. */
 function Anno({ real, saw }: { real: string; saw: string }) {
   const show = useStore((s) => s.showModelSaw);
+  const hint = `Malli näki: ${saw}`;
+  const span = (
+    <span
+      tabIndex={0}
+      aria-description={hint}
+      className="rounded-sm bg-bg-sunken underline decoration-fg-muted decoration-dotted underline-offset-2"
+    >
+      {show ? saw : real}
+    </span>
+  );
+  if (!touch) return <Tip label={hint}>{span}</Tip>;
   return (
-    <Tip label={`Malli näki: ${saw}`}>
-      <span
-        tabIndex={0}
-        className="rounded-sm bg-bg-sunken underline decoration-fg-muted decoration-dotted underline-offset-2"
-      >
-        {show ? saw : real}
-      </span>
-    </Tip>
+    <Popover.Root>
+      <Popover.Trigger asChild>{span}</Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Content
+          sideOffset={4}
+          collisionPadding={8}
+          className="z-50 rounded-sm bg-fg px-2 py-1 text-secondary text-bg"
+        >
+          {hint}
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
   );
 }
 
