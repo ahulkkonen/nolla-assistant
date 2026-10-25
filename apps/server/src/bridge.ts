@@ -1,0 +1,366 @@
+import { randomUUID } from 'node:crypto';
+import type { AgentSession, AgentSessionEvent } from '@earendil-works/pi-coding-agent';
+import { chats, type Db } from '@pa/db';
+import {
+  type ChatSummary,
+  ClientMessage,
+  type Message,
+  type ServerMessage,
+  type ToolRow,
+  type ToolStatus,
+} from '@pa/protocol';
+import { and, desc, eq } from 'drizzle-orm';
+import type { FastifyBaseLogger } from 'fastify';
+import { GUARD_REASON } from './pi/guard.ts';
+import type { SessionRegistry } from './pi/registry.ts';
+
+export type Socket = {
+  send(data: string): void;
+  on(event: 'message', fn: (data: unknown) => void): void;
+  on(event: 'close', fn: () => void): void;
+};
+
+export type BridgeDeps = {
+  registry: SessionRegistry;
+  db: Db;
+  userId: string;
+  log: FastifyBaseLogger;
+  /** chatId → sockets that have the chat open. Shared by all connections of one server. */
+  rooms: Map<string, Set<Socket>>;
+};
+
+type AgentMessage = AgentSession['messages'][number];
+type ChatRow = typeof chats.$inferSelect;
+
+/** Fixed client-facing text per error code; details stay in the server log. */
+const ERRORS = {
+  bad_message: 'Invalid message',
+  not_found: 'Chat not found',
+  not_implemented: 'Not implemented',
+  failed: 'Request failed',
+  prompt_failed: 'Prompt failed',
+  llm_failed: 'Model call failed',
+} as const;
+
+class NotFound extends Error {}
+
+const send = (socket: Socket, msg: ServerMessage) => socket.send(JSON.stringify(msg));
+const errorMsg = (code: keyof typeof ERRORS, chatId?: string): ServerMessage => ({
+  type: 'error',
+  code,
+  message: ERRORS[code],
+  ...(chatId ? { chatId } : {}),
+});
+
+function broadcast(rooms: BridgeDeps['rooms'], chatId: string, msg: ServerMessage) {
+  const room = rooms.get(chatId);
+  if (!room) return;
+  for (const s of room) {
+    try {
+      send(s, msg);
+    } catch {
+      room.delete(s);
+    }
+  }
+  if (room.size === 0) rooms.delete(chatId);
+}
+
+const summary = (r: ChatRow): ChatSummary => ({
+  id: r.id,
+  title: r.title,
+  topicId: r.topicId,
+  agentId: r.agentId,
+  pinned: r.pinned,
+  archived: r.archived,
+  updatedAt: r.updatedAt,
+});
+
+function textOf(m: AgentMessage): string {
+  if (!('content' in m)) return '';
+  if (typeof m.content === 'string') return m.content;
+  return m.content.map((b) => (b.type === 'text' ? b.text : '')).join('');
+}
+
+/** Text blocks of a Pi tool result (`{ content: [...] }`); never the raw object. */
+function resultText(result: unknown): string {
+  const content = (result as { content?: unknown } | undefined)?.content;
+  if (!Array.isArray(content)) return '';
+  return content
+    .flatMap((b: { type?: unknown; text?: unknown }) =>
+      b.type === 'text' && typeof b.text === 'string' ? [b.text] : [],
+    )
+    .join('\n');
+}
+
+const toolStatus = (isError: boolean, text: string): ToolStatus =>
+  !isError ? 'ok' : text.includes(GUARD_REASON) ? 'denied' : 'error';
+
+const argsPreview = (args: unknown) =>
+  Object.entries((args ?? {}) as Record<string, unknown>)
+    .map(([k, v]) => `${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`)
+    .join(', ')
+    .slice(0, 200);
+
+export function attachBridge(socket: Socket, deps: BridgeDeps) {
+  const { registry, db, userId, log, rooms } = deps;
+  const open = new Set<string>();
+
+  const owned = (chatId: string) => {
+    const r = db
+      .select()
+      .from(chats)
+      .where(and(eq(chats.id, chatId), eq(chats.userId, userId)))
+      .get();
+    if (!r) throw new NotFound();
+    return r;
+  };
+
+  const update = (chatId: string, set: Partial<ChatRow>) => {
+    const r = db
+      .update(chats)
+      .set({ ...set, updatedAt: new Date().toISOString() })
+      .where(and(eq(chats.id, chatId), eq(chats.userId, userId)))
+      .returning()
+      .get();
+    if (!r) throw new NotFound();
+    send(socket, { type: 'chat.updated', chat: summary(r) });
+  };
+
+  const join = (chatId: string, session: AgentSession) => {
+    open.add(chatId);
+    let room = rooms.get(chatId);
+    if (!room) rooms.set(chatId, (room = new Set()));
+    room.add(socket);
+    registry.subscribe(chatId, session, forward(chatId, session, deps));
+  };
+
+  const handle = async (msg: ClientMessage) => {
+    switch (msg.type) {
+      case 'ping':
+        return send(socket, { type: 'pong' });
+      case 'chat.create': {
+        const id = randomUUID();
+        const session = await registry.create(id);
+        const now = new Date().toISOString();
+        const r = db
+          .insert(chats)
+          .values({
+            id,
+            userId,
+            agentId: msg.agentId,
+            topicId: msg.topicId ?? null,
+            // Directory key only: Pi names the JSONL file and the registry resolves it by chat id.
+            sessionPath: `sessions/${userId}/`,
+            createdAt: now,
+            updatedAt: now,
+          })
+          .returning()
+          .get();
+        join(id, session);
+        return send(socket, { type: 'chat.created', chat: summary(r) });
+      }
+      case 'chat.list': {
+        const rows = db
+          .select()
+          .from(chats)
+          .where(and(eq(chats.userId, userId), eq(chats.archived, msg.archived ?? false)))
+          .orderBy(desc(chats.pinned), desc(chats.updatedAt))
+          .all();
+        return send(socket, { type: 'chat.list', chats: rows.map(summary) });
+      }
+      case 'chat.open': {
+        const r = owned(msg.chatId);
+        const session = await registry.get(msg.chatId);
+        join(msg.chatId, session);
+        return send(socket, { type: 'chat.state', chat: summary(r), messages: history(session) });
+      }
+      case 'chat.archive':
+        return update(msg.chatId, { archived: msg.archived });
+      case 'chat.rename':
+        return update(msg.chatId, { title: msg.title, titleLocked: true });
+      case 'chat.pin':
+        return update(msg.chatId, { pinned: msg.pinned });
+      case 'user.message': {
+        const { chatId } = msg;
+        owned(chatId);
+        const session = await registry.get(chatId);
+        join(chatId, session);
+        log.debug({ chatId, length: msg.text.length }, 'user.message');
+        session.prompt(msg.text, { streamingBehavior: 'steer' }).catch((err: unknown) => {
+          log.warn({ chatId, err }, 'prompt failed');
+          broadcast(rooms, chatId, errorMsg('prompt_failed', chatId));
+        });
+        return;
+      }
+      case 'user.stop':
+        owned(msg.chatId);
+        if (registry.has(msg.chatId)) await (await registry.get(msg.chatId)).abort();
+        return;
+      default:
+        return send(socket, errorMsg('not_implemented'));
+    }
+  };
+
+  socket.on('message', (data) => {
+    let parsed: ReturnType<typeof ClientMessage.safeParse>;
+    try {
+      parsed = ClientMessage.safeParse(JSON.parse(String(data)));
+    } catch {
+      return send(socket, errorMsg('bad_message'));
+    }
+    if (!parsed.success) {
+      log.warn({ issues: parsed.error.issues.length }, 'bad client message');
+      return send(socket, errorMsg('bad_message'));
+    }
+    handle(parsed.data).catch((err: unknown) => {
+      if (err instanceof NotFound) return send(socket, errorMsg('not_found'));
+      log.warn({ err, type: parsed.data.type }, 'client message failed');
+      send(socket, errorMsg('failed'));
+    });
+  });
+
+  socket.on('close', () => {
+    for (const chatId of open) {
+      const room = rooms.get(chatId);
+      room?.delete(socket);
+      if (room?.size === 0) rooms.delete(chatId);
+    }
+  });
+}
+
+/**
+ * One listener per session. Deltas carry a stream id assigned at `message_start`; `message.final`
+ * carries the persisted session entry id (same id `chat.state` uses), and clients replace the
+ * streamed message with it. Finals are sent at `turn_end` (or `agent_settled`) so tool rows have
+ * their final status.
+ */
+function forward(chatId: string, session: AgentSession, { db, rooms, log, userId }: BridgeDeps) {
+  const emit = (msg: ServerMessage) => broadcast(rooms, chatId, msg);
+  let streamId = randomUUID();
+  let pending: AgentMessage | undefined;
+  const statuses = new Map<string, ToolStatus>();
+
+  const flush = () => {
+    const m = pending;
+    pending = undefined;
+    if (!m) return;
+    const entry = session.sessionManager
+      .getEntries()
+      .findLast(
+        (e) =>
+          e.type === 'message' &&
+          e.message.role === 'assistant' &&
+          e.message.timestamp === m.timestamp,
+      );
+    log.debug({ chatId, length: textOf(m).length }, 'message.final');
+    emit({
+      type: 'message.final',
+      chatId,
+      message: toMessage(entry?.id ?? streamId, m, toolRows(m, statuses)),
+    });
+  };
+
+  return (e: AgentSessionEvent) => {
+    switch (e.type) {
+      case 'message_start':
+        if (e.message.role === 'assistant') streamId = randomUUID();
+        return;
+      case 'message_update':
+        if (e.assistantMessageEvent.type !== 'text_delta') return;
+        return emit({
+          type: 'message.delta',
+          chatId,
+          messageId: streamId,
+          text: e.assistantMessageEvent.delta,
+          annotations: [],
+        });
+      case 'message_end':
+        if (e.message.role !== 'assistant') return;
+        if (e.message.stopReason === 'error') {
+          log.warn({ chatId, error: e.message.errorMessage }, 'model call failed');
+          return emit(errorMsg('llm_failed', chatId));
+        }
+        pending = e.message;
+        return;
+      case 'turn_end':
+        return flush();
+      case 'tool_execution_start':
+        return emit({
+          type: 'tool.start',
+          chatId,
+          callId: e.toolCallId,
+          name: e.toolName,
+          argsPreview: argsPreview(e.args),
+        });
+      case 'tool_execution_update':
+        return emit({
+          type: 'tool.update',
+          chatId,
+          callId: e.toolCallId,
+          output: resultText(e.partialResult).slice(0, 2000),
+        });
+      case 'tool_execution_end': {
+        const text = resultText(e.result);
+        const status = toolStatus(e.isError, text);
+        statuses.set(e.toolCallId, status);
+        return emit({
+          type: 'tool.end',
+          chatId,
+          callId: e.toolCallId,
+          status,
+          summary: text.slice(0, 200),
+        });
+      }
+      case 'agent_start':
+        return emit({ type: 'agent.status', chatId, state: 'running' });
+      case 'agent_settled': {
+        flush();
+        statuses.clear();
+        const r = db
+          .update(chats)
+          .set({ updatedAt: new Date().toISOString() })
+          .where(and(eq(chats.id, chatId), eq(chats.userId, userId)))
+          .returning()
+          .get();
+        if (r) emit({ type: 'chat.updated', chat: summary(r) });
+        return emit({ type: 'agent.status', chatId, state: 'idle' });
+      }
+    }
+  };
+}
+
+function toolRows(m: AgentMessage, statuses: Map<string, ToolStatus>): ToolRow[] {
+  if (m.role !== 'assistant') return [];
+  return m.content.flatMap((b) =>
+    b.type === 'toolCall'
+      ? [{ callId: b.id, name: b.name, status: statuses.get(b.id) ?? 'running', summary: '' }]
+      : [],
+  );
+}
+
+function toMessage(id: string, m: AgentMessage, tools: ToolRow[]): Message {
+  return {
+    id,
+    role: m.role === 'user' ? 'user' : 'assistant',
+    text: textOf(m),
+    annotations: [],
+    attachments: [],
+    tools,
+    createdAt: new Date(m.timestamp).toISOString(),
+  };
+}
+
+function history(session: AgentSession): Message[] {
+  const entries = session.sessionManager.getBranch();
+  const statuses = new Map<string, ToolStatus>();
+  for (const e of entries) {
+    if (e.type === 'message' && e.message.role === 'toolResult') {
+      statuses.set(e.message.toolCallId, toolStatus(e.message.isError, textOf(e.message)));
+    }
+  }
+  return entries.flatMap((e) =>
+    e.type === 'message' && (e.message.role === 'user' || e.message.role === 'assistant')
+      ? [toMessage(e.id, e.message, toolRows(e.message, statuses))]
+      : [],
+  );
+}

@@ -1,0 +1,31 @@
+{
+  "models": [
+    {
+      "id": "zdr/strong",
+      "name": "Strong (ZDR)",
+      "reasoning": true,
+      "input": ["text", "image"],
+      "contextWindow": 200000,
+      "maxTokens": 32000,
+      "cost": { "input": 3, "output": 15, "cacheRead": 0.3, "cacheWrite": 3.75 }
+    },
+    {
+      "id": "zdr/fast",
+      "name": "Fast (ZDR)",
+      "reasoning": false,
+      "input": ["text", "image"],
+      "contextWindow": 200000,
+      "maxTokens": 16000,
+      "cost": { "input": 0.8, "output": 4, "cacheRead": 0.08, "cacheWrite": 1 }
+    },
+    {
+      "id": "zdr/task-small",
+      "name": "Task small (ZDR)",
+      "reasoning": false,
+      "input": ["text"],
+      "contextWindow": 128000,
+      "maxTokens": 4000,
+      "cost": { "input": 0.1, "output": 0.4, "cacheRead": 0.01, "cacheWrite": 0.1 }
+    }
+  ]
+}

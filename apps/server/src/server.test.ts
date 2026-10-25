@@ -1,0 +1,169 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { type FakeTurn, startFakeLlm } from '@pa/fake-llm';
+import type { ClientMessageInput, ServerMessage } from '@pa/protocol';
+import { afterEach, expect, test } from 'vitest';
+import WebSocket from 'ws';
+import { loadConfig } from './config.ts';
+import { start } from './main.ts';
+
+const KEY = 'sk-test-master';
+const SCRIPTED = 'Hei! Miten voin auttaa?';
+const cleanups: (() => Promise<void> | void)[] = [];
+afterEach(async () => {
+  for (const c of cleanups.splice(0).reverse()) await c();
+});
+
+async function freePort() {
+  const s = createServer();
+  await new Promise<void>((r) => s.listen(0, '127.0.0.1', r));
+  const { port } = s.address() as { port: number };
+  await new Promise((r) => s.close(r));
+  return port;
+}
+
+async function boot(turns: FakeTurn[]) {
+  const llm = await startFakeLlm(turns);
+  const dataDir = mkdtempSync(join(tmpdir(), 'pa-server-'));
+  process.env.LITELLM_MASTER_KEY = KEY;
+  const config = loadConfig({
+    DATA_DIR: dataDir,
+    LITELLM_URL: llm.url,
+    LITELLM_MASTER_KEY: KEY,
+    PORT: String(await freePort()),
+    HOST: '127.0.0.1',
+    LOG_LEVEL: 'warn',
+  });
+  cleanups.push(
+    () => llm.close(),
+    () => rmSync(dataDir, { recursive: true, force: true }),
+  );
+  const run = async () => {
+    const srv = await start(config);
+    cleanups.push(srv.close);
+    return srv;
+  };
+  return { llm, config, run };
+}
+
+async function connect(port: number, origin?: string) {
+  const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`, origin ? { origin } : {});
+  const inbox: ServerMessage[] = [];
+  const waiters: (() => void)[] = [];
+  ws.on('message', (d) => {
+    inbox.push(JSON.parse(String(d)));
+    for (const w of waiters.splice(0)) w();
+  });
+  cleanups.push(() => ws.close());
+  await new Promise((r, j) => ws.once('open', r).once('error', j));
+  const next = async <T extends ServerMessage['type']>(type: T) => {
+    for (;;) {
+      const i = inbox.findIndex((m) => m.type === type || m.type === 'error');
+      if (i >= 0) {
+        const [m] = inbox.splice(i, 1);
+        if (m?.type === 'error') throw new Error(`server error: ${m.code}`);
+        return m as Extract<ServerMessage, { type: T }>;
+      }
+      await new Promise<void>((r) => waiters.push(r));
+    }
+  };
+  const idle = async () => {
+    while ((await next('agent.status')).state !== 'idle');
+  };
+  const send = (m: ClientMessageInput) => ws.send(JSON.stringify(m));
+  return { ws, inbox, next, idle, send };
+}
+
+const deltasOf = (inbox: ServerMessage[]) =>
+  inbox.flatMap((m) => (m.type === 'message.delta' ? [m] : []));
+
+test('create chat, stream reply, reload after restart', { timeout: 30_000 }, async () => {
+  const { llm, config, run } = await boot([{ text: SCRIPTED }]);
+  let srv = await run();
+  await expect(connect(config.port, 'http://evil.example')).rejects.toThrow(/403/);
+  let c = await connect(config.port);
+  c.send({ type: 'chat.create' });
+  const { chat } = await c.next('chat.created');
+  c.send({ type: 'user.message', chatId: chat.id, text: 'Moi' });
+  const final = await c.next('message.final');
+  const deltas = deltasOf(c.inbox);
+  expect(deltas.length).toBeGreaterThan(0);
+  expect(new Set(deltas.map((d) => d.messageId)).size).toBe(1);
+  expect(deltas.map((d) => d.text).join('')).toBe(final.message.text);
+  expect(final.message.text).toBe(SCRIPTED);
+  expect(llm.requests[0]?.body.model).toBe('zdr/strong');
+  expect(llm.requests[0]?.headers.authorization).toBe(`Bearer ${KEY}`);
+  await c.idle();
+  c.ws.close();
+  await srv.close();
+
+  srv = await run();
+  c = await connect(config.port);
+  c.send({ type: 'chat.open', chatId: chat.id });
+  const state = await c.next('chat.state');
+  expect(state.messages.map((m) => [m.role, m.text])).toEqual([
+    ['user', 'Moi'],
+    ['assistant', SCRIPTED],
+  ]);
+  expect(state.messages[1]?.id).toBe(final.message.id);
+  c.send({ type: 'chat.list' });
+  expect((await c.next('chat.list')).chats.map((x) => x.id)).toEqual([chat.id]);
+});
+
+test('fan-out: two sockets on one chat see the same stream', { timeout: 30_000 }, async () => {
+  const { config, run } = await boot([{ text: SCRIPTED }]);
+  await run();
+  const a = await connect(config.port);
+  const b = await connect(config.port);
+  a.send({ type: 'chat.create' });
+  const { chat } = await a.next('chat.created');
+  b.send({ type: 'chat.open', chatId: chat.id });
+  expect((await b.next('chat.state')).messages).toEqual([]);
+  a.send({ type: 'user.message', chatId: chat.id, text: 'Moi' });
+  const [fa, fb] = await Promise.all([a.next('message.final'), b.next('message.final')]);
+  expect(fb).toEqual(fa);
+  expect(deltasOf(b.inbox)).toEqual(deltasOf(a.inbox));
+  expect(deltasOf(a.inbox).length).toBeGreaterThan(0);
+});
+
+test('tool turn reports read status; guard denies paths outside workspace', {
+  timeout: 30_000,
+}, async () => {
+  const { config, run } = await boot([
+    { toolCalls: [{ name: 'read', args: { path: 'note.txt' } }] },
+    { text: 'Read it.' },
+    { toolCalls: [{ name: 'read', args: { path: '../app.db' } }] },
+    { text: 'Denied.' },
+  ]);
+  const srv = await run();
+  writeFileSync(join(srv.registry.cwd, 'note.txt'), 'hello');
+  const c = await connect(config.port);
+  c.send({ type: 'chat.create' });
+  const { chat } = await c.next('chat.created');
+
+  c.send({ type: 'user.message', chatId: chat.id, text: 'Read note.txt' });
+  const start = await c.next('tool.start');
+  expect(start.name).toBe('read');
+  expect(start.argsPreview).toBe('path: note.txt');
+  expect((await c.next('tool.end')).status).toBe('ok');
+  expect((await c.next('message.final')).message.tools[0]?.status).toBe('ok');
+  expect((await c.next('message.final')).message.text).toBe('Read it.');
+  await c.idle();
+
+  c.send({ type: 'user.message', chatId: chat.id, text: 'Read ../app.db' });
+  const end = await c.next('tool.end');
+  expect(end.status).toBe('denied');
+  expect(end.summary).toContain('path outside workspace');
+  expect((await c.next('message.final')).message.tools[0]?.status).toBe('denied');
+  await c.idle();
+});
+
+test('only the zdr provider resolves credentials (invariant 2)', { timeout: 30_000 }, async () => {
+  const { run } = await boot([]);
+  const srv = await run();
+  const available = await (await srv.registry.modelRuntime()).getAvailable();
+  expect(available.length).toBeGreaterThan(0);
+  expect(available.every((m) => m.provider === 'zdr')).toBe(true);
+});
