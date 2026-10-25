@@ -13,6 +13,7 @@ const MAX_HEIGHT = 180; // 8 lines at 15 px × 1.5.
 
 export function Composer() {
   const chatId = useStore((s) => s.activeChatId);
+  const showModelSaw = useStore((s) => s.showModelSaw);
   const running = useStore((s) => (chatId ? s.agentStatus[chatId] === 'running' : false));
   const [text, setText] = useState('');
   const [chips, setChips] = useState<Chip[]>([]);
@@ -98,6 +99,18 @@ export function Composer() {
 
   return (
     <div className="shrink-0 px-4 pb-[max(env(safe-area-inset-bottom),12px)]">
+      {showModelSaw && (
+        <div className="mx-auto flex w-full max-w-3xl items-center gap-1 pb-1 pl-2 text-secondary text-fg-muted">
+          Näytetään mitä malli näki
+          <IconButton
+            label="Näytä alkuperäiset"
+            className="size-7 max-md:size-11"
+            onClick={() => useStore.getState().setShowModelSaw(false)}
+          >
+            <X size={16} />
+          </IconButton>
+        </div>
+      )}
       <div
         onDragOver={(e) => e.preventDefault()}
         onDrop={onDrop}

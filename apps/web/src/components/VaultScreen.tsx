@@ -97,11 +97,11 @@ function ActionRow({ actions }: { actions: Action[] }) {
 const menuItem =
   'flex h-11 cursor-default items-center gap-3 rounded-sm px-3 outline-none data-[disabled]:text-fg-muted data-[highlighted]:bg-bg-sunken';
 
-function ActionMenu({ e, actions }: { e: VaultEntity; actions: Action[] }) {
+function ActionMenu({ label, actions }: { label: string; actions: Action[] }) {
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
-        <IconButton label={`Toiminnot: ${e.canonical}`}>
+        <IconButton label={label}>
           <MoreHorizontal size={20} />
         </IconButton>
       </DropdownMenu.Trigger>
@@ -159,6 +159,16 @@ function NeverDetectDialog({ e, onClose }: { e: VaultEntity | null; onClose: () 
   );
 }
 
+const pendingActions = (p: VaultPending): Action[] => {
+  const resolve = (action: 'confirm' | 'allowlist' | 'dismiss') => () =>
+    send({ type: 'vault.pending.resolve', pendingId: p.id, action });
+  return [
+    { label: 'Vahvista', Icon: Check, run: resolve('confirm') },
+    { label: 'Lähetä sellaisenaan', Icon: ShieldOff, run: resolve('allowlist') },
+    { label: 'Hylkää', Icon: X, run: resolve('dismiss') },
+  ];
+};
+
 function PendingLane({ pending }: { pending: VaultPending[] }) {
   return (
     <section aria-labelledby="pending-title" className="flex flex-col gap-2">
@@ -177,30 +187,12 @@ function PendingLane({ pending }: { pending: VaultPending[] }) {
                 {kind(p.kind)} · suojattu kunnes vahvistat · {Math.round(p.score * 100)} %
               </div>
             </div>
-            <IconButton
-              label="Vahvista"
-              onClick={() =>
-                send({ type: 'vault.pending.resolve', pendingId: p.id, action: 'confirm' })
-              }
-            >
-              <Check size={16} />
-            </IconButton>
-            <IconButton
-              label="Lähetä sellaisenaan"
-              onClick={() =>
-                send({ type: 'vault.pending.resolve', pendingId: p.id, action: 'allowlist' })
-              }
-            >
-              <ShieldOff size={16} />
-            </IconButton>
-            <IconButton
-              label="Hylkää"
-              onClick={() =>
-                send({ type: 'vault.pending.resolve', pendingId: p.id, action: 'dismiss' })
-              }
-            >
-              <X size={16} />
-            </IconButton>
+            <div className="max-md:hidden">
+              <ActionRow actions={pendingActions(p)} />
+            </div>
+            <div className="md:hidden">
+              <ActionMenu label={`Toiminnot: ${p.text}`} actions={pendingActions(p)} />
+            </div>
           </li>
         ))}
       </ul>
@@ -249,10 +241,11 @@ export function VaultScreen() {
         <h1 className="font-semibold max-md:hidden">{VAULT_TITLE}</h1>
         {!vault ? (
           <p className="text-fg-muted">Ladataan…</p>
-        ) : !entities.length && !vault.pending.length ? (
-          <p className="text-fg-muted">Ei vielä tunnistettuja nimiä tai tunnuksia.</p>
         ) : (
           <>
+            {!entities.length && !vault.pending.length && (
+              <p className="text-fg-muted">Ei vielä tunnistettuja nimiä tai tunnuksia.</p>
+            )}
             <label className="flex items-center gap-2 self-start">
               <input
                 type="checkbox"
@@ -337,7 +330,10 @@ export function VaultScreen() {
                             {when(e.lastSeen)}
                           </div>
                         </div>
-                        <ActionMenu e={e} actions={actionsOf(e, setNeverDetect)} />
+                        <ActionMenu
+                          label={`Toiminnot: ${e.canonical}`}
+                          actions={actionsOf(e, setNeverDetect)}
+                        />
                       </div>
                     </li>
                   ))}

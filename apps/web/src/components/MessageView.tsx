@@ -51,7 +51,7 @@ const touch = globalThis.matchMedia?.('(hover: none)').matches ?? false;
 /** A restored real value; the tooltip (or the global toggle) shows the surrogate the model saw. */
 function Anno({ real, saw }: { real: string; saw: string }) {
   const show = useStore((s) => s.showModelSaw);
-  const hint = `Malli näki: ${saw}`;
+  const hint = show ? `Alkuperäinen: ${real}` : `Malli näki: ${saw}`;
   const span = (
     <span
       tabIndex={0}

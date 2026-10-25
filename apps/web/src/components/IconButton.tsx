@@ -35,7 +35,7 @@ export function IconButton({ label, variant = 'ghost', className, type, ...rest 
           variant === 'primary'
             ? 'bg-accent text-accent-fg disabled:bg-bg-sunken disabled:text-fg-muted'
             : rest['aria-disabled']
-              ? 'cursor-not-allowed text-fg-muted'
+              ? 'cursor-not-allowed text-fg-muted opacity-50'
               : 'text-fg-muted hover:bg-bg-sunken hover:text-fg',
           className,
         )}

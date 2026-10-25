@@ -179,6 +179,7 @@ for (const scheme of ['light', 'dark'] as const) {
             await expect(page.locator('.md').last()).toHaveText(
               'Hei Pekka Laaksonen! Hetu 010190-900B on tallessa.',
             );
+            await expect(page.getByText('Näytetään mitä malli näki')).toBeVisible();
             // Focus returns to the gear and opens its tooltip; it is not part of this screen.
             await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
             await shot(page, 'chat-annotated-modelsaw', vp.width, scheme);
