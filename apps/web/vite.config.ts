@@ -31,7 +31,21 @@ export default defineConfig({
           },
         ],
       },
-      workbox: { navigateFallbackDenylist: [/^\/api\//, /^\/ws/, /^\/healthz/] },
+      workbox: {
+        navigateFallbackDenylist: [/^\/api\//, /^\/ws/, /^\/healthz/],
+        // Push and notification-click handlers (public/push-sw.js).
+        importScripts: ['push-sw.js'],
+        // The offline shell only: Mermaid's lazy chunks and the artifact runtime are fetched (and
+        // cached) on first use instead of adding ~5 MB to the install.
+        globPatterns: ['index.html', 'assets/index-*.{js,css}', '*.{png,webmanifest}'],
+        runtimeCaching: [
+          {
+            urlPattern: ({ url }) => url.pathname.startsWith('/assets/'),
+            handler: 'CacheFirst',
+            options: { cacheName: 'assets', expiration: { maxEntries: 200 } },
+          },
+        ],
+      },
     }),
   ],
   server: {

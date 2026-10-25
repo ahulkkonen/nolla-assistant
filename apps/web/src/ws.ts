@@ -1,4 +1,4 @@
-import { type ClientMessageInput, ServerMessage } from '@pa/protocol';
+import { type AttachmentRef, type ClientMessageInput, ServerMessage } from '@pa/protocol';
 import { useStore } from './store.ts';
 
 let ws: WebSocket | null = null;
@@ -54,6 +54,28 @@ export function createChat(): Promise<string> {
   });
 }
 
+/** Shows the message at once (the server does not echo it) and sends it; creates the chat if needed. */
+export async function sendUserMessage(text: string, attachments: AttachmentRef[] = []) {
+  const id = useStore.getState().activeChatId ?? (await createChat());
+  useStore.getState().addLocalMessage(id, {
+    id: `local-${crypto.randomUUID()}`,
+    role: 'user',
+    text,
+    annotations: [],
+    attachments,
+    tools: [],
+    createdAt: new Date().toISOString(),
+  });
+  send({ type: 'user.message', chatId: id, text, attachments });
+}
+
+/** Tells the server which chat is in the foreground (push skips it); null when hidden. */
+export function reportFocus() {
+  const st = useStore.getState();
+  const chatId = document.hidden || st.screen !== 'chat' ? null : st.activeChatId;
+  send({ type: 'chat.focus', chatId });
+}
+
 export function respondApproval(requestId: string, approve: boolean) {
   send({ type: 'approval.respond', requestId, approve });
   useStore.getState().dropApproval(requestId);
@@ -89,6 +111,9 @@ function open() {
     if (msg.type === 'auth.state' && msg.authenticated) {
       send({ type: 'chat.list', archived: store.archivedView });
       send({ type: 'topic.list' });
+      // Baseline for the chat's memory chip diff.
+      send({ type: 'memory.list' });
+      reportFocus();
       if (store.activeChatId) send({ type: 'chat.open', chatId: store.activeChatId });
     }
   };

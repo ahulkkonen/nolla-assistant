@@ -6,7 +6,10 @@ import type { Page } from '@playwright/test';
 import {
   acceptProposal,
   expect,
+  HTML_REPLY,
   memoryTurns,
+  mockMic,
+  mockPush,
   openSettings,
   openVault,
   search,
@@ -78,11 +81,12 @@ test('new chat streams a reply, then survives reload', async ({ app, page }) => 
   const vp = page.viewportSize()!;
   expect(box!.x + box!.width / 2).toBeGreaterThan(vp.width / 2);
   await expect(page.locator('.md')).toHaveText('Hei! Tässä vastaus.');
-  await expect(page.getByRole('button', { name: 'Lähetä' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Lähetä', exact: true })).toBeVisible();
   await expect(page.locator('nav li > button')).toHaveCount(1);
 
   await page.reload();
-  await page.locator('nav li > button').click();
+  // Left edge: hovering a row shows its actions over the right part of the title.
+  await page.locator('nav li > button').click({ position: { x: 16, y: 16 } });
   await expect(page.getByRole('main').getByText('Moi', { exact: true })).toBeVisible();
   await expect(page.locator('.md')).toHaveText('Hei! Tässä vastaus.');
 });
@@ -97,7 +101,7 @@ test('stop: Escape ends a running turn', async ({ app, page }) => {
     .waitFor({ timeout: 1000 })
     .catch(() => {});
   await page.keyboard.press('Escape');
-  await expect(page.getByRole('button', { name: 'Lähetä' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Lähetä', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Pysäytä' })).toHaveCount(0);
   await expect(page.getByRole('status', { name: 'Vastaus tulossa' })).toHaveCount(0);
 });
@@ -155,9 +159,10 @@ test('keyboard: [ toggles sidebar, Tab reaches send with focus ring', async ({ a
   // Send is disabled when empty, so type first.
   await page.getByLabel('Viesti').fill('x');
   await page.keyboard.press('Tab'); // attach
+  await page.keyboard.press('Tab'); // mic
   await page.keyboard.press('Tab'); // agent picker (a new chat can still choose)
   await page.keyboard.press('Tab'); // send
-  const sendBtn = page.getByRole('button', { name: 'Lähetä' });
+  const sendBtn = page.getByRole('button', { name: 'Lähetä', exact: true });
   await expect(sendBtn).toBeFocused();
   expect(await sendBtn.evaluate((el) => el.matches(':focus-visible'))).toBe(true);
 });
@@ -198,7 +203,7 @@ test('title and topic proposal: accept moves the chat under the topic', async ({
     page.getByRole('region', { name: 'Omat aiheet' }).getByText('Verot', { exact: true }),
   ).toBeVisible();
   const group = page.locator('nav li', { has: page.getByRole('heading', { name: /Verot/ }) });
-  await expect(group.getByRole('button', { name: TAX.title })).toBeVisible();
+  await expect(group.getByRole('button', { name: TAX.title, exact: true })).toBeVisible();
 });
 
 test('search finds the chat by a word from its message and opens it', async ({ app, page }) => {
@@ -294,6 +299,21 @@ test.describe('memory', () => {
     );
   });
 
+  test('leaving with unsaved edits asks first', async ({ app, page }) => {
+    await app.login(page);
+    await openSettings(page, 'Muisti');
+    await page.getByLabel('Käyttäjä (USER.md)').fill('Luonnos');
+    await page.getByRole('button', { name: 'Uusi keskustelu' }).first().click();
+    const dialog = page.getByRole('alertdialog', {
+      name: 'Hylätäänkö tallentamattomat muutokset?',
+    });
+    await dialog.getByRole('button', { name: 'Peruuta' }).click();
+    await expect(page.getByLabel('Käyttäjä (USER.md)')).toHaveValue('Luonnos');
+    await page.getByRole('button', { name: 'Uusi keskustelu' }).first().click();
+    await dialog.getByRole('button', { name: 'Hylkää muutokset' }).click();
+    await expect(page.getByLabel('Viesti')).toBeVisible();
+  });
+
   test('an untainted agent write applies and shows the chip', async ({ app, page }) => {
     memoryTurns(app, 'Lempiväri on sininen.');
     await app.login(page);
@@ -301,7 +321,7 @@ test.describe('memory', () => {
     await page.getByLabel('Viesti').press('ControlOrMeta+Enter');
     await expect(page.locator('.md').last()).toHaveText('Selvä, muistan.');
     await expect(page.getByText('Muisti päivitetty')).toBeVisible();
-    await page.getByRole('button', { name: 'Avaa muisti' }).click();
+    await page.getByRole('button', { name: 'Muisti', exact: true }).click();
     await expect(page.getByLabel('Muisti (MEMORY.md)')).toHaveValue(/Lempiväri on sininen\./);
   });
 
@@ -312,11 +332,94 @@ test.describe('memory', () => {
     await page.getByLabel('Viesti').press('ControlOrMeta+Enter');
     await expect(page.locator('.md').last()).toHaveText('Selvä, muistan.');
     await expect(page.getByText('Muistikirjoitus odottaa hyväksyntää')).toBeVisible();
-    await page.getByRole('button', { name: 'Avaa muisti' }).click();
+    await page.getByRole('button', { name: 'Muisti', exact: true }).click();
     const pending = page.getByRole('region', { name: 'Odottavat kirjoitukset' });
     await expect(pending).toContainText('Lempiväri on vihreä.');
     await pending.getByRole('button', { name: 'Hyväksy' }).click();
     await expect(pending).toHaveCount(0);
     await expect(page.getByLabel('Muisti (MEMORY.md)')).toHaveValue(/Lempiväri on vihreä\./);
   });
+});
+
+test.describe('voice', () => {
+  test.use({ permissions: ['microphone'] });
+
+  test('hold to record: the transcript lands in the composer', async ({ app, page }) => {
+    app.llm.setTranscript('Hei, tämä on sanelu.');
+    await mockMic(page);
+    await app.login(page);
+    await page.getByLabel('Viesti').fill('Alku:');
+    await page.getByRole('button', { name: 'Pidä pohjassa ja puhu' }).hover();
+    await page.mouse.down();
+    await expect(page.getByRole('status').getByText('Kuuntelee')).toBeVisible();
+    await page.waitForTimeout(1000);
+    await page.mouse.up();
+    await expect(page.getByLabel('Viesti')).toHaveValue('Alku: Hei, tämä on sanelu.');
+  });
+});
+
+test('artifact panel: an html reply opens in a sandboxed iframe', async ({ app, page }) => {
+  app.llm.push({ text: HTML_REPLY });
+  await app.login(page);
+  await page.getByLabel('Viesti').fill('Tee sivu');
+  await page.getByLabel('Viesti').press('ControlOrMeta+Enter');
+  const panel = page.getByRole('complementary', { name: 'Artefaktit' });
+  await expect(panel.getByRole('tab', { name: 'Hei artefakti' })).toBeVisible();
+  const frame = panel.locator('iframe');
+  await expect(frame).toHaveAttribute('sandbox', 'allow-scripts');
+  await expect(frame.contentFrame().getByRole('heading', { name: 'Hei artefakti' })).toBeVisible();
+  await panel.getByRole('button', { name: 'Sulje artefaktit' }).click();
+  await expect(panel).toHaveCount(0);
+  await page.getByRole('button', { name: 'Avaa artefaktina' }).click();
+  await expect(panel).toBeVisible();
+});
+
+test('command palette: Ctrl+K, "Nimi", Enter opens the vault', async ({ app, page }) => {
+  await app.login(page);
+  await page.keyboard.press('ControlOrMeta+k');
+  await page.getByPlaceholder('Hae komentoa tai keskustelua').fill('Nimi');
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('heading', { name: 'Nimisuoja' })).toBeVisible();
+});
+
+test('delete chat after confirmation', async ({ app, page }) => {
+  app.llm.push({ text: 'Poistettava vastaus.' });
+  await app.login(page);
+  await page.getByLabel('Viesti').fill('Poistettava');
+  await page.getByLabel('Viesti').press('ControlOrMeta+Enter');
+  await expect(page.locator('.md').last()).toHaveText('Poistettava vastaus.');
+  const row = page.locator('nav li', { has: page.getByRole('button', { name: 'Poistettava' }) });
+  await row.hover();
+  await row.getByRole('button', { name: 'Poista' }).click();
+  const dialog = page.getByRole('alertdialog', { name: 'Poistetaanko keskustelu?' });
+  await dialog.getByRole('button', { name: 'Poista' }).click();
+  await expect(row).toHaveCount(0);
+  await expect(page.locator('.md')).toHaveCount(0);
+});
+
+test('push toggle subscribes through the service worker and posts it', async ({ app, page }) => {
+  await mockPush(page);
+  await app.login(page);
+  await page.waitForFunction(() => navigator.serviceWorker.ready.then(() => true));
+  await openSettings(page, 'Asetukset');
+  const posted = page.waitForResponse(
+    (r) => r.url().endsWith('/api/push/subscribe') && r.request().method() === 'POST',
+  );
+  // Checked only after the subscription succeeds, so click (not `check`).
+  await page.getByLabel('Ilmoita, kun vastaus tai hyväksyntä odottaa').click();
+  expect((await posted).status()).toBe(200);
+  await expect(page.getByLabel('Ilmoita, kun vastaus tai hyväksyntä odottaa')).toBeChecked();
+});
+
+test('integrations row: status and connect round trip', async ({ app, page }) => {
+  await app.login(page);
+  await page.route('**/api/integrations/google/connect', (route) =>
+    route.fulfill({ json: { authUrl: '/?integrations=google' } }),
+  );
+  await openSettings(page, 'Asetukset');
+  const dialog = page.getByRole('dialog', { name: 'Asetukset' });
+  await expect(dialog.getByText('Google Workspace')).toBeVisible();
+  await expect(dialog.getByText('Ei yhdistetty')).toBeVisible();
+  await dialog.getByRole('button', { name: 'Yhdistä' }).click();
+  await expect(page.getByText('Google yhdistetty.')).toBeVisible();
 });

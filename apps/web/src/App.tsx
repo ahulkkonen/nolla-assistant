@@ -4,19 +4,22 @@ import { Dialog, Tooltip } from 'radix-ui';
 import { useEffect, useSyncExternalStore } from 'react';
 import { HttpError, me } from './api.ts';
 import { AGENTS_TITLE, AgentsScreen } from './components/AgentsScreen.tsx';
+import { ArtifactPanel } from './components/ArtifactPanel.tsx';
 import { AUTOMATIONS_TITLE, AutomationsScreen } from './components/AutomationsScreen.tsx';
+import { CommandPalette } from './components/CommandPalette.tsx';
 import { Composer } from './components/Composer.tsx';
 import { IconButton } from './components/IconButton.tsx';
 import { Login } from './components/Login.tsx';
 import { MEMORY_TITLE, MemoryScreen } from './components/MemoryScreen.tsx';
 import { SEARCH_TITLE, SearchScreen } from './components/SearchScreen.tsx';
+import { SettingsDialog } from './components/SettingsDialog.tsx';
 import { Sidebar, UNTITLED } from './components/Sidebar.tsx';
 import { Thread } from './components/Thread.tsx';
 import { Toasts } from './components/Toasts.tsx';
 import { TOPICS_TITLE, TopicsScreen } from './components/TopicsScreen.tsx';
 import { VAULT_TITLE, VaultScreen } from './components/VaultScreen.tsx';
 import { firstUserLine, useStore } from './store.ts';
-import { connect } from './ws.ts';
+import { connect, openChat, reportFocus } from './ws.ts';
 
 const mobileQuery = globalThis.matchMedia?.('(max-width: 767.98px)');
 const useMobile = () =>
@@ -55,8 +58,31 @@ function Shell() {
     return !id || (!s.messages[id]?.length && !s.streaming[id] && s.agentStatus[id] !== 'running');
   });
 
+  // Deep links: `?chat=` from a notification click, `?integrations=` from the Google callback.
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const chat = params.get('chat');
+    const integration = params.get('integrations');
+    if (chat) openChat(chat);
+    if (integration)
+      useStore
+        .getState()
+        .pushError(integration === 'google' ? 'Google yhdistetty.' : 'Yhdistäminen epäonnistui.');
+    if (chat || integration) history.replaceState(null, '', '/');
+  }, []);
+
+  // The server skips a push for the chat in the foreground.
+  const focused = useStore((s) => (s.screen === 'chat' ? s.activeChatId : null));
+  useEffect(() => {
+    reportFocus();
+  }, [focused]);
+  useEffect(() => {
+    document.addEventListener('visibilitychange', reportFocus);
+    return () => document.removeEventListener('visibilitychange', reportFocus);
+  }, []);
+
   return (
-    <div className="flex h-dvh overflow-hidden">
+    <div className="relative flex h-dvh overflow-hidden">
       {mobile ? (
         <Dialog.Root open={sidebarOpen} onOpenChange={setSidebarOpen}>
           <Dialog.Portal>
@@ -109,6 +135,9 @@ function Shell() {
         </div>
         <Toasts />
       </main>
+      <ArtifactPanel />
+      <SettingsDialog />
+      <CommandPalette />
     </div>
   );
 }

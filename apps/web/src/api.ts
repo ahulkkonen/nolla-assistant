@@ -53,3 +53,25 @@ export async function uploadFiles(files: File[], chatId?: string): Promise<Attac
   const r = await req<{ files: AttachmentRef[] }>('/api/files', { method: 'POST', body: form });
   return r.files;
 }
+
+export async function transcribe(audio: Blob, language: string): Promise<string> {
+  const form = new FormData();
+  form.append('audio', audio, `audio.${audio.type.includes('mp4') ? 'mp4' : 'webm'}`);
+  form.append('language', language);
+  return (await req<{ text: string }>('/api/transcribe', { method: 'POST', body: form })).text;
+}
+
+export const pushVapid = () => req<{ publicKey: string }>('/api/push/vapid');
+export const pushSubscribe = (sub: PushSubscriptionJSON) =>
+  post<{ ok: true }>('/api/push/subscribe', sub);
+export const pushUnsubscribe = (endpoint: string) =>
+  req<unknown>('/api/push/subscribe', {
+    method: 'DELETE',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ endpoint }),
+  });
+
+export const integrationsStatus = () =>
+  req<{ google: { connected: boolean; email?: string } }>('/api/integrations/status');
+export const googleConnect = () =>
+  post<{ authUrl: string } | { connected: true }>('/api/integrations/google/connect');

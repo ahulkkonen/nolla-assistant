@@ -4,9 +4,10 @@ import { type ClipboardEvent, type DragEvent, useRef, useState } from 'react';
 import { uploadFiles } from '../api.ts';
 import { useShortcuts } from '../shortcuts.ts';
 import { useStore } from '../store.ts';
-import { createChat, send } from '../ws.ts';
+import { send, sendUserMessage } from '../ws.ts';
 import { AgentPicker } from './AgentPicker.tsx';
 import { IconButton } from './IconButton.tsx';
+import { MicButton } from './MicButton.tsx';
 
 type Chip = { key: string; name: string; preview?: string; ref?: AttachmentRef };
 
@@ -70,21 +71,34 @@ export function Composer() {
     setText('');
     remove(chips.map((c) => c.key));
     requestAnimationFrame(resize);
-    const id = chatId ?? (await createChat());
-    const st = useStore.getState();
-    st.addLocalMessage(id, {
-      id: `local-${crypto.randomUUID()}`,
-      role: 'user',
-      text: body,
-      annotations: [],
-      attachments: refs,
-      tools: [],
-      createdAt: new Date().toISOString(),
-    });
-    send({ type: 'user.message', chatId: id, text: body, attachments: refs });
+    await sendUserMessage(body, refs);
   };
 
   useShortcuts(() => void submit());
+
+  /** At the caret; with "lähetä heti" the result is sent at once. */
+  const insertTranscript = (spoken: string) => {
+    const el = area.current;
+    const at = el && document.activeElement === el ? el.selectionStart : text.length;
+    const end = el && document.activeElement === el ? el.selectionEnd : text.length;
+    const before = text.slice(0, at);
+    const sep = before && !/\s$/.test(before) ? ' ' : '';
+    const next = `${before}${sep}${spoken}${text.slice(end)}`;
+    if (useStore.getState().sttAutoSend && !running && !uploading) {
+      const refs = chips.flatMap((c) => (c.ref ? [c.ref] : []));
+      setText('');
+      remove(chips.map((c) => c.key));
+      void sendUserMessage(next.trim(), refs);
+      return;
+    }
+    setText(next);
+    requestAnimationFrame(() => {
+      resize();
+      const caret = before.length + sep.length + spoken.length;
+      el?.focus();
+      el?.setSelectionRange(caret, caret);
+    });
+  };
 
   const onDrop = (e: DragEvent) => {
     e.preventDefault();
@@ -165,6 +179,7 @@ export function Composer() {
           <IconButton label="Liitä tiedosto" onClick={() => picker.current?.click()}>
             <Paperclip size={20} />
           </IconButton>
+          <MicButton onText={insertTranscript} />
           <input
             ref={picker}
             type="file"

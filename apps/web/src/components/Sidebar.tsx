@@ -4,18 +4,23 @@ import {
   Archive,
   ArchiveRestore,
   ChevronRight,
+  Command,
+  Lock,
   PanelLeft,
   Pencil,
   Pin,
   PinOff,
   Search,
   SquarePen,
+  Trash2,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { firstUserLine, useStore } from '../store.ts';
 import { openChat, runSearch, send } from '../ws.ts';
-import { IconButton } from './IconButton.tsx';
-import { SettingsDialog } from './SettingsDialog.tsx';
+import { type Action, ActionMenu, ActionRow } from './Actions.tsx';
+import { ConfirmDialog } from './ConfirmDialog.tsx';
+import { IconButton, Tip } from './IconButton.tsx';
+import { SettingsButton } from './SettingsDialog.tsx';
 
 export const UNTITLED = 'Uusi keskustelu';
 
@@ -41,6 +46,7 @@ function ChatRow({
   onOpen: () => void;
 }) {
   const [editing, setEditing] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   // Enter and the following blur must not both rename.
   const done = useRef(false);
 
@@ -79,6 +85,21 @@ function ChatRow({
     );
   }
 
+  const actions: Action[] = [
+    {
+      label: chat.pinned ? 'Irrota' : 'Kiinnitä',
+      Icon: chat.pinned ? PinOff : Pin,
+      run: () => send({ type: 'chat.pin', chatId: chat.id, pinned: !chat.pinned }),
+    },
+    {
+      label: chat.archived ? 'Palauta' : 'Arkistoi',
+      Icon: chat.archived ? ArchiveRestore : Archive,
+      run: () => send({ type: 'chat.archive', chatId: chat.id, archived: !chat.archived }),
+    },
+    { label: 'Nimeä uudelleen', Icon: Pencil, run: startEdit },
+    { label: 'Poista', Icon: Trash2, run: () => setConfirming(true) },
+  ];
+
   return (
     <li
       className={clsx(
@@ -91,34 +112,45 @@ function ChatRow({
         onClick={onOpen}
         aria-current={active ? 'page' : undefined}
         className={clsx(
-          'h-9 min-w-0 flex-1 truncate rounded-md px-2 text-left',
+          'h-9 min-w-0 flex-1 truncate rounded-md px-2 text-left max-md:h-11 max-md:pr-12',
           active ? 'text-accent' : label ? 'text-fg' : 'text-fg-muted',
         )}
       >
         {label ?? UNTITLED}
       </button>
-      <div className="absolute right-1 hidden rounded-md bg-bg-sunken before:absolute before:inset-y-0 before:-left-6 before:w-6 before:bg-linear-to-l before:from-bg-sunken group-focus-within:flex group-hover:flex [@media(hover:none)]:flex">
-        <IconButton
-          label={chat.pinned ? 'Irrota' : 'Kiinnitä'}
-          className="size-8 max-md:size-11"
-          onClick={() => send({ type: 'chat.pin', chatId: chat.id, pinned: !chat.pinned })}
-        >
-          {chat.pinned ? <PinOff size={16} /> : <Pin size={16} />}
-        </IconButton>
-        <IconButton
-          label={chat.archived ? 'Palauta' : 'Arkistoi'}
-          className="size-8 max-md:size-11"
-          onClick={() => send({ type: 'chat.archive', chatId: chat.id, archived: !chat.archived })}
-        >
-          {chat.archived ? <ArchiveRestore size={16} /> : <Archive size={16} />}
-        </IconButton>
-        <IconButton label="Nimeä uudelleen" className="size-8 max-md:size-11" onClick={startEdit}>
-          <Pencil size={16} />
-        </IconButton>
+      {chat.titleLocked && (
+        <Tip label="Nimi lukittu">
+          <span role="img" aria-label="Nimi lukittu" tabIndex={-1} className="mr-2 text-fg-muted">
+            <Lock size={12} />
+          </span>
+        </Tip>
+      )}
+      <div className="absolute right-1 hidden rounded-md bg-bg-sunken before:pointer-events-none before:absolute before:inset-y-0 before:-left-6 before:w-6 before:bg-linear-to-l before:from-bg-sunken group-focus-within:flex group-hover:flex max-md:flex max-md:bg-transparent max-md:before:hidden">
+        <div className="max-md:hidden">
+          <ActionRow actions={actions} small />
+        </div>
+        <div className="md:hidden">
+          <ActionMenu label={`Toiminnot: ${label ?? UNTITLED}`} actions={actions} />
+        </div>
       </div>
+      <ConfirmDialog
+        open={confirming}
+        title="Poistetaanko keskustelu?"
+        action="Poista"
+        onConfirm={() => send({ type: 'chat.delete', chatId: chat.id })}
+        onClose={() => setConfirming(false)}
+      >
+        ”{label ?? UNTITLED}” ja sen viestit poistetaan pysyvästi.
+      </ConfirmDialog>
     </li>
   );
 }
+
+const PaletteButton = () => (
+  <IconButton label="Komennot (Ctrl+K)" onClick={() => useStore.setState({ paletteOpen: true })}>
+    <Command size={20} />
+  </IconButton>
+);
 
 /** Full sidebar (280 px) when `expanded`, else the 56 px icon rail. */
 export function Sidebar({ expanded, onNavigate }: { expanded: boolean; onNavigate?: () => void }) {
@@ -179,8 +211,9 @@ export function Sidebar({ expanded, onNavigate }: { expanded: boolean; onNavigat
         <IconButton label="Hae keskusteluja" onClick={search}>
           <Search size={20} />
         </IconButton>
+        <PaletteButton />
         <div className="mt-auto pb-[max(env(safe-area-inset-bottom),8px)]">
-          <SettingsDialog />
+          <SettingsButton />
         </div>
       </nav>
     );
@@ -228,6 +261,7 @@ export function Sidebar({ expanded, onNavigate }: { expanded: boolean; onNavigat
           <SquarePen size={20} />
           {UNTITLED}
         </button>
+        <PaletteButton />
         {!onNavigate && (
           <IconButton label="Sulje sivupalkki" onClick={() => setSidebarOpen(!sidebarOpen)}>
             <PanelLeft size={20} />
@@ -327,7 +361,7 @@ export function Sidebar({ expanded, onNavigate }: { expanded: boolean; onNavigat
         >
           {archivedView ? 'Keskustelut' : 'Arkistoidut'}
         </button>
-        <SettingsDialog {...(onNavigate ? { onNavigate } : {})} />
+        <SettingsButton />
       </div>
     </nav>
   );

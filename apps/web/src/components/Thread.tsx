@@ -1,12 +1,20 @@
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { useEffect, useRef } from 'react';
-import { useStore } from '../store.ts';
-import { openChat } from '../ws.ts';
+import { type UiMessage, useStore } from '../store.ts';
+import { openChat, sendUserMessage } from '../ws.ts';
 import { ApprovalCard } from './ApprovalCard.tsx';
+import { MemoryChipRow } from './MemoryChipRow.tsx';
 import { MessageView } from './MessageView.tsx';
 import { UNTITLED } from './Sidebar.tsx';
 import { SubagentRow } from './SubagentRow.tsx';
 
 const EMPTY: never[] = [];
+/** Above this many messages only the visible ones are in the DOM (rule 10). */
+const VIRTUAL_FROM = 200;
+
+/** The user message before `i`, for "retry". */
+const previousUser = (messages: UiMessage[], i: number) =>
+  messages.slice(0, i).findLast((m) => m.role === 'user' && m.text);
 
 export function Thread() {
   const chatId = useStore((s) => s.activeChatId);
@@ -22,6 +30,15 @@ export function Thread() {
   const approvals = allApprovals.filter((a) => a.chatId === chatId);
   const scroller = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
+  const virtual = messages.length > VIRTUAL_FROM;
+  const virtualizer = useVirtualizer({
+    count: virtual ? messages.length : 0,
+    getScrollElement: () => scroller.current,
+    estimateSize: () => 120,
+    overscan: 6,
+    // The list starts after the column's 24 px top padding.
+    scrollMargin: 24,
+  });
 
   // Follow the bottom while the user has not scrolled up.
   useEffect(() => {
@@ -32,12 +49,34 @@ export function Thread() {
   // A search hit opens at its message once the chat's messages are in.
   useEffect(() => {
     if (!scrollTo) return;
+    if (virtual) {
+      const i = messages.findIndex((m) => m.id === scrollTo);
+      if (i < 0) return;
+      virtualizer.scrollToIndex(i, { align: 'center' });
+      pinned.current = false;
+      return useStore.getState().setScrollTo(null);
+    }
     const el = scroller.current?.querySelector(`[data-message-id="${CSS.escape(scrollTo)}"]`);
     if (!el) return;
     el.scrollIntoView({ block: 'center' });
     pinned.current = false;
     useStore.getState().setScrollTo(null);
-  }, [messages, scrollTo]);
+  }, [messages, scrollTo, virtual, virtualizer]);
+
+  const view = (m: UiMessage, i: number) => {
+    const prev = m.role === 'assistant' ? previousUser(messages, i) : undefined;
+    return (
+      <MessageView
+        role={m.role}
+        text={m.text}
+        annotations={m.annotations}
+        attachments={m.attachments}
+        tools={m.tools}
+        {...(m.role === 'user' ? { onEdit: (t: string) => void sendUserMessage(t) } : {})}
+        {...(prev ? { onRetry: () => void sendUserMessage(prev.text, prev.attachments) } : {})}
+      />
+    );
+  };
 
   return (
     <div
@@ -49,30 +88,34 @@ export function Thread() {
       className="min-h-0 flex-1 overflow-y-auto px-4"
     >
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 py-6">
-        {messages.map((m) => (
-          <div key={m.id} data-message-id={m.id}>
-            <MessageView
-              role={m.role}
-              text={m.text}
-              annotations={m.annotations}
-              attachments={m.attachments}
-              tools={m.tools}
-            />
+        {virtual ? (
+          <div className="relative" style={{ height: virtualizer.getTotalSize() }}>
+            {virtualizer.getVirtualItems().map((v) => {
+              const m = messages[v.index] as UiMessage;
+              return (
+                <div
+                  key={m.id}
+                  ref={virtualizer.measureElement}
+                  data-index={v.index}
+                  data-message-id={m.id}
+                  className="absolute inset-x-0 top-0 pb-6"
+                  style={{
+                    transform: `translateY(${v.start - virtualizer.options.scrollMargin}px)`,
+                  }}
+                >
+                  {view(m, v.index)}
+                </div>
+              );
+            })}
           </div>
-        ))}
-        {memoryChip && (
-          <p className="text-secondary text-fg-muted">
-            {memoryChip === 'pending' ? 'Muistikirjoitus odottaa hyväksyntää' : 'Muisti päivitetty'}
-            {' · '}
-            <button
-              type="button"
-              onClick={() => useStore.getState().setScreen('memory')}
-              className="underline underline-offset-2 hover:text-fg"
-            >
-              Avaa muisti
-            </button>
-          </p>
+        ) : (
+          messages.map((m, i) => (
+            <div key={m.id} data-message-id={m.id}>
+              {view(m, i)}
+            </div>
+          ))
         )}
+        {memoryChip && <MemoryChipRow chip={memoryChip} />}
         {!stream && !running && related.length > 0 && (
           <nav
             aria-label="Liittyvät keskustelut"

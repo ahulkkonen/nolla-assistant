@@ -26,7 +26,7 @@
   --text-secondary: 13px;
   --text-secondary--line-height: 1.5;
 
-  --breakpoint-xl: 1200px;
+  --breakpoint-xl: 75rem; /* 1200px; rem like the defaults, or the media queries sort wrong */
 
   --duration: 150ms;
 

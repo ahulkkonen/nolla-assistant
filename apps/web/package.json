@@ -12,13 +12,17 @@
   "dependencies": {
     "@pa/protocol": "workspace:*",
     "@simplewebauthn/browser": "14.0.0",
+    "@tanstack/react-virtual": "3.14.21",
     "clsx": "2.1.1",
+    "cmdk": "1.1.1",
     "lucide-react": "1.59.0",
+    "mermaid": "12.2.0",
     "radix-ui": "1.8.1",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "react-markdown": "10.1.0",
     "remark-gfm": "4.0.1",
+    "sucrase": "3.35.1",
     "zustand": "5.0.15"
   },
   "devDependencies": {

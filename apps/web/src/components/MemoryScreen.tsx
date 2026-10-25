@@ -1,8 +1,9 @@
 import { clsx } from 'clsx';
 import { LoaderCircle } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { firstUserLine, type MemoryState, useStore } from '../store.ts';
+import { useEffect, useRef, useState } from 'react';
+import { firstUserLine, type MemoryState, pendingLines, useStore } from '../store.ts';
 import { openChat, send } from '../ws.ts';
+import { ConfirmDialog } from './ConfirmDialog.tsx';
 import { UNTITLED } from './Sidebar.tsx';
 
 export const MEMORY_TITLE = 'Muisti';
@@ -15,6 +16,10 @@ const FILE = { user: 'USER.md', memory: 'MEMORY.md' } as const;
 const LABEL = { user: 'Käyttäjä (USER.md)', memory: 'Muisti (MEMORY.md)' } as const;
 const ACTION = { add: 'Lisää', replace: 'Korvaa', remove: 'Poista' } as const;
 const TARGET = { user: 'käyttäjä', memory: 'muisti' } as const;
+const PLACEHOLDER = {
+  user: 'Kerro itsestäsi: kuka olet, mitä toivot vastauksilta, pysyvät ohjeet.',
+  memory: 'Agentti lisää tänne pysyviä tietoja. Voit muokata niitä itse.',
+} as const;
 
 const primary =
   'h-10 rounded-md bg-accent px-4 font-medium text-accent-fg disabled:bg-bg-sunken disabled:text-fg-muted';
@@ -81,7 +86,8 @@ function PendingItem({ p }: { p: MemoryState['pending'][number] }) {
   const chatTitle = useStore(
     (s) => s.chats.find((c) => c.id === p.chatId)?.title ?? firstUserLine(s.messages[p.chatId]),
   );
-  const long = p.text.split('\n').length > 3 || p.text.length > 240;
+  const lines = pendingLines(p);
+  const long = lines.length > 3 || p.text.length > 240;
   return (
     <li className="flex flex-col gap-2 rounded-lg border border-border bg-bg-raised p-4">
       <div className="text-secondary text-fg-muted">
@@ -94,7 +100,9 @@ function PendingItem({ p }: { p: MemoryState['pending'][number] }) {
           {chatTitle ?? UNTITLED}
         </button>
       </div>
-      <p className={clsx('whitespace-pre-wrap break-words', !open && 'line-clamp-3')}>{p.text}</p>
+      <div className={clsx(!open && long && 'max-h-24 overflow-hidden')}>
+        <Diff diff={lines.join('\n')} />
+      </div>
       {long && (
         <button
           type="button"
@@ -128,12 +136,17 @@ function Pane({
   target,
   value,
   dirty,
+  saved,
+  readOnly,
   onChange,
   onSave,
 }: {
   target: Target;
   value: string;
   dirty: boolean;
+  /** "Tallennettu" for 2 s after the server echoed a save. */
+  saved: boolean;
+  readOnly: boolean;
   onChange: (text: string) => void;
   /** Undefined while the panes hold a consolidation draft (saved together by "Hyväksy"). */
   onSave: (() => void) | undefined;
@@ -147,19 +160,28 @@ function Pane({
         <label htmlFor={id} className="font-medium">
           {LABEL[target]}
         </label>
-        <span
-          className={clsx(
-            'text-secondary tabular-nums',
-            over ? 'font-medium text-accent' : 'text-fg',
+        <span className="flex items-baseline gap-2">
+          {saved && (
+            <span role="status" className="text-secondary text-fg-muted">
+              Tallennettu
+            </span>
           )}
-        >
-          {value.length} / {CAPS[target]}
-          {over && <span className="sr-only"> (liian pitkä)</span>}
+          <span
+            id={`${id}-count`}
+            className={clsx('text-secondary text-fg tabular-nums', over && 'font-medium')}
+          >
+            {value.length} / {CAPS[target]}
+            {over && ' · liian pitkä'}
+          </span>
         </span>
       </div>
       <textarea
         id={id}
         value={value}
+        readOnly={readOnly}
+        placeholder={PLACEHOLDER[target]}
+        aria-invalid={over || undefined}
+        aria-describedby={`${id}-count`}
         rows={target === 'user' ? 8 : 12}
         spellCheck={false}
         onChange={(e) => onChange(e.target.value)}
@@ -169,9 +191,12 @@ function Pane({
             if (canSave) onSave();
           }
         }}
-        className="w-full resize-y rounded-md border border-border bg-bg p-3 font-mono text-secondary"
+        className={clsx(
+          'w-full resize-y rounded-md border border-border p-3 font-mono text-secondary placeholder:text-fg-muted',
+          readOnly ? 'bg-bg-sunken' : 'bg-bg',
+        )}
       />
-      {onSave && (
+      {onSave && !readOnly && (
         <button
           type="button"
           className={`${primary} self-end`}
@@ -192,17 +217,52 @@ export function MemoryScreen() {
   // Panes hold the consolidation proposal as editable drafts.
   const [editing, setEditing] = useState(false);
   const [consolidating, setConsolidating] = useState(false);
+  const [saved, setSaved] = useState<Target | null>(null);
+  /** Where the user tried to go with unsaved drafts; the dialog asks before leaving. */
+  const [leave, setLeave] = useState<{ screen: string; activeChatId: string | null } | null>(null);
+  const dirty =
+    !!mem &&
+    (editing ||
+      (['user', 'memory'] as const).some((t) => drafts[t] !== null && drafts[t] !== mem[t]));
+  const dirtyRef = useRef(dirty);
+  dirtyRef.current = dirty;
 
   useEffect(() => send({ type: 'memory.list' }), []);
   // A save is done when the server echoes the text; an error toast also ends the wait.
   useEffect(() => {
     setConsolidating(false);
     if (!mem || editing) return;
-    setDrafts((d) => ({
-      user: d.user === mem.user ? null : d.user,
-      memory: d.memory === mem.memory ? null : d.memory,
-    }));
+    setDrafts((d) => {
+      for (const t of ['user', 'memory'] as const)
+        if (d[t] !== null && d[t] === mem[t]) setSaved(t);
+      return {
+        user: d.user === mem.user ? null : d.user,
+        memory: d.memory === mem.memory ? null : d.memory,
+      };
+    });
   }, [mem, errors]);
+  useEffect(() => {
+    if (!saved) return;
+    const t = setTimeout(() => setSaved(null), 2000);
+    return () => clearTimeout(t);
+  }, [saved]);
+
+  // Unsaved drafts: the browser asks on unload; any in-app navigation is undone and asked here.
+  useEffect(() => {
+    if (!dirty) return;
+    const onUnload = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener('beforeunload', onUnload);
+    return () => window.removeEventListener('beforeunload', onUnload);
+  }, [dirty]);
+  useEffect(
+    () =>
+      useStore.subscribe((s, prev) => {
+        if (!dirtyRef.current || prev.screen !== 'memory' || s.screen === 'memory') return;
+        setLeave({ screen: s.screen, activeChatId: s.activeChatId });
+        useStore.setState({ screen: 'memory', activeChatId: prev.activeChatId });
+      }),
+    [],
+  );
 
   if (!mem)
     return (
@@ -237,11 +297,28 @@ export function MemoryScreen() {
     setDrafts({ user: null, memory: null });
   };
   const overCap = text('user').length > CAPS.user || text('memory').length > CAPS.memory;
+  const consolidate = (
+    <button
+      type="button"
+      className={`${secondary} flex items-center gap-2`}
+      disabled={consolidating}
+      onClick={() => {
+        setConsolidating(true);
+        send({ type: 'memory.consolidate' });
+      }}
+    >
+      {consolidating && <LoaderCircle size={16} className="animate-spin" />}
+      {consolidating ? 'Tiivistetään…' : 'Tiivistä nyt'}
+    </button>
+  );
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-4">
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 py-6">
-        <h1 className="font-semibold max-md:hidden">{MEMORY_TITLE}</h1>
+        <div className="flex items-center justify-between gap-2 max-md:justify-end">
+          <h1 className="font-semibold max-md:hidden">{MEMORY_TITLE}</h1>
+          {!c && consolidate}
+        </div>
         {mem.pending.length > 0 && (
           <section aria-labelledby="pending-writes" className="flex flex-col gap-2">
             <h2 id="pending-writes" className="text-secondary text-fg-muted">
@@ -296,19 +373,11 @@ export function MemoryScreen() {
               </button>
             </div>
           </section>
-        ) : (
-          <button
-            type="button"
-            className={`${secondary} flex items-center gap-2 self-start`}
-            disabled={consolidating}
-            onClick={() => {
-              setConsolidating(true);
-              send({ type: 'memory.consolidate' });
-            }}
-          >
-            {consolidating && <LoaderCircle size={16} className="animate-spin" />}
-            {consolidating ? 'Tiivistetään…' : 'Tiivistä nyt'}
-          </button>
+        ) : null}
+        {c && !editing && (
+          <p className="text-secondary text-fg-muted">
+            Ratkaise tiivistysehdotus ennen muokkausta.
+          </p>
         )}
         {(['user', 'memory'] as const).map((t) => (
           <Pane
@@ -316,11 +385,27 @@ export function MemoryScreen() {
             target={t}
             value={text(t)}
             dirty={drafts[t] !== null && drafts[t] !== mem[t]}
+            saved={saved === t}
+            readOnly={!!c && !editing}
             onChange={(v) => setDrafts((d) => ({ ...d, [t]: v }))}
             onSave={editing ? undefined : () => save(t)}
           />
         ))}
       </div>
+      <ConfirmDialog
+        open={!!leave}
+        title="Hylätäänkö tallentamattomat muutokset?"
+        action="Hylkää muutokset"
+        onConfirm={() => {
+          dirtyRef.current = false;
+          setDrafts({ user: null, memory: null });
+          setEditing(false);
+          if (leave) useStore.setState(leave as Partial<ReturnType<typeof useStore.getState>>);
+        }}
+        onClose={() => setLeave(null)}
+      >
+        Muistiin tehdyt muokkaukset menetetään.
+      </ConfirmDialog>
     </div>
   );
 }

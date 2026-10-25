@@ -6,5 +6,16 @@ export default defineConfig({
   retries: 0,
   reporter: 'list',
   globalSetup: './src/global-setup.ts',
-  projects: [{ name: 'chromium', use: { browserName: 'chromium' } }],
+  projects: [
+    {
+      name: 'chromium',
+      use: {
+        browserName: 'chromium',
+        // A fake microphone (a tone) and no permission prompt, for the voice tests.
+        launchOptions: {
+          args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'],
+        },
+      },
+    },
+  ],
 });

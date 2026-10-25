@@ -1,8 +1,18 @@
 import type { Annotation, AttachmentRef } from '@pa/protocol';
 import { clsx } from 'clsx';
-import { Check, Copy, FileText } from 'lucide-react';
+import { Check, Copy, Eye, EyeOff, FileText, PanelRight, Pencil, RotateCcw } from 'lucide-react';
 import { Popover } from 'radix-ui';
-import { type ComponentProps, memo, type ReactNode, useMemo, useRef, useState } from 'react';
+import {
+  type ComponentProps,
+  createContext,
+  isValidElement,
+  memo,
+  type ReactNode,
+  useContext,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import Markdown, { type ExtraProps } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { type SubagentChild, type ToolView, useStore } from '../store.ts';
@@ -28,30 +38,72 @@ function CopyButton({ text, className }: { text: () => string; className: string
   );
 }
 
+const ARTIFACT_KIND = { html: 'html', jsx: 'react', tsx: 'react', mermaid: 'mermaid' } as const;
+const hash = (s: string) => {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = (h * 33) ^ s.charCodeAt(i);
+  return (h >>> 0).toString(36);
+};
+
 function Pre(props: ComponentProps<'pre'>) {
   const ref = useRef<HTMLPreElement>(null);
+  const child = props.children;
+  const className = isValidElement<{ className?: string; children?: unknown }>(child)
+    ? (child.props.className ?? '')
+    : '';
+  const lang = /language-(\S+)/.exec(className)?.[1]?.toLowerCase() ?? '';
+  const source =
+    isValidElement<{ children?: unknown }>(child) && typeof child.props.children === 'string'
+      ? child.props.children
+      : '';
+  const kind =
+    ARTIFACT_KIND[lang as keyof typeof ARTIFACT_KIND] ??
+    (source.split('\n').length > 30 ? 'code' : undefined);
+  const open = () => {
+    const st = useStore.getState();
+    const content = ref.current?.textContent ?? source;
+    if (!kind || !st.activeChatId) return;
+    st.showArtifact(st.activeChatId, {
+      id: `local-${hash(content)}`,
+      kind,
+      title: lang ? `${lang} (viestistä)` : 'Koodi (viestistä)',
+      ...(lang ? { language: lang } : {}),
+      content,
+    });
+  };
   return (
     <div className="relative">
       <pre
         ref={ref}
-        className="overflow-x-auto rounded-md bg-bg-sunken p-3 pr-12 font-mono text-secondary"
+        className={clsx(
+          'overflow-x-auto rounded-md bg-bg-sunken p-3 font-mono text-secondary',
+          kind ? 'pr-20 max-md:pr-24' : 'pr-12',
+        )}
       >
         {props.children}
       </pre>
-      <CopyButton
-        text={() => ref.current?.textContent ?? ''}
-        className="absolute top-1 right-1 size-8 max-md:size-11"
-      />
+      <div className="absolute top-1 right-1 flex">
+        {kind && (
+          <IconButton label="Avaa artefaktina" className="size-8 max-md:size-11" onClick={open}>
+            <PanelRight size={16} />
+          </IconButton>
+        )}
+        <CopyButton text={() => ref.current?.textContent ?? ''} className="size-8 max-md:size-11" />
+      </div>
     </div>
   );
 }
+
+/** One message's own "what the model saw" switch; the global setting still wins. */
+const SawContext = createContext(false);
 
 // Touch screens have no hover, so the hint opens on tap there.
 const touch = globalThis.matchMedia?.('(hover: none)').matches ?? false;
 
 /** A restored real value; the tooltip (or the global toggle) shows the surrogate the model saw. */
 function Anno({ real, saw }: { real: string; saw: string }) {
-  const show = useStore((s) => s.showModelSaw);
+  const local = useContext(SawContext);
+  const show = useStore((s) => s.showModelSaw) || local;
   const hint = show ? `Alkuperäinen: ${real}` : `Malli näki: ${saw}`;
   const span = (
     <span
@@ -208,7 +260,61 @@ type Props = {
   live?: boolean;
   /** Live children of a `subagent` call: that tool's row becomes the subagent row. */
   subagents?: SubagentChild[];
+  /** User message: sends the edited text as a new message. */
+  onEdit?: (text: string) => void;
+  /** Assistant message: resends the previous user message. */
+  onRetry?: () => void;
 };
+
+const small = 'relative size-6 after:absolute after:-inset-2';
+
+function EditBox({
+  text,
+  onSend,
+  onCancel,
+}: {
+  text: string;
+  onSend: (t: string) => void;
+  onCancel: () => void;
+}) {
+  const [value, setValue] = useState(text);
+  return (
+    <div className="flex w-full max-w-xl flex-col gap-2">
+      <textarea
+        autoFocus
+        aria-label="Muokattava viesti"
+        value={value}
+        rows={Math.min(8, value.split('\n').length + 1)}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') onCancel();
+          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && value.trim()) {
+            e.stopPropagation();
+            onSend(value.trim());
+          }
+        }}
+        className="w-full resize-y rounded-lg border border-border bg-bg px-4 py-2"
+      />
+      <div className="flex justify-end gap-2">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="h-9 rounded-md border border-border px-3 hover:bg-bg-sunken"
+        >
+          Peruuta
+        </button>
+        <button
+          type="button"
+          disabled={!value.trim()}
+          onClick={() => onSend(value.trim())}
+          className="h-9 rounded-md bg-accent px-3 font-medium text-accent-fg disabled:bg-bg-sunken disabled:text-fg-muted"
+        >
+          Lähetä muokattuna
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export function MessageView({
   role,
@@ -218,43 +324,87 @@ export function MessageView({
   tools = [],
   live,
   subagents = [],
+  onEdit,
+  onRetry,
 }: Props) {
   const user = role === 'user';
+  const [saw, setSaw] = useState(false);
+  const [editing, setEditing] = useState(false);
   return (
-    <div className={clsx('group relative flex flex-col gap-2', user && 'items-end')}>
-      {attachments.length > 0 && (
-        <div className="flex flex-wrap justify-end gap-2">
-          {attachments.map((a) => (
-            <Attachment key={a.id} a={a} />
-          ))}
-        </div>
-      )}
-      {tools.length > 0 && (
-        <div className="flex flex-col">
-          {tools.map((t) =>
-            t.name === 'subagent' && subagents.length ? (
-              <SubagentRow key={t.callId} items={subagents} />
-            ) : (
-              <ToolRow key={t.callId} tool={t} />
-            ),
-          )}
-        </div>
-      )}
-      {user ? (
-        text && (
-          <div className="max-w-xl rounded-lg bg-user-bubble px-4 py-2 break-words whitespace-pre-wrap">
-            {annotate(text, annotations)}
+    <SawContext.Provider value={saw}>
+      <div className={clsx('group relative flex flex-col gap-2', user && 'items-end')}>
+        {attachments.length > 0 && (
+          <div className="flex flex-wrap justify-end gap-2">
+            {attachments.map((a) => (
+              <Attachment key={a.id} a={a} />
+            ))}
           </div>
-        )
-      ) : (
-        <MarkdownText text={text} annotations={annotations} />
-      )}
-      {/* Out of flow: the 24 px row sits in the thread gap. User copy waits for phase 7 edit. */}
-      {!user && !live && text && (
-        <div className="absolute top-full left-0 opacity-0 transition-opacity duration-(--duration) group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100">
-          <CopyButton text={() => text} className="relative size-6 after:absolute after:-inset-2" />
-        </div>
-      )}
-    </div>
+        )}
+        {tools.length > 0 && (
+          <div className="flex flex-col">
+            {tools.map((t) =>
+              t.name === 'subagent' && subagents.length ? (
+                <SubagentRow key={t.callId} items={subagents} />
+              ) : (
+                <ToolRow key={t.callId} tool={t} />
+              ),
+            )}
+          </div>
+        )}
+        {user && editing && onEdit ? (
+          <EditBox
+            text={text}
+            onCancel={() => setEditing(false)}
+            onSend={(t) => {
+              setEditing(false);
+              onEdit(t);
+            }}
+          />
+        ) : user ? (
+          text && (
+            <div className="max-w-xl rounded-lg bg-user-bubble px-4 py-2 break-words whitespace-pre-wrap">
+              {annotate(text, annotations)}
+            </div>
+          )
+        ) : (
+          <MarkdownText text={text} annotations={annotations} />
+        )}
+        {/* Out of flow: the 24 px row sits in the thread gap. */}
+        {!live && !editing && text && (
+          <div
+            className={clsx(
+              'absolute top-full flex gap-2 opacity-0 transition-opacity duration-(--duration) group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100',
+              user ? 'right-0' : 'left-0',
+            )}
+          >
+            <CopyButton text={() => text} className={small} />
+            {user && onEdit && (
+              <IconButton
+                label="Muokkaa ja lähetä uutena"
+                className={small}
+                onClick={() => setEditing(true)}
+              >
+                <Pencil size={16} />
+              </IconButton>
+            )}
+            {!user && onRetry && (
+              <IconButton label="Yritä uudelleen" className={small} onClick={onRetry}>
+                <RotateCcw size={16} />
+              </IconButton>
+            )}
+            {annotations.length > 0 && (
+              <IconButton
+                label={saw ? 'Näytä alkuperäiset' : 'Mitä malli näki'}
+                aria-pressed={saw}
+                className={small}
+                onClick={() => setSaw(!saw)}
+              >
+                {saw ? <EyeOff size={16} /> : <Eye size={16} />}
+              </IconButton>
+            )}
+          </div>
+        )}
+      </div>
+    </SawContext.Provider>
   );
 }

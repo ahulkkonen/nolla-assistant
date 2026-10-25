@@ -10,13 +10,15 @@ export type Action = {
   pressed?: boolean;
 };
 
-export function ActionRow({ actions }: { actions: Action[] }) {
+/** `small`: 32 px buttons for dense rows (sidebar). */
+export function ActionRow({ actions, small }: { actions: Action[]; small?: boolean }) {
   return (
     <div className="flex">
       {actions.map(({ label, Icon, run, pressed }) => (
         <IconButton
           key={label}
           label={label}
+          {...(small ? { className: 'size-8' } : {})}
           {...(pressed !== undefined ? { 'aria-pressed': pressed } : {})}
           {...(run ? { onClick: run } : { 'aria-disabled': 'true' as const })}
         >

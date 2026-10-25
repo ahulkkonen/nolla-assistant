@@ -25,7 +25,8 @@ export function ToolRow({ tool }: { tool: ToolView }) {
   const { Icon, text } = waiting
     ? { Icon: Clock, text: 'odottaa hyväksyntää' }
     : STATUS[tool.status];
-  const detail = [tool.argsPreview, tool.summary].filter(Boolean);
+  // Live output while running; the final summary replaces it.
+  const detail = [tool.argsPreview, tool.summary || tool.output].filter(Boolean);
   return (
     <div className="text-secondary text-fg-muted">
       <button

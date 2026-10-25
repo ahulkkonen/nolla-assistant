@@ -1,5 +1,6 @@
 import type {
   Annotation,
+  Artifact,
   ChatSummary,
   Message,
   ServerMessage,
@@ -9,7 +10,8 @@ import type {
 } from '@pa/protocol';
 import { create } from 'zustand';
 
-export type ToolView = ToolRow & { argsPreview?: string };
+/** `output`: live `tool.update` text while the tool runs. */
+export type ToolView = ToolRow & { argsPreview?: string; output?: string };
 export type UiMessage = Omit<Message, 'tools'> & { tools: ToolView[] };
 export type Streaming = {
   messageId: string;
@@ -30,6 +32,30 @@ export type Agent = Of<'agents.state'>['agents'][number];
 export type SubagentChild = Of<'subagent.state'>['children'][number];
 export type Automation = Of<'automations.state'>['automations'][number];
 export type MemoryState = Omit<Of<'memory.state'>, 'type'>;
+/** `lines`: "+ added" / "- removed" lines of the agent's write. */
+export type MemoryChip = { kind: 'applied' | 'pending'; lines: string[] };
+
+/** "+"/"-" lines of one pending write (the old text from `replace`). */
+export function pendingLines(p: MemoryState['pending'][number]): string[] {
+  const split = (sign: string, t: string) => t.split('\n').map((l) => `${sign}${l}`);
+  if (p.action === 'remove') return split('-', p.replace ?? p.text);
+  return [...(p.replace ? split('-', p.replace) : []), ...split('+', p.text)];
+}
+
+/** Lines added and removed between two memory states (both files, then new pending writes). */
+export function memoryChanges(prev: MemoryState | null, next: MemoryState): string[] {
+  if (!prev) return [];
+  const out: string[] = [];
+  for (const f of ['user', 'memory'] as const) {
+    const before = prev[f].split('\n').filter(Boolean);
+    const after = next[f].split('\n').filter(Boolean);
+    for (const l of after) if (!before.includes(l)) out.push(`+${l}`);
+    for (const l of before) if (!after.includes(l)) out.push(`-${l}`);
+  }
+  const known = new Set(prev.pending.map((p) => p.id));
+  for (const p of next.pending) if (!known.has(p.id)) out.push(...pendingLines(p));
+  return out;
+}
 
 type State = {
   auth: 'unknown' | 'out' | 'in';
@@ -59,7 +85,19 @@ type State = {
   /** Last `memory.state`; null until the first one arrives. */
   memory: MemoryState | null;
   /** Chip under a chat's last message after an agent memory write, until the next message. */
-  memoryChip: Record<string, 'applied' | 'pending'>;
+  memoryChip: Record<string, MemoryChip>;
+  /** Artifacts per chat (from `chat.state` and `artifact.upsert`, plus code blocks opened locally). */
+  artifacts: Record<string, Artifact[]>;
+  /** The artifact shown in the panel; the panel is closed when null. */
+  openArtifact: { chatId: string; id: string } | null;
+  paletteOpen: boolean;
+  settingsOpen: boolean;
+  integrations: Of<'integrations.state'>['google'] | null;
+  showArtifact(chatId: string, a: Artifact): void;
+  /** Voice: send the transcript at once, and the language hint (both kept in localStorage). */
+  sttAutoSend: boolean;
+  sttLanguage: 'fi' | 'en' | 'sv';
+  setStt(patch: Partial<Pick<State, 'sttAutoSend' | 'sttLanguage'>>): void;
   setPendingAgentId(id: string): void;
   dropApproval(requestId: string): void;
   expireApproval(requestId: string): void;
@@ -93,6 +131,19 @@ function loadTheme(): Theme {
     return t === 'light' || t === 'dark' ? t : 'system';
   } catch {
     return 'system';
+  }
+}
+
+const STT_KEY = 'pa.stt';
+function loadStt(): Pick<State, 'sttAutoSend' | 'sttLanguage'> {
+  try {
+    const v = JSON.parse(globalThis.localStorage?.getItem(STT_KEY) ?? '{}');
+    return {
+      sttAutoSend: v.sttAutoSend === true,
+      sttLanguage: ['fi', 'en', 'sv'].includes(v.sttLanguage) ? v.sttLanguage : 'fi',
+    };
+  } catch {
+    return { sttAutoSend: false, sttLanguage: 'fi' };
   }
 }
 
@@ -161,6 +212,13 @@ export const useStore = create<State>()((set, get) => {
     automations: null,
     memory: null,
     memoryChip: {},
+    artifacts: {},
+    openArtifact: null,
+    paletteOpen: false,
+    settingsOpen: false,
+    integrations: null,
+    sttAutoSend: loadStt().sttAutoSend,
+    sttLanguage: loadStt().sttLanguage,
     vault: null,
     topics: [],
     proposals: [],
@@ -202,7 +260,35 @@ export const useStore = create<State>()((set, get) => {
             ),
           }));
         case 'chat.state':
-          return set((st) => ({ messages: { ...st.messages, [msg.chat.id]: msg.messages } }));
+          return set((st) => ({
+            messages: { ...st.messages, [msg.chat.id]: msg.messages },
+            ...(msg.artifacts
+              ? { artifacts: { ...st.artifacts, [msg.chat.id]: msg.artifacts } }
+              : {}),
+          }));
+        case 'artifact.upsert':
+          return set((st) => {
+            const list = st.artifacts[msg.chatId] ?? [];
+            const i = list.findIndex((a) => a.id === msg.artifact.id);
+            const next = i < 0 ? [...list, msg.artifact] : list.with(i, msg.artifact);
+            return {
+              artifacts: { ...st.artifacts, [msg.chatId]: next },
+              // A new artifact in the open chat opens the panel on it.
+              ...(i < 0 && msg.chatId === st.activeChatId
+                ? { openArtifact: { chatId: msg.chatId, id: msg.artifact.id } }
+                : {}),
+            };
+          });
+        case 'chat.deleted':
+          return set((st) => ({
+            chats: st.chats.filter((c) => c.id !== msg.chatId),
+            messages: omit(st.messages, msg.chatId),
+            artifacts: omit(st.artifacts, msg.chatId),
+            ...(st.activeChatId === msg.chatId ? { activeChatId: null, screen: 'chat' } : {}),
+            ...(st.openArtifact?.chatId === msg.chatId ? { openArtifact: null } : {}),
+          }));
+        case 'integrations.state':
+          return set({ integrations: msg.google });
         case 'message.delta':
           return patchStream(msg.chatId, (s) =>
             s.messageId === msg.messageId
@@ -241,7 +327,7 @@ export const useStore = create<State>()((set, get) => {
             ],
           }));
         case 'tool.update':
-          return patchTool(msg.chatId, msg.callId, { summary: msg.output });
+          return patchTool(msg.chatId, msg.callId, { output: msg.output.slice(-2000) });
         case 'tool.end':
           return patchTool(msg.chatId, msg.callId, { status: msg.status, summary: msg.summary });
         case 'agent.status':
@@ -280,7 +366,15 @@ export const useStore = create<State>()((set, get) => {
             return {
               memory,
               ...(agentWrite
-                ? { memoryChip: { ...st.memoryChip, [chatId]: grew ? 'pending' : 'applied' } }
+                ? {
+                    memoryChip: {
+                      ...st.memoryChip,
+                      [chatId]: {
+                        kind: grew ? 'pending' : 'applied',
+                        lines: memoryChanges(st.memory, memory),
+                      },
+                    },
+                  }
                 : {}),
             };
           });
@@ -308,6 +402,24 @@ export const useStore = create<State>()((set, get) => {
     setScreen: (screen) => set({ screen }),
     setScrollTo: (scrollTo) => set({ scrollTo }),
     setPendingAgentId: (pendingAgentId) => set({ pendingAgentId }),
+    setStt(patch) {
+      set(patch);
+      const { sttAutoSend, sttLanguage } = get();
+      try {
+        localStorage.setItem(STT_KEY, JSON.stringify({ sttAutoSend, sttLanguage }));
+      } catch {}
+    },
+    showArtifact: (chatId, a) =>
+      set((st) => {
+        const list = st.artifacts[chatId] ?? [];
+        const known = list.find(
+          (x) => x.id === a.id || x.content.trimEnd() === a.content.trimEnd(),
+        );
+        return {
+          artifacts: known ? st.artifacts : { ...st.artifacts, [chatId]: [...list, a] },
+          openArtifact: { chatId, id: known?.id ?? a.id },
+        };
+      }),
     dropApproval: (requestId) =>
       set((st) => ({ approvals: st.approvals.filter((a) => a.requestId !== requestId) })),
     expireApproval: (requestId) =>

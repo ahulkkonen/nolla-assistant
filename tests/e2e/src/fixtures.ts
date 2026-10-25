@@ -1,3 +1,4 @@
+import { createECDH } from 'node:crypto';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -14,6 +15,63 @@ import { WEB } from './global-setup.ts';
 process.env.MODELS_DIR ||= join(tmpdir(), 'pa-models');
 
 export const PASSWORD = 'salasana';
+
+const ecdh = createECDH('prime256v1');
+ecdh.generateKeys();
+const VAPID = {
+  publicKey: ecdh.getPublicKey('base64url'),
+  privateKey: ecdh.getPrivateKey('base64url'),
+};
+
+/** Grants notifications and fakes `PushManager` in the page (no real push service in tests). */
+export const mockPush = (page: Page) =>
+  page.addInitScript(() => {
+    const sub = {
+      endpoint: 'https://push.example.test/sub/1',
+      toJSON() {
+        return {
+          endpoint: this.endpoint,
+          expirationTime: null,
+          keys: {
+            p256dh:
+              'BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U',
+            auth: 'tBHItJI5svbpez7KI4CCXg',
+          },
+        };
+      },
+      unsubscribe: async () => true,
+    };
+    let subscribed = false;
+    Object.defineProperty(Notification, 'permission', { get: () => 'granted' });
+    Notification.requestPermission = async () => 'granted';
+    PushManager.prototype.subscribe = async function () {
+      subscribed = true;
+      return sub as unknown as PushSubscription;
+    };
+    PushManager.prototype.getSubscription = async function () {
+      return subscribed ? (sub as unknown as PushSubscription) : null;
+    };
+  });
+
+/**
+ * A tone from an oscillator as the microphone. Chromium's `--use-fake-device-for-media-stream`
+ * never resolves `getUserMedia` in the macOS headless shell, so the page gets its own stream.
+ */
+export const mockMic = (page: Page) =>
+  page.addInitScript(() => {
+    navigator.mediaDevices.getUserMedia = async () => {
+      const ctx = new AudioContext();
+      const osc = ctx.createOscillator();
+      const dest = ctx.createMediaStreamDestination();
+      osc.connect(dest);
+      osc.start();
+      return dest.stream;
+    };
+  });
+
+/** An assistant reply with one HTML block (an artifact). */
+export const HTML_REPLY =
+  'Tässä sivu:\n\n```html\n<h1>Hei artefakti</h1>\n<p>Tämä sivu toimii hiekkalaatikossa.</p>\n```';
 const KEY = 'sk-e2e-master';
 
 const freePort = async () => {
@@ -95,6 +153,11 @@ export const test = base.extend<{
         USER_ID: 'aleksi',
         LOG_LEVEL: 'warn',
         AUTOMATIONS_DIR: join(dataDir, 'automations'),
+        // Push on, any endpoint host: the browser side is mocked (see `mockPush`).
+        VAPID_PUBLIC: VAPID.publicKey,
+        VAPID_PRIVATE: VAPID.privateKey,
+        VAPID_SUBJECT: 'mailto:e2e@example.com',
+        PUSH_ALLOW_ANY_HOST: '1',
         ...(approvalTimeoutMs ? { APPROVAL_TIMEOUT_MS: String(approvalTimeoutMs) } : {}),
         ...(sidecar ? { PSEUDO_URL: sidecar.url } : {}),
       }),
@@ -118,12 +181,13 @@ export const test = base.extend<{
 /** Opens a settings entry; settings sits in the drawer under 768 px, in the sidebar above. */
 export const openSettings = async (
   page: Page,
-  entry: 'Nimisuoja' | 'Aiheet' | 'Agentit' | 'Automaatiot' | 'Muisti',
+  entry: 'Nimisuoja' | 'Aiheet' | 'Agentit' | 'Automaatiot' | 'Muisti' | 'Asetukset',
 ) => {
   const menu = page.getByRole('button', { name: 'Valikko' });
   if (await menu.isVisible()) await menu.click();
   await page.getByRole('button', { name: 'Asetukset' }).click();
-  await page.getByRole('button', { name: entry }).click();
+  // 'Asetukset' only opens the dialog.
+  if (entry !== 'Asetukset') await page.getByRole('button', { name: entry }).click();
 };
 export const openVault = (page: Page) => openSettings(page, 'Nimisuoja');
 

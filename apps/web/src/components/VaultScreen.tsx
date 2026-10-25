@@ -12,11 +12,11 @@ import {
   UserRound,
   X,
 } from 'lucide-react';
-import { AlertDialog } from 'radix-ui';
 import { useEffect, useState } from 'react';
 import { useStore } from '../store.ts';
 import { send } from '../ws.ts';
 import { type Action, ActionMenu, ActionRow } from './Actions.tsx';
+import { ConfirmDialog } from './ConfirmDialog.tsx';
 
 export const VAULT_TITLE = 'Nimisuoja';
 
@@ -67,37 +67,6 @@ function actionsOf(e: VaultEntity, askNeverDetect: (e: VaultEntity) => void): Ac
     // `vault.state` carries no span ids, so a split has nothing to select yet.
     { label: 'Jakaminen ei ole vielä käytettävissä', Icon: Split },
   ];
-}
-
-const button = 'h-10 rounded-md px-4 font-medium';
-
-function NeverDetectDialog({ e, onClose }: { e: VaultEntity | null; onClose: () => void }) {
-  return (
-    <AlertDialog.Root open={!!e} onOpenChange={(open) => !open && onClose()}>
-      <AlertDialog.Portal>
-        <AlertDialog.Overlay className="fixed inset-0 z-40 bg-fg/30 data-[state=closed]:animate-fade-out data-[state=open]:animate-fade-in" />
-        <AlertDialog.Content className="fixed inset-x-4 top-1/2 z-50 mx-auto max-w-sm -translate-y-1/2 rounded-lg border border-border bg-bg-raised p-6 data-[state=closed]:animate-fade-out data-[state=open]:animate-fade-in">
-          <AlertDialog.Title className="mb-2 font-semibold">
-            Lopetetaanko tunnistus?
-          </AlertDialog.Title>
-          <AlertDialog.Description className="mb-6 text-fg-muted">
-            Arvoa ”{e?.canonical}” ei enää tunnisteta eikä suojata.
-          </AlertDialog.Description>
-          <div className="flex justify-end gap-2">
-            <AlertDialog.Cancel className={`${button} border border-border hover:bg-bg-sunken`}>
-              Peruuta
-            </AlertDialog.Cancel>
-            <AlertDialog.Action
-              className={`${button} bg-accent text-accent-fg`}
-              onClick={() => e && send({ type: 'vault.neverDetect', entityId: e.id })}
-            >
-              Lopeta tunnistus
-            </AlertDialog.Action>
-          </div>
-        </AlertDialog.Content>
-      </AlertDialog.Portal>
-    </AlertDialog.Root>
-  );
 }
 
 const pendingActions = (p: VaultPending): Action[] => {
@@ -294,7 +263,17 @@ export function VaultScreen() {
           </>
         )}
       </div>
-      <NeverDetectDialog e={neverDetect} onClose={() => setNeverDetect(null)} />
+      <ConfirmDialog
+        open={!!neverDetect}
+        title="Lopetetaanko tunnistus?"
+        action="Lopeta tunnistus"
+        onConfirm={() =>
+          neverDetect && send({ type: 'vault.neverDetect', entityId: neverDetect.id })
+        }
+        onClose={() => setNeverDetect(null)}
+      >
+        Arvoa ”{neverDetect?.canonical}” ei enää tunnisteta eikä suojata.
+      </ConfirmDialog>
     </div>
   );
 }

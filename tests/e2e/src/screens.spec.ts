@@ -6,7 +6,10 @@ import type { Page } from '@playwright/test';
 import {
   acceptProposal,
   expect,
+  HTML_REPLY,
   memoryTurns,
+  mockMic,
+  mockPush,
   openSettings,
   openVault,
   search,
@@ -77,6 +80,28 @@ const holdAfter = async (page: Page, type: string) => {
   };
 };
 
+/** Holds server frames of one `type` while closed (all others pass); `open()` delivers them. */
+const gate = async (page: Page, type: string) => {
+  let closed = false;
+  const held: (string | Buffer)[] = [];
+  let deliver: (m: string | Buffer) => void = () => {};
+  await page.routeWebSocket(/\/ws$/, (ws) => {
+    const server = ws.connectToServer();
+    deliver = (m) => ws.send(m);
+    server.onMessage((m) => {
+      if (closed && typeof m === 'string' && JSON.parse(m).type === type) return void held.push(m);
+      ws.send(m);
+    });
+  });
+  return {
+    close: () => void (closed = true),
+    open: () => {
+      closed = false;
+      for (const m of held.splice(0)) deliver(m);
+    },
+  };
+};
+
 /** 64x64 solid grey RGB PNG. */
 const png = () => {
   const crcT = Array.from({ length: 256 }, (_, n) => {
@@ -125,6 +150,65 @@ for (const scheme of ['light', 'dark'] as const) {
         await shot(page, 'login', vp.width, scheme);
       });
 
+      test('voice-recording', async ({ app, page }) => {
+        await mockMic(page);
+        await app.login(page);
+        await page.getByRole('button', { name: 'Pidä pohjassa ja puhu' }).hover();
+        await page.mouse.down();
+        await expect(page.getByRole('status').getByText('Kuuntelee')).toBeVisible();
+        await page.waitForTimeout(600);
+        await shot(page, 'voice-recording', vp.width, scheme);
+        await page.keyboard.press('Escape');
+        await page.mouse.up();
+      });
+
+      test('artifact-panel', async ({ app, page }) => {
+        app.llm.push({ text: HTML_REPLY });
+        await app.login(page);
+        await sendMessage(page, 'Tee sivu');
+        const frame = page.getByRole('complementary', { name: 'Artefaktit' }).locator('iframe');
+        await expect(
+          frame.contentFrame().getByRole('heading', { name: 'Hei artefakti' }),
+        ).toBeVisible();
+        await shot(page, 'artifact-panel', vp.width, scheme);
+      });
+
+      test('palette', async ({ app, page }) => {
+        await app.login(page);
+        await page.keyboard.press('ControlOrMeta+k');
+        await expect(page.getByPlaceholder('Hae komentoa tai keskustelua')).toBeVisible();
+        await shot(page, 'palette', vp.width, scheme);
+      });
+
+      test('message-actions', async ({ app, page }) => {
+        app.llm.push({ text: 'Tässä vastaus, jonka voi kopioida tai yrittää uudelleen.' });
+        await app.login(page);
+        await sendMessage(page, 'Kerro jotain');
+        const reply = page.locator('.md').last();
+        await expect(reply).toHaveText('Tässä vastaus, jonka voi kopioida tai yrittää uudelleen.');
+        await reply.hover();
+        await expect(page.getByRole('button', { name: 'Yritä uudelleen' })).toBeVisible();
+        await shot(page, 'message-actions', vp.width, scheme);
+      });
+
+      test('settings-notifications', async ({ app, page }) => {
+        await mockPush(page);
+        await app.login(page);
+        await openSettings(page, 'Asetukset');
+        await page.getByRole('heading', { name: 'Ilmoitukset' }).scrollIntoViewIfNeeded();
+        await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+        await shot(page, 'settings-notifications', vp.width, scheme);
+      });
+
+      test('settings-integrations', async ({ app, page }) => {
+        await app.login(page);
+        await openSettings(page, 'Asetukset');
+        await expect(page.getByText('Ei yhdistetty')).toBeVisible();
+        await page.getByRole('heading', { name: 'Integraatiot' }).scrollIntoViewIfNeeded();
+        await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+        await shot(page, 'settings-integrations', vp.width, scheme);
+      });
+
       test('empty-chat', async ({ app, page }) => {
         await app.login(page);
         await shot(page, 'empty-chat', vp.width, scheme);
@@ -138,7 +222,7 @@ for (const scheme of ['light', 'dark'] as const) {
         await page.getByLabel('Viesti').fill('Lue note.txt');
         await page.getByLabel('Viesti').press('ControlOrMeta+Enter');
         await expect(page.locator('.md').last()).toHaveText('Luin tiedoston.');
-        await expect(page.getByRole('button', { name: 'Lähetä' })).toBeVisible();
+        await expect(page.getByRole('button', { name: 'Lähetä', exact: true })).toBeVisible();
         // Tool rows start collapsed.
         await expect(page.getByRole('button', { name: /^read/ }).first()).toHaveAttribute(
           'aria-expanded',
@@ -217,7 +301,9 @@ for (const scheme of ['light', 'dark'] as const) {
           await acceptProposal(page);
           await showSidebar(page);
           // Left edge: the hover actions cover the right half of a row in the 280 px drawer.
-          await page.getByRole('button', { name: TAX.title }).click({ position: { x: 16, y: 16 } });
+          await page
+            .getByRole('button', { name: TAX.title, exact: true })
+            .click({ position: { x: 16, y: 16 } });
           await expect(page.getByRole('dialog')).toHaveCount(0);
           await showSidebar(page);
           await expect(page.getByRole('heading', { name: /Verot/ })).toBeVisible();
@@ -250,7 +336,9 @@ for (const scheme of ['light', 'dark'] as const) {
           });
           await showSidebar(page);
           // Left edge: the hover actions cover the right half of a row in the 280 px drawer.
-          await page.getByRole('button', { name: TAX.title }).click({ position: { x: 16, y: 16 } });
+          await page
+            .getByRole('button', { name: TAX.title, exact: true })
+            .click({ position: { x: 16, y: 16 } });
           const row = page.getByRole('navigation', { name: 'Liittyvät keskustelut' });
           await expect(row.getByRole('button', { name: 'Veron eräpäivä' })).toBeVisible();
           await page.mouse.move(vp.width - 8, vp.height / 2);
@@ -288,10 +376,15 @@ for (const scheme of ['light', 'dark'] as const) {
           await taxChat(app, page);
           await showSidebar(page);
           const row = page.locator('nav li', {
-            has: page.getByRole('button', { name: TAX.title }),
+            has: page.getByRole('button', { name: TAX.title, exact: true }),
           });
           await row.hover();
-          await row.getByRole('button', { name: 'Kiinnitä' }).click();
+          // Under 768 px the row actions are a menu.
+          const menu = row.getByRole('button', { name: /^Toiminnot/ });
+          if (await menu.isVisible()) {
+            await menu.click();
+            await page.getByRole('menuitem', { name: 'Kiinnitä' }).click();
+          } else await row.getByRole('button', { name: 'Kiinnitä' }).click();
           await expect(page.getByRole('heading', { name: 'Kiinnitetyt' })).toBeVisible();
           await page.mouse.move(vp.width - 8, vp.height / 2);
           await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
@@ -408,12 +501,66 @@ for (const scheme of ['light', 'dark'] as const) {
             await app.login(page);
             await sendMessage(page, 'Muista lempivärini');
             await expect(page.getByText('Muistikirjoitus odottaa hyväksyntää')).toBeVisible();
-            await page.getByRole('button', { name: 'Avaa muisti' }).click();
+            await page.getByRole('button', { name: 'Muisti', exact: true }).click();
             await expect(
               page.getByRole('region', { name: 'Odottavat kirjoitukset' }),
             ).toContainText('Lempiväri on vihreä.');
             await blur(page);
             await shot(page, 'memory-pending', vp.width, scheme);
+          });
+
+          test('memory-chip', async ({ app, page }) => {
+            memoryTurns(app, 'Lempiväri on sininen.');
+            await app.login(page);
+            await sendMessage(page, 'Lempivärini on sininen');
+            await expect(page.locator('.md').last()).toHaveText('Selvä, muistan.');
+            await expect(page.getByText('Muisti päivitetty')).toBeVisible();
+            await expect(page.getByText('Lempiväri on sininen.')).toBeVisible();
+            await blur(page);
+            await shot(page, 'memory-chip', vp.width, scheme);
+          });
+
+          test('memory-overcap', async ({ app, page }) => {
+            await app.login(page);
+            await openSettings(page, 'Muisti');
+            const user = page.getByLabel('Käyttäjä (USER.md)');
+            await user.fill(`${USER_MD}\n${'Pitkä lisärivi muistiin. '.repeat(64)}`);
+            await expect(user).toHaveAttribute('aria-invalid', 'true');
+            await expect(page.getByText(/· liian pitkä/)).toBeVisible();
+            await blur(page);
+            await shot(page, 'memory-overcap', vp.width, scheme);
+          });
+
+          test('memory-consolidating', async ({ app, page }) => {
+            app.llm.push({
+              text: JSON.stringify({ user: 'Asun Tampereella.\nVastaa lyhyesti.', memory: '' }),
+            });
+            const g = await gate(page, 'memory.state');
+            await app.login(page);
+            await openSettings(page, 'Muisti');
+            await expect(page.getByLabel('Käyttäjä (USER.md)')).toHaveValue(USER_MD);
+            g.close();
+            await page.getByRole('button', { name: 'Tiivistä nyt' }).click();
+            await expect(page.getByRole('button', { name: 'Tiivistetään…' })).toBeDisabled();
+            await blur(page);
+            await shot(page, 'memory-consolidating', vp.width, scheme);
+            g.open();
+            await expect(page.getByRole('region', { name: 'Tiivistysehdotus' })).toBeVisible();
+          });
+
+          test('memory-consolidation-edit', async ({ app, page }) => {
+            app.llm.push({
+              text: JSON.stringify({ user: 'Asun Tampereella.\nVastaa lyhyesti.', memory: '' }),
+            });
+            await app.login(page);
+            await openSettings(page, 'Muisti');
+            await page.getByRole('button', { name: 'Tiivistä nyt' }).click();
+            await page.getByRole('button', { name: 'Muokkaa' }).click();
+            await expect(page.getByLabel('Käyttäjä (USER.md)')).toHaveValue(
+              'Asun Tampereella.\nVastaa lyhyesti.',
+            );
+            await blur(page);
+            await shot(page, 'memory-consolidation-edit', vp.width, scheme);
           });
 
           test('memory-consolidation', async ({ app, page }) => {
@@ -464,7 +611,7 @@ for (const scheme of ['light', 'dark'] as const) {
           await expect(page.locator('.md').last()).not.toBeEmpty();
           await shot(page, 'streaming', vp.width, scheme);
           hold.release();
-          await expect(page.getByRole('button', { name: 'Lähetä' })).toBeVisible();
+          await expect(page.getByRole('button', { name: 'Lähetä', exact: true })).toBeVisible();
         });
 
         test('tool-running', async ({ app, page }) => {
