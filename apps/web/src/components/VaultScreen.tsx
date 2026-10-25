@@ -194,11 +194,12 @@ export function VaultScreen() {
             )}
             {entities.length > 0 && (
               <>
-                <div className="overflow-x-auto max-md:hidden">
-                  <table className="w-full text-left">
+                {/* Only the table may outgrow the page column (wide screens); below that it scrolls. */}
+                <div className="overflow-x-auto max-md:hidden min-[87.5rem]:-mx-32">
+                  <table className="w-full text-left whitespace-nowrap">
                     <thead className="text-secondary text-fg-muted">
                       <tr>
-                        <th className="w-8 py-2">
+                        <th className="w-8 py-2 pr-3">
                           <span className="sr-only">Valitse</span>
                         </th>
                         <th className="py-2 pr-4 font-normal">Tyyppi</th>
@@ -215,7 +216,7 @@ export function VaultScreen() {
                     <tbody>
                       {entities.map((e) => (
                         <tr key={e.id} className="border-t border-border">
-                          <td className="py-1">{check(e)}</td>
+                          <td className="py-1 pr-3">{check(e)}</td>
                           <td className="py-1 pr-4 text-fg-muted">{kind(e.kind)}</td>
                           <td className="py-1 pr-4">{e.canonical}</td>
                           <td className="py-1 pr-4 text-fg-muted">{e.surrogate}</td>

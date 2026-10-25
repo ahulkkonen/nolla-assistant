@@ -178,7 +178,7 @@ export function MicButton({ onText }: { onText: (text: string) => void }) {
   const recording = state === 'recording' || state === 'starting';
 
   return (
-    <div className="flex min-w-0 items-center gap-2">
+    <div className="flex min-w-0 flex-1 items-center gap-2" data-recording={recording || undefined}>
       <IconButton
         label={recording ? 'Vapauta lopettaaksesi' : 'Pidä pohjassa ja puhu'}
         aria-pressed={recording}
@@ -209,12 +209,12 @@ export function MicButton({ onText }: { onText: (text: string) => void }) {
       {state === 'recording' && (
         <div
           role="status"
-          className="flex shrink-0 items-center gap-2 text-secondary text-fg-muted"
+          className="flex min-w-0 flex-1 items-center gap-2 text-secondary text-fg-muted"
         >
           <div className="h-1 w-16 shrink-0 overflow-hidden rounded-full bg-bg-sunken">
             <div ref={meter} className="h-full w-0 rounded-full bg-accent" />
           </div>
-          <span>
+          <span className="truncate">
             Kuuntelee<span className="max-md:hidden"> · Esc peruu</span>
           </span>
         </div>

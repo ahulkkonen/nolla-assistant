@@ -35,7 +35,8 @@ export const SCREENS = [
   ['automations', CalendarClock, 'Automaatiot'],
 ] as const;
 
-const row = 'flex h-10 items-center gap-2 rounded-md border border-border px-3 hover:bg-bg-sunken';
+const row =
+  'flex h-10 items-center gap-2 rounded-md border border-border px-3 hover:bg-bg-sunken max-md:h-11';
 const check = 'size-4 accent-accent';
 const field = 'h-9 rounded-md border border-border bg-bg px-2 max-md:h-11';
 

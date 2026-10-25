@@ -175,7 +175,8 @@ export function Composer() {
           onPaste={onPaste}
           className="block max-h-45 w-full resize-none bg-transparent px-2 py-2 placeholder:text-fg-muted focus-visible:outline-none"
         />
-        <div className="flex items-center gap-2">
+        {/* While recording on a phone, the agent chip makes room for the status. */}
+        <div className="group/row flex items-center gap-2">
           <IconButton label="Liitä tiedosto" onClick={() => picker.current?.click()}>
             <Paperclip size={20} />
           </IconButton>
@@ -190,7 +191,7 @@ export function Composer() {
               e.target.value = '';
             }}
           />
-          <div className="ml-auto">
+          <div className="ml-auto max-md:group-has-[[data-recording]]/row:hidden">
             <AgentPicker />
           </div>
           {running && chatId ? (
