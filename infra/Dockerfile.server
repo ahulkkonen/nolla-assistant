@@ -15,18 +15,17 @@ COPY packages/pi-ext-pseudo/package.json packages/pi-ext-pseudo/
 COPY packages/pi-ext-topics/package.json packages/pi-ext-topics/
 COPY tests/contract/package.json tests/contract/
 COPY tests/fake-llm/package.json tests/fake-llm/
-# Optional workspaces: copied only when present.
-RUN --mount=type=bind,source=apps,target=/src \
-    [ ! -f /src/web/package.json ] || { mkdir -p apps/web && cp /src/web/package.json apps/web/; }
+COPY apps/web/package.json apps/web/
+# Optional workspace (services/sandbox-broker): copied only when present.
 RUN --mount=type=bind,source=services,target=/src \
     [ ! -f /src/sandbox-broker/package.json ] || { mkdir -p services/sandbox-broker && cp /src/sandbox-broker/package.json services/sandbox-broker/; }
 RUN pnpm install --frozen-lockfile
 
 FROM deps AS web
+COPY tsconfig.base.json ./
 COPY apps/web apps/web
 COPY packages/protocol packages/protocol
-# ponytail: no apps/web/package.json yet means empty dist; drop the guard once the web app lands.
-RUN if [ -f apps/web/package.json ]; then pnpm --filter @pa/web build; else mkdir -p apps/web/dist; fi
+RUN pnpm --filter @pa/web build
 
 FROM deps AS prod
 COPY apps/server apps/server
