@@ -30,7 +30,12 @@ describe.skipIf(!hasDocker)(hasDocker ? 'sandbox broker (docker)' : `sandbox ${S
   let app: Awaited<ReturnType<typeof build>>;
   let docker: ReturnType<typeof dockerClient>;
   let dataDir = '';
+  let cfg: Parameters<typeof build>[0];
   let n = 0;
+  const containers = (label: string) => {
+    const filters = encodeURIComponent(JSON.stringify({ label: [label] }));
+    return docker.ok('GET', `/containers/json?all=1&filters=${filters}`);
+  };
 
   beforeAll(async () => {
     const b = spawnSync(
@@ -44,7 +49,7 @@ describe.skipIf(!hasDocker)(hasDocker ? 'sandbox broker (docker)' : `sandbox ${S
     if (b.status !== 0) throw new Error(`skill-runner build failed:\n${b.stderr}`);
     // realpath: Docker Desktop resolves bind sources on the host (/var -> /private/var on macOS).
     dataDir = realpathSync(mkdtempSync(join(tmpdir(), 'pa-sandbox-')));
-    const cfg = {
+    cfg = {
       token: TOKEN,
       dockerSocket: socket(),
       image: IMAGE,
@@ -122,8 +127,49 @@ describe.skipIf(!hasDocker)(hasDocker ? 'sandbox broker (docker)' : `sandbox ${S
     const { chatId, end } = await run({ command: 'sleep 30', timeoutMs: 2000 });
     expect(Date.now() - t0).toBeLessThan(5000);
     expect(end.timedOut).toBe(true);
-    const filters = encodeURIComponent(JSON.stringify({ label: [`pa.chat=${chatId}`] }));
-    expect(await docker.ok('GET', `/containers/json?all=1&filters=${filters}`)).toEqual([]);
+    expect(await containers(`pa.chat=${chatId}`)).toEqual([]);
+  });
+
+  test('client disconnect removes the container', async () => {
+    await app.listen({ host: '127.0.0.1', port: 0 });
+    const { port } = app.server.address() as { port: number };
+    const chatId = `gone-${process.pid}`;
+    const ctl = new AbortController();
+    // Headers arrive with the first output line, so the fetch is not awaited.
+    const pending = fetch(`http://127.0.0.1:${port}/run`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-broker-token': TOKEN },
+      body: JSON.stringify({ userId: 'u1', chatId, command: 'sleep 30' }),
+      signal: ctl.signal,
+    }).catch(() => undefined);
+    await new Promise((r) => setTimeout(r, 500));
+    expect(await containers(`pa.chat=${chatId}`)).toHaveLength(1);
+    ctl.abort();
+    await pending;
+    const t0 = Date.now();
+    while ((await containers(`pa.chat=${chatId}`)).length && Date.now() - t0 < 3000)
+      await new Promise((r) => setTimeout(r, 100));
+    expect(await containers(`pa.chat=${chatId}`)).toEqual([]);
+  });
+
+  test('output over 1 MB ends with an output limit error', async () => {
+    const { events, chatId } = await run({ command: 'head -c 2000000 /dev/zero | tr "\\0" a' });
+    expect(events.at(-1)).toEqual({ error: 'output limit' });
+    // One 64 KB piece per line event: no single huge line.
+    expect(Math.max(...events.filter((e) => 'line' in e).map((e) => e.line.length))).toBe(65536);
+    expect(await containers(`pa.chat=${chatId}`)).toEqual([]);
+  });
+
+  test('startup sweep removes managed containers', async () => {
+    const { Id } = await docker.ok('POST', '/containers/create', {
+      Image: IMAGE,
+      Cmd: ['sleep', '60'],
+      Labels: { 'pa.managed': '1', 'pa.chat': `stale-${process.pid}` },
+    });
+    const second = await build(cfg);
+    await second.close();
+    expect(await containers(`pa.chat=stale-${process.pid}`)).toEqual([]);
+    expect(Id).toEqual(expect.any(String));
   });
 
   test('missing token is 401', async () => {

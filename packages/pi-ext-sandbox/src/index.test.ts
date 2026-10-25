@@ -49,3 +49,21 @@ test('timeout kills the command', async () => {
   expect(result.details.timedOut).toBe(true);
   expect(broker.requests[0]?.body.timeoutMs).toBe(1000);
 });
+
+test('long output is truncated and updates are throttled', async () => {
+  const { events, text } = await runBash({
+    command: 'for i in $(seq 1 3000); do echo "line $i ........................"; done',
+  });
+  expect(text.startsWith('[output truncated]\n')).toBe(true);
+  expect(text).toContain('line 3000');
+  expect(text.length).toBeLessThan(20_100);
+  const updates = events.filter((e) => e.type === 'tool_execution_update');
+  expect(updates.length).toBeLessThan(100);
+});
+
+test('timeout is clamped to 1..120 s and defaults to 120 s', async () => {
+  const short = await runBash({ command: 'true', timeout: 0.01 });
+  expect(short.broker.requests[0]?.body.timeoutMs).toBe(1000);
+  const none = await runBash({ command: 'true' });
+  expect(none.broker.requests[0]?.body.timeoutMs).toBe(120_000);
+});
