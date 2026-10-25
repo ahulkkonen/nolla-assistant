@@ -35,11 +35,24 @@ function deep(v: Json, pairs: Pair[], hits: Hit[]): Json {
   return v;
 }
 
+/** Longest suffix of `s` that is a proper prefix of some surrogate (contract `hold`). */
+function holdOf(s: string, surrogates: string[]) {
+  let best = 0;
+  for (const sur of surrogates)
+    for (let k = Math.min(sur.length - 1, s.length); k > best; k--)
+      if (s.endsWith(sur.slice(0, k))) {
+        best = k;
+        break;
+      }
+  return best;
+}
+
 const kindOf = (real: string) => (/\d/.test(real) ? 'hetu' : 'person');
 
 /**
  * Test double for `pseudo-svc` (contract in docs/decisions/phase-3.md). `dictionary` maps real
- * values to surrogates; entity ids are 1-based dictionary positions. `passthrough` makes `/mask`
+ * values to surrogates; entity ids are 1-based dictionary positions. Offsets are UTF-16 code units
+ * (native JS string indexes), as the contract requires. `passthrough` makes `/mask`
  * return its input unchanged (for seeding a leak).
  */
 export async function startFakeSidecar(dictionary: Record<string, string>) {
@@ -71,13 +84,15 @@ export async function startFakeSidecar(dictionary: Record<string, string>) {
       }
       case '/unmask': {
         const restored = deep('text' in body ? body.text : body.json, toReal, hits);
+        const hold =
+          typeof body.text === 'string' ? holdOf(body.text, Object.values(dictionary)) : 0;
         const spans = hits.map(({ start, end, pair }) => ({
           start,
           end,
           entity_id: pair.id,
           surrogate_form: pair.from,
         }));
-        return { restored, spans, unresolved: [] };
+        return { restored, spans, unresolved: [], hold };
       }
       case '/scan': {
         const leaked: object[] = [];

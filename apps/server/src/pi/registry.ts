@@ -17,8 +17,8 @@ type RegistryOptions = {
   userId: string;
   model: string;
   extensionFactories?: InlineExtension[];
-  /** Loads `pi-ext-pseudo` per chat when set. */
-  pseudo?: PseudoClient;
+  /** Loads `pi-ext-pseudo` per chat when set; `log` receives its logs with the chat id. */
+  pseudo?: { client: PseudoClient; log: (chatId: string, ...args: Parameters<PseudoLog>) => void };
 };
 type Entry = { session: Promise<AgentSession>; lastUsed: number; unsubscribe?: () => void };
 
@@ -29,8 +29,6 @@ export class SessionRegistry {
   private readonly entries = new Map<string, Entry>();
   private runtime: Promise<ModelRuntime> | undefined;
   private readonly opts: RegistryOptions;
-  /** Receives `pi-ext-pseudo` logs per chat; the server sets it to log and to report `pseudo_down`. */
-  pseudoLog: (chatId: string, ...args: Parameters<PseudoLog>) => void = () => {};
 
   constructor(opts: RegistryOptions) {
     this.opts = opts;
@@ -129,16 +127,17 @@ export class SessionRegistry {
       noPromptTemplates: true,
       noThemes: true,
       extensionFactories: [
-        pathGuard(this.cwd),
+        // Pseudo first: the guard must check the restored (real) path.
         ...(pseudo
           ? [
               pseudoExtension({
-                client: pseudo,
+                client: pseudo.client,
                 sessionId: chatId,
-                log: (...args) => this.pseudoLog(chatId, ...args),
+                log: (...args) => pseudo.log(chatId, ...args),
               }),
             ]
           : []),
+        pathGuard(this.cwd),
         ...(this.opts.extensionFactories ?? []),
       ],
     });

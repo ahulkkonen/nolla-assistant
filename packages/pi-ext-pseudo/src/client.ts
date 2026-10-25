@@ -1,4 +1,7 @@
-/** Typed client for the `pseudo-svc` sidecar (contract: docs/decisions/phase-3.md). */
+/**
+ * Typed client for the `pseudo-svc` sidecar (contract: docs/decisions/phase-3.md). All offsets are
+ * UTF-16 code units, i.e. JavaScript string indexes.
+ */
 
 export type Json = string | number | boolean | null | Json[] | { [k: string]: Json };
 
@@ -50,26 +53,31 @@ export class PseudoClient {
   }
 
   unmask<T extends Json>(value: T) {
-    return this.post<{ restored: T; spans: UnmaskSpan[]; unresolved: Unresolved[] }>(
-      '/unmask',
-      typeof value === 'string' ? { text: value } : { json: value },
+    return this.post<{
+      restored: T;
+      spans: UnmaskSpan[];
+      unresolved: Unresolved[];
+      /** Trailing masked units that may start a surrogate; 0 for json. */
+      hold: number;
+    }>('/unmask', typeof value === 'string' ? { text: value } : { json: value });
+  }
+
+  /** Timeout grows with the batch: 5 s plus 1 s per 10 messages. */
+  scan(sessionId: string, messages: ScanMessage[]) {
+    return this.post<{ messages: ScanMessage[]; leaked: Leak[] }>(
+      '/scan',
+      { session_id: sessionId, messages },
+      TIMEOUT_MS + 1000 * Math.ceil(messages.length / 10),
     );
   }
 
-  scan(sessionId: string, messages: ScanMessage[]) {
-    return this.post<{ messages: ScanMessage[]; leaked: Leak[] }>('/scan', {
-      session_id: sessionId,
-      messages,
-    });
-  }
-
-  private async post<R>(path: string, body: object): Promise<R> {
+  private async post<R>(path: string, body: object, timeout = TIMEOUT_MS): Promise<R> {
     try {
       const res = await fetch(this.url + path, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ user_id: this.userId, ...body }),
-        signal: AbortSignal.timeout(TIMEOUT_MS),
+        signal: AbortSignal.timeout(timeout),
       });
       // The status only: a body may echo real values.
       if (!res.ok) throw new PseudoDownError(`pseudo-svc ${path} status ${res.status}`);

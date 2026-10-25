@@ -107,41 +107,50 @@ const argsPreview = (args: unknown) =>
     .map(([k, v]) => `${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`)
     .join(', ');
 
-type Restored = { text: string; annotations: Annotation[] };
-type Restore = (text: string) => Promise<Restored>;
+type Restored = { text: string; annotations: Annotation[]; hold: number };
+type Restore = ((text: string) => Promise<Restored>) & { reset(): void };
 
-/** Surrogates back to real values for display. On any sidecar failure: masked text plus `onDown`. */
+/**
+ * Surrogates back to real values for display. After the first sidecar failure it calls `onDown`
+ * once and returns masked text without annotations, skipping the sidecar until `reset()`.
+ */
 function restorer(pseudo: PseudoClient | undefined, onDown: () => void): Restore {
-  return async (text) => {
-    if (!pseudo || !text) return { text, annotations: [] };
+  let failed = false;
+  const restore = async (text: string): Promise<Restored> => {
+    if (!pseudo || failed || !text) return { text, annotations: [], hold: 0 };
     try {
-      const { restored, spans } = await pseudo.unmask(text);
+      const { restored, spans, hold } = await pseudo.unmask(text);
       const annotations = spans.map((s) => ({
         start: s.start,
         end: s.end,
         entityId: s.entity_id,
         modelSaw: s.surrogate_form,
       }));
-      return { text: restored, annotations };
+      return { text: restored, annotations, hold: Math.min(Math.max(hold, 0), text.length) };
     } catch {
+      failed = true;
       onDown();
-      return { text, annotations: [] };
+      return { text, annotations: [], hold: 0 };
     }
   };
+  return Object.assign(restore, { reset: () => void (failed = false) });
 }
 
-/** Masked characters held back while streaming; a surrogate up to this long is never split. */
-const HOLD_BACK = 24;
+const isHigh = (c: number) => c >= 0xd800 && c <= 0xdbff;
+const isLow = (c: number) => c >= 0xdc00 && c <= 0xdfff;
 
 /**
- * Restores the releasable part of streamed masked text. `pending` is unmasked whole (the tail is
- * context); the cut sits `HOLD_BACK` before the end, moved back to the start of any surrogate it
- * would split. Returns the restored prefix with chunk-relative annotations and the masked rest.
+ * Restores the releasable part of streamed masked text (offsets are UTF-16 code units). `pending`
+ * is unmasked whole; the sidecar's `hold` (masked tail that may start a surrogate) stays back
+ * unless `final`. The cut never splits a UTF-16 pair and moves back to the start of any restored
+ * span it would split. Returns the restored prefix with chunk-relative annotations and the masked
+ * rest.
  */
 async function release(restore: Restore, pending: string, final: boolean) {
-  let cut = final ? pending.length : pending.length - HOLD_BACK;
-  if (cut <= 0) return { out: { text: '', annotations: [] }, rest: pending };
   const r = await restore(pending);
+  let cut = pending.length - (final ? 0 : r.hold);
+  if (!final && cut > 0 && (isLow(pending.charCodeAt(cut)) || isHigh(pending.charCodeAt(cut - 1))))
+    cut--;
   let shift = 0;
   const annotations: Annotation[] = [];
   for (const a of r.annotations) {
@@ -228,11 +237,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
         const r = owned(msg.chatId);
         const session = await registry.get(msg.chatId);
         join(msg.chatId, session);
-        let down = false;
-        const restore = restorer(pseudo, () => {
-          if (!down) send(socket, errorMsg('pseudo_down', msg.chatId));
-          down = true;
-        });
+        const restore = restorer(pseudo, () => send(socket, errorMsg('pseudo_down', msg.chatId)));
         return send(socket, {
           type: 'chat.state',
           chat: summary(r),
@@ -322,17 +327,21 @@ function forward(
   let pending: AgentMessage | undefined;
   /** Masked text of the streaming message not yet sent (the hold-back). */
   let held = '';
-  let downSent = false;
   const statuses = new Map<string, ToolStatus>();
-  const restore = restorer(pseudo, () => {
-    if (!downSent) emit(errorMsg('pseudo_down', chatId));
-    downSent = true;
-  });
+  // Once per turn: the restorer reports the first failure and is reset at `agent_start`.
+  const restore = restorer(pseudo, () => emit(errorMsg('pseudo_down', chatId)));
 
   const stream = async (final: boolean) => {
     const { out, rest } = await release(restore, held, final);
     held = rest;
-    if (out.text) emit({ type: 'message.delta', chatId, messageId: streamId, ...out });
+    if (out.text)
+      emit({
+        type: 'message.delta',
+        chatId,
+        messageId: streamId,
+        text: out.text,
+        annotations: out.annotations,
+      });
   };
 
   const flush = async () => {
@@ -349,7 +358,7 @@ function forward(
       );
     log.debug({ chatId, length: textOf(m).length }, 'message.final');
     const message = toMessage(entry?.id ?? streamId, m, toolRows(m, statuses));
-    Object.assign(message, await restore(message.text));
+    ({ text: message.text, annotations: message.annotations } = await restore(message.text));
     emit({ type: 'message.final', chatId, message });
   };
 
@@ -382,17 +391,18 @@ function forward(
           chatId,
           callId: e.toolCallId,
           name: e.toolName,
-          argsPreview: (await restore(argsPreview(e.args))).text.slice(0, 200),
+          // Cut first: a surrogate split by the cut stays masked in the preview.
+          argsPreview: (await restore(argsPreview(e.args).slice(0, 200))).text,
         });
       case 'tool_execution_update':
         return emit({
           type: 'tool.update',
           chatId,
           callId: e.toolCallId,
-          output: resultText(e.partialResult).slice(0, 2000),
+          output: (await restore(resultText(e.partialResult).slice(0, 2000))).text,
         });
       case 'tool_execution_end': {
-        const text = (await restore(resultText(e.result))).text;
+        const text = resultText(e.result);
         const status = toolStatus(e.isError, text);
         statuses.set(e.toolCallId, status);
         return emit({
@@ -400,11 +410,11 @@ function forward(
           chatId,
           callId: e.toolCallId,
           status,
-          summary: text.slice(0, 200),
+          summary: (await restore(text.slice(0, 200))).text,
         });
       }
       case 'agent_start':
-        downSent = false;
+        restore.reset();
         return emit({ type: 'agent.status', chatId, state: 'running' });
       case 'agent_settled': {
         await flush();
@@ -479,15 +489,22 @@ async function history(
         .filter((f) => f.createdAt > prev && f.createdAt <= m.createdAt)
         .map(({ createdAt: _, ...ref }) => ref);
       prev = m.createdAt;
-      const cuts = m.attachments
-        .filter((a) => a.kind === 'document')
-        .map((a) => m.text.indexOf(`\n\n[Liite: ${a.name}]\n`))
-        .filter((i) => i >= 0);
-      if (cuts.length) m.text = m.text.slice(0, Math.min(...cuts));
     }
     return [m];
   });
   // ponytail: one /unmask per message; batch in phase 7.
-  for (const m of messages) Object.assign(m, await restore(m.text));
+  for (const m of messages) {
+    // Restore first: the marker carries the real file name.
+    const { text, annotations } = await restore(m.text);
+    const cut = Math.min(
+      text.length,
+      ...m.attachments
+        .filter((a) => a.kind === 'document')
+        .map((a) => text.indexOf(`\n\n[Liite: ${a.name}]\n`))
+        .filter((i) => i >= 0),
+    );
+    m.text = text.slice(0, cut);
+    m.annotations = annotations.filter((a) => a.end <= cut);
+  }
   return messages;
 }

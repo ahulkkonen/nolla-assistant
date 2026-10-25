@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AgentSessionEvent, ExtensionFactory } from '@earendil-works/pi-coding-agent';
 import { setup, toolMessageContent } from '@pa/contract-tests/src/harness.ts';
@@ -63,31 +63,88 @@ test('tool_call is unmasked for execution; the next request stays masked', async
   noReal(JSON.stringify(llm.requests[1]?.body));
 });
 
-test('tool_result masks content and structuredContent', async () => {
+/** Boots with one custom tool `t` that returns `result`, runs one call, returns the end result. */
+async function runTool(result: object) {
   const custom: ExtensionFactory = (pi) => {
     pi.registerTool({
-      name: 'who',
-      label: 'who',
-      description: 'returns a person',
+      name: 't',
+      label: 't',
+      description: 'test tool',
       parameters: { type: 'object', properties: {} } as never,
-      execute: async () => ({
-        content: [{ type: 'text', text: 'Henkilö: Matti Virtanen' }],
-        structuredContent: { who: 'Matti Virtanen' },
-        details: {},
-      }),
+      execute: async () => result as never,
     });
   };
-  const { llm, events, session } = await boot(
-    [{ toolCalls: [{ name: 'who', args: {} }] }, { text: 'done' }],
+  const pi = await boot(
+    [{ toolCalls: [{ name: 't', args: {} }] }, { text: 'done' }],
     [custom],
-    ['read', 'write', 'edit', 'who'],
+    ['read', 'write', 'edit', 't'],
   );
-  await session.prompt('Kuka?');
-  const end = events.find((e) => e.type === 'tool_execution_end');
-  const result = end && 'result' in end ? end.result : undefined;
+  await pi.session.prompt('Aja');
+  const end = pi.events.find((e) => e.type === 'tool_execution_end');
+  return { ...pi, result: end && 'result' in end ? end.result : undefined };
+}
+
+test('tool_result masks content, structuredContent and details', async () => {
+  const { llm, result, sessionFile } = await runTool({
+    content: [{ type: 'text', text: 'Henkilö: Matti Virtanen' }],
+    structuredContent: { who: 'Matti Virtanen' },
+    details: { note: 'Matti Virtanen' },
+  });
   expect(result.content).toEqual([{ type: 'text', text: 'Henkilö: Pekka Laaksonen' }]);
+  expect(result.details).toEqual({ note: 'Pekka Laaksonen' });
+  noReal(sessionFile());
   expect(result.structuredContent).toEqual({ who: 'Pekka Laaksonen' });
   expect(toolMessageContent(llm.requests[1]?.body)).toBe('Henkilö: Pekka Laaksonen');
+});
+
+test('tool_result passes image blocks through untouched (accepted gap)', async () => {
+  const image = { type: 'image', data: 'iVBORw0KGgo=', mimeType: 'image/png' };
+  const { result } = await runTool({
+    content: [image, { type: 'text', text: 'Matti Virtanen' }],
+    details: {},
+  });
+  expect(result.content).toEqual([image, { type: 'text', text: 'Pekka Laaksonen' }]);
+});
+
+test('edit tool: the real diff in details never reaches the session file', async () => {
+  const { cwd, session, sessionFile } = await boot([
+    {
+      toolCalls: [
+        {
+          name: 'edit',
+          args: { path: 'note.txt', edits: [{ oldText: 'rivi 2', newText: 'rivi 3' }] },
+        },
+      ],
+    },
+    { text: 'done' },
+  ]);
+  writeFileSync(join(cwd, 'note.txt'), 'Hei Virtaselle\nrivi 2\n');
+  await session.prompt('Muokkaa');
+  expect(readFileSync(join(cwd, 'note.txt'), 'utf8')).toBe('Hei Virtaselle\nrivi 3\n');
+  const file = sessionFile();
+  noReal(file);
+  // Only the masked diff in `details` can carry the surrogate.
+  expect(file).toContain('Laaksoselle');
+});
+
+test('context_with_system scans JSON incrementally, tool call arguments included', async () => {
+  const { llm, sc, session } = await boot([
+    { toolCalls: [{ name: 'write', args: { path: 'a.txt', content: 'Matti Virtanen' } }] },
+    { text: 'a' },
+    { text: 'b' },
+  ]);
+  await session.prompt('Kirjoita');
+  // The model's tool call carried a real value; the next request has only the surrogate.
+  const second = JSON.stringify(llm.requests[1]?.body);
+  expect(second).toContain('Pekka Laaksonen');
+  noReal(second);
+  await session.prompt('Taas');
+  const scans = sc.requests.filter((r) => r.path === '/scan').map((r) => r.body.messages);
+  expect(scans[0].map((m: { role: string }) => m.role)).toEqual(['system', 'user']);
+  // Third request: only the last assistant reply and the new user message are new.
+  expect(scans[2].map((m: { role: string }) => m.role)).toEqual(['assistant', 'user']);
+  expect(JSON.parse(scans[1][0].content).content).toEqual(expect.any(Array));
+  noReal(JSON.stringify(llm.requests[2]?.body));
 });
 
 test('context_with_system masks a leaked real value and logs it', async () => {

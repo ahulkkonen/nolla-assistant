@@ -3,11 +3,10 @@ import cookie from '@fastify/cookie';
 import multipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
 import websocket from '@fastify/websocket';
-import { PSEUDO_DOWN } from '@pa/pi-ext-pseudo';
 import type { ServerMessage } from '@pa/protocol';
 import Fastify from 'fastify';
 import { authRoutes, requireUser } from './auth/routes.ts';
-import { attachBridge, type BridgeDeps, broadcast, errorMsg, type Socket } from './bridge.ts';
+import { attachBridge, type BridgeDeps } from './bridge.ts';
 import type { Config } from './config.ts';
 import { fileRoutes, MAX_FILE_BYTES, MAX_FILES } from './files.ts';
 
@@ -30,7 +29,7 @@ const under = (path: string, prefix: string) => path === prefix || path.startsWi
 export async function buildServer({
   config,
   ...bridge
-}: Pick<BridgeDeps, 'registry' | 'db' | 'pseudo'> & { config: Config }) {
+}: Pick<BridgeDeps, 'registry' | 'db' | 'pseudo' | 'rooms'> & { config: Config }) {
   const { db } = bridge;
   const { trustProxy: tp } = config;
   const app = Fastify({
@@ -38,11 +37,6 @@ export async function buildServer({
     // Fastify 5.12 treats a numeric trustProxy as "trust nothing", so a hop count is a function.
     trustProxy: typeof tp === 'number' ? (_addr: string, hop: number) => hop < tp : tp,
   });
-  const rooms = new Map<string, Set<Socket>>();
-  bridge.registry.pseudoLog = (chatId, level, msg, data) => {
-    app.log[level]({ chatId, ...data }, msg);
-    if (msg === PSEUDO_DOWN) broadcast(rooms, chatId, errorMsg('pseudo_down', chatId));
-  };
   const auth = requireUser(db, config.cookieSecure);
   await app.register(cookie, { secret: config.cookieSecret });
   await app.register(multipart, {
@@ -82,7 +76,6 @@ export async function buildServer({
         userId: req.userId,
         dataDir: config.dataDir,
         log: app.log,
-        rooms,
       });
     },
   );

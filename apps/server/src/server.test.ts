@@ -296,6 +296,31 @@ test('attachments: image and txt reach the model; owner-only download', {
   expect(first?.attachments.map((a) => a.name)).toEqual(['dot.png', 'note.txt']);
 });
 
+/** Real values and surrogates covered by delta annotations, after chunk-relative → absolute. */
+function deltaSpans(deltas: Extract<ServerMessage, { type: 'message.delta' }>[], real: string) {
+  let offset = 0;
+  return deltas.flatMap((d) => {
+    const abs = d.annotations.map((a) => [
+      real.slice(a.start + offset, a.end + offset),
+      a.modelSaw,
+    ]);
+    offset += d.text.length;
+    return abs;
+  });
+}
+
+/** Boots with PSEUDO_URL pointing at a fake sidecar; returns a socket on a new chat. */
+async function bootPseudo(dictionary: Record<string, string>, turns: FakeTurn[]) {
+  const sc = await startFakeSidecar(dictionary);
+  cleanups.push(sc.close);
+  const b = await boot(turns, { PSEUDO_URL: sc.url });
+  const srv = await b.run();
+  const c = await connect(b.config.port);
+  c.send({ type: 'chat.create' });
+  const { chat } = await c.next('chat.created');
+  return { ...b, sc, srv, c, chat };
+}
+
 test('pseudo: model sees surrogates, client sees restored text with annotations', {
   timeout: 30_000,
 }, async () => {
@@ -322,16 +347,7 @@ test('pseudo: model sees surrogates, client sees restored text with annotations'
   const deltas = deltasOf(c.inbox);
   expect(deltas.length).toBeGreaterThan(1);
   expect(deltas.map((d) => d.text).join('')).toBe(real);
-  let offset = 0;
-  const spans = deltas.flatMap((d) => {
-    const abs = d.annotations.map((a) => [
-      real.slice(a.start + offset, a.end + offset),
-      a.modelSaw,
-    ]);
-    offset += d.text.length;
-    return abs;
-  });
-  expect(spans).toEqual([
+  expect(deltaSpans(deltas, real)).toEqual([
     ['Matti Virtanen', 'Pekka Laaksonen'],
     ['010190-123A', '010190-900B'],
   ]);
@@ -366,4 +382,43 @@ test('pseudo: sidecar down sends pseudo_down and no model request', {
   c.send({ type: 'user.message', chatId: chat.id, text: 'Moi Matti Virtanen' });
   await expect(c.next('message.final')).rejects.toThrow('pseudo_down');
   expect(llm.requests).toHaveLength(0);
+});
+
+test('pseudo: hold-back keeps UTF-16 pairs and long surrogates whole', {
+  timeout: 30_000,
+}, async () => {
+  const address = 'Pitkänkadunkulmankujanristeystie 123 B 45';
+  expect(address.length).toBeGreaterThan(24);
+  // 'Moikka ' is 7 units, so the 8-unit fake-LLM chunks split the emoji's surrogate pair.
+  const { c, chat } = await bootPseudo(
+    { 'Matti Virtanen': 'Pekka Laaksonen', 'Kotikatu 1': address },
+    [{ text: 'Moikka 😀 Pekka Laaksonen!' }, { text: `Osoite ${address} on oikein.` }],
+  );
+  const lone = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+  for (const [text, real, saw] of [
+    ['Moi', 'Moikka 😀 Matti Virtanen!', 'Pekka Laaksonen'],
+    ['Osoite?', 'Osoite Kotikatu 1 on oikein.', address],
+  ] as const) {
+    c.inbox.length = 0;
+    c.send({ type: 'user.message', chatId: chat.id, text });
+    const final = await c.next('message.final');
+    await c.idle();
+    const deltas = deltasOf(c.inbox);
+    expect(deltas.map((d) => d.text).join('')).toBe(real);
+    for (const d of deltas) expect(d.text).not.toMatch(lone);
+    expect(deltaSpans(deltas, real).map(([, m]) => m)).toEqual([saw]);
+    expect(final.message.text).toBe(real);
+  }
+});
+
+test('pseudo: the guard checks the restored path', { timeout: 30_000 }, async () => {
+  const { c, chat } = await bootPseudo({ '../app.db': 'safe.txt' }, [
+    { toolCalls: [{ name: 'read', args: { path: 'safe.txt' } }] },
+    { text: 'Denied.' },
+  ]);
+  c.send({ type: 'user.message', chatId: chat.id, text: 'Lue tiedosto' });
+  const end = await c.next('tool.end');
+  expect(end.status).toBe('denied');
+  expect(end.summary).toContain('path outside workspace');
+  await c.idle();
 });

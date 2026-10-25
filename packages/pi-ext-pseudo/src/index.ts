@@ -8,13 +8,10 @@ export type PseudoLog = (level: 'warn' | 'debug', msg: string, data?: object) =>
 /** Logged (at `warn`) whenever the sidecar fails; the host tells the user. */
 export const PSEUDO_DOWN = 'pseudo_down';
 
-type Block = { type: string; text?: string };
-type LooseMessage = { role: string; content?: string | Block[] };
-
 /**
  * Masks everything that enters the Pi session and unmasks tool arguments (plan §6, invariant 1).
  * Fails closed: with the sidecar down, input is dropped, tool calls are blocked and tool output is
- * replaced by an error. Logs carry kinds, ids and lengths only, never text.
+ * replaced by an error. The leak scan fails open. Logs carry kinds, ids and lengths only, never text.
  */
 export function pseudoExtension(opts: {
   client: PseudoClient;
@@ -30,8 +27,15 @@ export function pseudoExtension(opts: {
       if (!event.text) return;
       try {
         const { masked, spans } = await client.mask(sessionId, event.text);
-        // `real_form` stays out of the session file (masked-only sessions).
-        pi.appendEntry('pseudo-spans', { spans: spans.map(({ real_form: _, ...s }) => s) });
+        // Whitelist: `real_form` and anything added later stay out of the session file.
+        const kept = spans.map(({ start, end, entity_id, kind, surrogate }) => ({
+          start,
+          end,
+          entity_id,
+          kind,
+          surrogate,
+        }));
+        pi.appendEntry('pseudo-spans', { spans: kept });
         log('debug', 'pseudo input', { length: event.text.length, spans: spans.length });
         return { action: 'transform', text: masked };
       } catch (err) {
@@ -52,56 +56,79 @@ export function pseudoExtension(opts: {
     });
 
     pi.on('tool_result', async (event): Promise<ToolResultEventResult> => {
-      const content = event.content.flatMap((b) => (b.type === 'text' ? [b.text] : []));
-      const value =
-        event.structuredContent === undefined
-          ? { content }
-          : { content, structuredContent: event.structuredContent as Json };
+      // `details` is persisted too (the edit tool puts the real diff there). Images pass through
+      // unmasked: an accepted phase-3 gap (phase-3.md).
+      const value: { [k: string]: Json } = {
+        content: event.content.flatMap((b) => (b.type === 'text' ? [b.text] : [])),
+      };
+      if (event.structuredContent !== undefined)
+        value.structuredContent = event.structuredContent as Json;
+      if (event.details !== undefined) value.details = event.details as Json;
       try {
         const { masked } = await client.mask(sessionId, value);
-        const texts = masked.content.values();
+        const texts = (masked.content as string[]).values();
         return {
-          // Images pass through; text blocks are replaced in order.
           content: event.content.map((b) =>
             b.type === 'text' ? { ...b, text: texts.next().value ?? '' } : b,
           ),
-          structuredContent: 'structuredContent' in masked ? masked.structuredContent : undefined,
+          structuredContent: masked.structuredContent,
+          // Pi keeps the old value when `details` is undefined, so null clears it.
+          details: masked.details ?? null,
         } as ToolResultEventResult;
       } catch (err) {
         down('tool_result', err);
-        return { content: [{ type: 'text', text: PSEUDO_DOWN }], isError: true };
+        return { content: [{ type: 'text', text: PSEUDO_DOWN }], details: null, isError: true };
       }
     });
 
+    // Per message index: the JSON last sent to /scan and the scanned JSON. Unchanged messages are
+    // served from here, so each turn sends only new or changed messages (e.g. a compaction summary).
+    const scanned: { sent: string; out: string }[] = [];
     pi.on('context_with_system', async (event) => {
-      const messages = structuredClone(event.messages) as unknown as LooseMessage[];
-      const parts: { index: number; text: string; set: (t: string) => void }[] = [];
-      messages.forEach((m, index) => {
-        if (typeof m.content === 'string')
-          parts.push({ index, text: m.content, set: (t) => (m.content = t) });
-        else
-          for (const b of m.content ?? [])
-            if (b.type === 'text' && typeof b.text === 'string')
-              parts.push({ index, text: b.text, set: (t) => (b.text = t) });
-      });
+      const messages = event.messages as unknown as Msg[];
+      const sent = messages.map((m) => JSON.stringify(m, withoutImageData));
+      const todo = sent.flatMap((json, i) => (scanned[i]?.sent === json ? [] : [i]));
       try {
-        const scanned = await client.scan(
-          sessionId,
-          parts.map((p) => ({ role: messages[p.index]?.role ?? 'user', content: p.text })),
-        );
-        scanned.messages.forEach((m, i) => parts[i]?.set(m.content));
-        for (const l of scanned.leaked)
-          log('warn', 'pseudo leak', {
-            kind: l.kind,
-            entityId: l.entity_id,
-            messageIndex: parts[l.message_index]?.index,
+        if (todo.length) {
+          const r = await client.scan(
+            sessionId,
+            todo.map((i) => ({ role: messages[i]?.role ?? 'user', content: sent[i] ?? '' })),
+          );
+          todo.forEach((i, k) => {
+            const out = r.messages[k]?.content;
+            if (typeof out !== 'string') throw new Error('scan: message count mismatch');
+            scanned[i] = { sent: sent[i] ?? '', out };
           });
-        return { messages: messages as unknown as typeof event.messages };
+          for (const l of r.leaked)
+            log('warn', 'pseudo leak', {
+              kind: l.kind,
+              entityId: l.entity_id,
+              messageIndex: todo[l.message_index],
+            });
+        }
+        scanned.length = messages.length;
+        const out = scanned.map((c, i) => withImages(JSON.parse(c.out) as Msg, messages[i]));
+        return { messages: out as unknown as typeof event.messages };
       } catch (err) {
-        // Ingest masking already holds; blocking here would also stop compaction.
+        // Fail open (phase-3.md): ingest masking already holds; blocking would stop compaction.
         down('context_with_system', err);
         return undefined;
       }
     });
   };
+}
+
+type Msg = { role: string; content?: unknown };
+const isImage = (v: unknown): v is { type: 'image'; data: string } =>
+  typeof v === 'object' && v !== null && (v as { type?: unknown }).type === 'image';
+
+/** JSON replacer: base64 image data is not text to scan. */
+const withoutImageData = (_k: string, v: unknown) => (isImage(v) ? { ...v, data: '' } : v);
+
+/** Puts the original image blocks back; /scan changes strings only, so positions are stable. */
+function withImages(out: Msg, original: Msg | undefined): Msg {
+  const src = original?.content;
+  if (Array.isArray(src) && Array.isArray(out.content))
+    out.content = out.content.map((b: unknown, i: number) => (isImage(src[i]) ? src[i] : b));
+  return out;
 }
