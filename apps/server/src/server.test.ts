@@ -4,6 +4,7 @@ import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type FakeTurn, startFakeLlm } from '@pa/fake-llm';
+import { startFakeSidecar } from '@pa/pi-ext-pseudo/fake-sidecar';
 import type { AttachmentRef, ClientMessageInput, ServerMessage } from '@pa/protocol';
 import sharp from 'sharp';
 import { afterEach, expect, test } from 'vitest';
@@ -29,7 +30,7 @@ async function freePort() {
   return port;
 }
 
-async function boot(turns: FakeTurn[]) {
+async function boot(turns: FakeTurn[], env: Record<string, string> = {}) {
   const llm = await startFakeLlm(turns);
   const dataDir = mkdtempSync(join(tmpdir(), 'pa-server-'));
   process.env.LITELLM_MASTER_KEY = KEY;
@@ -43,6 +44,7 @@ async function boot(turns: FakeTurn[]) {
     AUTH_ORIGIN: 'http://localhost:3000',
     COOKIE_SECRET: 'x'.repeat(32),
     AUTH_PASSWORD_HASH: PASSWORD_HASH,
+    ...env,
   });
   cleanups.push(
     () => llm.close(),
@@ -292,4 +294,76 @@ test('attachments: image and txt reach the model; owner-only download', {
   const [first] = (await c.next('chat.state')).messages;
   expect(first?.text).toBe('Katso');
   expect(first?.attachments.map((a) => a.name)).toEqual(['dot.png', 'note.txt']);
+});
+
+test('pseudo: model sees surrogates, client sees restored text with annotations', {
+  timeout: 30_000,
+}, async () => {
+  const sc = await startFakeSidecar({
+    'Matti Virtanen': 'Pekka Laaksonen',
+    '010190-123A': '010190-900B',
+  });
+  cleanups.push(sc.close);
+  const { llm, config, run } = await boot([{ text: 'Hei Pekka Laaksonen, hetu 010190-900B.' }], {
+    PSEUDO_URL: sc.url,
+  });
+  let srv = await run();
+  let c = await connect(config.port);
+  c.send({ type: 'chat.create' });
+  const { chat } = await c.next('chat.created');
+  c.send({ type: 'user.message', chatId: chat.id, text: 'Moi Matti Virtanen' });
+  const final = await c.next('message.final');
+  await c.idle();
+  const body = JSON.stringify(llm.requests[0]?.body);
+  expect(body).toContain('Pekka Laaksonen');
+  expect(body).not.toContain('Matti Virtanen');
+
+  const real = 'Hei Matti Virtanen, hetu 010190-123A.';
+  const deltas = deltasOf(c.inbox);
+  expect(deltas.length).toBeGreaterThan(1);
+  expect(deltas.map((d) => d.text).join('')).toBe(real);
+  let offset = 0;
+  const spans = deltas.flatMap((d) => {
+    const abs = d.annotations.map((a) => [
+      real.slice(a.start + offset, a.end + offset),
+      a.modelSaw,
+    ]);
+    offset += d.text.length;
+    return abs;
+  });
+  expect(spans).toEqual([
+    ['Matti Virtanen', 'Pekka Laaksonen'],
+    ['010190-123A', '010190-900B'],
+  ]);
+  expect(final.message.text).toBe(real);
+  const covered = (m: { text: string; annotations: { start: number; end: number }[] }) =>
+    m.annotations.map((a) => m.text.slice(a.start, a.end));
+  expect(covered(final.message)).toEqual(['Matti Virtanen', '010190-123A']);
+  c.ws.close();
+  await srv.close();
+
+  srv = await run();
+  c = await connect(config.port);
+  c.send({ type: 'chat.open', chatId: chat.id });
+  const state = await c.next('chat.state');
+  expect(state.messages.map((m) => m.text)).toEqual(['Moi Matti Virtanen', real]);
+  expect(state.messages.map(covered)).toEqual([
+    ['Matti Virtanen'],
+    ['Matti Virtanen', '010190-123A'],
+  ]);
+});
+
+test('pseudo: sidecar down sends pseudo_down and no model request', {
+  timeout: 30_000,
+}, async () => {
+  const sc = await startFakeSidecar({ 'Matti Virtanen': 'Pekka Laaksonen' });
+  const { llm, config, run } = await boot([{ text: SCRIPTED }], { PSEUDO_URL: sc.url });
+  await run();
+  await sc.close();
+  const c = await connect(config.port);
+  c.send({ type: 'chat.create' });
+  const { chat } = await c.next('chat.created');
+  c.send({ type: 'user.message', chatId: chat.id, text: 'Moi Matti Virtanen' });
+  await expect(c.next('message.final')).rejects.toThrow('pseudo_down');
+  expect(llm.requests).toHaveLength(0);
 });

@@ -33,6 +33,7 @@ export function Thread() {
             key={m.id}
             role={m.role}
             text={m.text}
+            annotations={m.annotations}
             attachments={m.attachments}
             tools={m.tools}
           />
@@ -40,7 +41,13 @@ export function Thread() {
         {(stream || running) && (
           <div className="min-h-6">
             {stream?.text || stream?.tools.length ? (
-              <MessageView role="assistant" text={stream.text} tools={stream.tools} live />
+              <MessageView
+                role="assistant"
+                text={stream.text}
+                annotations={stream.annotations}
+                tools={stream.tools}
+                live
+              />
             ) : (
               <span
                 role="status"

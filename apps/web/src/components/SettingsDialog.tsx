@@ -17,6 +17,8 @@ const THEMES: { value: Theme; label: string; Icon: typeof Sun }[] = [
 export function SettingsDialog() {
   const theme = useStore((s) => s.theme);
   const setTheme = useStore((s) => s.setTheme);
+  const showModelSaw = useStore((s) => s.showModelSaw);
+  const setShowModelSaw = useStore((s) => s.setShowModelSaw);
   const [note, setNote] = useState('');
 
   const addPasskey = async () => {
@@ -79,6 +81,15 @@ export function SettingsDialog() {
               ))}
             </div>
           </fieldset>
+          <label className="mb-6 flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={showModelSaw}
+              onChange={(e) => setShowModelSaw(e.target.checked)}
+              className="size-4 accent-accent"
+            />
+            Näytä mitä malli näki
+          </label>
           <div className="flex flex-col gap-2">
             <button
               type="button"

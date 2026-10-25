@@ -1,4 +1,4 @@
-import { createServer } from 'node:http';
+import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 
 export type FakeTurn =
@@ -97,12 +97,21 @@ export async function startFakeLlm(turns: FakeTurn[] = []) {
     });
   });
 
+  const { origin, close } = await listenLocal(server);
+  return {
+    url: `${origin}/v1`,
+    requests,
+    push: (turn: FakeTurn) => void queue.push(turn),
+    close,
+  };
+}
+
+/** Listens on a free loopback port; `close` also drops open connections. */
+export async function listenLocal(server: Server) {
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
   const { port } = server.address() as AddressInfo;
   return {
-    url: `http://127.0.0.1:${port}/v1`,
-    requests,
-    push: (turn: FakeTurn) => void queue.push(turn),
+    origin: `http://127.0.0.1:${port}`,
     close: () =>
       new Promise<void>((r) => {
         server.closeAllConnections();

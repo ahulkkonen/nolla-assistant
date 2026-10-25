@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openDb, users } from '@pa/db';
+import { PseudoClient } from '@pa/pi-ext-pseudo';
 import { purgeExpiredSessions } from './auth/session.ts';
 import { type Config, loadConfig } from './config.ts';
 import { buildServer } from './http.ts';
@@ -14,13 +15,15 @@ export async function start(config: Config = loadConfig()) {
     .onConflictDoNothing()
     .run();
   purgeExpiredSessions(db);
+  const pseudo = config.pseudoUrl ? new PseudoClient(config.pseudoUrl, config.userId) : undefined;
   const registry = new SessionRegistry({
     dataDir: config.dataDir,
     userId: config.userId,
     model: config.model,
+    ...(pseudo ? { pseudo } : {}),
   });
   writeModelsJson(registry.agentDir, config.litellmUrl);
-  const app = await buildServer({ registry, db, config });
+  const app = await buildServer({ registry, db, config, ...(pseudo ? { pseudo } : {}) });
   await app.listen({ port: config.port, host: config.host });
   const timer = setInterval(() => void registry.evictIdle(), 5 * 60_000);
   timer.unref();

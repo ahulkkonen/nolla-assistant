@@ -1,9 +1,15 @@
-import type { ChatSummary, Message, ServerMessage, ToolRow } from '@pa/protocol';
+import type { Annotation, ChatSummary, Message, ServerMessage, ToolRow } from '@pa/protocol';
 import { create } from 'zustand';
 
 export type ToolView = ToolRow & { argsPreview?: string };
 export type UiMessage = Omit<Message, 'tools'> & { tools: ToolView[] };
-export type Streaming = { messageId: string; text: string; tools: ToolView[] };
+export type Streaming = {
+  messageId: string;
+  text: string;
+  /** Message-absolute offsets. */
+  annotations: Annotation[];
+  tools: ToolView[];
+};
 export type Theme = 'system' | 'light' | 'dark';
 export type Toast = { id: number; message: string };
 
@@ -19,6 +25,8 @@ type State = {
   errors: Toast[];
   sidebarOpen: boolean;
   theme: Theme;
+  /** Annotated spans show the surrogate the model saw instead of the real value. */
+  showModelSaw: boolean;
   apply(msg: ServerMessage): void;
   setAuth(auth: State['auth']): void;
   setActive(chatId: string | null): void;
@@ -28,6 +36,7 @@ type State = {
   dismissError(id: number): void;
   setSidebarOpen(open: boolean): void;
   setTheme(theme: Theme): void;
+  setShowModelSaw(on: boolean): void;
 };
 
 const THEME_KEY = 'pa.theme';
@@ -65,7 +74,12 @@ const ERROR_TEXT: Record<string, string> = {
   bad_message: 'Virheellinen viesti.',
   not_implemented: 'Ei vielä tuettu.',
   failed: 'Toiminto epäonnistui.',
+  pseudo_down: 'Pseudonymisointipalvelu ei vastaa.',
 };
+
+/** Delta annotations are chunk-relative; `offset` is the chunk's start in the message. */
+const shift = (annotations: Annotation[], offset: number) =>
+  annotations.map((a) => ({ ...a, start: a.start + offset, end: a.end + offset }));
 
 let toastId = 0;
 
@@ -74,7 +88,9 @@ export const useStore = create<State>()((set, get) => {
     set((st) => ({
       streaming: {
         ...st.streaming,
-        [chatId]: fn(st.streaming[chatId] ?? { messageId: '', text: '', tools: [] }),
+        [chatId]: fn(
+          st.streaming[chatId] ?? { messageId: '', text: '', annotations: [], tools: [] },
+        ),
       },
     }));
   const patchTool = (chatId: string, callId: string, patch: Partial<ToolView>) =>
@@ -94,6 +110,7 @@ export const useStore = create<State>()((set, get) => {
     errors: [],
     sidebarOpen: globalThis.matchMedia?.('(min-width: 1200px)').matches ?? false,
     theme: loadTheme(),
+    showModelSaw: false,
 
     apply(msg) {
       switch (msg.type) {
@@ -123,8 +140,12 @@ export const useStore = create<State>()((set, get) => {
         case 'message.delta':
           return patchStream(msg.chatId, (s) =>
             s.messageId === msg.messageId
-              ? { ...s, text: s.text + msg.text }
-              : { messageId: msg.messageId, text: msg.text, tools: s.tools },
+              ? {
+                  ...s,
+                  text: s.text + msg.text,
+                  annotations: [...s.annotations, ...shift(msg.annotations, s.text.length)],
+                }
+              : { ...s, messageId: msg.messageId, text: msg.text, annotations: msg.annotations },
           );
         case 'message.final':
           return set((st) => {
@@ -190,5 +211,6 @@ export const useStore = create<State>()((set, get) => {
       } catch {}
       set({ theme });
     },
+    setShowModelSaw: (showModelSaw) => set({ showModelSaw }),
   };
 });

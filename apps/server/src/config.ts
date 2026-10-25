@@ -44,6 +44,9 @@ export function loadConfig(env: Env = process.env) {
     trustProxy: !trust ? false : /^\d+$/.test(trust) ? Number(trust) : trust,
     webDist: env.WEB_DIST || undefined,
     logLevel: env.LOG_LEVEL ?? 'info',
+    // Dev only when unset: no masking extension and no display restoration, so real values reach
+    // the model. Production always sets it (invariant 1).
+    pseudoUrl: env.PSEUDO_URL || undefined,
   });
 }
 

@@ -9,6 +9,7 @@ import {
   ModelRuntime,
   SessionManager,
 } from '@earendil-works/pi-coding-agent';
+import { type PseudoClient, type PseudoLog, pseudoExtension } from '@pa/pi-ext-pseudo';
 import { pathGuard } from './guard.ts';
 
 type RegistryOptions = {
@@ -16,6 +17,8 @@ type RegistryOptions = {
   userId: string;
   model: string;
   extensionFactories?: InlineExtension[];
+  /** Loads `pi-ext-pseudo` per chat when set. */
+  pseudo?: PseudoClient;
 };
 type Entry = { session: Promise<AgentSession>; lastUsed: number; unsubscribe?: () => void };
 
@@ -26,6 +29,8 @@ export class SessionRegistry {
   private readonly entries = new Map<string, Entry>();
   private runtime: Promise<ModelRuntime> | undefined;
   private readonly opts: RegistryOptions;
+  /** Receives `pi-ext-pseudo` logs per chat; the server sets it to log and to report `pseudo_down`. */
+  pseudoLog: (chatId: string, ...args: Parameters<PseudoLog>) => void = () => {};
 
   constructor(opts: RegistryOptions) {
     this.opts = opts;
@@ -101,7 +106,7 @@ export class SessionRegistry {
       existing.lastUsed = Date.now();
       return existing.session;
     }
-    const session = this.build(manager);
+    const session = this.build(chatId, manager);
     this.entries.set(chatId, { session, lastUsed: Date.now() });
     session.catch(() => {
       if (this.entries.get(chatId)?.session === session) this.entries.delete(chatId);
@@ -109,8 +114,9 @@ export class SessionRegistry {
     return session;
   }
 
-  private async build(manager: () => SessionManager): Promise<AgentSession> {
+  private async build(chatId: string, manager: () => SessionManager): Promise<AgentSession> {
     const sessionManager = manager();
+    const { pseudo } = this.opts;
     const modelRuntime = await this.modelRuntime();
     const model = modelRuntime.getModel('zdr', this.opts.model);
     if (!model) throw new Error(`Model zdr/${this.opts.model} not found in models.json`);
@@ -122,7 +128,19 @@ export class SessionRegistry {
       noSkills: true,
       noPromptTemplates: true,
       noThemes: true,
-      extensionFactories: [pathGuard(this.cwd), ...(this.opts.extensionFactories ?? [])],
+      extensionFactories: [
+        pathGuard(this.cwd),
+        ...(pseudo
+          ? [
+              pseudoExtension({
+                client: pseudo,
+                sessionId: chatId,
+                log: (...args) => this.pseudoLog(chatId, ...args),
+              }),
+            ]
+          : []),
+        ...(this.opts.extensionFactories ?? []),
+      ],
     });
     await resourceLoader.reload();
     const { session } = await createAgentSession({

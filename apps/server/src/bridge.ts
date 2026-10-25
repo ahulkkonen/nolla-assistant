@@ -1,7 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import type { AgentSession, AgentSessionEvent } from '@earendil-works/pi-coding-agent';
 import { chats, type Db } from '@pa/db';
+import type { PseudoClient } from '@pa/pi-ext-pseudo';
 import {
+  type Annotation,
   type ChatSummary,
   ClientMessage,
   type Message,
@@ -29,6 +31,8 @@ export type BridgeDeps = {
   log: FastifyBaseLogger;
   /** chatId → sockets that have the chat open. Shared by all connections of one server. */
   rooms: Map<string, Set<Socket>>;
+  /** Restores surrogates for display. Unset in dev (no masking, see config `pseudoUrl`). */
+  pseudo?: PseudoClient;
 };
 
 type AgentMessage = AgentSession['messages'][number];
@@ -42,19 +46,20 @@ const ERRORS = {
   failed: 'Request failed',
   prompt_failed: 'Prompt failed',
   llm_failed: 'Model call failed',
+  pseudo_down: 'Pseudonymization service unavailable',
 } as const;
 
 class NotFound extends Error {}
 
 const send = (socket: Socket, msg: ServerMessage) => socket.send(JSON.stringify(msg));
-const errorMsg = (code: keyof typeof ERRORS, chatId?: string): ServerMessage => ({
+export const errorMsg = (code: keyof typeof ERRORS, chatId?: string): ServerMessage => ({
   type: 'error',
   code,
   message: ERRORS[code],
   ...(chatId ? { chatId } : {}),
 });
 
-function broadcast(rooms: BridgeDeps['rooms'], chatId: string, msg: ServerMessage) {
+export function broadcast(rooms: BridgeDeps['rooms'], chatId: string, msg: ServerMessage) {
   const room = rooms.get(chatId);
   if (!room) return;
   for (const s of room) {
@@ -100,11 +105,60 @@ const toolStatus = (isError: boolean, text: string): ToolStatus =>
 const argsPreview = (args: unknown) =>
   Object.entries((args ?? {}) as Record<string, unknown>)
     .map(([k, v]) => `${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`)
-    .join(', ')
-    .slice(0, 200);
+    .join(', ');
+
+type Restored = { text: string; annotations: Annotation[] };
+type Restore = (text: string) => Promise<Restored>;
+
+/** Surrogates back to real values for display. On any sidecar failure: masked text plus `onDown`. */
+function restorer(pseudo: PseudoClient | undefined, onDown: () => void): Restore {
+  return async (text) => {
+    if (!pseudo || !text) return { text, annotations: [] };
+    try {
+      const { restored, spans } = await pseudo.unmask(text);
+      const annotations = spans.map((s) => ({
+        start: s.start,
+        end: s.end,
+        entityId: s.entity_id,
+        modelSaw: s.surrogate_form,
+      }));
+      return { text: restored, annotations };
+    } catch {
+      onDown();
+      return { text, annotations: [] };
+    }
+  };
+}
+
+/** Masked characters held back while streaming; a surrogate up to this long is never split. */
+const HOLD_BACK = 24;
+
+/**
+ * Restores the releasable part of streamed masked text. `pending` is unmasked whole (the tail is
+ * context); the cut sits `HOLD_BACK` before the end, moved back to the start of any surrogate it
+ * would split. Returns the restored prefix with chunk-relative annotations and the masked rest.
+ */
+async function release(restore: Restore, pending: string, final: boolean) {
+  let cut = final ? pending.length : pending.length - HOLD_BACK;
+  if (cut <= 0) return { out: { text: '', annotations: [] }, rest: pending };
+  const r = await restore(pending);
+  let shift = 0;
+  const annotations: Annotation[] = [];
+  for (const a of r.annotations) {
+    const start = a.start - shift;
+    const end = start + a.modelSaw.length;
+    if (end > cut) {
+      if (start < cut) cut = start;
+      break;
+    }
+    annotations.push(a);
+    shift += a.end - a.start - a.modelSaw.length;
+  }
+  return { out: { text: r.text.slice(0, cut + shift), annotations }, rest: pending.slice(cut) };
+}
 
 export function attachBridge(socket: Socket, deps: BridgeDeps) {
-  const { registry, db, userId, dataDir, log, rooms } = deps;
+  const { registry, db, userId, dataDir, log, rooms, pseudo } = deps;
   const open = new Set<string>();
 
   const owned = (chatId: string) => {
@@ -174,10 +228,15 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
         const r = owned(msg.chatId);
         const session = await registry.get(msg.chatId);
         join(msg.chatId, session);
+        let down = false;
+        const restore = restorer(pseudo, () => {
+          if (!down) send(socket, errorMsg('pseudo_down', msg.chatId));
+          down = true;
+        });
         return send(socket, {
           type: 'chat.state',
           chat: summary(r),
-          messages: history(session, chatFiles(db, userId, msg.chatId)),
+          messages: await history(session, chatFiles(db, userId, msg.chatId), restore),
         });
       }
       case 'chat.archive':
@@ -253,13 +312,30 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
  * streamed message with it. Finals are sent at `turn_end` (or `agent_settled`) so tool rows have
  * their final status.
  */
-function forward(chatId: string, session: AgentSession, { db, rooms, log, userId }: BridgeDeps) {
+function forward(
+  chatId: string,
+  session: AgentSession,
+  { db, rooms, log, userId, pseudo }: BridgeDeps,
+) {
   const emit = (msg: ServerMessage) => broadcast(rooms, chatId, msg);
   let streamId = randomUUID();
   let pending: AgentMessage | undefined;
+  /** Masked text of the streaming message not yet sent (the hold-back). */
+  let held = '';
+  let downSent = false;
   const statuses = new Map<string, ToolStatus>();
+  const restore = restorer(pseudo, () => {
+    if (!downSent) emit(errorMsg('pseudo_down', chatId));
+    downSent = true;
+  });
 
-  const flush = () => {
+  const stream = async (final: boolean) => {
+    const { out, rest } = await release(restore, held, final);
+    held = rest;
+    if (out.text) emit({ type: 'message.delta', chatId, messageId: streamId, ...out });
+  };
+
+  const flush = async () => {
     const m = pending;
     pending = undefined;
     if (!m) return;
@@ -272,29 +348,26 @@ function forward(chatId: string, session: AgentSession, { db, rooms, log, userId
           e.message.timestamp === m.timestamp,
       );
     log.debug({ chatId, length: textOf(m).length }, 'message.final');
-    emit({
-      type: 'message.final',
-      chatId,
-      message: toMessage(entry?.id ?? streamId, m, toolRows(m, statuses)),
-    });
+    const message = toMessage(entry?.id ?? streamId, m, toolRows(m, statuses));
+    Object.assign(message, await restore(message.text));
+    emit({ type: 'message.final', chatId, message });
   };
 
-  return (e: AgentSessionEvent) => {
+  const handle = async (e: AgentSessionEvent) => {
     switch (e.type) {
       case 'message_start':
-        if (e.message.role === 'assistant') streamId = randomUUID();
+        if (e.message.role === 'assistant') {
+          streamId = randomUUID();
+          held = '';
+        }
         return;
       case 'message_update':
         if (e.assistantMessageEvent.type !== 'text_delta') return;
-        return emit({
-          type: 'message.delta',
-          chatId,
-          messageId: streamId,
-          text: e.assistantMessageEvent.delta,
-          annotations: [],
-        });
+        held += e.assistantMessageEvent.delta;
+        return stream(false);
       case 'message_end':
         if (e.message.role !== 'assistant') return;
+        await stream(true);
         if (e.message.stopReason === 'error') {
           log.warn({ chatId, error: e.message.errorMessage }, 'model call failed');
           return emit(errorMsg('llm_failed', chatId));
@@ -309,7 +382,7 @@ function forward(chatId: string, session: AgentSession, { db, rooms, log, userId
           chatId,
           callId: e.toolCallId,
           name: e.toolName,
-          argsPreview: argsPreview(e.args),
+          argsPreview: (await restore(argsPreview(e.args))).text.slice(0, 200),
         });
       case 'tool_execution_update':
         return emit({
@@ -319,7 +392,7 @@ function forward(chatId: string, session: AgentSession, { db, rooms, log, userId
           output: resultText(e.partialResult).slice(0, 2000),
         });
       case 'tool_execution_end': {
-        const text = resultText(e.result);
+        const text = (await restore(resultText(e.result))).text;
         const status = toolStatus(e.isError, text);
         statuses.set(e.toolCallId, status);
         return emit({
@@ -331,9 +404,10 @@ function forward(chatId: string, session: AgentSession, { db, rooms, log, userId
         });
       }
       case 'agent_start':
+        downSent = false;
         return emit({ type: 'agent.status', chatId, state: 'running' });
       case 'agent_settled': {
-        flush();
+        await flush();
         statuses.clear();
         const r = db
           .update(chats)
@@ -345,6 +419,14 @@ function forward(chatId: string, session: AgentSession, { db, rooms, log, userId
         return emit({ type: 'agent.status', chatId, state: 'idle' });
       }
     }
+  };
+
+  // Sidecar calls are async: one chain keeps every chat event in Pi's order.
+  let chain = Promise.resolve();
+  return (e: AgentSessionEvent) => {
+    chain = chain
+      .then(() => handle(e))
+      .catch((err: unknown) => log.warn({ chatId, err }, 'forward'));
   };
 }
 
@@ -375,7 +457,11 @@ function toMessage(id: string, m: AgentMessage, tools: ToolRow[]): Message {
  * from its text.
  */
 // ponytail: timestamp window, not a stored message link; a file uploaded but sent with a later message shows on the earlier one. Add files.messageId if that happens.
-function history(session: AgentSession, files: ReturnType<typeof chatFiles>): Message[] {
+async function history(
+  session: AgentSession,
+  files: ReturnType<typeof chatFiles>,
+  restore: Restore,
+): Promise<Message[]> {
   const entries = session.sessionManager.getBranch();
   const statuses = new Map<string, ToolStatus>();
   for (const e of entries) {
@@ -384,7 +470,7 @@ function history(session: AgentSession, files: ReturnType<typeof chatFiles>): Me
     }
   }
   let prev = '';
-  return entries.flatMap((e) => {
+  const messages = entries.flatMap((e) => {
     if (e.type !== 'message' || (e.message.role !== 'user' && e.message.role !== 'assistant'))
       return [];
     const m = toMessage(e.id, e.message, toolRows(e.message, statuses));
@@ -401,4 +487,7 @@ function history(session: AgentSession, files: ReturnType<typeof chatFiles>): Me
     }
     return [m];
   });
+  // ponytail: one /unmask per message; batch in phase 7.
+  for (const m of messages) Object.assign(m, await restore(m.text));
+  return messages;
 }

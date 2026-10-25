@@ -43,6 +43,20 @@ describe('store reducers', () => {
     expect(st.messages.c).toEqual([message]);
   });
 
+  it('converts chunk-relative delta annotations to message offsets', () => {
+    const { apply } = useStore.getState();
+    const a = (start: number, end: number) => ({ start, end, entityId: 1, modelSaw: 'Pekka' });
+    apply({ type: 'message.delta', chatId: 'c', messageId: 's', text: 'Hei ', annotations: [] });
+    apply({
+      type: 'message.delta',
+      chatId: 'c',
+      messageId: 's',
+      text: 'Matti!',
+      annotations: [a(0, 5)],
+    });
+    expect(useStore.getState().streaming.c?.annotations).toEqual([a(4, 9)]);
+  });
+
   it('orders chat.list pinned first, then updatedAt desc', () => {
     useStore.getState().apply({
       type: 'chat.list',

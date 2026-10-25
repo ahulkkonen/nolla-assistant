@@ -15,6 +15,7 @@
     "@fastify/static": "10.1.6",
     "@fastify/websocket": "11.3.4",
     "@pa/db": "workspace:*",
+    "@pa/pi-ext-pseudo": "workspace:*",
     "@pa/protocol": "workspace:*",
     "@simplewebauthn/server": "14.0.3",
     "drizzle-orm": "0.45.4",
