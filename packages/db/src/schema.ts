@@ -1,3 +1,4 @@
+// Deferred to phase 8: memory consolidation and recall chunk/embedding tables.
 import { index, integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 
 export const users = sqliteTable('users', {
@@ -19,15 +20,15 @@ export const chats = sqliteTable(
     id: text().primaryKey(),
     userId: text().notNull(),
     agentId: text().notNull().default('assistant'),
-    topicId: text().references(() => topics.id),
+    topicId: text().references(() => topics.id, { onDelete: 'set null' }),
     // Restored title; may contain the user's own name.
     title: text(),
     titleMasked: text(),
-    titleLocked: integer({ mode: 'boolean' }).default(false),
-    pinned: integer({ mode: 'boolean' }).default(false),
-    archived: integer({ mode: 'boolean' }).default(false),
-    // Path of the Pi JSONL session under /data.
-    sessionFile: text().notNull(),
+    titleLocked: integer({ mode: 'boolean' }).notNull().default(false),
+    pinned: integer({ mode: 'boolean' }).notNull().default(false),
+    archived: integer({ mode: 'boolean' }).notNull().default(false),
+    // relative to DATA_DIR, e.g. sessions/<userId>/<chatId>.jsonl
+    sessionPath: text().notNull(),
     summary: text(),
     createdAt: text().notNull(),
     updatedAt: text().notNull(),
@@ -35,24 +36,32 @@ export const chats = sqliteTable(
   (t) => [index('chats_user_archived_updated_idx').on(t.userId, t.archived, t.updatedAt)],
 );
 
+const chatRef = () =>
+  text()
+    .notNull()
+    .references(() => chats.id, { onDelete: 'cascade' });
+
 export const topicProposals = sqliteTable('topicProposals', {
   id: integer().primaryKey({ autoIncrement: true }),
   userId: text().notNull(),
-  chatId: text().references(() => chats.id),
-  name: text(),
-  why: text(),
-  status: text().default('pending'),
-  createdAt: text(),
+  chatId: chatRef(),
+  name: text().notNull(),
+  why: text().notNull(),
+  status: text().notNull().default('pending'),
+  createdAt: text().notNull(),
 });
 
 export const tags = sqliteTable(
   'tags',
   {
-    chatId: text().references(() => chats.id, { onDelete: 'cascade' }),
+    chatId: chatRef(),
     userId: text().notNull(),
-    tag: text(),
+    tag: text().notNull(),
   },
-  (t) => [primaryKey({ columns: [t.chatId, t.tag] })],
+  (t) => [
+    primaryKey({ columns: [t.chatId, t.tag] }),
+    index('tags_user_tag_idx').on(t.userId, t.tag),
+  ],
 );
 
 export const pushSubscriptions = sqliteTable('pushSubscriptions', {
@@ -66,21 +75,21 @@ export const pushSubscriptions = sqliteTable('pushSubscriptions', {
 export const memoryPending = sqliteTable('memoryPending', {
   id: integer().primaryKey({ autoIncrement: true }),
   userId: text().notNull(),
-  chatId: text(),
-  action: text(),
-  target: text(),
-  text: text(),
-  status: text().default('pending'),
-  createdAt: text(),
+  chatId: chatRef(),
+  action: text().notNull(),
+  target: text().notNull(),
+  text: text().notNull(),
+  status: text().notNull().default('pending'),
+  createdAt: text().notNull(),
 });
 
 export const files = sqliteTable('files', {
   id: text().primaryKey(),
   userId: text().notNull(),
   chatId: text().references(() => chats.id, { onDelete: 'cascade' }),
-  name: text(),
-  mime: text(),
-  size: integer(),
+  name: text().notNull(),
+  mime: text().notNull(),
+  size: integer().notNull(),
   path: text().notNull(),
-  createdAt: text(),
+  createdAt: text().notNull(),
 });

@@ -1,12 +1,16 @@
 import { z } from 'zod';
 
+const id64 = z.string().max(64);
+
 /** Shared pieces used by both directions. */
-export const Annotation = z.object({
-  start: z.int().min(0),
-  end: z.int().min(0),
-  entityId: z.int(),
-  modelSaw: z.string(),
-});
+export const Annotation = z
+  .object({
+    start: z.int().min(0),
+    end: z.int().min(0),
+    entityId: z.int(),
+    modelSaw: z.string(),
+  })
+  .refine((a) => a.end > a.start, 'end must be greater than start');
 export type Annotation = z.infer<typeof Annotation>;
 
 export const AttachmentRef = z.object({
@@ -21,8 +25,8 @@ export type AttachmentRef = z.infer<typeof AttachmentRef>;
 export const ChatSummary = z.object({
   id: z.string(),
   title: z.string().nullable(),
-  topicId: z.string().nullable(),
-  agentId: z.string(),
+  topicId: id64.nullable(),
+  agentId: id64,
   pinned: z.boolean(),
   archived: z.boolean(),
   updatedAt: z.iso.datetime(),
@@ -33,7 +37,7 @@ export const ToolStatus = z.enum(['running', 'ok', 'error', 'denied']);
 export type ToolStatus = z.infer<typeof ToolStatus>;
 
 export const ToolRow = z.object({
-  callId: z.string(),
+  callId: id64,
   name: z.string(),
   status: ToolStatus,
   summary: z.string(),
@@ -45,9 +49,9 @@ export const Message = z.object({
   role: z.enum(['user', 'assistant']),
   text: z.string(),
   annotations: z.array(Annotation),
-  attachments: z.array(AttachmentRef),
+  attachments: z.array(AttachmentRef).max(20),
   tools: z.array(ToolRow),
-  createdAt: z.string(),
+  createdAt: z.iso.datetime(),
 });
 export type Message = z.infer<typeof Message>;
 
@@ -60,7 +64,7 @@ export const VaultEntity = z.object({
   pinned: z.boolean(),
   allowlisted: z.boolean(),
   seenCount: z.int().min(0),
-  lastSeen: z.string().nullable(),
+  lastSeen: z.iso.datetime().nullable(),
 });
 export type VaultEntity = z.infer<typeof VaultEntity>;
 
@@ -70,14 +74,18 @@ export const VaultPending = z.object({
   text: z.string(),
   detector: z.string(),
   score: z.number(),
-  chatId: z.string(),
+  chatId: id64,
 });
 export type VaultPending = z.infer<typeof VaultPending>;
 
 /** Client to server messages. `auth.login` is itself a union on `method`. */
 const authLogin = z.literal('auth.login');
 export const AuthLogin = z.discriminatedUnion('method', [
-  z.object({ type: authLogin, method: z.literal('password'), password: z.string() }),
+  z.object({
+    type: authLogin,
+    method: z.literal('password'),
+    password: z.string().min(1).max(1024),
+  }),
   z.object({ type: authLogin, method: z.literal('passkey'), assertion: z.unknown() }),
 ]);
 export type AuthLogin = z.infer<typeof AuthLogin>;
@@ -86,30 +94,40 @@ export const ClientMessage = z.discriminatedUnion('type', [
   AuthLogin,
   z.object({
     type: z.literal('chat.create'),
-    agentId: z.string().default('assistant'),
-    topicId: z.string().optional(),
+    agentId: id64.default('assistant'),
+    topicId: id64.optional(),
   }),
-  z.object({ type: z.literal('chat.open'), chatId: z.string() }),
+  z.object({ type: z.literal('chat.open'), chatId: id64 }),
   z.object({ type: z.literal('chat.list'), archived: z.boolean().optional() }),
-  z.object({ type: z.literal('chat.archive'), chatId: z.string(), archived: z.boolean() }),
+  z.object({ type: z.literal('chat.archive'), chatId: id64, archived: z.boolean() }),
   z.object({
     type: z.literal('chat.rename'),
-    chatId: z.string(),
+    chatId: id64,
     title: z.string().min(1).max(120),
   }),
-  z.object({ type: z.literal('chat.pin'), chatId: z.string(), pinned: z.boolean() }),
+  z.object({ type: z.literal('chat.pin'), chatId: id64, pinned: z.boolean() }),
   z.object({
     type: z.literal('user.message'),
-    chatId: z.string(),
+    chatId: id64,
     text: z.string().max(100_000),
-    attachments: z.array(AttachmentRef).default([]),
-    agentId: z.string().optional(),
+    attachments: z.array(AttachmentRef).max(20).default([]),
+    agentId: id64.optional(),
   }),
-  z.object({ type: z.literal('user.stop'), chatId: z.string() }),
-  z.object({ type: z.literal('approval.respond'), requestId: z.string(), approve: z.boolean() }),
+  z.object({ type: z.literal('user.stop'), chatId: id64 }),
+  z.object({ type: z.literal('approval.respond'), requestId: id64, approve: z.boolean() }),
   z.object({ type: z.literal('vault.list') }),
-  z.object({ type: z.literal('vault.merge'), fromIds: z.array(z.int()).min(1), intoId: z.int() }),
-  z.object({ type: z.literal('vault.split'), entityId: z.int(), spanIds: z.array(z.int()) }),
+  z
+    .object({
+      type: z.literal('vault.merge'),
+      fromIds: z.array(z.int()).min(1).max(500),
+      intoId: z.int(),
+    })
+    .refine((m) => !m.fromIds.includes(m.intoId), 'intoId must not be in fromIds'),
+  z.object({
+    type: z.literal('vault.split'),
+    entityId: z.int(),
+    spanIds: z.array(z.int()).max(500),
+  }),
   z.object({ type: z.literal('vault.pin'), entityId: z.int(), pinned: z.boolean() }),
   z.object({ type: z.literal('vault.allowlist'), entityId: z.int(), allowlisted: z.boolean() }),
   z.object({ type: z.literal('vault.regenerate'), entityId: z.int() }),
@@ -127,15 +145,15 @@ export const ClientMessage = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('memory.edit'),
     target: z.enum(['user', 'memory']),
-    text: z.string(),
+    text: z.string().max(2500),
   }),
   z.object({ type: z.literal('memory.approve'), pendingId: z.int(), approve: z.boolean() }),
   z.object({ type: z.literal('topic.list') }),
   z.object({
     type: z.literal('topic.accept'),
     proposalId: z.int(),
-    name: z.string().optional(),
-    mergeIntoTopicId: z.string().optional(),
+    name: z.string().max(80).optional(),
+    mergeIntoTopicId: id64.optional(),
   }),
   z.object({ type: z.literal('topic.reject'), proposalId: z.int() }),
   z.object({
@@ -143,10 +161,18 @@ export const ClientMessage = z.discriminatedUnion('type', [
     q: z.string().min(1).max(500),
     limit: z.int().min(1).max(50).default(20),
   }),
-  z.object({ type: z.literal('push.subscribe'), subscription: z.unknown() }),
+  z.object({
+    type: z.literal('push.subscribe'),
+    subscription: z.object({
+      endpoint: z.url(),
+      expirationTime: z.number().nullable().optional(),
+      keys: z.object({ p256dh: z.string().max(512), auth: z.string().max(512) }),
+    }),
+  }),
   z.object({ type: z.literal('ping') }),
 ]);
 export type ClientMessage = z.infer<typeof ClientMessage>;
+export type ClientMessageInput = z.input<typeof ClientMessage>;
 
 /** Server to client messages. */
 export const ServerMessage = z.discriminatedUnion('type', [
@@ -160,42 +186,42 @@ export const ServerMessage = z.discriminatedUnion('type', [
   z.object({ type: z.literal('chat.created'), chat: ChatSummary }),
   z.object({
     type: z.literal('chat.titled'),
-    chatId: z.string(),
+    chatId: id64,
     title: z.string(),
-    topicId: z.string().nullable(),
+    topicId: id64.nullable(),
   }),
   z.object({ type: z.literal('chat.updated'), chat: ChatSummary }),
   z.object({
     type: z.literal('message.delta'),
-    chatId: z.string(),
-    messageId: z.string(),
+    chatId: id64,
+    messageId: id64,
     text: z.string(),
     annotations: z.array(Annotation),
   }),
-  z.object({ type: z.literal('message.final'), chatId: z.string(), message: Message }),
+  z.object({ type: z.literal('message.final'), chatId: id64, message: Message }),
   z.object({
     type: z.literal('tool.start'),
-    chatId: z.string(),
-    callId: z.string(),
+    chatId: id64,
+    callId: id64,
     name: z.string(),
     argsPreview: z.string(),
   }),
   z.object({
     type: z.literal('tool.update'),
-    chatId: z.string(),
-    callId: z.string(),
+    chatId: id64,
+    callId: id64,
     output: z.string(),
   }),
   z.object({
     type: z.literal('tool.end'),
-    chatId: z.string(),
-    callId: z.string(),
+    chatId: id64,
+    callId: id64,
     status: ToolStatus,
     summary: z.string(),
   }),
   z.object({
     type: z.literal('subagent.state'),
-    chatId: z.string(),
+    chatId: id64,
     children: z.array(
       z.object({
         id: z.string(),
@@ -206,16 +232,16 @@ export const ServerMessage = z.discriminatedUnion('type', [
   }),
   z.object({
     type: z.literal('approval.request'),
-    chatId: z.string(),
-    requestId: z.string(),
+    chatId: id64,
+    requestId: id64,
     tool: z.string(),
     args: z.unknown(),
     reason: z.string(),
-    expiresAt: z.string(),
+    expiresAt: z.iso.datetime(),
   }),
   z.object({
     type: z.literal('artifact.upsert'),
-    chatId: z.string(),
+    chatId: id64,
     artifact: z.object({
       id: z.string(),
       kind: z.enum(['html', 'react', 'code', 'mermaid', 'file']),
@@ -227,7 +253,7 @@ export const ServerMessage = z.discriminatedUnion('type', [
   }),
   z.object({
     type: z.literal('agent.status'),
-    chatId: z.string(),
+    chatId: id64,
     state: z.enum(['idle', 'running']),
   }),
   z.object({
@@ -245,7 +271,7 @@ export const ServerMessage = z.discriminatedUnion('type', [
         action: z.enum(['add', 'replace', 'remove']),
         target: z.enum(['user', 'memory']),
         text: z.string(),
-        chatId: z.string(),
+        chatId: id64,
       }),
     ),
     consolidation: z.object({ id: z.int(), diff: z.string() }).nullable(),
@@ -254,23 +280,21 @@ export const ServerMessage = z.discriminatedUnion('type', [
     type: z.literal('topic.state'),
     topics: z.array(
       z.object({
-        id: z.string(),
+        id: id64,
         name: z.string(),
         description: z.string(),
         count: z.int().min(0),
       }),
     ),
-    proposals: z.array(
-      z.object({ id: z.int(), name: z.string(), why: z.string(), chatId: z.string() }),
-    ),
+    proposals: z.array(z.object({ id: z.int(), name: z.string(), why: z.string(), chatId: id64 })),
   }),
   z.object({
     type: z.literal('search.results'),
     q: z.string(),
     results: z.array(
       z.object({
-        chatId: z.string(),
-        messageId: z.string().nullable(),
+        chatId: id64,
+        messageId: id64.nullable(),
         title: z.string(),
         snippet: z.string(),
         score: z.number(),
@@ -281,15 +305,9 @@ export const ServerMessage = z.discriminatedUnion('type', [
     type: z.literal('error'),
     code: z.string(),
     message: z.string(),
-    chatId: z.string().optional(),
-    requestId: z.string().optional(),
+    chatId: id64.optional(),
+    requestId: id64.optional(),
   }),
   z.object({ type: z.literal('pong') }),
 ]);
 export type ServerMessage = z.infer<typeof ServerMessage>;
-
-/** Parse helpers for untrusted socket input. */
-export const parseClientMessage = (raw: unknown): ReturnType<typeof ClientMessage.safeParse> =>
-  ClientMessage.safeParse(raw);
-export const parseServerMessage = (raw: unknown): ReturnType<typeof ServerMessage.safeParse> =>
-  ServerMessage.safeParse(raw);
