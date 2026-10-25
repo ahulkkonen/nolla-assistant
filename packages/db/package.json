@@ -13,7 +13,8 @@
   },
   "dependencies": {
     "better-sqlite3": "13.0.3",
-    "drizzle-orm": "0.45.4"
+    "drizzle-orm": "0.45.4",
+    "sqlite-vec": "0.1.9"
   },
   "devDependencies": {
     "@types/better-sqlite3": "9.6.0",

@@ -6,7 +6,7 @@
 set -u
 out=$(mktemp)
 if { restic cat config >/dev/null 2>&1 || restic init; } >"$out" 2>&1 \
-  && restic backup /data --exclude /data/work --exclude '/data/**/*.db-wal' --exclude '/data/**/*.db-shm' --exclude '/data/.*-litestream' >>"$out" 2>&1 \
+  && restic backup /data --tag full --exclude /data/work --exclude '/data/**/*.db-wal' --exclude '/data/**/*.db-shm' --exclude '/data/.*-litestream' >>"$out" 2>&1 \
   && restic forget --keep-daily 14 --keep-weekly 8 --keep-monthly 6 --prune >>"$out" 2>&1; then
   echo "$(date -Iseconds) restic run ok"
 else

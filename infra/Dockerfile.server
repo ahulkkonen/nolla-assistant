@@ -27,6 +27,12 @@ COPY apps/web apps/web
 COPY packages/protocol packages/protocol
 RUN pnpm --filter @pa/web build
 
+FROM deps AS models
+# Build-time network only: the runtime loads the embedding model from /app/models offline.
+COPY apps/server/src/embeddings.ts apps/server/src/embeddings.ts
+COPY scripts/download-models.mjs scripts/download-models.mjs
+RUN node scripts/download-models.mjs /app/models
+
 FROM deps AS prod
 COPY apps/server apps/server
 COPY packages/protocol packages/protocol
@@ -46,7 +52,8 @@ COPY --from=prod --chown=app:app /app/packages/pi-ext-pseudo /app/packages/pi-ex
 COPY --from=prod --chown=app:app /app/packages/pi-ext-topics /app/packages/pi-ext-topics
 COPY --chown=app:app infra/models.json /app/infra/models.json
 COPY --from=web --chown=app:app /app/apps/web/dist /app/apps/web/dist
-ENV NODE_ENV=production WEB_DIST=/app/apps/web/dist DATA_DIR=/data HOST=0.0.0.0 PORT=3000
+COPY --from=models /app/models /app/models
+ENV NODE_ENV=production WEB_DIST=/app/apps/web/dist DATA_DIR=/data HOST=0.0.0.0 PORT=3000 MODELS_DIR=/app/models
 USER app
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=3s CMD node -e "fetch('http://127.0.0.1:3000/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"

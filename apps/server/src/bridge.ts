@@ -21,6 +21,7 @@ import type { FastifyBaseLogger } from 'fastify';
 import { AttachmentNotFound, chatFiles, ingestAttachments } from './files.ts';
 import { GUARD_REASON } from './pi/guard.ts';
 import type { SessionRegistry } from './pi/registry.ts';
+import { indexChat, related, search } from './search.ts';
 import { topicState } from './topics.ts';
 
 export type Socket = {
@@ -94,6 +95,16 @@ export const summary = (r: ChatRow): ChatSummary => ({
   archived: r.archived,
   updatedAt: r.updatedAt,
 });
+
+/** Masked user and assistant texts of the session branch, in order. */
+export const transcript = (session: AgentSession) =>
+  session.sessionManager
+    .getBranch()
+    .flatMap((e) =>
+      e.type === 'message' && (e.message.role === 'user' || e.message.role === 'assistant')
+        ? [{ id: e.id, role: e.message.role, text: textOf(e.message) }]
+        : [],
+    );
 
 export function textOf(m: AgentMessage): string {
   if (!('content' in m)) return '';
@@ -308,12 +319,32 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
         const session = await registry.get(msg.chatId);
         join(msg.chatId, session);
         const restore = restorer(pseudo, () => send(socket, errorMsg('pseudo_down', msg.chatId)));
-        return send(socket, {
+        send(socket, {
           type: 'chat.state',
           chat: summary(r),
           messages: await history(session, chatFiles(db, userId, msg.chatId), restore),
         });
+        if (r.summary)
+          send(socket, {
+            type: 'chat.related',
+            chatId: r.id,
+            related: related(db, userId, r.id),
+          });
+        return;
       }
+      case 'chat.related':
+        owned(msg.chatId);
+        return send(socket, {
+          type: 'chat.related',
+          chatId: msg.chatId,
+          related: related(db, userId, msg.chatId),
+        });
+      case 'search.query':
+        return send(socket, {
+          type: 'search.results',
+          q: msg.q,
+          results: await search(db, userId, msg.q, msg.limit, pseudo),
+        });
       case 'chat.archive':
         return update(msg.chatId, { archived: msg.archived });
       case 'chat.rename': {
@@ -542,7 +573,15 @@ function forward(
           .returning()
           .get();
         if (r) emit({ type: 'chat.updated', chat: summary(r) });
-        return emit({ type: 'agent.status', chatId, state: 'idle' });
+        emit({ type: 'agent.status', chatId, state: 'idle' });
+        // Background: embedding takes a moment and must not hold the event chain.
+        indexChat(db, userId, chatId, transcript(session)).catch((err: unknown) =>
+          log.warn(
+            { chatId, error: err instanceof Error ? err.message : 'unknown' },
+            'index failed',
+          ),
+        );
+        return;
       }
     }
   };

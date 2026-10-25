@@ -4,8 +4,9 @@ import type { ServerMessage } from '@pa/protocol';
 import { and, count, eq, like } from 'drizzle-orm';
 import type { FastifyBaseLogger } from 'fastify';
 import { z } from 'zod';
-import { type BridgeDeps, broadcast, chatRow, summary, textOf } from './bridge.ts';
+import { type BridgeDeps, transcript as branch, broadcast, chatRow, summary } from './bridge.ts';
 import type { SessionRegistry } from './pi/registry.ts';
+import { indexChat } from './search.ts';
 
 const DEBOUNCE_MS = 2000;
 const TIMEOUT_MS = 20_000;
@@ -127,13 +128,8 @@ export function titleJobs(deps: {
     const session = await registry.get(chatId);
     // A new run started: its own settle schedules the job again.
     if (!session.isIdle) return;
-    const transcript = session.sessionManager
-      .getBranch()
-      .flatMap((e) =>
-        e.type === 'message' && (e.message.role === 'user' || e.message.role === 'assistant')
-          ? [`${e.message.role === 'user' ? 'Käyttäjä' : 'Avustaja'}: ${textOf(e.message)}`]
-          : [],
-      )
+    const transcript = branch(session)
+      .map((m) => `${m.role === 'user' ? 'Käyttäjä' : 'Avustaja'}: ${m.text}`)
       .join('\n\n');
     if (!transcript) return;
     if (chat.title && transcript.length - (lastRunChars.get(chatId) ?? 0) <= RERUN_CHARS) return;
@@ -224,6 +220,7 @@ export function titleJobs(deps: {
     broadcast(rooms, chatId, { type: 'chat.titled', chatId, title, topicId: r.topicId });
     broadcast(rooms, chatId, { type: 'chat.updated', chat: summary(r) });
     if (added) broadcast(rooms, chatId, topicState(db, userId));
+    await indexChat(db, userId, chatId);
   };
 
   /** Debounced per chat; jobs run one at a time. */

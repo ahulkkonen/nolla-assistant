@@ -1,4 +1,3 @@
-// Deferred to phase 8: memory consolidation and recall chunk/embedding tables.
 import { index, integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 
 export const users = sqliteTable('users', {
@@ -62,6 +61,26 @@ export const tags = sqliteTable(
     primaryKey({ columns: [t.chatId, t.tag] }),
     index('tags_user_tag_idx').on(t.userId, t.tag),
   ],
+);
+
+/**
+ * Masked text units for search and recall (plan §7/§8). Each row has a `chat_fts` row and a
+ * `chunk_vec` row with the same id (both raw SQL in index.ts).
+ */
+export const chunks = sqliteTable(
+  'chunks',
+  {
+    id: text().primaryKey(),
+    userId: text().notNull(),
+    chatId: chatRef(),
+    // title | summary | transcript
+    kind: text().notNull(),
+    messageId: text(),
+    seq: integer().notNull(),
+    text: text().notNull(),
+    createdAt: text().notNull(),
+  },
+  (t) => [index('chunks_user_chat_idx').on(t.userId, t.chatId)],
 );
 
 export const pushSubscriptions = sqliteTable('pushSubscriptions', {

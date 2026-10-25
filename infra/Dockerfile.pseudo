@@ -21,7 +21,8 @@ RUN curl -fsSL -o /tmp/om.tar.xz https://github.com/flammie/omorfi/releases/down
     && rm /tmp/om.tar.xz && ls /opt/omorfi/omorfi.generate.hfst
 
 FROM python:3.12.14-slim-trixie@sha256:f77ac9e44ae96ef2c90b8053ea08c31f8be030f824196b0ae4db6d462c84e51f
-RUN apt-get update && apt-get install -y --no-install-recommends libvoikko1 voikko-fi \
+# Debian trixie versions on 2026-10-25 (amd64 and arm64 alike).
+RUN apt-get update && apt-get install -y --no-install-recommends libvoikko1=4.3.2-1+b2 voikko-fi=2.5-2 \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --uid 10001 --user-group --no-create-home app && mkdir /data && chown app:app /data
 COPY --from=build /opt/venv /opt/venv
@@ -30,10 +31,13 @@ COPY --chown=app:app services/pseudo-svc/app /srv/app
 COPY --chown=app:app services/pseudo-svc/data /srv/data
 COPY --chown=app:app services/pseudo-svc/presidio-fi.yaml /srv/presidio-fi.yaml
 ENV PATH=/opt/venv/bin:$PATH PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \
-    OMORFI_MODELS=/opt/omorfi VAULT_PATH=/data/vault.db
+    OMORFI_MODELS=/opt/omorfi VAULT_PATH=/data/vault.db PSEUDO_REQUIRE_LAYERS=omorfi,voikko,ner
 WORKDIR /srv
 USER app
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=3s --start-period=120s --start-interval=2s \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=2)"
+# One worker only: the vault keeps its matcher caches, version counters and write lock in process
+# memory, and SQLCipher writes from two processes would race. A second worker would also load
+# spaCy and Omorfi again (about 1 GB more).
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]

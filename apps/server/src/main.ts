@@ -8,6 +8,7 @@ import { type Config, loadConfig } from './config.ts';
 import { buildServer } from './http.ts';
 import { writeModelsJson } from './pi/models.ts';
 import { SessionRegistry } from './pi/registry.ts';
+import { indexIdle } from './search.ts';
 import { titleJobs } from './topics.ts';
 
 export async function start(
@@ -66,6 +67,7 @@ export async function start(
     await titles.close();
     await registry.dispose();
     await app.close();
+    await indexIdle();
     sqlite.close();
   };
   return { app, registry, db, close };

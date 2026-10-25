@@ -98,6 +98,7 @@ export const ClientMessage = z.discriminatedUnion('type', [
     topicId: id64.optional(),
   }),
   z.object({ type: z.literal('chat.open'), chatId: id64 }),
+  z.object({ type: z.literal('chat.related'), chatId: id64 }),
   z.object({ type: z.literal('chat.list'), archived: z.boolean().optional() }),
   z.object({ type: z.literal('chat.archive'), chatId: id64, archived: z.boolean() }),
   z.object({
@@ -192,6 +193,11 @@ export const ServerMessage = z.discriminatedUnion('type', [
     topicId: id64.nullable(),
   }),
   z.object({ type: z.literal('chat.updated'), chat: ChatSummary }),
+  z.object({
+    type: z.literal('chat.related'),
+    chatId: id64,
+    related: z.array(z.object({ chatId: id64, title: z.string(), score: z.number() })),
+  }),
   z.object({
     type: z.literal('message.delta'),
     chatId: id64,

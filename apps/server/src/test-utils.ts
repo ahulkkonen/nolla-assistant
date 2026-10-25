@@ -11,6 +11,8 @@ import { loadConfig } from './config.ts';
 import { start } from './main.ts';
 
 /** Shared server test harness. Each test file runs `afterEach(runCleanups)`. */
+// One model cache for all tests, outside the per-test DATA_DIR (downloaded once).
+process.env.MODELS_DIR ||= join(tmpdir(), 'pa-models');
 export const KEY = 'sk-test-master';
 export const PASSWORD = 'correct horse';
 const PASSWORD_HASH = await hashPassword(PASSWORD);

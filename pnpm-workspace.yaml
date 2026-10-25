@@ -12,3 +12,5 @@ allowBuilds:
   esbuild: true
   '@google/genai': false
   protobufjs: false
+  # Binaries ship in the package; postinstall only fetches optional CUDA files.
+  onnxruntime-node: false

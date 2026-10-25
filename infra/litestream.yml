@@ -1,21 +1,11 @@
 # Continuous SQLite replication to the S3 bucket (plan section 4).
-# vault.db is SQLCipher-encrypted, but on disk it is still a normal SQLite file: only the page
-# contents are encrypted, the WAL framing is not. Litestream replicates the pages unchanged, so
-# the replica holds ciphertext and the restored file opens with the same PSEUDO_VAULT_KEY.
+# vault.db is not here: SQLCipher encrypts page 1 as well, so the file has no SQLite header and
+# Litestream cannot read it. infra/backup/entrypoint.sh snapshots it hourly with restic instead.
 # ${VAR} references are expanded from the environment by Litestream.
 dbs:
   - path: /data/app.db
     replica:
       url: s3://${S3_BUCKET}/litestream/app
-      endpoint: ${S3_ENDPOINT}
-      access-key-id: ${S3_ACCESS_KEY}
-      secret-access-key: ${S3_SECRET_KEY}
-      force-path-style: true
-      sync-interval: 1s
-      retention: 24h
-  - path: /data/vault.db
-    replica:
-      url: s3://${S3_BUCKET}/litestream/vault
       endpoint: ${S3_ENDPOINT}
       access-key-id: ${S3_ACCESS_KEY}
       secret-access-key: ${S3_SECRET_KEY}
