@@ -29,6 +29,11 @@ Gate command: `pnpm typecheck && pnpm lint && pnpm test && pnpm test:sandbox` (D
 4. **Skills** live in `skills/<name>/SKILL.md` (+ `bin/`), loaded through `additionalSkillPaths`; the
    skill frontmatter may carry `sandbox: { network: none | [hosts], mounts: [] }`. The broker receives
    the skill name and applies its policy; unknown skill → `network: none`.
+   **Implemented (task 2):** `network: none` (default) and `network: internet` (full egress on the
+   bridge network `pa-skill-egress`, created by the broker on first use). Docker has no
+   per-container egress allowlist, so `network: [hosts]` needs an allowlisting egress proxy; that is
+   a phase-7 item. Until then a host list fails closed to `none`. The gate needs only `none`.
+   Bind sources are host paths: compose passes `HOST_DATA_DIR` and `HOST_SKILLS_DIR` (docs/deploy.md).
 5. **Subagents** (`pi-ext-subagents`): adapted from Pi's example (contract note §12). Children are
    `node <pi cli> --mode rpc --no-session`? No: children need their own JSONL under the parent's chat
    folder (plan §9), so children run `--mode rpc --session-dir /data/sessions/<userId>/<chatId>/sub/`

@@ -131,6 +131,8 @@ const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => {
   for (const c of cleanups.splice(0)) await c();
 });
+/** Registers a teardown that runs after the current test. */
+export const onCleanup = (c: () => Promise<void>) => void cleanups.push(c);
 
 /** Fresh temp dataDir, fresh fake-llm, booted Pi. Torn down after each test. */
 export async function setup(

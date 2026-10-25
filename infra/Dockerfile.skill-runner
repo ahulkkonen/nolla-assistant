@@ -1,0 +1,13 @@
+# Throwaway runner for sandboxed commands (phase-5 decision 3). Built by scripts/build-skill-runner.sh;
+# sandbox-broker starts one container per command with no network by default.
+# debian:bookworm-20261005-slim pushed 2026-10-06 (newest bookworm slim at least 7 days old on 2026-10-25).
+FROM debian:bookworm-20261005-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends bash coreutils curl jq python3 ca-certificates \
+ && rm -rf /var/lib/apt/lists/* \
+ && useradd --uid 10001 --user-group --no-create-home runner \
+ && mkdir /work && chown runner:runner /work
+ENV PATH=/skill/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin HOME=/tmp
+USER runner
+WORKDIR /work
+CMD ["bash"]

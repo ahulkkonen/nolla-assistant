@@ -1,4 +1,4 @@
-# Later phases add: mcp-workspace, sandbox-broker.
+# Later phases add: mcp-workspace.
 services:
   pa-server:
     build: { context: .., dockerfile: infra/Dockerfile.server }
@@ -20,6 +20,8 @@ services:
       USER_ID: ${USER_ID}
       MODEL: ${MODEL}
       PSEUDO_URL: ${PSEUDO_URL:-http://pseudo-svc:8000}
+      BROKER_URL: ${BROKER_URL:-http://sandbox-broker:8100}
+      BROKER_TOKEN: ${BROKER_TOKEN}
     # ports: no mapping. Coolify's proxy attaches to container port 3000.
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
@@ -45,6 +47,35 @@ services:
       SELF_NAME: ${SELF_NAME:-}
     # healthcheck: from the image (start period 120 s; spaCy and Omorfi load at startup)
     mem_limit: 1536m  # measured ~1.1 GiB after the 300-line corpus run
+    networks: [internal]
+
+  # Runs `bash` tool commands in throwaway pa-skill-runner containers (phase-5 decision 3). The only
+  # service with the Docker socket. Root in the container because the socket is root-owned; all
+  # capabilities dropped except CHOWN and DAC_OVERRIDE (it creates /data/work/<userId> for uid 10001).
+  # Skill containers with `network: internet` join `pa-skill-egress`; the broker creates that
+  # network on first use, because compose creates only networks that a service joins.
+  sandbox-broker:
+    build: { context: .., dockerfile: infra/Dockerfile.broker }
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE]
+    security_opt: ["no-new-privileges:true"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - pa-data:/data
+    environment:
+      BROKER_TOKEN: ${BROKER_TOKEN}
+      DATA_DIR: /data
+      SKILLS_DIR: /app/skills
+      # Bind sources are resolved by the Docker host: set these to the host paths of the pa-data
+      # volume and of the repo's skills/ directory (docs/deploy.md).
+      HOST_DATA_DIR: ${HOST_DATA_DIR:-}
+      HOST_SKILLS_DIR: ${HOST_SKILLS_DIR:-}
+      SKILL_RUNNER_IMAGE: ${SKILL_RUNNER_IMAGE:-pa-skill-runner:latest}
+    # healthcheck: from the image
+    mem_limit: 128m
     networks: [internal]
 
   # Model egress (plan §4, decision 0004). The only service holding OPENROUTER_API_KEY.

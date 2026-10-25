@@ -97,3 +97,25 @@ scripts/restore-drill.sh
 ```
 
 The drill starts a local S3 server (rustfs; MinIO has no image on Docker Hub), creates a chat, backs up, deletes the volume, restores and checks that the chat opens. It needs Docker and Node and takes about 20 seconds after the images are pulled.
+
+## Sandbox
+
+The `bash` tool runs each command in a throwaway `pa-skill-runner` container. The `sandbox-broker` service starts these containers. It is the only service with the Docker socket.
+
+1. Build the runner image on the Docker host. Compose cannot build an image that no service runs. Do this before the first deploy and after each change to `infra/Dockerfile.skill-runner`:
+
+   ```sh
+   scripts/build-skill-runner.sh
+   ```
+
+2. Add these environment variables in Coolify:
+
+   | Variable | Value |
+   |---|---|
+   | `BROKER_TOKEN` | at least 32 random characters, for example `openssl rand -base64 48`. `pa-server` and `sandbox-broker` share it. |
+   | `HOST_DATA_DIR` | the host path of the `pa-data` volume, from `docker volume inspect <project>_pa-data --format '{{.Mountpoint}}'` |
+   | `HOST_SKILLS_DIR` | the host path of the `skills/` directory of the checkout. Only skills with a `bin/` directory need it. |
+
+   The broker gives these paths to the Docker host as bind sources. A path inside the broker container does not work.
+
+3. Deploy. The broker creates the `pa-skill-egress` network when a skill with `network: internet` runs for the first time.
