@@ -4,6 +4,7 @@ CREATE TABLE `memoryConsolidations` (
 	`diff` text NOT NULL,
 	`proposedUser` text NOT NULL,
 	`proposedMemory` text NOT NULL,
+	`baseHash` text NOT NULL,
 	`status` text DEFAULT 'pending' NOT NULL,
 	`createdAt` text NOT NULL
 );

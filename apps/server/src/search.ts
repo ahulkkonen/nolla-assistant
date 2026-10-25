@@ -180,13 +180,13 @@ export async function search(
   q: string,
   limit: number,
   pseudo?: PseudoClient,
-  /** `since` (ISO date) on the chunk's `createdAt`, `topic` on the chat's `topicId`. */
+  /** `since` (ISO datetime) on the chat's `createdAt`, `topic` on its `topicId`. */
   filter: { since?: string | undefined; topic?: string | undefined } = {},
 ): Promise<SearchResult[]> {
   const masked = pseudo ? (await pseudo.mask(`search:${userId}`, q)).masked : q;
   const sqlite = db.$client;
   const conds = [
-    ...(filter.since ? ['c.createdAt >= ?'] : []),
+    ...(filter.since ? ['h.createdAt >= ?'] : []),
     ...(filter.topic ? ['h.topicId = ?'] : []),
   ];
   // ponytail: post-filter, so kNN `k` counts filtered-out chunks too; widen k if recall misses.

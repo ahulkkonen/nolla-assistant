@@ -100,8 +100,10 @@ export const memoryPending = sqliteTable('memoryPending', {
   text: text().notNull(),
   // The text `replace` swaps out; null for add and remove.
   replace: text(),
-  // pending | applied | rejected
-  status: text().notNull().default('pending'),
+  // failed: approved, but the write no longer applied (text gone or memory full).
+  status: text({ enum: ['pending', 'applied', 'rejected', 'failed'] })
+    .notNull()
+    .default('pending'),
   createdAt: text().notNull(),
 });
 
@@ -112,8 +114,12 @@ export const memoryConsolidations = sqliteTable('memoryConsolidations', {
   diff: text().notNull(),
   proposedUser: text().notNull(),
   proposedMemory: text().notNull(),
-  // pending | accepted | rejected
-  status: text().notNull().default('pending'),
+  // sha256 of USER.md + NUL + MEMORY.md when proposed; accept refuses if the files changed since.
+  baseHash: text().notNull(),
+  // pending: awaiting review; accepted / rejected: by the user; superseded: a newer proposal exists.
+  status: text({ enum: ['pending', 'accepted', 'rejected', 'superseded'] })
+    .notNull()
+    .default('pending'),
   createdAt: text().notNull(),
 });
 

@@ -44,6 +44,8 @@ export async function boot(turns: FakeTurn[], env: Record<string, string> = {}) 
     AUTH_ORIGIN: 'http://localhost:3000',
     COOKIE_SECRET: 'x'.repeat(32),
     AUTH_PASSWORD_HASH: PASSWORD_HASH,
+    // No `mcp-workspace` host in tests; tests/mcp passes its own file.
+    MCP_CONFIG: 'none',
     ...env,
   });
   cleanups.push(
@@ -118,19 +120,20 @@ export async function bootPseudo(
   dictionary: Record<string, string>,
   turns: FakeTurn[],
   opts: Parameters<typeof startFakeSidecar>[1] = {},
+  env: Record<string, string> = {},
 ) {
   const sc = await startFakeSidecar(dictionary, opts);
   cleanups.push(sc.close);
-  return { ...(await bootChat(turns, { PSEUDO_URL: sc.url })), sc };
+  return { ...(await bootChat(turns, { ...env, PSEUDO_URL: sc.url })), sc };
 }
 
 const TOKEN = 'broker-test-token';
 
 /** Boots with the fake broker rooted at the work dir; returns a socket on a new research chat. */
-export async function bootResearch(turns: FakeTurn[]) {
+export async function bootResearch(turns: FakeTurn[], env: Record<string, string> = {}) {
   const broker = await startFakeBroker({ token: TOKEN, root: '' });
   cleanups.push(broker.close);
-  const b = await boot(turns, { BROKER_URL: broker.url, BROKER_TOKEN: TOKEN });
+  const b = await boot(turns, { BROKER_URL: broker.url, BROKER_TOKEN: TOKEN, ...env });
   const srv = await b.run();
   broker.state.root = srv.registry.cwd;
   const c = await connect(b.config.port);

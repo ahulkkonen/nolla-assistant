@@ -1,13 +1,23 @@
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { chats, chunks } from '@pa/db';
+import { chats, memoryConsolidations, memoryPending, openDb, topics } from '@pa/db';
+import { startFakeSidecar } from '@pa/pi-ext-pseudo/fake-sidecar';
 import { eq } from 'drizzle-orm';
 import { afterEach, expect, test } from 'vitest';
 import { loadModel } from './embeddings.ts';
-import { lineDiff } from './memory.ts';
+import { lineDiff, MemoryError, memoryStore } from './memory.ts';
 import { indexChat } from './search.ts';
-import { bootChat, bootPseudo, bootResearch, runCleanups } from './test-utils.ts';
+import {
+  bootChat,
+  bootPseudo,
+  bootResearch,
+  cleanups,
+  connect,
+  runCleanups,
+} from './test-utils.ts';
 
 afterEach(runCleanups);
 
@@ -21,6 +31,11 @@ const text = (m: Msg | undefined) =>
 const messages = (body: { messages: Msg[] } | undefined) => body?.messages ?? [];
 const lastTool = (body: { messages: Msg[] } | undefined) =>
   text(messages(body).findLast((m) => m.role === 'tool'));
+const sidecar = async (dictionary: Record<string, string> = {}) => {
+  const sc = await startFakeSidecar(dictionary);
+  cleanups.push(sc.close);
+  return { PSEUDO_URL: sc.url };
+};
 const memoryDir = (dataDir: string) => join(dataDir, 'memory', 'aleksi');
 const add = (t: string) => ({
   toolCalls: [{ name: 'memory', args: { action: 'add', target: 'memory', text: t } }],
@@ -65,24 +80,35 @@ test('injected memory is masked and byte-stable across two turns', {
 });
 
 test.skipIf(!modelOk)(
-  'recall finds a fact from a chat dated 8 days ago',
-  {
-    timeout: 60_000,
-  },
+  'recall finds a fact from a chat dated 8 days ago; since and topic filter it; the result is masked',
+  { timeout: 60_000 },
   async () => {
-    const since = new Date(Date.now() - 7 * 86_400_000).toISOString().slice(0, 10);
-    const { llm, srv, c, chat } = await bootChat([
-      { toolCalls: [{ name: 'recall', args: { query: 'sähkösopimus' } }] },
+    const day = 86_400_000;
+    const iso = (days: number) => new Date(Date.now() - days * day).toISOString();
+    const recall = (args: object) => ({
+      toolCalls: [{ name: 'recall', args: { query: 'sähkösopimus', ...args } }],
+    });
+    const { llm, sc, srv, c, chat } = await bootPseudo({ 'Matti Virtanen': 'Pekka Laaksonen' }, [
+      recall({}),
       { text: 'Löytyi.' },
-      { toolCalls: [{ name: 'recall', args: { query: 'sähkösopimus', since } }] },
-      { text: 'Ei löytynyt.' },
+      recall({ since: iso(7).slice(0, 10) }),
+      { text: 'Ei.' },
+      recall({ topic: 't-other' }),
+      { text: 'Ei.' },
+      recall({ topic: 't-home', since: iso(9) }),
+      { text: 'Löytyi.' },
     ]);
-    const old = new Date(Date.now() - 8 * 86_400_000).toISOString();
+    const old = iso(8);
+    srv.db
+      .insert(topics)
+      .values({ id: 't-home', userId: 'aleksi', name: 'Koti', createdAt: old })
+      .run();
     srv.db
       .insert(chats)
       .values({
         id: 'old-chat',
         userId: 'aleksi',
+        topicId: 't-home',
         title: 'Sähkön kilpailutus',
         titleMasked: 'Sähkön kilpailutus',
         sessionPath: 'sessions/aleksi/',
@@ -90,32 +116,49 @@ test.skipIf(!modelOk)(
         updatedAt: old,
       })
       .run();
+    // The index holds masked text.
     await indexChat(srv.db, 'aleksi', 'old-chat', [
-      { id: 'm1', text: 'Sähkösopimus päättyy 30.11.' },
+      { id: 'm1', text: 'Pekka Laaksonen: Sähkösopimus päättyy 30.11.' },
     ]);
-    srv.db.update(chunks).set({ createdAt: old }).where(eq(chunks.chatId, 'old-chat')).run();
+    const ask = async (text: string) => {
+      c.send({ type: 'user.message', chatId: chat.id, text });
+      await c.idle();
+    };
 
-    c.send({ type: 'user.message', chatId: chat.id, text: 'Milloin se päättyy?' });
-    await c.idle();
+    await ask('Milloin se päättyy?');
     const hit = lastTool(llm.requests[1]?.body);
     expect(hit).toContain('päättyy 30.11.');
     expect(hit).toContain('(old-chat)');
     expect(hit).toContain(`[${old.slice(0, 10)}]`);
+    // search restored the snippet; tool_result masked it again.
+    expect(hit).toContain('Pekka Laaksonen');
+    expect(hit).not.toContain('Matti Virtanen');
+    expect(
+      sc.requests.some(
+        (r) => r.path === '/mask' && JSON.stringify(r.body).includes('Matti Virtanen'),
+      ),
+    ).toBe(true);
 
-    c.send({ type: 'user.message', chatId: chat.id, text: 'Entä viime viikolla?' });
-    await c.idle();
+    await ask('Entä viime viikolla?');
     expect(lastTool(llm.requests[3]?.body)).not.toContain('old-chat');
+    await ask('Muissa aiheissa?');
+    expect(lastTool(llm.requests[5]?.body)).not.toContain('old-chat');
+    await ask('Kodin aiheessa?');
+    expect(lastTool(llm.requests[7]?.body)).toContain('(old-chat)');
   },
 );
 
 test('a memory write after bash waits for approval, then applies and commits', {
   timeout: 60_000,
 }, async () => {
-  const { llm, config, c, chat } = await bootResearch([
-    { toolCalls: [{ name: 'bash', args: { command: 'echo hei' } }] },
-    add('Sähkösopimus päättyy 30.11.'),
-    { text: 'Ok.' },
-  ]);
+  const { llm, config, c, chat } = await bootResearch(
+    [
+      { toolCalls: [{ name: 'bash', args: { command: 'echo hei' } }] },
+      add('Sähkösopimus päättyy 30.11.'),
+      { text: 'Ok.' },
+    ],
+    await sidecar(),
+  );
   c.send({ type: 'user.message', chatId: chat.id, text: 'Aja ja muista' });
   const req = await c.next('approval.request');
   c.send({ type: 'approval.respond', requestId: req.requestId, approve: true });
@@ -147,7 +190,7 @@ test('a memory write after bash waits for approval, then applies and commits', {
 test('an untainted memory write applies at once and the room gets memory.state', {
   timeout: 60_000,
 }, async () => {
-  const { c, chat } = await bootChat([add('Pitää kahvista.'), { text: 'Ok.' }]);
+  const { c, chat } = await bootPseudo({}, [add('Pitää kahvista.'), { text: 'Ok.' }]);
   c.send({ type: 'user.message', chatId: chat.id, text: 'Muista: pidän kahvista.' });
   const st = await c.next('memory.state');
   expect(st.memory).toBe('Pitää kahvista.');
@@ -156,7 +199,7 @@ test('an untainted memory write applies at once and the room gets memory.state',
 });
 
 test('an over-cap memory write returns an error result', { timeout: 60_000 }, async () => {
-  const { llm, c, chat } = await bootChat([add('x'.repeat(2600)), { text: 'Ok.' }]);
+  const { llm, c, chat } = await bootPseudo({}, [add('x'.repeat(2600)), { text: 'Ok.' }]);
   c.send({ type: 'user.message', chatId: chat.id, text: 'Muista tämä.' });
   expect((await c.next('tool.end')).status).toBe('error');
   await c.idle();
@@ -167,7 +210,10 @@ test('consolidation stores a diff and accepting writes the files', {
   timeout: 60_000,
 }, async () => {
   const proposal = { user: 'Nimi: Aleksi', memory: 'Sähkösopimus päättyy 30.11.' };
-  const { llm, c, config } = await bootChat([{ text: JSON.stringify(proposal) }]);
+  const { llm, c, config } = await bootPseudo({}, [
+    { text: JSON.stringify(proposal) },
+    { text: JSON.stringify(proposal) },
+  ]);
   c.send({
     type: 'memory.edit',
     target: 'memory',
@@ -184,4 +230,107 @@ test('consolidation stores a diff and accepting writes the files', {
   const after = await c.next('memory.state');
   expect(after).toMatchObject({ ...proposal, consolidation: null });
   expect(readFileSync(join(memoryDir(config.dataDir), 'USER.md'), 'utf8')).toBe(proposal.user);
+
+  // A proposal made before a hand edit is refused.
+  c.send({ type: 'memory.edit', target: 'memory', text: 'Uusi.\nToinen.' });
+  await c.next('memory.state');
+  c.send({ type: 'memory.consolidate' });
+  const next = await c.next('memory.state');
+  c.send({ type: 'memory.edit', target: 'memory', text: 'Käsin muutettu.' });
+  await c.next('memory.state');
+  c.send({ type: 'memory.consolidation.resolve', id: next.consolidation?.id ?? 0, accept: true });
+  await expect(c.next('memory.state')).rejects.toThrow('memory_conflict');
+});
+
+test('an over-cap memory.edit is refused', { timeout: 60_000 }, async () => {
+  const { c } = await bootPseudo({}, []);
+  c.send({ type: 'memory.edit', target: 'user', text: 'x'.repeat(1600) });
+  await expect(c.next('memory.state')).rejects.toThrow('memory_full');
+});
+
+test('without the sidecar memory is off and consolidation fails closed', {
+  timeout: 60_000,
+}, async () => {
+  const { srv, c, chat } = await bootChat([]);
+  expect((await srv.registry.get(chat.id)).getActiveToolNames()).not.toContain('memory');
+  c.send({ type: 'memory.consolidate' });
+  await expect(c.next('memory.state')).rejects.toThrow('pseudo_down');
+});
+
+test('memory.state goes to every open socket', { timeout: 60_000 }, async () => {
+  const { c, config } = await bootPseudo({}, []);
+  const other = await connect(config.port);
+  c.send({ type: 'memory.edit', target: 'memory', text: 'Jaettu.' });
+  expect((await other.next('memory.state')).memory).toBe('Jaettu.');
+});
+
+/** The store without a server: pending queue and consolidation edge cases. */
+function store() {
+  const dir = mkdtempSync(join(tmpdir(), 'pa-memory-'));
+  const { db, sqlite } = openDb(join(dir, 'app.db'));
+  const now = new Date().toISOString();
+  db.insert(chats)
+    .values({ id: 'c1', userId: 'aleksi', sessionPath: 's/', createdAt: now, updatedAt: now })
+    .run();
+  const warnings: string[] = [];
+  const m = memoryStore({
+    db,
+    dataDir: dir,
+    userId: 'aleksi',
+    litellmUrl: 'http://127.0.0.1:1',
+    litellmMasterKey: 'k',
+    warn: (msg) => void warnings.push(msg),
+    sendAll: () => {},
+  });
+  cleanups.push(() => {
+    m.close();
+    sqlite.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+  return { m, db };
+}
+
+test('pending writes: dedupe, cap 5 per chat, a replace whose text is gone fails', () => {
+  const { m, db } = store();
+  const w = { action: 'add', target: 'memory', text: 'a' } as const;
+  expect(m.park('c1', w)).toBe(m.park('c1', w));
+  for (const t of ['b', 'c', 'd', 'e']) m.park('c1', { ...w, text: t });
+  expect(() => m.park('c1', { ...w, text: 'f' })).toThrow('liikaa odottavia kirjoituksia');
+
+  // Rejecting one frees a slot.
+  expect(m.approve(1, false)).toBe('rejected');
+  m.edit('memory', 'vanha');
+  const replaceId = m.park('c1', {
+    action: 'replace',
+    target: 'memory',
+    text: 'uusi',
+    replace: 'vanha',
+  });
+  m.edit('memory', 'muutettu');
+  expect(m.approve(replaceId, true)).toBe('failed');
+  expect(db.select().from(memoryPending).where(eq(memoryPending.id, replaceId)).get()?.status).toBe(
+    'failed',
+  );
+  expect(m.read('memory')).toBe('muutettu');
+  expect(m.approve(replaceId, true)).toBeUndefined();
+});
+
+test('an over-cap consolidation edit is refused', () => {
+  const { m, db } = store();
+  const baseHash = createHash('sha256').update('\0').digest('hex');
+  const id = db
+    .insert(memoryConsolidations)
+    .values({
+      userId: 'aleksi',
+      diff: 'd',
+      proposedUser: 'u',
+      proposedMemory: 'm',
+      baseHash,
+      createdAt: new Date().toISOString(),
+    })
+    .returning()
+    .get().id;
+  expect(() => m.resolveConsolidation(id, true, { user: 'x'.repeat(1600) })).toThrow(MemoryError);
+  expect(m.resolveConsolidation(id, true, { user: 'ok' })).toBe(true);
+  expect(m.read('user')).toBe('ok');
 });

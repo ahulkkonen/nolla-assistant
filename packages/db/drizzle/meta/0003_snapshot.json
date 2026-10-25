@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "ee63f818-160c-4477-8410-2f5b2041e88b",
+  "id": "606fa43c-4dbd-40c4-8cb1-5d600673ad08",
   "prevId": "12382b29-e2f2-455c-949b-f04444fd24ee",
   "tables": {
     "authSessions": {
@@ -413,6 +413,13 @@
         },
         "proposedMemory": {
           "name": "proposedMemory",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "baseHash": {
+          "name": "baseHash",
           "type": "text",
           "primaryKey": false,
           "notNull": true,

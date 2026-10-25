@@ -24,6 +24,12 @@ gate is evaluated in order after phases 6 and 7.
    `agent_start`. A `memory` call in a tainted turn is parked in `memoryPending` and the tool returns
    "odottaa hyväksyntää"; `memory.approve` applies it. Writes from untainted turns apply at once and
    the bridge sends a `memory.state` so the PWA can show a diff chip.
+   Taint is an allowlist: only `memory` and a `read` of a real path inside the workspace and not
+   under `files/` keep a turn clean; a prompt with an inlined attachment (`[Liite: ...]`) starts
+   tainted. Known ceiling: taint is per turn, so text that an earlier turn brought into the
+   history can still steer a later untainted `memory` call. At most 5 pending writes per chat.
+   The memory message is injected only when its content changed since the last injection in the
+   session (always on the first turn). Without `PSEUDO_URL` memory is disabled (fail closed).
 4. **Consolidation**: weekly (`0 4 * * 1` Europe/Helsinki, `node-cron`) and on demand: a
    `zdr/task-small` call over the **masked** files proposing a new USER.md/MEMORY.md; stored in
    `memoryConsolidations` as a unified diff (restored for display); accept / edit / reject in the

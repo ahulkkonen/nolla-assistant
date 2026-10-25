@@ -1,4 +1,6 @@
-import { isAbsolute, relative } from 'node:path';
+import { realpathSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { isAbsolute, relative, resolve, sep } from 'node:path';
 import type { ExtensionFactory } from '@earendil-works/pi-coding-agent';
 import { Type } from 'typebox';
 
@@ -16,9 +18,16 @@ export type MemoryLog = (level: 'warn' | 'debug', msg: string, data?: object) =>
 export const CAPS: Record<Target, number> = { user: 1500, memory: 2500 };
 export const FILES: Record<Target, string> = { user: 'USER.md', memory: 'MEMORY.md' };
 export const FULL = 'Muisti on täynnä: tiivistä ensin (`replace`/`remove`)';
-const NOT_FOUND = 'Tekstiä ei löytynyt muistista.';
+export const NOT_FOUND = 'Tekstiä ei löytynyt muistista.';
+/** The bridge appends inlined documents after this marker (untrusted text). */
+export const ATTACHMENT_MARKER = '\n\n[Liite: ';
+const BAD_SINCE = 'since: anna ISO-päivämäärä (VVVV-KK-PP) tai -aika.';
+const ISO = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})?)?$/;
 
-/** Applies one write to `current`; returns the new text or an error for the agent. */
+/**
+ * Applies one write to `current`; returns the new text or an error for the agent. Only a write
+ * that grows the text past the cap fails, so shrinking writes always pass.
+ */
 export function applyOp(current: string, w: MemoryWrite): { text: string } | { error: string } {
   let text: string;
   if (w.action === 'add') text = current.trim() ? `${current.trimEnd()}\n${w.text}` : w.text;
@@ -27,16 +36,37 @@ export function applyOp(current: string, w: MemoryWrite): { text: string } | { e
     if (!old || !current.includes(old)) return { error: NOT_FOUND };
     text = current.replace(old, w.action === 'replace' ? w.text : '').replace(/\n{3,}/g, '\n\n');
   }
-  return text.length > CAPS[w.target] ? { error: FULL } : { text };
+  return text.length > CAPS[w.target] && text.length > current.length ? { error: FULL } : { text };
 }
 
-/** Untrusted tool output taints the turn (phase-8 decision 3). */
-function untrusted(toolName: string, input: Record<string, unknown>, cwd: string) {
-  if (['bash', 'recall', 'subagent'].includes(toolName) || toolName.startsWith('mcp__'))
-    return true;
+/** One line, no control characters, at most 80 chars. */
+export const sanitizeTitle = (t: string) =>
+  t
+    .replace(/\p{Cc}+/gu, ' ')
+    .trim()
+    .slice(0, 80);
+
+/**
+ * Allowlist (phase-8 decision 3): only `memory` and a `read` of a real path inside `cwd` and not
+ * under `files/` keep the turn clean. Every other tool taints it.
+ */
+export function cleanTool(toolName: string, input: Record<string, unknown>, cwd: string) {
+  if (toolName === 'memory') return true;
   if (toolName !== 'read' || typeof input.path !== 'string') return false;
-  const rel = relative(cwd, isAbsolute(input.path) ? input.path : `${cwd}/${input.path}`);
-  return rel.startsWith('..') || isAbsolute(rel) || rel === 'files' || rel.startsWith('files/');
+  let p = input.path.replace(/^@/, '');
+  if (p === '~' || p.startsWith('~/')) p = homedir() + p.slice(1);
+  try {
+    const rel = relative(realpathSync(cwd), realpathSync(resolve(cwd, p)));
+    return (
+      rel !== '' &&
+      !rel.startsWith('..') &&
+      !isAbsolute(rel) &&
+      rel !== 'files' &&
+      !rel.startsWith(`files${sep}`)
+    );
+  } catch {
+    return false;
+  }
 }
 
 const text = (t: string, isError = false) => ({
@@ -53,47 +83,67 @@ export function memoryExtension(opts: {
   userId: string;
   chatId: string;
   files: { read(target: Target): Promise<string> };
-  mask: (text: string) => Promise<string> | string;
+  mask: (text: string) => Promise<string>;
+  /** Read once when the session is built. */
   recentTitles: () => Promise<string[]>;
+  /** `since` is a normalised ISO datetime. */
   recall: (q: string, o: { since?: string; topic?: string }) => Promise<Snippet[]>;
-  /** Parks a tainted write; resolves with the pending id. */
+  /** Parks a tainted write unvalidated; resolves with the pending id, rejects with a message for the agent. */
   park: (write: MemoryWrite) => Promise<number>;
   applyNow: (write: MemoryWrite) => Promise<void>;
   log: MemoryLog;
 }): ExtensionFactory {
   let tainted = false;
-  // The raw template and its masked form: unchanged files give byte-identical messages.
-  let cache: { raw: string; masked: string } | undefined;
+  /** An attachment arrived with the prompt: the next run starts tainted. */
+  let attached = false;
+  /** Raw template last injected in this session; unchanged content is not injected again. */
+  let injected: string | undefined;
 
   return (pi) => {
+    const titles = opts
+      .recentTitles()
+      .then((ts) => ts.map(sanitizeTitle))
+      .catch(() => []);
+
+    pi.on('input', (event) => {
+      if (!event.text?.includes(ATTACHMENT_MARKER)) return;
+      attached = true;
+      tainted = true;
+    });
+
     pi.on('before_agent_start', async (event) => {
       if (event.messageType !== 'user') return;
-      const [user, memory, titles] = await Promise.all([
+      const [user, memory, ts] = await Promise.all([
         opts.files.read('user'),
         opts.files.read('memory'),
-        opts.recentTitles(),
+        titles,
       ]);
-      const raw = `## Käyttäjä\n${user}\n\n## Muisti\n${memory}\n\n## Viimeisimmät keskustelut\n${titles.map((t) => `- ${t}`).join('\n')}`;
-      if (cache?.raw !== raw) {
-        try {
-          cache = { raw, masked: await opts.mask(raw) };
-        } catch (err) {
-          cache = undefined;
-          opts.log('warn', 'memory not injected: mask failed', {
-            error: err instanceof Error ? err.name : 'unknown',
-          });
-          return;
-        }
+      const raw = `## Käyttäjä\n${user}\n\n## Muisti\n${memory}\n\n## Viimeisimmät keskustelut\n${ts.map((t) => `- ${t}`).join('\n')}`;
+      if (raw === injected) return;
+      let content: string;
+      try {
+        content = await opts.mask(raw);
+      } catch (err) {
+        opts.log('warn', 'memory not injected: mask failed', {
+          error: err instanceof Error ? err.name : 'unknown',
+        });
+        return;
       }
-      return { message: { customType: 'memory', display: false, content: cache.masked } };
+      injected = raw;
+      return { message: { customType: 'memory', display: false, content } };
     });
 
     pi.on('agent_start', () => {
-      tainted = false;
+      tainted = attached;
+      attached = false;
     });
 
+    // Both: `tool_call` covers a write later in the same batch, `tool_result` any late result.
+    pi.on('tool_call', (event, ctx) => {
+      if (!cleanTool(event.toolName, event.input, ctx.cwd)) tainted = true;
+    });
     pi.on('tool_result', (event, ctx) => {
-      if (untrusted(event.toolName, event.input, ctx.cwd)) tainted = true;
+      if (!cleanTool(event.toolName, event.input, ctx.cwd)) tainted = true;
     });
 
     pi.registerTool({
@@ -103,12 +153,16 @@ export function memoryExtension(opts: {
         'Search earlier chats (summaries and transcripts). Returns at most 5 snippets with dates and chat ids.',
       parameters: Type.Object({
         query: Type.String(),
-        since: Type.Optional(Type.String({ description: 'ISO date, e.g. 2026-10-01' })),
+        since: Type.Optional(
+          Type.String({ description: 'Chats created on or after this ISO date, e.g. 2026-10-01' }),
+        ),
         topic: Type.Optional(Type.String({ description: 'Topic id' })),
       }),
       async execute(_id, p) {
+        if (p.since && (!ISO.test(p.since) || Number.isNaN(Date.parse(p.since))))
+          return text(BAD_SINCE, true);
         const hits = await opts.recall(p.query, {
-          ...(p.since ? { since: p.since } : {}),
+          ...(p.since ? { since: new Date(p.since).toISOString() } : {}),
           ...(p.topic ? { topic: p.topic } : {}),
         });
         if (!hits.length) return text('Ei osumia.');
@@ -133,9 +187,16 @@ export function memoryExtension(opts: {
       }),
       async execute(_id, p) {
         const write: MemoryWrite = { ...p };
+        // Tainted: validated at approve time against the file as it is then.
+        if (tainted) {
+          try {
+            return text(`Kirjoitus odottaa hyväksyntääsi (id ${await opts.park(write)})`);
+          } catch (err) {
+            return text(err instanceof Error ? err.message : 'park failed', true);
+          }
+        }
         const r = applyOp(await opts.files.read(p.target), write);
         if ('error' in r) return text(r.error, true);
-        if (tainted) return text(`Kirjoitus odottaa hyväksyntääsi (id ${await opts.park(write)})`);
         await opts.applyNow(write);
         return text('Tallennettu.');
       },

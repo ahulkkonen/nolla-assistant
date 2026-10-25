@@ -1,5 +1,6 @@
-import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { chats, type Db, memoryConsolidations, memoryPending } from '@pa/db';
 import {
@@ -8,6 +9,7 @@ import {
   FILES,
   FULL,
   type MemoryWrite,
+  NOT_FOUND,
   type Snippet,
   type Target,
 } from '@pa/pi-ext-memory';
@@ -19,8 +21,15 @@ import { z } from 'zod';
 import { search } from './search.ts';
 import { taskSmall } from './topics.ts';
 
-/** A write that cannot apply; `message` is `FULL` for an over-cap write. */
+/**
+ * A memory operation that cannot run. `message` is `FULL` (over cap), `CONFLICT` (files or text
+ * changed) or `PSEUDO_REQUIRED` (no sidecar: masked-only consolidation is impossible).
+ */
 export class MemoryError extends Error {}
+export const CONFLICT = 'conflict';
+export const PSEUDO_REQUIRED = 'pseudo_required';
+const MAX_PENDING = 5;
+const TOO_MANY = 'liikaa odottavia kirjoituksia';
 
 export const CONSOLIDATE_PROMPT = `Olet muistin tiivistäjä. Saat käyttäjän kaksi muistitiedostoa: USER.md (kuka käyttäjä on, mieltymykset, pysyvät ohjeet) ja MEMORY.md (pysyvät faktat). Tiivistä molemmat: yhdistä päällekkäiset kohdat, poista vanhentuneet ja ristiriitaiset tiedot, säilytä kaikki edelleen paikkansapitävä. Älä keksi uutta tietoa. Säilytä nimet ja muut tunnisteet täsmälleen sellaisinaan.
 
@@ -86,36 +95,50 @@ export function memoryStore(deps: {
   const path = (t: Target) => join(dir, FILES[t]);
   for (const t of ['user', 'memory'] as const) if (!existsSync(path(t))) writeFileSync(path(t), '');
   const read = (t: Target) => readFileSync(path(t), 'utf8');
+  const baseHash = () =>
+    createHash('sha256')
+      .update(`${read('user')}\0${read('memory')}`)
+      .digest('hex');
 
   let git = true;
   const commit = (note: string) => {
     if (!git) return;
+    const opts = { cwd: dir, stdio: 'ignore', timeout: 10_000 } as const;
     const run = (...args: string[]) =>
-      execFileSync('git', ['-c', 'user.name=pa', '-c', 'user.email=pa@local', ...args], {
-        cwd: dir,
-        stdio: 'ignore',
-      });
+      execFileSync('git', ['-c', 'user.name=pa', '-c', 'user.email=pa@local', ...args], opts);
     try {
       if (!existsSync(join(dir, '.git'))) run('init', '-q');
       run('add', '-A');
+      // Exit 0: nothing staged (e.g. an edit with the same text).
+      if (spawnSync('git', ['diff', '--cached', '--quiet'], opts).status === 0) return;
       run('commit', '-qm', note);
     } catch (err) {
-      // Exit status 1 is "nothing to commit"; ENOENT means no git binary.
-      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') return;
-      git = false;
-      warn('git not on PATH: memory files are not versioned');
+      const missing = (err as NodeJS.ErrnoException).code === 'ENOENT';
+      if (missing) git = false;
+      warn(missing ? 'git not on PATH: memory files are not versioned' : 'memory commit failed', {
+        error: err instanceof Error ? err.message : 'unknown',
+      });
     }
   };
-  const put = (t: Target, text: string, note: string) => {
-    if (text.length > CAPS[t]) throw new MemoryError(FULL);
-    writeFileSync(path(t), text);
+
+  /**
+   * The only file writer: cap check (a text over the cap fails only when it grows), then temp file
+   * + rename per file, then one commit.
+   */
+  const put = (texts: Partial<Record<Target, string>>, note: string) => {
+    for (const [t, text] of Object.entries(texts) as [Target, string][])
+      if (text.length > CAPS[t] && text.length > read(t).length) throw new MemoryError(FULL);
+    for (const [t, text] of Object.entries(texts) as [Target, string][]) {
+      writeFileSync(`${path(t)}.tmp`, text);
+      renameSync(`${path(t)}.tmp`, path(t));
+    }
     commit(note);
   };
 
   const applyWrite = (w: MemoryWrite, chatId: string) => {
     const r = applyOp(read(w.target), w);
-    if ('error' in r) throw new MemoryError(r.error);
-    put(w.target, r.text, `memory ${w.action} ${w.target} (chat ${chatId})`);
+    if ('error' in r) throw new MemoryError(r.error === NOT_FOUND ? CONFLICT : r.error);
+    put({ [w.target]: r.text }, `memory ${w.action} ${w.target} (chat ${chatId})`);
   };
 
   const pendingWhere = (id?: number) =>
@@ -159,9 +182,11 @@ export function memoryStore(deps: {
   const consolidate = async () => {
     const user = read('user');
     const memory = read('memory');
-    const mask = async (t: string) =>
-      pseudo && t ? (await pseudo.mask(`memory:${userId}`, t)).masked : t;
-    const unmask = async (t: string) => (pseudo && t ? (await pseudo.unmask(t)).restored : t);
+    // Invariant 1: never send the real files.
+    if (!pseudo) throw new MemoryError(PSEUDO_REQUIRED);
+    const base = baseHash();
+    const mask = async (t: string) => (t ? (await pseudo.mask(`memory:${userId}`, t)).masked : t);
+    const unmask = async (t: string) => (t ? (await pseudo.unmask(t)).restored : t);
     const reply = await ask(Proposal, [
       { role: 'system', content: CONSOLIDATE_PROMPT },
       {
@@ -172,6 +197,9 @@ export function memoryStore(deps: {
     if (!reply) return warn('consolidation reply invalid');
     const proposedUser = await unmask(reply.user);
     const proposedMemory = await unmask(reply.memory);
+    // Surrogates can be shorter than the real values.
+    if (proposedUser.length > CAPS.user || proposedMemory.length > CAPS.memory)
+      return warn('consolidation over cap after restore: discarded');
     const diff = [
       lineDiff('USER.md', user, proposedUser),
       lineDiff('MEMORY.md', memory, proposedMemory),
@@ -190,6 +218,7 @@ export function memoryStore(deps: {
           diff,
           proposedUser,
           proposedMemory,
+          baseHash: base,
           createdAt: new Date().toISOString(),
         })
         .run();
@@ -214,9 +243,25 @@ export function memoryStore(deps: {
     applyWrite,
     consolidate,
     /** Writes the user's own text (cap-checked). */
-    edit: (t: Target, text: string) => put(t, text, `edit ${t}`),
-    park: (chatId: string, w: MemoryWrite) =>
-      db
+    edit: (t: Target, text: string) => put({ [t]: text }, `edit ${t}`),
+    /** Queues a write unvalidated; an identical pending write returns its id. Throws past MAX_PENDING per chat. */
+    park(chatId: string, w: MemoryWrite): number {
+      const queued = db
+        .select()
+        .from(memoryPending)
+        .where(and(pendingWhere(), eq(memoryPending.chatId, chatId)))
+        .all();
+      const replace = w.replace ?? null;
+      const same = queued.find(
+        (p) =>
+          p.target === w.target &&
+          p.action === w.action &&
+          p.text === w.text &&
+          p.replace === replace,
+      );
+      if (same) return same.id;
+      if (queued.length >= MAX_PENDING) throw new Error(TOO_MANY);
+      return db
         .insert(memoryPending)
         .values({
           userId,
@@ -224,33 +269,40 @@ export function memoryStore(deps: {
           action: w.action,
           target: w.target,
           text: w.text,
-          replace: w.replace ?? null,
+          replace,
           createdAt: new Date().toISOString(),
         })
         .returning({ id: memoryPending.id })
-        .get().id,
-    /** Applies or rejects a pending write; false when it is not pending. */
-    approve(id: number, ok: boolean): boolean {
+        .get().id;
+    },
+    /**
+     * Applies or rejects a pending write. A write that no longer applies is marked `failed` (and
+     * leaves `memory.state`). Undefined when the id is not pending.
+     */
+    approve(id: number, ok: boolean): 'applied' | 'rejected' | 'failed' | undefined {
       const p = db.select().from(memoryPending).where(pendingWhere(id)).get();
-      if (!p) return false;
-      if (ok) applyWrite({ ...p, replace: p.replace ?? undefined }, p.chatId);
-      db.update(memoryPending)
-        .set({ status: ok ? 'applied' : 'rejected' })
-        .where(eq(memoryPending.id, id))
-        .run();
-      return true;
+      if (!p) return;
+      let status: 'applied' | 'rejected' | 'failed' = ok ? 'applied' : 'rejected';
+      if (ok)
+        try {
+          applyWrite({ ...p, replace: p.replace ?? undefined }, p.chatId);
+        } catch (err) {
+          if (!(err instanceof MemoryError)) throw err;
+          status = 'failed';
+        }
+      db.update(memoryPending).set({ status }).where(eq(memoryPending.id, id)).run();
+      return status;
     },
     /** Accepts (with optional edited texts) or rejects a proposal; false when it is not pending. */
     resolveConsolidation(id: number, accept: boolean, edited: { user?: string; memory?: string }) {
       const c = db.select().from(memoryConsolidations).where(consolidationWhere(id)).get();
       if (!c) return false;
       if (accept) {
-        const user = edited.user ?? c.proposedUser;
-        const memory = edited.memory ?? c.proposedMemory;
-        if (user.length > CAPS.user || memory.length > CAPS.memory) throw new MemoryError(FULL);
-        writeFileSync(path('user'), user);
-        writeFileSync(path('memory'), memory);
-        commit(`consolidation ${id}`);
+        if (baseHash() !== c.baseHash) throw new MemoryError(CONFLICT);
+        put(
+          { user: edited.user ?? c.proposedUser, memory: edited.memory ?? c.proposedMemory },
+          `consolidation ${id}`,
+        );
       }
       db.update(memoryConsolidations)
         .set({ status: accept ? 'accepted' : 'rejected' })
