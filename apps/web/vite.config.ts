@@ -13,8 +13,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['apple-touch-icon.png'],
       manifest: {
-        name: 'Assistant',
-        short_name: 'Assistant',
+        name: 'Avustaja',
+        short_name: 'Avustaja',
+        lang: 'fi',
         start_url: '/',
         display: 'standalone',
         // Light --background from src/tokens.css.

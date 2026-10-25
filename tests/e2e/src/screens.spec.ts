@@ -32,18 +32,63 @@ const sizes = [
   { width: 1440, height: 900 },
 ];
 
+/** The rules brief 7.8 holds at every impact level (docs/decisions/phase-9-ui.md). */
+const BRIEF_RULES = new Set([
+  'color-contrast',
+  'button-name',
+  'link-name',
+  'label',
+  'select-name',
+  'aria-allowed-attr',
+  'aria-valid-attr-value',
+  'aria-required-children',
+  'aria-required-parent',
+  'aria-hidden-focus',
+  'nested-interactive',
+  'scrollable-region-focusable',
+  'frame-title',
+  'image-alt',
+  'html-has-lang',
+  'html-lang-valid',
+  'meta-viewport',
+  'document-title',
+  'landmark-one-main',
+  'region',
+  'page-has-heading-one',
+  'heading-order',
+  'list',
+  'listitem',
+  'duplicate-id-aria',
+  'td-headers-attr',
+  'th-has-data-cells',
+]);
+
 /**
- * Axe scan of the screen just shot; the sandboxed artifact iframe is not app UI. A serious or
- * critical violation fails the test only with `AXE_STRICT=1`. Without it the violations are
- * printed and the test passes, until phase 9 fixes the current screens; then strict becomes
- * the default (docs/decisions/phase-9-ui.md, decision 6).
+ * Axe scan of the screen just shot; the sandboxed artifact iframe is not app UI. With
+ * A violation fails the test (unless `AXE_STRICT=0`) when it is serious or critical, or when its rule is
+ * one of BRIEF_RULES at any impact. Without it the same violations are printed and the test
+ * passes.
  */
 const axe = async (page: Page, name: string) => {
   const { violations } = await new AxeBuilder({ page }).exclude('iframe[sandbox]').analyze();
   const found = violations
-    .filter((v) => v.impact === 'serious' || v.impact === 'critical')
+    // `region` on Radix's popper wrapper only: open menus and tooltips are portalled to <body>,
+    // outside every landmark, by Radix's portal structure (not app layout). Other `region`
+    // findings still count.
+    .map((v) =>
+      v.id === 'region'
+        ? {
+            ...v,
+            nodes: v.nodes.filter(
+              (n) => !n.target.join(' ').includes('data-radix-popper-content-wrapper'),
+            ),
+          }
+        : v,
+    )
+    .filter((v) => v.nodes.length)
+    .filter((v) => v.impact === 'serious' || v.impact === 'critical' || BRIEF_RULES.has(v.id))
     .map((v) => `${v.id} (${v.impact}) ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`);
-  if (process.env.AXE_STRICT === '1') expect(found, `axe: ${name}`).toEqual([]);
+  if (process.env.AXE_STRICT !== '0') expect(found, `axe: ${name}`).toEqual([]);
   else for (const f of found) console.warn(`axe: ${name}: ${f}`);
 };
 

@@ -342,3 +342,81 @@ Source: safe-area, theme-color pair, status-bar style, `dvh`, overscroll, long-p
 4. **Fit.** (a) At 390 no horizontal scroll, every target ≥ 44 px, titles end in ellipsis, tables are cards. (b) No overlay covers content it should not: tooltips never cover the textarea, toasts never cover messages or the composer, the palette list never ends mid-row. (c) At 1024 and 1440 with the side panel open the thread is ≥ 480 px wide; tables fit `--page-max` or scroll inside their own region.
 5. **Parity.** (a) Light and dark have the same layout; dark surfaces step sidebar #1f1e1d < canvas #262624 < card #30302e, with no pure black. (b) The primary button is ink in light and cream in dark (never light blue); semantic tints switch to their dark values; text pairs meet the ratios in 7.3. (c) Dark text does not look heavier than light.
 6. **Finish.** (a) Radii come only from 4 / 8 / 12 / 16 / 24 / full; cards 12, buttons 8, bubble 16, composer 24. (b) Icons are lucide, 16 or 20 px, stroke 1.75; every icon-only button has a label and a desktop tooltip; no row with more than two visible icon actions. (c) Copy is Finnish, sentence case, short, with Finnish number and time formats; no English UI words except identifiers.
+
+## 8. Status (2026-10-25)
+
+Slices 0 to 3 passed the UI review. Slice 4 adds the axe rules from 7.8, the PWA icons, the dead-code removal and this section. The full-set review on a fresh reviewer agent is next.
+
+### Component map as built
+
+| Before | Now |
+|---|---|
+| Buttons, icon buttons | Kit `Button` with the variants default, outline, secondary, ghost, destructive and link. `IconButton` wraps it with a label and a desktop tooltip. |
+| Inputs, textareas, selects | Kit `Input`, `Textarea` and `Select`. |
+| Settings dialog, confirmation dialog | Kit `Dialog` and `AlertDialog`. `ConfirmDialog` wraps the alert dialog. |
+| Mobile drawer, artifact sheet | Kit `Sheet`. The long-press action sheet on a message also uses it. |
+| Sidebar row menus, agent picker | Kit `DropdownMenu`, not modal, so the page stays readable to screen readers. |
+| Tooltips | Kit `Tooltip`, desktop only. |
+| Vault, automations tables | Kit `Table`. Below 768 px each row is a card. |
+| Topics list, agents list, search results | Rows of 56 px with dividers, as 7.5 says, not tables. |
+| Topic chips, status pills | Kit `Badge` with the variants secondary, outline, success, warning, info and destructive. |
+| Approval card, memory panes, integration row | Bordered sections with the card tokens. We did not use the kit `Card` and removed it. |
+| Push toggle, model-saw toggle | Kit `Switch`. |
+| Palette | `cmdk` directly inside the kit `Dialog`. The kit `Command` did not match the brief, so we removed it. |
+| Toasts | Kit `Sonner`. |
+| Loading states | Kit `Skeleton` through `ListSkeleton` and `useSlow` in `Page.tsx`. |
+| Mic level | A 64 × 4 bar. The recorder writes its width every frame, so it does not use the kit `Progress`. We removed the kit `Progress`. |
+| Long lists | Kit `ScrollArea` in the settings dialog. The other lists use the native scroll. |
+| Dividers | Borders and `divide-y`. We removed the kit `Separator`. |
+| Tabs in the artifact panel | Kit `Tabs` (Esikatselu, Koodi). |
+
+### Dependencies
+
+Every pin is at least 7 days old on 2026-10-25.
+
+| Package | Version | Published | Use |
+|---|---|---|---|
+| class-variance-authority | 0.7.1 | 2024-11-26 | kit variants |
+| cn | 0.5.0 | 2026-10-16 | class merge (the shadcn CLI 4.22 code imports it) |
+| sonner | 2.0.8 | 2026-08-09 | toasts |
+| @fontsource-variable/inter | 5.3.0 | 2026-07-19 | UI font |
+| @fontsource-variable/source-serif-4 | 5.3.1 | 2026-10-11 | assistant prose |
+| @fontsource-variable/jetbrains-mono | 5.3.0 | 2026-07-19 | code |
+| tw-animate-css (dev) | 1.4.0 | 2025-09-24 | kit animations |
+| @axe-core/playwright (e2e, dev) | 4.14.0 | 2026-10-15 | accessibility scan |
+
+The shadcn CLI 4.22.0 generated the kit. It is not a dependency. We removed `@tanstack/react-virtual` and `clsx`. `cn` replaces `tailwind-merge` because the generated components import it.
+
+### Size
+
+The shell precache is 18 entries and 1373.84 KiB, under the 1.5 MB limit. The latin `wght` font files are 191 KB of it. The other font subsets load when a page needs them.
+
+### Deviations from the brief
+
+1. The table header is sticky only inside the table's own scroll container. The page scroll belongs to an outer element.
+2. The agent picker shows the model and the subagent setting under each name. Agent profiles have no description field.
+3. The name of the artifact close button is "Sulje artefaktit", not "Sulje". An e2e flow uses the name, and a second "Sulje" can be on the same screen.
+4. The `[` key toggles the sidebar. An e2e flow uses it, and the shortcuts dialog lists it.
+5. Mermaid artifacts use the light theme in both schemes, because the artifact keeps its own white page.
+6. The axe scan ignores the `region` rule on the Radix popper wrapper only. Radix portals open menus and tooltips to `<body>`, outside every landmark.
+7. `AXE_STRICT=1` stays an opt-in switch. We recommend that it becomes the default for `pnpm test`.
+8. Vault row selection uses a native checkbox. The kit has no `Checkbox`.
+9. The settings dialog has a fixed height of 85dvh. The `ScrollArea` needs a fixed height to scroll.
+10. When the side panel holds the sidebar at the rail (1024–1279 px), "Avaa sivupalkki" closes the panel. The thread then keeps its 480 px.
+11. The composer does not scroll the thread on focus when the keyboard opens. The thread follows the bottom only while the user has not scrolled up.
+
+### Test infrastructure
+
+The fake LLM has an optional `match` on a scripted turn. A call takes the first turn whose `match` fits its last user message, else the first turn without `match`. The `holdAfter` helper in `screens.spec.ts` now holds once. Before, a later frame after the release started a new hold, so `subagents-row` failed under load.
+
+### Checks on a device
+
+These checks need an iPhone with the PWA on the home screen:
+
+1. The keyboard animation. The composer must stay above the keyboard (`--kb`), and the thread must not jump.
+2. The status bar style `default` against both canvas colours.
+3. The `theme-color` of the browser chrome in light, in dark and after a manual theme choice.
+4. The safe areas in portrait and landscape.
+5. The edge swipe that opens the drawer, and the long press on a message and on a sidebar row.
+
+The new icons are a cream ring on ink in the brief's palette: 192, 512, maskable 512 and apple-touch-icon 180. A one-off Pillow script made them. The ring is 30 % of the side (20 % inside), and 24 % (16 %) on the maskable icon.

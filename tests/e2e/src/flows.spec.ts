@@ -148,6 +148,36 @@ test('PWA: manifest, service worker, icons', async ({ app, page, request }) => {
   await expect(page.locator('link[rel=apple-touch-icon]')).toHaveCount(1);
 });
 
+test('theme-color: one per scheme, both follow a chosen theme (brief 7.7)', async ({
+  app,
+  page,
+}) => {
+  await app.login(page);
+  const metas = () =>
+    page
+      .locator('meta[name="theme-color"]')
+      .evaluateAll((ms) => ms.map((m) => [m.getAttribute('media'), m.getAttribute('content')]));
+  const light = '(prefers-color-scheme: light)';
+  const dark = '(prefers-color-scheme: dark)';
+  expect(await metas()).toEqual([
+    [light, '#faf9f5'],
+    [dark, '#262624'],
+  ]);
+  await openSettings(page, 'Asetukset');
+  await page.getByRole('button', { name: 'Tumma' }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  expect(await metas()).toEqual([
+    [light, '#262624'],
+    [dark, '#262624'],
+  ]);
+  await page.getByRole('button', { name: 'Järjestelmä' }).click();
+  await expect(page.locator('html')).not.toHaveAttribute('data-theme', /./);
+  expect(await metas()).toEqual([
+    [light, '#faf9f5'],
+    [dark, '#262624'],
+  ]);
+});
+
 test('keyboard: [ toggles sidebar, Tab reaches send with focus ring', async ({ app, page }) => {
   await page.setViewportSize({ width: 1024, height: 768 });
   await app.login(page);

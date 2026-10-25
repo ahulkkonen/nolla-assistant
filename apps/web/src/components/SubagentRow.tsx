@@ -6,7 +6,8 @@ import { CollapsibleRow } from './ToolRow.tsx';
 
 /** Status per child (brief 7.5): icon and badge. */
 const STATUS = {
-  queued: { Icon: Clock, icon: 'text-muted-foreground', text: 'jonossa', badge: 'secondary' },
+  // Outline, not secondary: the rows sit on --muted, where a secondary fill disappears.
+  queued: { Icon: Clock, icon: 'text-muted-foreground', text: 'jonossa', badge: 'outline' },
   running: {
     Icon: Loader2,
     icon: 'animate-spin text-muted-foreground',

@@ -338,7 +338,14 @@ export function MemoryScreen() {
           ) : (
             <Diff diff={c.diff} />
           )}
-          <div className="flex justify-end gap-2 max-md:grid max-md:grid-cols-3">
+          <div
+            className={cn(
+              'flex justify-end gap-2 max-md:grid',
+              // Phones: three equal buttons; while editing "Peruuta muokkaus" needs half a row,
+              // so Hyväksy takes the first row.
+              editing ? 'max-md:grid-cols-2' : 'max-md:grid-cols-3',
+            )}
+          >
             <Button variant="ghost" onClick={() => resolve(false)}>
               Hylkää
             </Button>
@@ -357,7 +364,11 @@ export function MemoryScreen() {
                 Muokkaa
               </Button>
             )}
-            <Button disabled={editing && overCap} onClick={() => resolve(true)}>
+            <Button
+              disabled={editing && overCap}
+              onClick={() => resolve(true)}
+              className={cn(editing && 'max-md:order-first max-md:col-span-2')}
+            >
               Hyväksy
             </Button>
           </div>

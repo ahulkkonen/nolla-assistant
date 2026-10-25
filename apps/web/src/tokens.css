@@ -136,16 +136,10 @@
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
 
   --animate-fade-in: fade-in var(--duration) ease-out;
-  --animate-fade-out: fade-out var(--duration) ease-out;
   --animate-ring: ring 1.2s ease-out infinite;
 
   @keyframes fade-in {
     from {
-      opacity: 0;
-    }
-  }
-  @keyframes fade-out {
-    to {
       opacity: 0;
     }
   }
