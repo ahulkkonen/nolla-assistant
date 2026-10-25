@@ -1,0 +1,98 @@
+# LiteLLM proxy config. Decision record: docs/decisions/0004-litellm-openrouter-zdr.md.
+# Invariant 2: every alias is zdr/* and carries extra_body.provider {zdr: true,
+# data_collection: deny, allow_fallbacks: false}. zdr_guard.ZdrGuard refuses anything else.
+# OPENROUTER_API_BASE defaults to https://openrouter.ai/api/v1 in infra/compose.yaml.
+model_list:
+  - model_name: zdr/strong
+    litellm_params:
+      model: openrouter/anthropic/claude-sonnet-5.5
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: os.environ/OPENROUTER_API_BASE
+      extra_body:
+        provider:
+          zdr: true
+          data_collection: deny
+          order: [google-vertex/europe, amazon-bedrock]
+          allow_fallbacks: false
+
+  - model_name: zdr/fast
+    litellm_params:
+      model: openrouter/anthropic/claude-haiku-5.5
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: os.environ/OPENROUTER_API_BASE
+      extra_body:
+        reasoning: { effort: none }
+        provider:
+          zdr: true
+          data_collection: deny
+          order: [google-vertex/europe, amazon-bedrock/eu-west-1]
+          allow_fallbacks: false
+
+  - model_name: zdr/task-small
+    litellm_params:
+      model: openrouter/anthropic/claude-haiku-5.5
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: os.environ/OPENROUTER_API_BASE
+      extra_body:
+        reasoning: { effort: none }
+        provider:
+          zdr: true
+          data_collection: deny
+          order: [google-vertex/europe, amazon-bedrock/eu-west-1]
+          allow_fallbacks: false
+
+  # LiteLLM has no openrouter transcription provider; the openai provider speaks OpenRouter's
+  # OpenAI-compatible multipart endpoint. OpenRouter ignores order/only for STT and does not
+  # document provider[...] multipart fields, so ZDR for STT rests on the account + key guardrail.
+  - model_name: zdr/stt
+    litellm_params:
+      model: openai/openai/whisper-large-v3
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: os.environ/OPENROUTER_API_BASE
+      extra_body:
+        provider:
+          zdr: true
+          data_collection: deny
+          allow_fallbacks: false
+    model_info: { mode: audio_transcription }
+
+  # Remote fallback; phase 4 decides between this and a local model.
+  - model_name: zdr/embed
+    litellm_params:
+      model: openrouter/qwen/qwen3-embedding-8b
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: os.environ/OPENROUTER_API_BASE
+      extra_body:
+        provider:
+          zdr: true
+          data_collection: deny
+          order: [nebius, deepinfra]
+          allow_fallbacks: false
+    model_info: { mode: embedding }
+
+guardrails:
+  # Runs on every call type (chat, embeddings, transcription); see zdr_guard.py.
+  - guardrail_name: zdr-guard
+    litellm_params:
+      guardrail: zdr_guard.ZdrGuard  # mounted next to this file
+      mode: pre_call
+      default_on: true
+
+  # Stateless backstop (plan §6). Only the three listed entities are analyzed, so PERSON and
+  # everything else is off and text is never rewritten. With BLOCK configured the guardrail
+  # fails closed: an unreachable analyzer turns every chat request into an error.
+  - guardrail_name: pii-block
+    litellm_params:
+      guardrail: presidio
+      mode: pre_call
+      default_on: true
+      presidio_analyzer_api_base: http://presidio-analyzer:3000
+      presidio_anonymizer_api_base: http://presidio-anonymizer:3000
+      presidio_language: en
+      pii_entities_config:
+        FI_PERSONAL_IDENTITY_CODE: BLOCK
+        IBAN_CODE: BLOCK
+        CREDIT_CARD: BLOCK
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY

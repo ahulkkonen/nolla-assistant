@@ -1,0 +1,7 @@
+# Test-only override: point LiteLLM at the mock OpenRouter on the host and publish it on loopback.
+services:
+  litellm:
+    environment:
+      OPENROUTER_API_BASE: http://host.docker.internal:${EGRESS_MOCK_PORT}
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    ports: ["127.0.0.1::4000"]

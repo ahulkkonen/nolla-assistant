@@ -56,6 +56,52 @@ sends `error` code `pseudo_down`; `tool_call` blocks with reason `pseudo_down`.
 | 1 | `packages/pi-ext-pseudo` + bridge restoration, tested against a fake sidecar | Opus | dispatched |
 | 2 | `tests/pii` corpus: 300 Finnish sentences with labelled spans, synthetic names | Opus | dispatched |
 | 3 | `services/pseudo-svc`: detectors, vault, surrogates, inflection, API | Opus (after 0003) | |
-| 4 | `infra/litellm.yaml`, Presidio backstop, ZDR tests, compose services | Opus (after 0004) | |
+| 4 | `infra/litellm.yaml`, Presidio backstop, ZDR tests, compose services | Opus (after 0004) | done |
 | 5 | Vault UI + highlights + "show what the model saw" | Opus, UI review | |
 | 6 | Masked-only invariant test (plan §14 gate 3) | Sonnet | |
+
+## Phase-3 egress decisions
+
+Source: `0004-litellm-openrouter-zdr.md`. Files: `infra/litellm.yaml`, `infra/litellm/zdr_guard.py`,
+`infra/litellm/presidio-recognizers.yaml`, `infra/compose.yaml`. Gate: `pnpm test:egress` (needs
+Docker; not part of `pnpm test`).
+
+**Pins** (all at least 7 days old on 2026-10-25):
+
+| Service | Image | Published | mem_limit |
+|---|---|---|---|
+| `litellm` | `ghcr.io/berriai/litellm:v1.105.1@sha256:b7b9e2c306343721802253d0dd9436b9634a2eb4e14da7c7cf06c5c7b7530802` | 2026-10-14 | 768m (measured ~510 MB idle, ~590 MB after 10 requests; 512m hit the cgroup limit) |
+| `presidio-analyzer` | `mcr.microsoft.com/presidio-analyzer:2.2.362@sha256:286e3fa7f3a7426e775e8564fe1870f1ba8f999d3ab8bbb8cc46a44355d9d6e9` | 2026-03-15 | 700m (~585 MB measured) |
+| `presidio-anonymizer` | `mcr.microsoft.com/presidio-anonymizer:2.2.362@sha256:a10a12a2a613d13cf29d3ad3641e3258444dd8c90403dd644a0a114c472c2483` | 2026-03-15 | 100m (~45 MB measured) |
+
+**Aliases** (`infra/litellm.yaml`; every entry has `extra_body.provider { zdr: true,
+data_collection: deny, allow_fallbacks: false }`):
+
+| Alias | Upstream model | Provider `order` | USD / 1M in / out |
+|---|---|---|---|
+| `zdr/strong` | `anthropic/claude-sonnet-5.5` | `google-vertex/europe`, `amazon-bedrock` | 2.2 / 11 |
+| `zdr/fast` | `anthropic/claude-haiku-5.5`, `reasoning.effort: none` | `google-vertex/europe`, `amazon-bedrock/eu-west-1` | 0.11 / 0.55 |
+| `zdr/task-small` | `anthropic/claude-haiku-5.5`, `reasoning.effort: none` | `google-vertex/europe`, `amazon-bedrock/eu-west-1` | 0.11 / 0.55 |
+| `zdr/stt` | `openai/whisper-large-v3` via LiteLLM `openai/` provider (OpenRouter multipart) | not applied by OpenRouter for STT | 0.111 USD / audio hour (Groq) |
+| `zdr/embed` | `qwen/qwen3-embedding-8b` (remote fallback; phase 4 decides) | `nebius`, `deepinfra` | 0.01 / – |
+
+No `zdr/vision` alias: `zdr/strong` and `zdr/fast` both take images. No `drop_params`: LiteLLM
+accepted Pi's request shape (`developer` role, `store`, `max_completion_tokens`,
+`reasoning_effort`) against the mock; whether Vertex/Bedrock reject any of them is UNVERIFIED until
+a live call.
+
+**ZDR at three levels** (invariant 2):
+
+| Level | Where enforced | How |
+|---|---|---|
+| Account | OpenRouter, https://openrouter.ai/settings/privacy | ZDR toggle on for all five model groups (Anthropic, OpenAI, Google, SpaceXAI, other). Manual, once. |
+| Key | OpenRouter guardrail assigned to the LiteLLM key | `enforce_zdr_anthropic/openai/google/xai/other: true` plus a model allowlist of the five upstream ids. Manual, once. |
+| Request | LiteLLM `infra/litellm.yaml` + `zdr_guard.ZdrGuard` | Every alias sends `provider.zdr: true`, `data_collection: deny`. The guard refuses (400) any model without the `zdr/` prefix, any alias not ZDR-pinned in the config, and any client `extra_body`/`provider`/`models`/`route`/`transforms` (a client `extra_body` would replace the configured one). Runs on chat, embeddings and transcription. For STT, OpenRouter does not document reading `provider[...]` multipart fields, so STT relies on the first two levels. |
+
+**Presidio backstop:** one `pre_call` guardrail, BLOCK only for `FI_PERSONAL_IDENTITY_CODE`,
+`IBAN_CODE`, `CREDIT_CARD`; nothing else is analyzed (PERSON off); fails closed when the analyzer
+is down. The analyzer loads `FiPersonalIdentityCodeRecognizer` for `en` from the mounted registry,
+so no Finnish spaCy model is needed. Presidio validates the hetu check character: `010190-123A` is
+not a hetu (the correct check character is `M`) and passes; the gate test uses `010190-123M`.
+Known gap: hetu inside assistant `tool_calls` arguments is not scanned (the Pi leak scan covers it).
+No `logging_only` guardrail (no log sink exists; it would also hide leaks from the §14 log grep).
