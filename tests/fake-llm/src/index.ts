@@ -12,7 +12,14 @@ export type FakeRequest = {
 
 const split = (s: string, n: number) => s.match(new RegExp(`[\\s\\S]{1,${n}}`, 'g')) ?? [];
 
-export async function startFakeLlm(turns: FakeTurn[] = []) {
+/**
+ * `fallback` answers a call when the queue is empty (demo use); tests leave it unset so an
+ * unscripted call fails loudly.
+ */
+export async function startFakeLlm(
+  turns: FakeTurn[] = [],
+  fallback?: (body: any) => FakeTurn | undefined,
+) {
   const queue = [...turns];
   const requests: FakeRequest[] = [];
   let callN = 0;
@@ -60,7 +67,7 @@ export async function startFakeLlm(turns: FakeTurn[] = []) {
         return json(400, { error: { message: 'fake-llm: bad json' } });
       }
       requests.push({ path: req.url ?? '', headers: req.headers, body });
-      const turn = queue.shift();
+      const turn = queue.shift() ?? fallback?.(body);
       if (!turn) return json(500, { error: { message: 'fake-llm: no scripted turn' } });
 
       const id = `chatcmpl-${requests.length}`;
