@@ -22,9 +22,22 @@ export function ToolRow({ tool }: { tool: ToolView }) {
           (a.callId ? a.callId === tool.callId : a.tool === tool.name),
       ),
   );
+  // A denial by timeout reads as expired, matching the "Hyväksyntä vanheni" row.
+  const expired = useStore(
+    (s) =>
+      tool.status === 'denied' &&
+      s.approvals.some(
+        (a) =>
+          a.expired &&
+          a.chatId === s.activeChatId &&
+          (a.callId ? a.callId === tool.callId : a.tool === tool.name),
+      ),
+  );
   const { Icon, text } = waiting
     ? { Icon: Clock, text: 'odottaa hyväksyntää' }
-    : STATUS[tool.status];
+    : expired
+      ? { Icon: Clock, text: 'vanhentunut' }
+      : STATUS[tool.status];
   // Live output while running; the final summary replaces it.
   const detail = [tool.argsPreview, tool.summary || tool.output].filter(Boolean);
   return (
@@ -33,7 +46,7 @@ export function ToolRow({ tool }: { tool: ToolView }) {
         type="button"
         aria-expanded={open}
         onClick={() => setOpen(!open)}
-        className="flex max-w-full items-center gap-2 rounded-sm py-1 hover:text-fg"
+        className="flex max-w-full items-center gap-2 rounded-sm py-1 hover:text-fg max-md:min-h-11"
       >
         <Icon
           size={16}

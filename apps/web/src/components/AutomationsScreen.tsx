@@ -60,7 +60,7 @@ export function AutomationsScreen() {
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-4">
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 py-6">
+      <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 py-6">
         <h1 className="font-semibold max-md:hidden">{AUTOMATIONS_TITLE}</h1>
         {!automations ? (
           <p className="text-fg-muted">Ladataan…</p>
@@ -68,40 +68,42 @@ export function AutomationsScreen() {
           <p className="text-fg-muted">Ei automaatioita.</p>
         ) : (
           <>
-            <table className="w-full text-left max-md:hidden">
-              <thead className="text-secondary text-fg-muted">
-                <tr>
-                  <th className="py-2 pr-4 font-normal">Nimi</th>
-                  <th className="py-2 pr-4 font-normal">Ajastus</th>
-                  <th className="py-2 pr-4 font-normal">Agentti</th>
-                  <th className="py-2 pr-4 font-normal">Toimitus</th>
-                  <th className="py-2 pr-4 font-normal">Käytössä</th>
-                  <th className="py-2 pr-4 font-normal">Viimeksi</th>
-                  <th className="py-2 pr-4 font-normal">Tulos</th>
-                  <th className="py-2">
-                    <span className="sr-only">Toiminnot</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {automations.map((a) => (
-                  <tr key={a.id} className="border-t border-border">
-                    <td className="py-1 pr-4 font-mono">{a.id}</td>
-                    <td className="py-1 pr-4 text-fg-muted">
-                      <Cron cron={a.cron} />
-                    </td>
-                    <td className="py-1 pr-4">{agentName(a.agentId)}</td>
-                    <td className="py-1 pr-4 text-fg-muted">{deliver(a)}</td>
-                    <td className="py-1 pr-4 text-fg-muted">{a.enabled ? 'kyllä' : 'ei'}</td>
-                    <td className="py-1 pr-4 text-fg-muted">{ago(a.lastRunAt)}</td>
-                    <td className="py-1 pr-4 text-fg-muted">{status(a.lastStatus)}</td>
-                    <td className="py-1">
-                      <RunButton a={a} />
-                    </td>
+            <div className="overflow-x-auto max-md:hidden">
+              <table className="w-full text-left">
+                <thead className="text-secondary text-fg-muted">
+                  <tr>
+                    <th className="py-2 pr-4 font-normal">Nimi</th>
+                    <th className="py-2 pr-4 font-normal">Ajastus</th>
+                    <th className="py-2 pr-4 font-normal">Agentti</th>
+                    <th className="py-2 pr-4 font-normal">Toimitus</th>
+                    <th className="py-2 pr-4 font-normal">Käytössä</th>
+                    <th className="py-2 pr-4 font-normal">Viimeksi</th>
+                    <th className="py-2 pr-4 font-normal">Tulos</th>
+                    <th className="py-2">
+                      <span className="sr-only">Toiminnot</span>
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {automations.map((a) => (
+                    <tr key={a.id} className="border-t border-border">
+                      <td className="py-1 pr-4 font-mono">{a.id}</td>
+                      <td className="py-1 pr-4 text-fg-muted">
+                        <Cron cron={a.cron} />
+                      </td>
+                      <td className="py-1 pr-4">{agentName(a.agentId)}</td>
+                      <td className="py-1 pr-4 text-fg-muted">{deliver(a)}</td>
+                      <td className="py-1 pr-4 text-fg-muted">{a.enabled ? 'kyllä' : 'ei'}</td>
+                      <td className="py-1 pr-4 text-fg-muted">{ago(a.lastRunAt)}</td>
+                      <td className="py-1 pr-4 text-fg-muted">{status(a.lastStatus)}</td>
+                      <td className="py-1">
+                        <RunButton a={a} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
             <ul className="flex flex-col gap-2 md:hidden" aria-label="Automaatiot">
               {automations.map((a) => (
                 <li

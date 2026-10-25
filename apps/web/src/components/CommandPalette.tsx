@@ -97,7 +97,8 @@ export function CommandPalette() {
           className="h-12 min-w-0 flex-1 bg-transparent placeholder:text-fg-muted focus-visible:outline-none"
         />
       </div>
-      <Command.List className="max-h-96 overflow-y-auto p-2">
+      {/* Ends on a half row, so the list visibly continues. */}
+      <Command.List className="max-h-80 overflow-y-auto p-2">
         <Command.Empty className="px-3 py-2 text-fg-muted">Ei osumia.</Command.Empty>
         {page === 'agents' &&
           agents.map((a) => (

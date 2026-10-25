@@ -53,12 +53,12 @@ export function Login() {
             autoComplete="current-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="h-10 rounded-md border border-border bg-bg px-3"
+            className="h-10 rounded-md border border-border bg-bg px-3 max-md:h-11"
           />
           <button
             type="submit"
             disabled={busy || !password}
-            className="h-10 rounded-md bg-accent font-medium text-accent-fg disabled:bg-bg-sunken disabled:text-fg-muted"
+            className="h-10 rounded-md bg-accent font-medium max-md:h-11 text-accent-fg disabled:bg-bg-sunken disabled:text-fg-muted"
           >
             Kirjaudu
           </button>
@@ -67,7 +67,7 @@ export function Login() {
           type="button"
           disabled={busy}
           onClick={() => void run(passkeyLogin)}
-          className="mt-3 flex h-10 w-full items-center justify-center gap-2 rounded-md border border-border hover:bg-bg-sunken disabled:text-fg-muted"
+          className="mt-3 flex h-10 w-full max-md:h-11 items-center justify-center gap-2 rounded-md border border-border hover:bg-bg-sunken disabled:text-fg-muted"
         >
           <KeyRound size={16} />
           Käytä avainta

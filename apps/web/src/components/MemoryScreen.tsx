@@ -22,9 +22,9 @@ const PLACEHOLDER = {
 } as const;
 
 const primary =
-  'h-10 rounded-md bg-accent px-4 font-medium text-accent-fg disabled:bg-bg-sunken disabled:text-fg-muted';
+  'h-10 rounded-md bg-accent px-4 font-medium text-accent-fg disabled:bg-bg-sunken disabled:text-fg-muted max-md:h-11';
 const secondary =
-  'h-10 rounded-md border border-border px-4 font-medium hover:bg-bg-sunken disabled:text-fg-muted';
+  'h-10 rounded-md border border-border px-4 font-medium hover:bg-bg-sunken disabled:text-fg-muted max-md:h-11';
 
 /**
  * The proposed file from the server's whole-file unified diff (context and `+` lines of that
@@ -192,8 +192,8 @@ function Pane({
           }
         }}
         className={clsx(
-          'w-full resize-y rounded-md border border-border p-3 font-mono text-secondary placeholder:text-fg-muted',
-          readOnly ? 'bg-bg-sunken' : 'bg-bg',
+          'w-full rounded-md border border-border p-3 font-mono text-secondary placeholder:text-fg-muted',
+          readOnly ? 'resize-none bg-bg-sunken' : 'resize-y bg-bg',
         )}
       />
       {onSave && !readOnly && (
@@ -219,11 +219,13 @@ export function MemoryScreen() {
   const [consolidating, setConsolidating] = useState(false);
   const [saved, setSaved] = useState<Target | null>(null);
   /** Where the user tried to go with unsaved drafts; the dialog asks before leaving. */
-  const [leave, setLeave] = useState<{ screen: string; activeChatId: string | null } | null>(null);
+  const [leave, setLeave] = useState<Pick<
+    ReturnType<typeof useStore.getState>,
+    'screen' | 'activeChatId'
+  > | null>(null);
+  // Only real differences count: opening a pane or the editor alone must not trigger the guard.
   const dirty =
-    !!mem &&
-    (editing ||
-      (['user', 'memory'] as const).some((t) => drafts[t] !== null && drafts[t] !== mem[t]));
+    !!mem && (['user', 'memory'] as const).some((t) => drafts[t] !== null && drafts[t] !== mem[t]);
   const dirtyRef = useRef(dirty);
   dirtyRef.current = dirty;
 
@@ -315,7 +317,13 @@ export function MemoryScreen() {
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-4">
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 py-6">
-        <div className="flex items-center justify-between gap-2 max-md:justify-end">
+        {/* On phones the row exists only for the button (the top bar has the title). */}
+        <div
+          className={clsx(
+            'flex items-center justify-between gap-2 max-md:justify-end',
+            c && 'max-md:hidden',
+          )}
+        >
           <h1 className="font-semibold max-md:hidden">{MEMORY_TITLE}</h1>
           {!c && consolidate}
         </div>
@@ -400,7 +408,7 @@ export function MemoryScreen() {
           dirtyRef.current = false;
           setDrafts({ user: null, memory: null });
           setEditing(false);
-          if (leave) useStore.setState(leave as Partial<ReturnType<typeof useStore.getState>>);
+          if (leave) useStore.setState(leave);
         }}
         onClose={() => setLeave(null)}
       >

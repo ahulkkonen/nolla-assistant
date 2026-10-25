@@ -35,9 +35,10 @@ export default defineConfig({
         navigateFallbackDenylist: [/^\/api\//, /^\/ws/, /^\/healthz/],
         // Push and notification-click handlers (public/push-sw.js).
         importScripts: ['push-sw.js'],
-        // The offline shell only: Mermaid's lazy chunks and the artifact runtime are fetched (and
-        // cached) on first use instead of adding ~5 MB to the install.
-        globPatterns: ['index.html', 'assets/index-*.{js,css}', '*.{png,webmanifest}'],
+        // The app's own chunks; Mermaid's lazy chunks (`assets/lazy/`) and the artifact runtime
+        // are fetched (and cached) on first use instead of adding ~5 MB to the install.
+        globPatterns: ['index.html', 'assets/*.{js,css}', '*.{png,webmanifest}'],
+        globIgnores: ['assets/lazy/**', 'assets/artifact-runtime-*.js'],
         runtimeCaching: [
           {
             urlPattern: ({ url }) => url.pathname.startsWith('/assets/'),
@@ -48,6 +49,17 @@ export default defineConfig({
       },
     }),
   ],
+  build: {
+    rolldownOptions: {
+      output: {
+        // Chunks without app code are the lazily loaded libraries (Mermaid and its renderers).
+        chunkFileNames: (chunk) =>
+          chunk.moduleIds.some((id) => id.includes('/apps/web/src/'))
+            ? 'assets/[name]-[hash].js'
+            : 'assets/lazy/[name]-[hash].js',
+      },
+    },
+  },
   server: {
     proxy: {
       '/api': api,

@@ -4,7 +4,7 @@ import {
   Archive,
   ArchiveRestore,
   ChevronRight,
-  Command,
+  Keyboard,
   Lock,
   PanelLeft,
   Pencil,
@@ -79,7 +79,7 @@ function ChatRow({
               setEditing(false);
             }
           }}
-          className="h-9 w-full rounded-md border border-accent bg-bg px-2"
+          className="h-9 w-full rounded-md border border-accent bg-bg px-2 max-md:h-11"
         />
       </li>
     );
@@ -126,8 +126,10 @@ function ChatRow({
         </Tip>
       )}
       <div className="absolute right-1 hidden rounded-md bg-bg-sunken before:pointer-events-none before:absolute before:inset-y-0 before:-left-6 before:w-6 before:bg-linear-to-l before:from-bg-sunken group-focus-within:flex group-hover:flex max-md:flex max-md:bg-transparent max-md:before:hidden">
-        <div className="max-md:hidden">
-          <ActionRow actions={actions} small />
+        {/* Desktop: the quick toggles as icons, rename and delete in the menu (room for the title). */}
+        <div className="flex max-md:hidden">
+          <ActionRow actions={actions.slice(0, 2)} small />
+          <ActionMenu label={`Lisää: ${label ?? UNTITLED}`} actions={actions.slice(2)} small />
         </div>
         <div className="md:hidden">
           <ActionMenu label={`Toiminnot: ${label ?? UNTITLED}`} actions={actions} />
@@ -148,7 +150,7 @@ function ChatRow({
 
 const PaletteButton = () => (
   <IconButton label="Komennot (Ctrl+K)" onClick={() => useStore.setState({ paletteOpen: true })}>
-    <Command size={20} />
+    <Keyboard size={20} />
   </IconButton>
 );
 
@@ -256,12 +258,13 @@ export function Sidebar({ expanded, onNavigate }: { expanded: boolean; onNavigat
         <button
           type="button"
           onClick={newChat}
-          className="flex h-9 flex-1 items-center gap-2 rounded-md px-2 font-medium hover:bg-bg-sunken"
+          className="flex h-9 flex-1 items-center gap-2 rounded-md px-2 font-medium hover:bg-bg-sunken max-md:h-11"
         >
           <SquarePen size={20} />
           {UNTITLED}
         </button>
-        <PaletteButton />
+        {/* The drawer (phones) has no keyboard shortcut to advertise. */}
+        {!onNavigate && <PaletteButton />}
         {!onNavigate && (
           <IconButton label="Sulje sivupalkki" onClick={() => setSidebarOpen(!sidebarOpen)}>
             <PanelLeft size={20} />
@@ -295,14 +298,16 @@ export function Sidebar({ expanded, onNavigate }: { expanded: boolean; onNavigat
           }}
           placeholder="Hae"
           aria-label="Hae keskusteluja"
-          className="h-9 w-full rounded-md border border-border bg-bg pr-2 pl-8 placeholder:text-fg-muted"
+          className="h-9 w-full rounded-md border border-border bg-bg pr-2 pl-8 placeholder:text-fg-muted max-md:h-11"
         />
       </div>
       {archivedView && <p className="px-4 py-1 text-secondary text-fg-muted">Arkistoidut</p>}
       <ul className="min-h-0 flex-1 overflow-y-auto pb-2">
         {pinned.length > 0 && (
           <li>
-            <h3 className="flex h-9 items-center px-4 text-secondary text-fg-muted">Kiinnitetyt</h3>
+            <h3 className="flex h-9 items-center px-4 text-secondary text-fg-muted max-md:h-11">
+              Kiinnitetyt
+            </h3>
             <ul>{pinned.map(row)}</ul>
           </li>
         )}
@@ -316,7 +321,7 @@ export function Sidebar({ expanded, onNavigate }: { expanded: boolean; onNavigat
                   type="button"
                   aria-expanded={isOpen}
                   onClick={() => toggleTopic(t.id)}
-                  className="flex h-9 w-full items-center gap-1 rounded-md px-2 text-secondary text-fg-muted hover:bg-bg-sunken hover:text-fg"
+                  className="flex h-9 w-full items-center gap-1 rounded-md px-2 text-secondary text-fg-muted hover:bg-bg-sunken hover:text-fg max-md:h-11"
                 >
                   <ChevronRight
                     size={16}
@@ -345,7 +350,7 @@ export function Sidebar({ expanded, onNavigate }: { expanded: boolean; onNavigat
                 useStore.getState().setScreen('topics');
                 onNavigate?.();
               }}
-              className="flex h-9 w-full items-center rounded-md px-2 text-secondary text-fg-muted hover:bg-bg-sunken hover:text-fg"
+              className="flex h-9 w-full items-center rounded-md px-2 text-secondary text-fg-muted hover:bg-bg-sunken hover:text-fg max-md:h-11"
             >
               Aihe-ehdotuksia: {proposals}
             </button>
@@ -357,7 +362,7 @@ export function Sidebar({ expanded, onNavigate }: { expanded: boolean; onNavigat
           type="button"
           onClick={toggleArchived}
           aria-pressed={archivedView}
-          className="mr-auto h-9 rounded-md px-2 text-secondary text-fg-muted hover:bg-bg-sunken hover:text-fg"
+          className="mr-auto h-9 rounded-md px-2 text-secondary text-fg-muted hover:bg-bg-sunken hover:text-fg max-md:h-11"
         >
           {archivedView ? 'Keskustelut' : 'Arkistoidut'}
         </button>

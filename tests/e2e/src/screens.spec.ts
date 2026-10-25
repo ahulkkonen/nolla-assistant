@@ -455,7 +455,7 @@ for (const scheme of ['light', 'dark'] as const) {
           await page.getByRole('menuitemradio', { name: 'Tutkija' }).click();
           await sendMessage(page, 'Tiivistä kolme aihetta');
           await hold.reached;
-          const row = page.getByRole('button', { name: '3 jonossa' });
+          const row = page.getByRole('button', { name: '3 aliagenttia jonossa' });
           await row.click();
           await expect(page.getByText('Asuminen')).toBeVisible();
           await shot(page, 'subagents-row', vp.width, scheme);
@@ -501,7 +501,7 @@ for (const scheme of ['light', 'dark'] as const) {
             await app.login(page);
             await sendMessage(page, 'Muista lempivärini');
             await expect(page.getByText('Muistikirjoitus odottaa hyväksyntää')).toBeVisible();
-            await page.getByRole('button', { name: 'Muisti', exact: true }).click();
+            await page.getByRole('button', { name: 'Avaa muisti' }).click();
             await expect(
               page.getByRole('region', { name: 'Odottavat kirjoitukset' }),
             ).toContainText('Lempiväri on vihreä.');

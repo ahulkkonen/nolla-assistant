@@ -54,11 +54,16 @@ export async function uploadFiles(files: File[], chatId?: string): Promise<Attac
   return r.files;
 }
 
-export async function transcribe(audio: Blob, language: string): Promise<string> {
+export async function transcribe(
+  audio: Blob,
+  language: string,
+  signal: AbortSignal,
+): Promise<string> {
   const form = new FormData();
   form.append('audio', audio, `audio.${audio.type.includes('mp4') ? 'mp4' : 'webm'}`);
   form.append('language', language);
-  return (await req<{ text: string }>('/api/transcribe', { method: 'POST', body: form })).text;
+  return (await req<{ text: string }>('/api/transcribe', { method: 'POST', body: form, signal }))
+    .text;
 }
 
 export const pushVapid = () => req<{ publicKey: string }>('/api/push/vapid');

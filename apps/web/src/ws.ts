@@ -69,11 +69,15 @@ export async function sendUserMessage(text: string, attachments: AttachmentRef[]
   send({ type: 'user.message', chatId: id, text, attachments });
 }
 
-/** Tells the server which chat is in the foreground (push skips it); null when hidden. */
-export function reportFocus() {
+/**
+ * Tells the server which chat is in the foreground (push skips it); null when hidden. Never
+ * queued: a stale focus must not arrive late, and every (re)connect reports it after auth.
+ */
+export function reportFocus(hidden = document.hidden) {
   const st = useStore.getState();
-  const chatId = document.hidden || st.screen !== 'chat' ? null : st.activeChatId;
-  send({ type: 'chat.focus', chatId });
+  const chatId = hidden || st.screen !== 'chat' ? null : st.activeChatId;
+  if (ws?.readyState === WebSocket.OPEN)
+    ws.send(JSON.stringify({ type: 'chat.focus', chatId } satisfies ClientMessageInput));
 }
 
 export function respondApproval(requestId: string, approve: boolean) {

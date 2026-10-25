@@ -321,7 +321,7 @@ test.describe('memory', () => {
     await page.getByLabel('Viesti').press('ControlOrMeta+Enter');
     await expect(page.locator('.md').last()).toHaveText('Selvä, muistan.');
     await expect(page.getByText('Muisti päivitetty')).toBeVisible();
-    await page.getByRole('button', { name: 'Muisti', exact: true }).click();
+    await page.getByRole('button', { name: 'Avaa muisti' }).click();
     await expect(page.getByLabel('Muisti (MEMORY.md)')).toHaveValue(/Lempiväri on sininen\./);
   });
 
@@ -332,7 +332,7 @@ test.describe('memory', () => {
     await page.getByLabel('Viesti').press('ControlOrMeta+Enter');
     await expect(page.locator('.md').last()).toHaveText('Selvä, muistan.');
     await expect(page.getByText('Muistikirjoitus odottaa hyväksyntää')).toBeVisible();
-    await page.getByRole('button', { name: 'Muisti', exact: true }).click();
+    await page.getByRole('button', { name: 'Avaa muisti' }).click();
     const pending = page.getByRole('region', { name: 'Odottavat kirjoitukset' });
     await expect(pending).toContainText('Lempiväri on vihreä.');
     await pending.getByRole('button', { name: 'Hyväksy' }).click();
@@ -374,6 +374,24 @@ test('artifact panel: an html reply opens in a sandboxed iframe', async ({ app, 
   await expect(panel).toBeVisible();
 });
 
+test('artifact CSP is the first element even when the HTML starts with a script', async ({
+  app,
+  page,
+}) => {
+  app.llm.push({
+    text: "Sivu:\n\n```html\n<script>document.title='x'</script><head><title>T</title></head><h1>Skripti ensin</h1>\n```",
+  });
+  await app.login(page);
+  await page.getByLabel('Viesti').fill('Tee sivu');
+  await page.getByLabel('Viesti').press('ControlOrMeta+Enter');
+  const frame = page.getByRole('complementary', { name: 'Artefaktit' }).locator('iframe');
+  await expect(frame).toHaveAttribute(
+    'srcdoc',
+    /^<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src 'none';/,
+  );
+  await expect(frame.contentFrame().getByRole('heading', { name: 'Skripti ensin' })).toBeVisible();
+});
+
 test('command palette: Ctrl+K, "Nimi", Enter opens the vault', async ({ app, page }) => {
   await app.login(page);
   await page.keyboard.press('ControlOrMeta+k');
@@ -390,7 +408,8 @@ test('delete chat after confirmation', async ({ app, page }) => {
   await expect(page.locator('.md').last()).toHaveText('Poistettava vastaus.');
   const row = page.locator('nav li', { has: page.getByRole('button', { name: 'Poistettava' }) });
   await row.hover();
-  await row.getByRole('button', { name: 'Poista' }).click();
+  await row.getByRole('button', { name: 'Lisää: Poistettava' }).click();
+  await page.getByRole('menuitem', { name: 'Poista' }).click();
   const dialog = page.getByRole('alertdialog', { name: 'Poistetaanko keskustelu?' });
   await dialog.getByRole('button', { name: 'Poista' }).click();
   await expect(row).toHaveCount(0);

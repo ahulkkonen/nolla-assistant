@@ -18,8 +18,15 @@ export function SubagentRow({ items }: { items: SubagentChild[] }) {
   const active = running + queued;
   const failed = count('error') > 0;
   const { Icon } = STATUS[active ? 'running' : failed ? 'error' : 'done'];
+  const noun = (n: number) => (n === 1 ? 'aliagentti' : 'aliagenttia');
+  // The noun goes with the first count only: "1 aliagentti käynnissä, 2 jonossa".
   const text = active
-    ? [running && `${running} käynnissä`, queued && `${queued} jonossa`].filter(Boolean).join(', ')
+    ? [
+        running && `${running} ${noun(running)} käynnissä`,
+        queued && (running ? `${queued} jonossa` : `${queued} ${noun(queued)} jonossa`),
+      ]
+        .filter(Boolean)
+        .join(', ')
     : `${items.length} aliagenttia valmiina${failed ? ', virheitä' : ''}`;
   return (
     <div className="text-secondary text-fg-muted">
@@ -27,7 +34,7 @@ export function SubagentRow({ items }: { items: SubagentChild[] }) {
         type="button"
         aria-expanded={open}
         onClick={() => setOpen(!open)}
-        className="flex max-w-full items-center gap-2 rounded-sm py-1 hover:text-fg"
+        className="flex max-w-full items-center gap-2 rounded-sm py-1 hover:text-fg max-md:min-h-11"
       >
         <Icon size={16} className={active ? 'animate-spin' : undefined} />
         <span>{text}</span>

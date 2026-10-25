@@ -147,7 +147,7 @@ export function VaultScreen() {
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-4">
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 py-6">
+      <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 py-6">
         <h1 className="font-semibold max-md:hidden">{VAULT_TITLE}</h1>
         {!vault ? (
           <p className="text-fg-muted">Ladataan…</p>
@@ -156,7 +156,7 @@ export function VaultScreen() {
             {!entities.length && !vault.pending.length && (
               <p className="text-fg-muted">Ei vielä tunnistettuja nimiä tai tunnuksia.</p>
             )}
-            <label className="flex items-center gap-2 self-start">
+            <label className="flex items-center gap-2 self-start max-md:min-h-11">
               <input
                 type="checkbox"
                 checked={showModelSaw}
@@ -175,7 +175,7 @@ export function VaultScreen() {
                   id="merge-into"
                   value={target.id}
                   onChange={(e) => setInto(Number(e.target.value))}
-                  className="h-9 rounded-md border border-border bg-bg px-2"
+                  className="h-9 rounded-md border border-border bg-bg px-2 max-md:h-11"
                 >
                   {selected.map((e) => (
                     <option key={e.id} value={e.id}>
@@ -186,7 +186,7 @@ export function VaultScreen() {
                 <button
                   type="button"
                   onClick={merge}
-                  className="ml-auto h-9 rounded-md bg-accent px-4 font-medium text-accent-fg"
+                  className="ml-auto h-9 rounded-md bg-accent px-4 font-medium text-accent-fg max-md:h-11"
                 >
                   Yhdistä
                 </button>
@@ -194,40 +194,44 @@ export function VaultScreen() {
             )}
             {entities.length > 0 && (
               <>
-                <table className="w-full text-left max-md:hidden">
-                  <thead className="text-secondary text-fg-muted">
-                    <tr>
-                      <th className="w-8 py-2">
-                        <span className="sr-only">Valitse</span>
-                      </th>
-                      <th className="py-2 pr-4 font-normal">Tyyppi</th>
-                      <th className="py-2 pr-4 font-normal">Alkuperäinen</th>
-                      <th className="py-2 pr-4 font-normal">Pseudonyymi</th>
-                      <th className="py-2 pr-4 font-normal">Tila</th>
-                      <th className="py-2 pr-4 text-right font-normal">Nähty</th>
-                      <th className="py-2 pr-4 font-normal">Viimeksi</th>
-                      <th className="py-2">
-                        <span className="sr-only">Toiminnot</span>
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {entities.map((e) => (
-                      <tr key={e.id} className="border-t border-border">
-                        <td className="py-1">{check(e)}</td>
-                        <td className="py-1 pr-4 text-fg-muted">{kind(e.kind)}</td>
-                        <td className="py-1 pr-4">{e.canonical}</td>
-                        <td className="py-1 pr-4 text-fg-muted">{e.surrogate}</td>
-                        <td className="py-1 pr-4 text-fg-muted">{MODE[e.mode]}</td>
-                        <td className="py-1 pr-4 text-right tabular-nums">{e.seenCount}</td>
-                        <td className="py-1 pr-4 text-fg-muted tabular-nums">{when(e.lastSeen)}</td>
-                        <td className="py-1">
-                          <ActionRow actions={actionsOf(e, setNeverDetect)} />
-                        </td>
+                <div className="overflow-x-auto max-md:hidden">
+                  <table className="w-full text-left">
+                    <thead className="text-secondary text-fg-muted">
+                      <tr>
+                        <th className="w-8 py-2">
+                          <span className="sr-only">Valitse</span>
+                        </th>
+                        <th className="py-2 pr-4 font-normal">Tyyppi</th>
+                        <th className="py-2 pr-4 font-normal">Alkuperäinen</th>
+                        <th className="py-2 pr-4 font-normal">Pseudonyymi</th>
+                        <th className="py-2 pr-4 font-normal">Tila</th>
+                        <th className="py-2 pr-4 text-right font-normal">Nähty</th>
+                        <th className="py-2 pr-4 font-normal">Viimeksi</th>
+                        <th className="py-2">
+                          <span className="sr-only">Toiminnot</span>
+                        </th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {entities.map((e) => (
+                        <tr key={e.id} className="border-t border-border">
+                          <td className="py-1">{check(e)}</td>
+                          <td className="py-1 pr-4 text-fg-muted">{kind(e.kind)}</td>
+                          <td className="py-1 pr-4">{e.canonical}</td>
+                          <td className="py-1 pr-4 text-fg-muted">{e.surrogate}</td>
+                          <td className="py-1 pr-4 text-fg-muted">{MODE[e.mode]}</td>
+                          <td className="py-1 pr-4 text-right tabular-nums">{e.seenCount}</td>
+                          <td className="py-1 pr-4 text-fg-muted tabular-nums">
+                            {when(e.lastSeen)}
+                          </td>
+                          <td className="py-1">
+                            <ActionRow actions={actionsOf(e, setNeverDetect)} />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
                 <ul className="flex flex-col gap-2 md:hidden" aria-label="Tunnistetut">
                   {entities.map((e) => (
                     <li key={e.id} className="rounded-lg border border-border p-3">

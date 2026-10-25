@@ -32,11 +32,19 @@ export function ActionRow({ actions, small }: { actions: Action[]; small?: boole
 export const menuItem =
   'flex h-11 cursor-default items-center gap-3 rounded-sm px-3 outline-none data-[disabled]:text-fg-muted data-[highlighted]:bg-bg-sunken';
 
-export function ActionMenu({ label, actions }: { label: string; actions: Action[] }) {
+export function ActionMenu({
+  label,
+  actions,
+  small,
+}: {
+  label: string;
+  actions: Action[];
+  small?: boolean;
+}) {
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
-        <IconButton label={label}>
+        <IconButton label={label} {...(small ? { className: 'size-8' } : {})}>
           <MoreHorizontal size={20} />
         </IconButton>
       </DropdownMenu.Trigger>

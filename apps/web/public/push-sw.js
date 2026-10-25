@@ -27,9 +27,12 @@ self.addEventListener('notificationclick', (event) => {
   const url = chatId ? `/?chat=${encodeURIComponent(chatId)}` : '/';
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
-      const client = list[0];
+      // Only windows of this app; a visible one first. The app opens the chat itself.
+      const ours = list.filter((c) => new URL(c.url).origin === self.location.origin);
+      const client = ours.find((c) => c.visibilityState === 'visible') ?? ours[0];
       if (!client) return self.clients.openWindow(url);
-      return client.navigate(url).then((c) => (c ?? client).focus());
+      if (chatId) client.postMessage({ type: 'open-chat', chatId });
+      return client.focus().catch(() => self.clients.openWindow(url));
     }),
   );
 });

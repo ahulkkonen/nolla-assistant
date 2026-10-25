@@ -18,6 +18,7 @@ import { Thread } from './components/Thread.tsx';
 import { Toasts } from './components/Toasts.tsx';
 import { TOPICS_TITLE, TopicsScreen } from './components/TopicsScreen.tsx';
 import { VAULT_TITLE, VaultScreen } from './components/VaultScreen.tsx';
+import { resyncPush } from './push.ts';
 import { firstUserLine, useStore } from './store.ts';
 import { connect, openChat, reportFocus } from './ws.ts';
 
@@ -69,6 +70,14 @@ function Shell() {
         .getState()
         .pushError(integration === 'google' ? 'Google yhdistetty.' : 'Yhdistäminen epäonnistui.');
     if (chat || integration) history.replaceState(null, '', '/');
+    // A notification click on an open window: the service worker posts the chat id.
+    const onMessage = (e: MessageEvent<{ type?: string; chatId?: unknown }>) => {
+      if (e.data?.type === 'open-chat' && typeof e.data.chatId === 'string')
+        openChat(e.data.chatId);
+    };
+    navigator.serviceWorker?.addEventListener('message', onMessage);
+    void resyncPush();
+    return () => navigator.serviceWorker?.removeEventListener('message', onMessage);
   }, []);
 
   // The server skips a push for the chat in the foreground.
@@ -77,8 +86,14 @@ function Shell() {
     reportFocus();
   }, [focused]);
   useEffect(() => {
-    document.addEventListener('visibilitychange', reportFocus);
-    return () => document.removeEventListener('visibilitychange', reportFocus);
+    const onHide = () => reportFocus(true);
+    const onVisibility = () => reportFocus();
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('pagehide', onHide);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('pagehide', onHide);
+    };
   }, []);
 
   return (

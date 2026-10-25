@@ -15,7 +15,7 @@ function Value({ text }: { text: string }) {
         <button
           type="button"
           onClick={() => setMore(!more)}
-          className="ml-2 font-sans text-fg-muted underline underline-offset-2 hover:text-fg"
+          className="ml-2 font-sans text-fg-muted underline underline-offset-2 hover:text-fg max-md:ml-0 max-md:flex max-md:min-h-11 max-md:items-center"
         >
           {more ? 'Näytä vähemmän' : 'Näytä lisää'}
         </button>
@@ -71,8 +71,10 @@ export function ApprovalCard({ a }: { a: Approval }) {
       {reason && <p className="text-secondary text-fg-muted">{reason}</p>}
       <dl className="flex flex-col gap-1">
         {args.map(([k, v]) => (
-          <div key={k} className="flex gap-3">
-            <dt className="w-24 shrink-0 truncate font-mono text-secondary text-fg-muted">{k}</dt>
+          <div key={k} className="flex gap-3 max-md:flex-col max-md:gap-0">
+            <dt className="w-24 shrink-0 truncate font-mono max-md:w-auto text-secondary text-fg-muted">
+              {k}
+            </dt>
             <Value text={show(v)} />
           </div>
         ))}
@@ -82,7 +84,7 @@ export function ApprovalCard({ a }: { a: Approval }) {
         <button
           type="button"
           onClick={() => respondApproval(a.requestId, false)}
-          className="h-10 rounded-md border border-border px-4 font-medium hover:bg-bg-sunken"
+          className="h-10 rounded-md border border-border px-4 font-medium hover:bg-bg-sunken max-md:h-11"
         >
           Hylkää
         </button>
@@ -90,7 +92,7 @@ export function ApprovalCard({ a }: { a: Approval }) {
           ref={approve}
           type="button"
           onClick={() => respondApproval(a.requestId, true)}
-          className="h-10 rounded-md bg-accent px-4 font-medium text-accent-fg"
+          className="h-10 rounded-md bg-accent px-4 font-medium text-accent-fg max-md:h-11"
         >
           Hyväksy
         </button>

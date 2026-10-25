@@ -37,7 +37,7 @@ export const SCREENS = [
 
 const row = 'flex h-10 items-center gap-2 rounded-md border border-border px-3 hover:bg-bg-sunken';
 const check = 'size-4 accent-accent';
-const field = 'h-9 rounded-md border border-border bg-bg px-2';
+const field = 'h-9 rounded-md border border-border bg-bg px-2 max-md:h-11';
 
 /** Opens the one settings dialog (rendered by the app shell). */
 export function SettingsButton() {
@@ -86,7 +86,7 @@ function Notifications() {
     }
   };
   return (
-    <label className="flex items-center gap-2">
+    <label className="flex items-center gap-2 max-md:min-h-11">
       <input
         type="checkbox"
         checked={on}
@@ -112,8 +112,14 @@ function Integrations() {
     setBusy(true);
     try {
       const r = await googleConnect();
-      if ('authUrl' in r) window.location.assign(r.authUrl);
-      else useStore.setState({ integrations: { connected: true } });
+      if ('authUrl' in r) {
+        // Only https (http only for a loopback dev or test server, which redirects to itself).
+        const url = new URL(r.authUrl, location.href);
+        const loopback = ['127.0.0.1', 'localhost'].includes(location.hostname);
+        if (url.protocol !== 'https:' && !(url.protocol === 'http:' && loopback))
+          throw new Error('unsafe auth url');
+        window.location.assign(url.href);
+      } else useStore.setState({ integrations: { connected: true } });
     } catch {
       useStore.getState().pushError('Yhdistäminen epäonnistui.');
     } finally {
@@ -134,7 +140,7 @@ function Integrations() {
             type="button"
             disabled={busy}
             onClick={() => void connect()}
-            className="h-9 rounded-md border border-border px-3 hover:bg-bg-sunken disabled:text-fg-muted"
+            className="h-9 rounded-md border border-border px-3 hover:bg-bg-sunken disabled:text-fg-muted max-md:h-11"
           >
             Yhdistä
           </button>
@@ -201,7 +207,7 @@ export function SettingsDialog() {
             if (leaving.current) e.preventDefault();
             leaving.current = false;
           }}
-          className="fixed inset-4 z-50 m-auto flex h-fit max-w-sm flex-col gap-6 overflow-y-auto rounded-lg border border-border bg-bg-raised p-6 data-[state=closed]:animate-fade-out data-[state=open]:animate-fade-in"
+          className="fixed inset-4 z-50 mx-auto flex max-h-full max-w-sm flex-col gap-6 overflow-y-auto rounded-lg border border-border bg-bg-raised p-6 pb-8 data-[state=closed]:animate-fade-out data-[state=open]:animate-fade-in"
         >
           <div className="flex items-center justify-between">
             <Dialog.Title className="font-semibold">Asetukset</Dialog.Title>
@@ -234,7 +240,7 @@ export function SettingsDialog() {
               ))}
             </div>
           </fieldset>
-          <label className="flex items-center gap-2">
+          <label className="flex items-center gap-2 max-md:min-h-11">
             <input
               type="checkbox"
               checked={showModelSaw}
@@ -252,7 +258,7 @@ export function SettingsDialog() {
             ))}
           </div>
           <Section title="Puhe">
-            <label className="flex items-center gap-2">
+            <label className="flex items-center gap-2 max-md:min-h-11">
               <input
                 type="checkbox"
                 checked={sttAutoSend}

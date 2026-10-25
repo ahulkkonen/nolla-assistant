@@ -266,7 +266,8 @@ type Props = {
   onRetry?: () => void;
 };
 
-const small = 'relative size-6 after:absolute after:-inset-2';
+// 24 px icons for the mouse; 44 px touch targets on phones, where the row is in the flow.
+const small = 'size-6 max-md:size-11';
 
 function EditBox({
   text,
@@ -373,7 +374,7 @@ export function MessageView({
         {!live && !editing && text && (
           <div
             className={clsx(
-              'absolute top-full flex gap-2 opacity-0 transition-opacity duration-(--duration) group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100',
+              'absolute top-full flex gap-2 opacity-0 transition-opacity duration-(--duration) group-focus-within:opacity-100 group-hover:opacity-100 max-md:static max-md:gap-1 max-md:opacity-100 [@media(hover:none)]:opacity-100',
               user ? 'right-0' : 'left-0',
             )}
           >

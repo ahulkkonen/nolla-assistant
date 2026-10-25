@@ -159,6 +159,28 @@ export const sortChats = (chats: ChatSummary[]) =>
     (a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt.localeCompare(a.updatedAt),
   );
 
+/**
+ * `chat.state` artifacts plus the ones opened locally from code blocks (`local-` ids, not known
+ * to the server); the panel closes when its artifact is gone.
+ */
+function mergeArtifacts(st: State, chatId: string, server: Artifact[]): Partial<State> {
+  const local = (st.artifacts[chatId] ?? []).filter(
+    (a) =>
+      a.id.startsWith('local-') && !server.some((x) => x.content.trimEnd() === a.content.trimEnd()),
+  );
+  const next = [...server, ...local];
+  const open = st.openArtifact;
+  if (open?.chatId !== chatId || next.some((a) => a.id === open.id))
+    return { artifacts: { ...st.artifacts, [chatId]: next } };
+  // The open local copy now has a server twin: follow it, else close the panel.
+  const was = st.artifacts[chatId]?.find((a) => a.id === open.id);
+  const twin = was && server.find((x) => x.content.trimEnd() === was.content.trimEnd());
+  return {
+    artifacts: { ...st.artifacts, [chatId]: next },
+    openArtifact: twin ? { chatId, id: twin.id } : null,
+  };
+}
+
 const omit = <T>(rec: Record<string, T>, key: string) => {
   const { [key]: _, ...rest } = rec;
   return rest;
@@ -217,8 +239,7 @@ export const useStore = create<State>()((set, get) => {
     paletteOpen: false,
     settingsOpen: false,
     integrations: null,
-    sttAutoSend: loadStt().sttAutoSend,
-    sttLanguage: loadStt().sttLanguage,
+    ...loadStt(),
     vault: null,
     topics: [],
     proposals: [],
@@ -262,9 +283,7 @@ export const useStore = create<State>()((set, get) => {
         case 'chat.state':
           return set((st) => ({
             messages: { ...st.messages, [msg.chat.id]: msg.messages },
-            ...(msg.artifacts
-              ? { artifacts: { ...st.artifacts, [msg.chat.id]: msg.artifacts } }
-              : {}),
+            ...(msg.artifacts ? mergeArtifacts(st, msg.chat.id, msg.artifacts) : {}),
           }));
         case 'artifact.upsert':
           return set((st) => {
@@ -274,7 +293,7 @@ export const useStore = create<State>()((set, get) => {
             return {
               artifacts: { ...st.artifacts, [msg.chatId]: next },
               // A new artifact in the open chat opens the panel on it.
-              ...(i < 0 && msg.chatId === st.activeChatId
+              ...(i < 0 && msg.chatId === st.activeChatId && st.screen === 'chat'
                 ? { openArtifact: { chatId: msg.chatId, id: msg.artifact.id } }
                 : {}),
             };
@@ -284,7 +303,13 @@ export const useStore = create<State>()((set, get) => {
             chats: st.chats.filter((c) => c.id !== msg.chatId),
             messages: omit(st.messages, msg.chatId),
             artifacts: omit(st.artifacts, msg.chatId),
-            ...(st.activeChatId === msg.chatId ? { activeChatId: null, screen: 'chat' } : {}),
+            streaming: omit(st.streaming, msg.chatId),
+            agentStatus: omit(st.agentStatus, msg.chatId),
+            memoryChip: omit(st.memoryChip, msg.chatId),
+            approvals: st.approvals.filter((a) => a.chatId !== msg.chatId),
+            ...(st.activeChatId === msg.chatId
+              ? { activeChatId: null, screen: 'chat', scrollTo: null }
+              : {}),
             ...(st.openArtifact?.chatId === msg.chatId ? { openArtifact: null } : {}),
           }));
         case 'integrations.state':
@@ -363,15 +388,18 @@ export const useStore = create<State>()((set, get) => {
             const agentWrite =
               st.screen === 'chat' && chatId && st.agentStatus[chatId] === 'running';
             const grew = memory.pending.length > (st.memory?.pending.length ?? 0);
+            const lines = memoryChanges(st.memory, memory);
+            // An applied write that changed nothing visible gets no chip.
+            const chip = agentWrite && (grew || lines.length > 0);
             return {
               memory,
-              ...(agentWrite
+              ...(chip
                 ? {
                     memoryChip: {
                       ...st.memoryChip,
                       [chatId]: {
                         kind: grew ? 'pending' : 'applied',
-                        lines: memoryChanges(st.memory, memory),
+                        lines,
                       },
                     },
                   }
@@ -391,6 +419,12 @@ export const useStore = create<State>()((set, get) => {
         case 'vault.state':
           return set({ vault: { entities: msg.entities, pending: msg.pending } });
         case 'error':
+          // `chat.open` of a chat deleted elsewhere (e.g. while offline) answers not_found.
+          if (msg.code === 'not_found') {
+            const st = get();
+            if (st.activeChatId && !st.chats.some((c) => c.id === st.activeChatId))
+              set({ activeChatId: null, scrollTo: null });
+          }
           return get().pushError(ERROR_TEXT[msg.code] ?? msg.message);
         default:
           return;

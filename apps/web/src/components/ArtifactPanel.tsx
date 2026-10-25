@@ -8,18 +8,30 @@ import { IconButton } from './IconButton.tsx';
 
 const EMPTY: Artifact[] = [];
 const CSP =
-  "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:";
+  "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; form-action 'none'; base-uri 'none'";
+const CSP_META = `<meta http-equiv="Content-Security-Policy" content="${CSP}">`;
+/** Follows the app theme for default text and canvas colours; never forces a background. */
+const SCHEME_META = '<meta name="color-scheme" content="light dark">';
+/** The open-in-tab wrapper runs no script; it only frames the sandboxed document. */
+const WRAPPER_CSP = "default-src 'none'; frame-src 'self' about:; style-src 'unsafe-inline'";
 const EXT: Record<string, string> = { html: 'html', react: 'jsx', mermaid: 'mmd' };
 
-/** `</script` inside inline code would end the script element early. */
-const inline = (js: string) => js.replace(/<\/(script)/gi, '<\\/$1');
+/** `</script` would end an inline script early and `<!--` can change how the parser reads it. */
+const inline = (js: string) => js.replace(/<\/(script)/gi, '<\\/$1').replace(/<!--/g, '<\\!--');
 const page = (body: string, head = '') =>
-  `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${CSP}"><meta name="viewport" content="width=device-width,initial-scale=1">${head}</head><body>${body}</body></html>`;
+  `<!doctype html>${CSP_META}${SCHEME_META}<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">${head}</head><body>${body}</body></html>`;
 const BASE_STYLE = '<style>body{margin:16px;font-family:system-ui,sans-serif}</style>';
 
 let runtime: Promise<string> | undefined;
 const loadRuntime = () => {
-  runtime ??= fetch(runtimeUrl).then((r) => r.text());
+  runtime ??= fetch(runtimeUrl).then((r) => {
+    if (!r.ok) throw new Error(`runtime ${r.status}`);
+    return r.text();
+  });
+  // A failed load is retried on the next artifact.
+  runtime.catch(() => {
+    runtime = undefined;
+  });
   return runtime;
 };
 
@@ -30,13 +42,32 @@ function transpile(source: string): Promise<string> {
   const w = worker;
   const id = ++seq;
   return new Promise((resolve, reject) => {
+    const done = () => {
+      clearTimeout(timer);
+      w.removeEventListener('message', onMessage);
+      w.removeEventListener('error', onError);
+      w.removeEventListener('messageerror', onError);
+    };
     const onMessage = (e: MessageEvent<{ id: number; code?: string; error?: string }>) => {
       if (e.data.id !== id) return;
-      w.removeEventListener('message', onMessage);
+      done();
       if (e.data.code !== undefined) resolve(e.data.code);
       else reject(new Error(e.data.error ?? 'transpile failed'));
     };
+    const onError = () => {
+      done();
+      // A broken worker is replaced on the next call.
+      if (worker === w) worker = undefined;
+      w.terminate();
+      reject(new Error('transpile worker failed'));
+    };
+    const timer = setTimeout(() => {
+      done();
+      reject(new Error('transpile timed out'));
+    }, 15_000);
     w.addEventListener('message', onMessage);
+    w.addEventListener('error', onError);
+    w.addEventListener('messageerror', onError);
     w.postMessage({ id, source });
   });
 }
@@ -47,13 +78,9 @@ const escapeHtml = (s: string) =>
 /** The sandboxed document for an artifact; `code` and `file` have none. */
 async function documentFor(a: Artifact, dark: boolean): Promise<string | null> {
   if (a.kind === 'html') {
-    // Our CSP goes first in <head>; a later, looser policy cannot widen it.
-    return /<head[^>]*>/i.test(a.content)
-      ? a.content.replace(
-          /<head[^>]*>/i,
-          (m) => `${m}<meta http-equiv="Content-Security-Policy" content="${CSP}">`,
-        )
-      : page(a.content);
+    // Our CSP is always the first element, before anything of the artifact's (even a <script>
+    // ahead of <head>); a later, looser policy cannot widen it.
+    return `<!doctype html>${CSP_META}${SCHEME_META}${a.content.replace(/^\s*<!doctype[^>]*>/i, '')}`;
   }
   if (a.kind === 'react') {
     const [rt, code] = await Promise.all([loadRuntime(), transpile(a.content)]);
@@ -98,7 +125,7 @@ function download(a: Artifact) {
  */
 function openInTab(a: Artifact, doc: string | null) {
   const html = doc
-    ? `<!doctype html><meta charset="utf-8"><title>${escapeHtml(a.title)}</title><style>html,body,iframe{margin:0;width:100%;height:100%;border:0}</style><iframe sandbox="allow-scripts" srcdoc="${doc.replace(/&/g, '&amp;').replace(/"/g, '&quot;')}"></iframe>`
+    ? `<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${WRAPPER_CSP}"><title>${escapeHtml(a.title)}</title><style>html,body,iframe{margin:0;width:100%;height:100%;border:0}</style><iframe sandbox="allow-scripts" srcdoc="${doc.replace(/&/g, '&amp;').replace(/"/g, '&quot;')}"></iframe>`
     : `<!doctype html><meta charset="utf-8"><title>${escapeHtml(a.title)}</title><pre>${escapeHtml(a.content)}</pre>`;
   const url = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
   window.open(url, '_blank', 'noopener');
@@ -106,8 +133,8 @@ function openInTab(a: Artifact, doc: string | null) {
 }
 
 /**
- * Right panel (> 1200 px beside the thread, 768–1200 px over it, < 768 px full screen) with one
- * tab per artifact of the chat.
+ * Right panel beside the thread above 1200 px, a full-screen sheet below; one tab per artifact of
+ * the chat.
  */
 export function ArtifactPanel() {
   const open = useStore((s) => s.openArtifact);
@@ -118,10 +145,11 @@ export function ArtifactPanel() {
   const [doc, setDoc] = useState<{ id: string; html: string | null; error?: string } | null>(null);
   const [copied, setCopied] = useState(false);
 
+  // Keyed by content, not object identity: a streaming upsert of another artifact must not reload
+  // this one. The old document stays up until the new one is ready.
   useEffect(() => {
     if (!a) return;
     let live = true;
-    setDoc(null);
     documentFor(a, isDark(theme)).then(
       (html) => live && setDoc({ id: a.id, html }),
       (err: unknown) =>
@@ -131,16 +159,17 @@ export function ArtifactPanel() {
     return () => {
       live = false;
     };
-  }, [a, theme]);
+  }, [a?.id, a?.content, a?.kind, theme]);
 
   if (!open || !a) return null;
   const close = () => useStore.setState({ openArtifact: null });
   const ready = doc?.id === a.id ? doc : null;
+  const plain = a.kind === 'code' || a.kind === 'file';
 
   return (
     <aside
       aria-label="Artefaktit"
-      className="fixed inset-0 z-30 flex flex-col bg-bg pt-[env(safe-area-inset-top)] md:absolute md:inset-y-0 md:right-0 md:left-auto md:w-120 md:border-l md:border-border xl:static xl:z-auto xl:shrink-0"
+      className="fixed inset-0 z-30 flex flex-col bg-bg pt-[env(safe-area-inset-top)] xl:static xl:z-auto xl:w-120 xl:shrink-0 xl:border-l xl:border-border"
     >
       <div className="flex items-center gap-1 border-b border-border px-2 py-1">
         <div role="tablist" className="flex min-w-0 flex-1 gap-1 overflow-x-auto">
@@ -176,7 +205,8 @@ export function ArtifactPanel() {
         </IconButton>
         <IconButton
           label="Avaa uudessa välilehdessä"
-          onClick={() => openInTab(a, ready?.html ?? null)}
+          disabled={!plain && !ready?.html}
+          onClick={() => openInTab(a, plain ? null : (ready?.html ?? null))}
         >
           <ExternalLink size={16} />
         </IconButton>

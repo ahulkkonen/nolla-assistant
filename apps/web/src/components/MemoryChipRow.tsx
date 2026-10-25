@@ -43,7 +43,7 @@ export function MemoryChipRow({ chip }: { chip: MemoryChip }) {
           onClick={() => useStore.getState().setScreen('memory')}
           className="underline underline-offset-2 hover:text-fg"
         >
-          Muisti
+          Avaa muisti
         </button>
       </p>
       {open && (
