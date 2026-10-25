@@ -75,14 +75,15 @@ test('title: masked to the model and in the db, restored on the wire; rename loc
   await settle();
   expect(llm.requests).toHaveLength(3);
 
-  // Rename locks the title; a later long turn (> ~3K tokens) does not retitle.
+  // Rename locks the title; a later long turn (> ~3K tokens) does not retitle
+  // (the job still runs for the summary: the fifth request).
   c.inbox.length = 0;
   c.send({ type: 'chat.rename', chatId: chat.id, title: 'Matti Virtanen muistio' });
   expect((await c.next('chat.updated')).chat.title).toBe('Matti Virtanen muistio');
   c.send({ type: 'user.message', chatId: chat.id, text: 'x'.repeat(13_000) });
   await c.idle();
   await settle();
-  expect(llm.requests).toHaveLength(4);
+  expect(llm.requests).toHaveLength(5);
   expect(row()).toMatchObject({
     title: 'Matti Virtanen muistio',
     titleMasked: 'Pekka Laaksonen muistio',

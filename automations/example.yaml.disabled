@@ -1,0 +1,7 @@
+id: example
+cron: '0 7 * * 1-5'
+timezone: Europe/Helsinki
+agentId: assistant
+prompt: Anna lyhyt aamukatsaus päivän tehtävistä.
+deliver: chat
+enabled: true

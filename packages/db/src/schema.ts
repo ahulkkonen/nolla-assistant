@@ -133,3 +133,13 @@ export const passkeys = sqliteTable('passkeys', {
   createdAt: text().notNull(),
   lastUsedAt: text(),
 });
+
+export const automationRuns = sqliteTable('automationRuns', {
+  // The automation id (file name).
+  id: text().primaryKey(),
+  userId: text().notNull(),
+  lastRunAt: text().notNull(),
+  lastStatus: text({ enum: ['ok', 'error'] }).notNull(),
+  lastChatId: text(),
+  lastError: text(),
+});

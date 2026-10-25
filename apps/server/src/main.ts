@@ -5,6 +5,7 @@ import { PSEUDO_DOWN, PseudoClient, type PseudoLog } from '@pa/pi-ext-pseudo';
 import { loadAgents, watchAgents } from './agents.ts';
 import { approvals as approvalStore } from './approval.ts';
 import { purgeExpiredSessions } from './auth/session.ts';
+import { startAutomations } from './automations.ts';
 import { type BridgeDeps, broadcast, chatRow, errorMsg } from './bridge.ts';
 import { type Config, loadConfig } from './config.ts';
 import { buildServer } from './http.ts';
@@ -25,6 +26,7 @@ export async function start(
   purgeExpiredSessions(db);
   const pseudo = config.pseudoUrl ? new PseudoClient(config.pseudoUrl, config.userId) : undefined;
   const rooms: BridgeDeps['rooms'] = new Map();
+  let automations: ReturnType<typeof startAutomations> | undefined;
   const agentError = (file: string, err: unknown) =>
     app.log.error({ file, error: err instanceof Error ? err.message : String(err) }, 'bad agent');
   // Startup fails without `assistant`; a later bad edit keeps the previous profiles.
@@ -65,6 +67,7 @@ export async function start(
     rooms,
     agents,
     approvals,
+    automations: () => automations,
     ...(logStream ? { logStream } : {}),
     ...(pseudo ? { pseudo } : {}),
   });
@@ -78,6 +81,14 @@ export async function start(
     pseudo,
     log: app.log,
   });
+  automations = startAutomations({
+    dir: config.automationsDir,
+    db,
+    userId: config.userId,
+    registry,
+    prompt: async (chatId, text) => void (await (await registry.get(chatId)).prompt(text)),
+    log: app.log,
+  });
   await app.listen({ port: config.port, host: config.host });
   const timer = setInterval(() => void registry.evictIdle(), 5 * 60_000);
   timer.unref();
@@ -85,6 +96,7 @@ export async function start(
   purge.unref();
   const close = async () => {
     stopWatch();
+    automations?.close();
     clearInterval(timer);
     clearInterval(purge);
     await titles.close();

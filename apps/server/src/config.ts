@@ -37,6 +37,8 @@ export function loadConfig(env: Env = process.env) {
     litellmMasterKey: required(env, 'LITELLM_MASTER_KEY'),
     userId,
     agentsDir: env.AGENTS_DIR || fileURLToPath(new URL('../../../agents', import.meta.url)),
+    automationsDir:
+      env.AUTOMATIONS_DIR || fileURLToPath(new URL('../../../automations', import.meta.url)),
     skillsDir: env.SKILLS_DIR || fileURLToPath(new URL('../../../skills', import.meta.url)),
     // Tests shorten it; the plan fixes 10 minutes.
     approvalTimeoutMs: Number(env.APPROVAL_TIMEOUT_MS) || 10 * 60_000,

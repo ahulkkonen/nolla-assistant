@@ -124,7 +124,9 @@ export function titleJobs(deps: {
 
   const run = async (chatId: string) => {
     const chat = chatRow(db, userId, chatId);
-    if (!chat || chat.titleLocked) return;
+    if (!chat) return;
+    // A locked title (rename, automation) stays; the summary is still written.
+    const locked = chat.titleLocked;
     const session = await registry.get(chatId);
     // A new run started: its own settle schedules the job again.
     if (!session.isIdle) return;
@@ -132,7 +134,7 @@ export function titleJobs(deps: {
       .map((m) => `${m.role === 'user' ? 'Käyttäjä' : 'Avustaja'}: ${m.text}`)
       .join('\n\n');
     if (!transcript) return;
-    if (chat.title && transcript.length - (lastRunChars.get(chatId) ?? 0) <= RERUN_CHARS) return;
+    if (chat.summary && transcript.length - (lastRunChars.get(chatId) ?? 0) <= RERUN_CHARS) return;
 
     const list = db
       .select({ id: topics.id, name: topics.name, description: topics.description })
@@ -167,19 +169,26 @@ export function titleJobs(deps: {
     const result = db.transaction((tx) => {
       const r = tx
         .update(chats)
-        .set({
-          title,
-          titleMasked: reply.title,
-          // Keep a topic the user chose when the model picks none.
-          topicId: ids[0] ?? chat.topicId,
-          summary: chatSummary,
-          updatedAt: new Date().toISOString(),
-        })
+        .set(
+          locked
+            ? { summary: chatSummary, updatedAt: new Date().toISOString() }
+            : {
+                title,
+                titleMasked: reply.title,
+                // Keep a topic the user chose when the model picks none.
+                topicId: ids[0] ?? chat.topicId,
+                summary: chatSummary,
+                updatedAt: new Date().toISOString(),
+              },
+        )
         // A rename during the call wins.
-        .where(and(eq(chats.id, chatId), eq(chats.titleLocked, false)))
+        .where(
+          locked ? eq(chats.id, chatId) : and(eq(chats.id, chatId), eq(chats.titleLocked, false)),
+        )
         .returning()
         .get();
       if (!r) return;
+      if (locked) return { r, added: false };
       tx.delete(tags)
         .where(and(eq(tags.chatId, chatId), like(tags.tag, 'topic:%')))
         .run();
@@ -217,7 +226,8 @@ export function titleJobs(deps: {
     lastRunChars.set(chatId, transcript.length);
     const { r, added } = result;
     log.debug({ chatId, topics: ids.length, proposal: added }, 'chat titled');
-    broadcast(rooms, chatId, { type: 'chat.titled', chatId, title, topicId: r.topicId });
+    if (!locked)
+      broadcast(rooms, chatId, { type: 'chat.titled', chatId, title, topicId: r.topicId });
     broadcast(rooms, chatId, { type: 'chat.updated', chat: summary(r) });
     if (added) broadcast(rooms, chatId, topicState(db, userId));
     await indexChat(db, userId, chatId);

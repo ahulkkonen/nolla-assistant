@@ -20,6 +20,7 @@ import { and, desc, eq } from 'drizzle-orm';
 import type { FastifyBaseLogger } from 'fastify';
 import type { Agents } from './agents.ts';
 import { type Approvals, DENIED_REASON, TIMEOUT_REASON } from './approval.ts';
+import type { Automations } from './automations.ts';
 import { AttachmentNotFound, chatFiles, ingestAttachments } from './files.ts';
 import { GUARD_REASON } from './pi/guard.ts';
 import type { SessionRegistry } from './pi/registry.ts';
@@ -42,6 +43,8 @@ export type BridgeDeps = {
   rooms: Map<string, Set<Socket>>;
   agents: () => Agents;
   approvals: Approvals;
+  /** Unset until the runner has started. */
+  automations: () => Automations | undefined;
   /** Restores surrogates for display. Unset in dev (no masking, see config `pseudoUrl`). */
   pseudo?: PseudoClient;
 };
@@ -403,6 +406,14 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
         owned(msg.chatId);
         if (registry.has(msg.chatId)) await (await registry.get(msg.chatId)).abort();
         return;
+      case 'automations.list':
+        return send(
+          socket,
+          deps.automations()?.state() ?? { type: 'automations.state', automations: [] },
+        );
+      case 'automations.run':
+        if (!(await deps.automations()?.runNow(msg.id))) throw new NotFound();
+        return send(socket, deps.automations()?.state() ?? errorMsg('failed'));
       case 'topic.list':
         return send(socket, topicState(db, userId));
       case 'topic.accept': {

@@ -151,6 +151,8 @@ export const ClientMessage = z.discriminatedUnion('type', [
   }),
   z.object({ type: z.literal('memory.approve'), pendingId: z.int(), approve: z.boolean() }),
   z.object({ type: z.literal('topic.list') }),
+  z.object({ type: z.literal('automations.list') }),
+  z.object({ type: z.literal('automations.run'), id: id64 }),
   z.object({
     type: z.literal('topic.accept'),
     proposalId: z.int(),
@@ -288,6 +290,20 @@ export const ServerMessage = z.discriminatedUnion('type', [
       }),
     ),
     consolidation: z.object({ id: z.int(), diff: z.string() }).nullable(),
+  }),
+  z.object({
+    type: z.literal('automations.state'),
+    automations: z.array(
+      z.object({
+        id: z.string(),
+        cron: z.string(),
+        agentId: z.string(),
+        enabled: z.boolean(),
+        lastRunAt: z.string().nullable(),
+        lastStatus: z.string().nullable(),
+        lastChatId: z.string().nullable(),
+      }),
+    ),
   }),
   z.object({
     type: z.literal('topic.state'),
