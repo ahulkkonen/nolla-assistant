@@ -1,17 +1,20 @@
-import { Search } from 'lucide-react';
+import { ChevronRight, Search, SearchX } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { useStore } from '../store.ts';
 import { openChat, runSearch } from '../ws.ts';
+import { EmptyState, ListSkeleton, Page } from './Page.tsx';
 import { UNTITLED } from './Sidebar.tsx';
 
 export const SEARCH_TITLE = 'Hakutulokset';
 
-/** `**match**` markers become a bold `<mark>`: never highlighted like a PII span. */
+/** `**match**` markers become a `<mark>` (brief 7.5): never highlighted like a PII span. */
 function Snippet({ text }: { text: string }) {
   return (
     <>
       {text.split(/\*\*(.+?)\*\*/).map((part, i) =>
         i % 2 ? (
-          <mark key={i} className="bg-transparent font-semibold text-foreground">
+          <mark key={i} className="rounded-[2px] bg-warning-subtle px-0.5 text-foreground">
             {part}
           </mark>
         ) : (
@@ -24,56 +27,69 @@ function Snippet({ text }: { text: string }) {
 
 export function SearchScreen() {
   const search = useStore((s) => s.search);
+  const clear = () => {
+    useStore.setState({ search: null });
+    useStore.getState().setScreen('chat');
+  };
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto px-4">
-      <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 py-6">
-        <h1 className="font-semibold max-md:hidden">{SEARCH_TITLE}</h1>
-        <form
-          role="search"
-          className="relative"
-          onSubmit={(e) => {
-            e.preventDefault();
-            const q = String(new FormData(e.currentTarget).get('q') ?? '').trim();
-            if (q) runSearch(q.slice(0, 500));
-          }}
-        >
-          <Search
-            size={16}
-            className="pointer-events-none absolute inset-y-0 left-3 my-auto text-muted-foreground"
-          />
-          {/* Keyed by the query so a new search from the sidebar refills it. */}
-          <input
-            key={search?.q}
-            name="q"
-            type="search"
-            defaultValue={search?.q ?? ''}
-            aria-label="Hakusanat"
-            className="h-10 w-full rounded-md border border-border bg-card pr-2 pl-9"
-          />
-        </form>
-        {!search?.results ? (
-          <p className="text-muted-foreground">Haetaan…</p>
-        ) : !search.results.length ? (
-          <p className="text-muted-foreground">Ei osumia.</p>
-        ) : (
-          <ul className="flex flex-col gap-2" aria-label={`Haku: ${search.q}`}>
-            {search.results.map((r) => (
-              <li key={`${r.chatId}:${r.messageId ?? ''}`}>
-                <button
-                  type="button"
-                  onClick={() => openChat(r.chatId, r.messageId)}
-                  className="flex w-full flex-col gap-1 rounded-lg border border-border px-4 py-3 text-left hover:bg-accent"
-                >
-                  <span className="font-medium">{r.title || UNTITLED}</span>
-                  <span className="text-meta text-muted-foreground">
-                    <Snippet text={r.snippet} />
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-    </div>
+    <Page title={SEARCH_TITLE}>
+      <form
+        role="search"
+        className="relative"
+        onSubmit={(e) => {
+          e.preventDefault();
+          const q = String(new FormData(e.currentTarget).get('q') ?? '').trim();
+          if (q) runSearch(q.slice(0, 500));
+        }}
+      >
+        <Search
+          size={16}
+          className="pointer-events-none absolute inset-y-0 left-3 my-auto text-muted-foreground"
+        />
+        {/* Keyed by the query so a new search from the sidebar refills it. */}
+        <Input
+          key={search?.q}
+          name="q"
+          type="search"
+          defaultValue={search?.q ?? ''}
+          aria-label="Hakusanat"
+          className="pl-9"
+        />
+      </form>
+      <section className="flex flex-col">
+        <ListSkeleton loading={!search?.results} rows={3} />
+        {search?.results &&
+          (!search.results.length ? (
+            <EmptyState Icon={SearchX} title={`Ei tuloksia haulle ”${search.q}”`}>
+              <Button variant="outline" onClick={clear}>
+                Tyhjennä haku
+              </Button>
+            </EmptyState>
+          ) : (
+            <ul
+              className="flex flex-col divide-y divide-border border-y"
+              aria-label={`Haku: ${search.q}`}
+            >
+              {search.results.map((r) => (
+                <li key={`${r.chatId}:${r.messageId ?? ''}`}>
+                  <button
+                    type="button"
+                    onClick={() => openChat(r.chatId, r.messageId)}
+                    className="flex min-h-14 w-full items-center gap-3 py-2 text-left transition-colors duration-100 hover:bg-accent/50"
+                  >
+                    <span className="flex min-w-0 flex-1 flex-col">
+                      <span className="truncate font-medium">{r.title || UNTITLED}</span>
+                      <span className="line-clamp-2 text-meta text-muted-foreground">
+                        <Snippet text={r.snippet} />
+                      </span>
+                    </span>
+                    <ChevronRight size={16} className="shrink-0 text-muted-foreground" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ))}
+      </section>
+    </Page>
   );
 }

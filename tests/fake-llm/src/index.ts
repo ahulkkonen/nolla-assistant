@@ -1,9 +1,16 @@
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 
-export type FakeTurn =
+/**
+ * A scripted reply. `match` (a substring or RegExp, tested against the text of the request's last
+ * user message) reserves the turn for matching calls: a call takes the first queued turn whose
+ * `match` matches, else the first turn without `match`. Parallel callers (subagents, the title
+ * job) then cannot take each other's turns.
+ */
+export type FakeTurn = (
   | { text: string; usage?: { prompt_tokens: number; completion_tokens: number } }
-  | { toolCalls: { id?: string; name: string; args: Record<string, unknown> }[]; text?: string };
+  | { toolCalls: { id?: string; name: string; args: Record<string, unknown> }[]; text?: string }
+) & { match?: string | RegExp };
 export type FakeRequest = {
   path: string;
   headers: Record<string, string | string[] | undefined>;
@@ -11,6 +18,30 @@ export type FakeRequest = {
 };
 
 const split = (s: string, n: number) => s.match(new RegExp(`[\\s\\S]{1,${n}}`, 'g')) ?? [];
+
+/** Text of the last `user` message; content parts are joined. */
+const lastUserText = (body: any): string => {
+  const m = [...(Array.isArray(body?.messages) ? body.messages : [])]
+    .reverse()
+    .find((x: any) => x?.role === 'user');
+  const c = m?.content;
+  if (typeof c === 'string') return c;
+  return Array.isArray(c)
+    ? c.map((p: any) => (typeof p?.text === 'string' ? p.text : '')).join('')
+    : '';
+};
+
+const matches = (t: FakeTurn, text: string) =>
+  t.match !== undefined &&
+  (typeof t.match === 'string' ? text.includes(t.match) : t.match.test(text));
+
+/** Takes the first turn whose `match` matches, else the first turn without `match`. */
+const take = (queue: FakeTurn[], body: any) => {
+  const text = lastUserText(body);
+  const i = queue.findIndex((t) => matches(t, text));
+  const j = i >= 0 ? i : queue.findIndex((t) => t.match === undefined);
+  return j >= 0 ? queue.splice(j, 1)[0] : undefined;
+};
 
 /**
  * `fallback` answers a call when the queue is empty (demo use); tests leave it unset so an
@@ -67,7 +98,7 @@ export async function startFakeLlm(
         return json(400, { error: { message: 'fake-llm: bad json' } });
       }
       requests.push({ path: req.url ?? '', headers: req.headers, body });
-      const turn = queue.shift() ?? fallback?.(body);
+      const turn = take(queue, body) ?? fallback?.(body);
       if (!turn) return json(500, { error: { message: 'fake-llm: no scripted turn' } });
 
       const id = `chatcmpl-${requests.length}`;

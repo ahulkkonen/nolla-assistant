@@ -212,7 +212,10 @@ for (const scheme of ['light', 'dark'] as const) {
         await mockPush(page);
         await app.login(page);
         await openSettings(page, 'Asetukset');
-        await page.getByRole('heading', { name: 'Ilmoitukset' }).scrollIntoViewIfNeeded();
+        // To the top of the dialog body: "if needed" leaves a heading on the bottom edge.
+        await page
+          .getByRole('heading', { name: 'Ilmoitukset' })
+          .evaluate((el) => el.scrollIntoView({ block: 'start' }));
         await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
         await shot(page, 'settings-notifications', vp.width, scheme);
       });
@@ -221,7 +224,10 @@ for (const scheme of ['light', 'dark'] as const) {
         await app.login(page);
         await openSettings(page, 'Asetukset');
         await expect(page.getByText('Ei yhdistetty')).toBeVisible();
-        await page.getByRole('heading', { name: 'Integraatiot' }).scrollIntoViewIfNeeded();
+        // To the top of the dialog body: "if needed" leaves a heading on the bottom edge.
+        await page
+          .getByRole('heading', { name: 'Integraatiot' })
+          .evaluate((el) => el.scrollIntoView({ block: 'start' }));
         await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
         await shot(page, 'settings-integrations', vp.width, scheme);
       });
@@ -271,6 +277,21 @@ for (const scheme of ['light', 'dark'] as const) {
             await shot(page, 'vault-merge', vp.width, scheme);
           });
 
+          test('confirm-never-detect', async ({ app, page }) => {
+            app.llm.push({ text: 'Selvä, Pekka Laaksonen.' });
+            await app.login(page);
+            await send(page, 'Matti Virtanen ja Liisa Korhonen, hetu 010190-123M');
+            await expect(page.locator('.md').last()).toHaveText('Selvä, Matti Virtanen.');
+            await openVault(page);
+            await page
+              .getByRole('button', { name: 'Toiminnot: Matti Virtanen' })
+              .filter({ visible: true })
+              .click();
+            await page.getByRole('menuitem', { name: 'Älä tunnista enää' }).click();
+            await expect(page.getByRole('alertdialog')).toBeVisible();
+            await shot(page, 'confirm-never-detect', vp.width, scheme);
+          });
+
           test('chat-annotated', async ({ app, page }) => {
             app.llm.push({ text: 'Hei Pekka Laaksonen! Hetu 010190-900B on tallessa.' });
             await app.login(page);
@@ -299,6 +320,23 @@ for (const scheme of ['light', 'dark'] as const) {
             await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
             await shot(page, 'chat-annotated-modelsaw', vp.width, scheme);
           });
+        });
+
+        test('confirm-delete', async ({ app, page }) => {
+          app.llm.push({ text: 'Poistettava vastaus.' });
+          await app.login(page);
+          await sendMessage(page, 'Verot 2026');
+          await expect(page.locator('.md').last()).toHaveText('Poistettava vastaus.');
+          await showSidebar(page);
+          const row = page.locator('nav li', {
+            has: page.getByRole('button', { name: 'Verot 2026', exact: true }),
+          });
+          await row.hover();
+          // The row menu: "Lisää: …" beside the pin above 768 px, "Toiminnot: …" in the drawer.
+          await row.getByRole('button', { name: /^(Lisää|Toiminnot): / }).click();
+          await page.getByRole('menuitem', { name: 'Poista' }).click();
+          await expect(page.getByRole('alertdialog')).toBeVisible();
+          await shot(page, 'confirm-delete', vp.width, scheme);
         });
 
         test('topics-inbox', async ({ app, page }) => {
@@ -411,7 +449,7 @@ for (const scheme of ['light', 'dark'] as const) {
         test('search-empty', async ({ app, page }) => {
           await app.login(page);
           await search(page, 'hammaslääkäri');
-          await expect(page.getByText('Ei osumia.')).toBeVisible();
+          await expect(page.getByText('Ei tuloksia haulle')).toBeVisible();
           await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
           await shot(page, 'search-empty', vp.width, scheme);
         });
@@ -458,33 +496,33 @@ for (const scheme of ['light', 'dark'] as const) {
           await shot(page, 'agent-picker', vp.width, scheme);
         });
 
-        test.describe('subagents', () => {
-          // Known flake (docs/decisions/phase-7.md): under parallel load the FIFO fake LLM
-          // sometimes hands a scripted turn to another call and two children never finish.
-          // It passes alone; a retry starts a fresh server and queue.
-          test.describe.configure({ retries: 2 });
-
-          test('subagents-row', async ({ app, page }) => {
-            const tasks = ['Verot', 'Asuminen', 'Liikenne'].map((label) => ({
-              label,
-              task: `Tiivistä aihe ${label}`,
-            }));
-            app.llm.push({ toolCalls: [{ name: 'subagent', args: { mode: 'parallel', tasks } }] });
-            for (const _ of tasks) app.llm.push({ text: 'Tiivistelmä.' });
-            app.llm.push({ text: 'Valmis.' });
-            const hold = await holdAfter(page, 'subagent.state');
-            await app.login(page);
-            await page.getByRole('button', { name: 'Agentti: Avustaja' }).click();
-            await page.getByRole('menuitemradio', { name: 'Tutkija' }).click();
-            await sendMessage(page, 'Tiivistä kolme aihetta');
-            await hold.reached;
-            const row = page.getByRole('button', { name: '3 aliagenttia jonossa' });
-            await row.click();
-            await expect(page.getByText('Asuminen')).toBeVisible();
-            await shot(page, 'subagents-row', vp.width, scheme);
-            hold.release();
-            await expect(page.locator('.md').last()).toHaveText('Valmis.', { timeout: 30_000 });
+        test('subagents-row', async ({ app, page }) => {
+          const tasks = ['Verot', 'Asuminen', 'Liikenne'].map((label) => ({
+            label,
+            task: `Tiivistä aihe ${label}`,
+          }));
+          // Every turn is reserved for its caller (`match`): children run in parallel with each
+          // other and with the title job, so a FIFO queue could hand a turn to the wrong call.
+          const parent = /^Tiivistä kolme aihetta/;
+          app.llm.push({
+            match: parent,
+            toolCalls: [{ name: 'subagent', args: { mode: 'parallel', tasks } }],
           });
+          for (const t of tasks)
+            app.llm.push({ match: new RegExp(`${t.task}$`), text: 'Tiivistelmä.' });
+          app.llm.push({ match: parent, text: 'Valmis.' });
+          const hold = await holdAfter(page, 'subagent.state');
+          await app.login(page);
+          await page.getByRole('button', { name: 'Agentti: Avustaja' }).click();
+          await page.getByRole('menuitemradio', { name: 'Tutkija' }).click();
+          await sendMessage(page, 'Tiivistä kolme aihetta');
+          await hold.reached;
+          const row = page.getByRole('button', { name: '3 aliagenttia jonossa' });
+          await row.click();
+          await expect(page.getByText('Asuminen')).toBeVisible();
+          await shot(page, 'subagents-row', vp.width, scheme);
+          hold.release();
+          await expect(page.locator('.md').last()).toHaveText('Valmis.', { timeout: 30_000 });
         });
 
         test.describe('automation', () => {
@@ -611,7 +649,7 @@ for (const scheme of ['light', 'dark'] as const) {
             await app.login(page);
             await openVault(page);
             await expect(
-              page.getByText('Ei vielä tunnistettuja nimiä tai tunnuksia.'),
+              page.getByText('Ei vielä tunnistettuja nimiä tai tunnuksia'),
             ).toBeVisible();
             await shot(page, 'vault-empty', vp.width, scheme);
           });

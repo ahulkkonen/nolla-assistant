@@ -35,3 +35,31 @@ test('streams scripted turns', async () => {
     await fake.close();
   }
 });
+
+test('a turn with `match` answers only a call whose last user message matches', async () => {
+  const fake = await startFakeLlm([
+    { text: 'parent' },
+    { text: 'child B', match: 'aihe B' },
+    { text: 'child A', match: /aihe A$/ },
+  ]);
+  const ask = async (content: unknown) => {
+    const res = await fetch(`${fake.url}/chat/completions`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ model: 'm', messages: [{ role: 'user', content }] }),
+    });
+    if (!res.ok) return res.status;
+    const body = (await res.json()) as { choices: { message: { content: string } }[] };
+    return body.choices[0]?.message.content;
+  };
+  try {
+    // Out of queue order; content parts count too.
+    expect(await ask([{ type: 'text', text: 'Tee tehtävä.\n\naihe A' }])).toBe('child A');
+    expect(await ask('Otsikoi keskustelu')).toBe('parent');
+    // Matched turns are never handed to an unmatched call.
+    expect(await ask('Otsikoi keskustelu')).toBe(500);
+    expect(await ask('Tee aihe B nyt')).toBe('child B');
+  } finally {
+    await fake.close();
+  }
+});

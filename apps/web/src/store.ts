@@ -112,6 +112,8 @@ type State = {
   /** Last `vault.state`; null until the first one arrives. */
   vault: { entities: VaultEntity[]; pending: VaultPending[] } | null;
   topics: TopicState['topics'];
+  /** The first `topic.state` has arrived (the topics screen shows skeletons until then). */
+  topicsLoaded: boolean;
   proposals: TopicState['proposals'];
   /** The running search; `results` is null until `search.results` for `q` arrives. */
   search: { q: string; results: SearchResults['results'] | null } | null;
@@ -256,6 +258,7 @@ export const useStore = create<State>()((set, get) => {
     ...loadStt(),
     vault: null,
     topics: [],
+    topicsLoaded: false,
     proposals: [],
     search: null,
     related: {},
@@ -427,7 +430,7 @@ export const useStore = create<State>()((set, get) => {
         case 'automations.state':
           return set({ automations: msg.automations });
         case 'topic.state':
-          return set({ topics: msg.topics, proposals: msg.proposals });
+          return set({ topics: msg.topics, proposals: msg.proposals, topicsLoaded: true });
         case 'search.results':
           return set((st) =>
             st.search?.q === msg.q ? { search: { q: msg.q, results: msg.results } } : {},

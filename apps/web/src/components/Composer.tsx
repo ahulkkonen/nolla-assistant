@@ -247,7 +247,7 @@ export function Composer() {
                     <FileText size={16} className="text-muted-foreground" />
                   </span>
                 )}
-                <span className="max-w-40 truncate text-meta">{c.name}</span>
+                <span className="max-w-40 truncate text-meta max-md:max-w-28">{c.name}</span>
                 <IconButton label="Poista liite" className="size-6" onClick={() => remove([c.key])}>
                   <X size={16} />
                 </IconButton>

@@ -24,6 +24,7 @@ import { openChat, runSearch, send } from '../ws.ts';
 import { type Action, ActionMenu, ActionRow } from './Actions.tsx';
 import { ConfirmDialog } from './ConfirmDialog.tsx';
 import { IconButton, Tip } from './IconButton.tsx';
+import { SKELETON_WIDTHS, useSlow } from './Page.tsx';
 import { SettingsButton } from './SettingsDialog.tsx';
 
 export const UNTITLED = 'Uusi keskustelu';
@@ -186,12 +187,13 @@ function ChatRow({
       )}
       <ConfirmDialog
         open={confirming}
-        title="Poistetaanko keskustelu?"
+        title={`Poistetaanko keskustelu ”${name}”?`}
         action="Poista"
+        destructive
         onConfirm={() => send({ type: 'chat.delete', chatId: chat.id })}
         onClose={() => setConfirming(false)}
       >
-        ”{name}” ja sen viestit poistetaan pysyvästi.
+        Keskustelu ja sen viestit poistetaan pysyvästi.
       </ConfirmDialog>
     </li>
   );
@@ -223,12 +225,7 @@ export function Sidebar({
   const [query, setQuery] = useState('');
   const [collapsed, setCollapsed] = useState(loadCollapsed);
   // Skeleton rows only after 300 ms of loading (brief 7.5).
-  const [slow, setSlow] = useState(false);
-  useEffect(() => {
-    if (loaded) return;
-    const t = setTimeout(() => setSlow(true), 300);
-    return () => clearTimeout(t);
-  }, [loaded]);
+  const slow = useSlow(!loaded);
   const searching = useStore((s) => s.screen === 'search');
   // The results page has its own field; two filled fields would read as two searches.
   useEffect(() => {
@@ -400,10 +397,14 @@ export function Sidebar({
         )}
       </div>
       {archivedView && <p className={groupLabel}>Arkistoidut</p>}
+      {loaded && !chats.length && (
+        <p className="mx-2 px-3 py-2 text-meta text-muted-foreground">
+          {archivedView ? 'Ei arkistoituja keskusteluja' : 'Ei vielä keskusteluja'}
+        </p>
+      )}
       <ul className="min-h-0 flex-1 overflow-y-auto pb-2">
-        {!loaded &&
-          slow &&
-          [80, 65, 85, 60, 75, 70].map((w) => (
+        {slow &&
+          SKELETON_WIDTHS.map((w) => (
             <li key={w} aria-hidden="true" className={cn('mx-2 flex items-center px-3', rowH)}>
               <Skeleton className="h-3" style={{ width: `${w}%` }} />
             </li>

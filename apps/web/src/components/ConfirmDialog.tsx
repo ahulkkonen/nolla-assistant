@@ -1,14 +1,25 @@
-import { AlertDialog } from 'radix-ui';
 import type { ReactNode } from 'react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
-const button = 'h-10 rounded-md px-4 font-medium';
-
-/** A confirmation with a labelled action ("Poista", "Lopeta tunnistus") and "Peruuta". */
+/**
+ * A confirmation (brief 7.5): 420 wide, a passive question with the object in ”…”, one line of
+ * body, Peruuta (focused) and the labelled action. `destructive` only to confirm a delete.
+ */
 export function ConfirmDialog({
   open,
   title,
   children,
   action,
+  destructive = false,
   onConfirm,
   onClose,
 }: {
@@ -16,31 +27,28 @@ export function ConfirmDialog({
   title: string;
   children: ReactNode;
   action: string;
+  destructive?: boolean;
   onConfirm: () => void;
   onClose: () => void;
 }) {
   return (
-    <AlertDialog.Root open={open} onOpenChange={(o) => !o && onClose()}>
-      <AlertDialog.Portal>
-        <AlertDialog.Overlay className="fixed inset-0 z-40 bg-black/40 dark:bg-black/60 data-[state=closed]:animate-fade-out data-[state=open]:animate-fade-in" />
-        <AlertDialog.Content className="fixed inset-x-4 top-1/2 z-50 mx-auto max-w-sm -translate-y-1/2 rounded-lg border border-border bg-card p-6 data-[state=closed]:animate-fade-out data-[state=open]:animate-fade-in">
-          <AlertDialog.Title className="mb-2 font-semibold">{title}</AlertDialog.Title>
-          <AlertDialog.Description className="mb-6 text-muted-foreground">
+    <AlertDialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <AlertDialogContent className="max-w-[calc(100%-2rem)] gap-6 data-[size=default]:max-w-[calc(100%-2rem)] data-[size=default]:sm:max-w-[420px]">
+        <AlertDialogHeader className="place-items-start gap-2 text-left">
+          <AlertDialogTitle className="text-heading [overflow-wrap:anywhere]">
+            {title}
+          </AlertDialogTitle>
+          <AlertDialogDescription className="text-body text-pretty text-muted-foreground">
             {children}
-          </AlertDialog.Description>
-          <div className="flex justify-end gap-2">
-            <AlertDialog.Cancel className={`${button} border border-border hover:bg-accent`}>
-              Peruuta
-            </AlertDialog.Cancel>
-            <AlertDialog.Action
-              className={`${button} bg-primary text-primary-foreground`}
-              onClick={onConfirm}
-            >
-              {action}
-            </AlertDialog.Action>
-          </div>
-        </AlertDialog.Content>
-      </AlertDialog.Portal>
-    </AlertDialog.Root>
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter className="grid grid-cols-2 gap-2 sm:flex sm:justify-end">
+          <AlertDialogCancel>Peruuta</AlertDialogCancel>
+          <AlertDialogAction variant={destructive ? 'destructive' : 'default'} onClick={onConfirm}>
+            {action}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }

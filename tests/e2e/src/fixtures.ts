@@ -240,15 +240,12 @@ export const showSidebar = async (page: Page) => {
   if (await menu.isVisible()) await menu.click();
 };
 
-/** Accepts the first topic proposal: icon row above 768 px, the actions menu below. */
+/** Accepts the first topic proposal. */
 export async function acceptProposal(page: Page) {
   const inbox = page.getByRole('region', { name: 'Ehdotukset' });
   await expect(inbox.getByRole('listitem').first()).toBeVisible();
-  const menu = inbox.getByRole('button', { name: /^Toiminnot/ }).first();
-  if (await menu.isVisible()) {
-    await menu.click();
-    await page.getByRole('menuitem', { name: 'Hyväksy', exact: true }).click();
-  } else await inbox.getByRole('button', { name: 'Hyväksy', exact: true }).first().click();
+  // "Hyväksy" is a visible button on every width; the rest of the actions are in ⋯.
+  await inbox.getByRole('button', { name: 'Hyväksy', exact: true }).first().click();
   await expect(page.getByText('Ei ehdotuksia.')).toBeVisible();
 }
 

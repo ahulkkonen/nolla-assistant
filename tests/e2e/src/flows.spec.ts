@@ -412,7 +412,7 @@ test('delete chat after confirmation', async ({ app, page }) => {
   await row.hover();
   await row.getByRole('button', { name: 'Lisää: Poistettava' }).click();
   await page.getByRole('menuitem', { name: 'Poista' }).click();
-  const dialog = page.getByRole('alertdialog', { name: 'Poistetaanko keskustelu?' });
+  const dialog = page.getByRole('alertdialog', { name: /^Poistetaanko keskustelu/ });
   await dialog.getByRole('button', { name: 'Poista' }).click();
   await expect(row).toHaveCount(0);
   await expect(page.locator('.md')).toHaveCount(0);

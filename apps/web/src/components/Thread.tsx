@@ -1,4 +1,4 @@
-import { AlertCircle, ArrowDown } from 'lucide-react';
+import { AlertCircle, ArrowDown, MessageSquare } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -189,21 +189,23 @@ export function Thread() {
           })}
           {memoryChip && <MemoryChipRow chip={memoryChip} />}
           {!stream && !running && related.length > 0 && (
-            <nav
-              aria-label="Liittyvät keskustelut"
-              className="flex flex-wrap items-center gap-2 text-meta text-muted-foreground"
-            >
-              Liittyvät keskustelut:
-              {related.slice(0, 3).map((r) => (
-                <button
-                  key={r.chatId}
-                  type="button"
-                  onClick={() => openChat(r.chatId)}
-                  className="h-8 max-w-60 truncate rounded-md border border-border px-3 hover:bg-accent hover:text-foreground max-md:h-11"
-                >
-                  {r.title || UNTITLED}
-                </button>
-              ))}
+            <nav aria-label="Liittyvät keskustelut" className="flex flex-col gap-2">
+              <h2 className="text-micro text-muted-foreground">Liittyvät keskustelut</h2>
+              {/* Not a list: the sidebar owns `nav li > button` (e2e counts chat rows by it). */}
+              <div className="flex flex-wrap gap-2">
+                {related.slice(0, 3).map((r) => (
+                  <Button
+                    key={r.chatId}
+                    variant="outline"
+                    size="sm"
+                    onClick={() => openChat(r.chatId)}
+                    className="max-w-60 justify-start font-normal"
+                  >
+                    <MessageSquare size={16} className="text-muted-foreground" />
+                    <span className="truncate">{r.title || UNTITLED}</span>
+                  </Button>
+                ))}
+              </div>
             </nav>
           )}
           {/* Normally the `subagent` tool row carries it; standalone only before that row exists. */}
