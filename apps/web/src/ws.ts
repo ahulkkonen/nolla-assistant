@@ -34,6 +34,18 @@ export function send(msg: ClientMessageInput) {
   else queue.push(data);
 }
 
+/** Shows the search screen and runs a full-text search for `q`. */
+export function runSearch(q: string) {
+  useStore.setState({ search: { q, results: null }, screen: 'search' });
+  send({ type: 'search.query', q });
+}
+
+/** Opens a chat (sidebar, search hit, related chip); `messageId` is scrolled into view. */
+export function openChat(chatId: string, messageId?: string | null) {
+  useStore.setState({ activeChatId: chatId, screen: 'chat', scrollTo: messageId ?? null });
+  send({ type: 'chat.open', chatId });
+}
+
 /** Sends `chat.create` and resolves with the id from the next `chat.created`. */
 export function createChat(): Promise<string> {
   return new Promise((resolve) => {
@@ -71,6 +83,7 @@ function open() {
     if (msg.type === 'auth.state' && !msg.authenticated) disconnect();
     if (msg.type === 'auth.state' && msg.authenticated) {
       send({ type: 'chat.list', archived: store.archivedView });
+      send({ type: 'topic.list' });
       if (store.activeChatId) send({ type: 'chat.open', chatId: store.activeChatId });
     }
   };

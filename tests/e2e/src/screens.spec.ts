@@ -3,7 +3,19 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { deflateSync } from 'node:zlib';
 import type { Page } from '@playwright/test';
-import { expect, openVault, test } from './fixtures.ts';
+import {
+  acceptProposal,
+  expect,
+  openSettings,
+  openVault,
+  search,
+  sendMessage,
+  showSidebar,
+  TAX,
+  taxChat,
+  test,
+  titleTurn,
+} from './fixtures.ts';
 
 const DIR = join(import.meta.dirname, '../screenshots');
 mkdirSync(DIR, { recursive: true });
@@ -184,6 +196,64 @@ for (const scheme of ['light', 'dark'] as const) {
             await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
             await shot(page, 'chat-annotated-modelsaw', vp.width, scheme);
           });
+        });
+
+        test('topics-inbox', async ({ app, page }) => {
+          await app.login(page);
+          await taxChat(app, page);
+          await openSettings(page, 'Aiheet');
+          await expect(
+            page.getByRole('region', { name: 'Ehdotukset' }).getByText('Verot', { exact: true }),
+          ).toBeVisible();
+          await shot(page, 'topics-inbox', vp.width, scheme);
+        });
+
+        test('sidebar-topics', async ({ app, page }) => {
+          await app.login(page);
+          await taxChat(app, page);
+          await openSettings(page, 'Aiheet');
+          await acceptProposal(page);
+          await showSidebar(page);
+          // Left edge: the hover actions cover the right half of a row in the 280 px drawer.
+          await page.getByRole('button', { name: TAX.title }).click({ position: { x: 16, y: 16 } });
+          await expect(page.getByRole('dialog')).toHaveCount(0);
+          await showSidebar(page);
+          await expect(page.getByRole('heading', { name: /Verot/ })).toBeVisible();
+          await page.mouse.move(vp.width - 8, vp.height / 2);
+          await shot(page, 'sidebar-topics', vp.width, scheme);
+        });
+
+        test('search-results', async ({ app, page }) => {
+          await app.login(page);
+          await taxChat(app, page);
+          await search(page, 'määräaika');
+          await expect(
+            page.getByRole('list', { name: 'Haku: määräaika' }).getByRole('button').first(),
+          ).toContainText(TAX.title, { timeout: 15_000 });
+          // Focus returns to the menu button when the drawer closes; not part of this screen.
+          await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+          await shot(page, 'search-results', vp.width, scheme);
+        });
+
+        test('related-chats', async ({ app, page }) => {
+          await app.login(page);
+          await taxChat(app, page);
+          await page.getByRole('button', { name: 'Uusi keskustelu' }).first().click();
+          // Same summary, so the two summaries' embeddings are neighbours.
+          app.llm.push({ text: 'Eräpäivä näkyy OmaVerossa.' });
+          app.llm.push(titleTurn('Veron eräpäivä', TAX.summary));
+          await sendMessage(page, 'Milloin veron eräpäivä on?');
+          await expect(page.getByText('Veron eräpäivä', { exact: true }).first()).toBeVisible({
+            timeout: 15_000,
+          });
+          await showSidebar(page);
+          // Left edge: the hover actions cover the right half of a row in the 280 px drawer.
+          await page.getByRole('button', { name: TAX.title }).click({ position: { x: 16, y: 16 } });
+          const row = page.getByRole('navigation', { name: 'Liittyvät keskustelut' });
+          await expect(row.getByRole('button', { name: 'Veron eräpäivä' })).toBeVisible();
+          await page.mouse.move(vp.width - 8, vp.height / 2);
+          await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+          await shot(page, 'related-chats', vp.width, scheme);
         });
 
         test.describe('pseudo empty', () => {

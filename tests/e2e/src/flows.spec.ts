@@ -3,7 +3,16 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { deflateSync } from 'node:zlib';
 import type { Page } from '@playwright/test';
-import { expect, openVault, test } from './fixtures.ts';
+import {
+  acceptProposal,
+  expect,
+  openSettings,
+  openVault,
+  search,
+  TAX,
+  taxChat,
+  test,
+} from './fixtures.ts';
 
 const send = async (page: Page, text: string) => {
   await page.getByLabel('Viesti').fill(text);
@@ -171,4 +180,33 @@ test.describe('vault', () => {
     await expect(rows).toHaveCount(3);
     await expect(rows.filter({ hasText: 'Koski' })).toHaveCount(1);
   });
+});
+
+test('title and topic proposal: accept moves the chat under the topic', async ({ app, page }) => {
+  await app.login(page);
+  await taxChat(app, page);
+  await expect(page.locator('nav li > button', { hasText: TAX.title })).toBeVisible();
+  await openSettings(page, 'Aiheet');
+  await expect(
+    page.getByRole('region', { name: 'Ehdotukset' }).getByText('Verot', { exact: true }),
+  ).toBeVisible();
+  await acceptProposal(page);
+  await expect(
+    page.getByRole('region', { name: 'Omat aiheet' }).getByText('Verot', { exact: true }),
+  ).toBeVisible();
+  const group = page.locator('nav li', { has: page.getByRole('heading', { name: /Verot/ }) });
+  await expect(group.getByRole('button', { name: TAX.title })).toBeVisible();
+});
+
+test('search finds the chat by a word from its message and opens it', async ({ app, page }) => {
+  await app.login(page);
+  await taxChat(app, page);
+  await page.getByRole('button', { name: 'Uusi keskustelu' }).first().click();
+  await search(page, 'määräaika');
+  const hit = page.getByRole('list', { name: 'Haku: määräaika' }).getByRole('button').first();
+  await expect(hit).toContainText(TAX.title, { timeout: 15_000 });
+  await expect(hit.locator('mark').first()).toBeVisible();
+  await hit.click();
+  await expect(page.getByRole('main').getByText(TAX.ask)).toBeVisible();
+  await page.getByLabel('Hae keskusteluja').fill('');
 });

@@ -3,6 +3,7 @@ import { clsx } from 'clsx';
 import {
   Archive,
   ArchiveRestore,
+  ChevronRight,
   PanelLeft,
   Pencil,
   Pin,
@@ -12,11 +13,21 @@ import {
 } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { firstUserLine, useStore } from '../store.ts';
-import { send } from '../ws.ts';
+import { openChat, runSearch, send } from '../ws.ts';
 import { IconButton } from './IconButton.tsx';
 import { SettingsDialog } from './SettingsDialog.tsx';
 
 export const UNTITLED = 'Uusi keskustelu';
+
+const COLLAPSED_KEY = 'pa.collapsedTopics';
+function loadCollapsed(): string[] {
+  try {
+    const v: unknown = JSON.parse(localStorage.getItem(COLLAPSED_KEY) ?? '[]');
+    return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
 
 function ChatRow({
   chat,
@@ -117,16 +128,28 @@ export function Sidebar({ expanded, onNavigate }: { expanded: boolean; onNavigat
   const sidebarOpen = useStore((s) => s.sidebarOpen);
   const setSidebarOpen = useStore((s) => s.setSidebarOpen);
   const messages = useStore((s) => s.messages);
-  const vaultScreen = useStore((s) => s.screen === 'vault');
+  const chatScreen = useStore((s) => s.screen === 'chat');
+  const topics = useStore((s) => s.topics);
   const [query, setQuery] = useState('');
+  const [collapsed, setCollapsed] = useState(loadCollapsed);
+
+  const toggleTopic = (id: string) => {
+    const next = collapsed.includes(id) ? collapsed.filter((x) => x !== id) : [...collapsed, id];
+    setCollapsed(next);
+    try {
+      localStorage.setItem(COLLAPSED_KEY, JSON.stringify(next));
+    } catch {}
+  };
+  const leaveSearch = () => {
+    if (useStore.getState().screen === 'search') useStore.getState().setScreen('chat');
+  };
 
   const newChat = () => {
     useStore.getState().setActive(null);
     onNavigate?.();
   };
   const open = (chatId: string) => {
-    useStore.getState().setActive(chatId);
-    send({ type: 'chat.open', chatId });
+    openChat(chatId);
     onNavigate?.();
   };
   const search = () => {
@@ -162,6 +185,26 @@ export function Sidebar({ expanded, onNavigate }: { expanded: boolean; onNavigat
   const visible = q
     ? labelled.filter((r) => (r.label ?? UNTITLED).toLowerCase().includes(q))
     : labelled;
+  // Pinned on top, then topic groups (by name), then chats without a known topic. `chats` is
+  // already newest first, so every group keeps that order.
+  const known = new Set(topics.map((t) => t.id));
+  const pinned = visible.filter((r) => r.chat.pinned);
+  const groups = [...topics]
+    .sort((a, b) => a.name.localeCompare(b.name, 'fi'))
+    .map((t) => ({ t, rows: visible.filter((r) => !r.chat.pinned && r.chat.topicId === t.id) }))
+    .filter((g) => g.rows.length);
+  const loose = visible.filter(
+    (r) => !r.chat.pinned && !(r.chat.topicId && known.has(r.chat.topicId)),
+  );
+  const row = ({ chat, label }: (typeof visible)[number]) => (
+    <ChatRow
+      key={chat.id}
+      chat={chat}
+      label={label}
+      active={chat.id === activeChatId && chatScreen}
+      onOpen={() => open(chat.id)}
+    />
+  );
 
   return (
     <nav
@@ -194,7 +237,22 @@ export function Sidebar({ expanded, onNavigate }: { expanded: boolean; onNavigat
           id="chat-search"
           type="search"
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            if (!e.target.value) leaveSearch();
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && query.trim()) {
+              runSearch(query.trim().slice(0, 500));
+              onNavigate?.();
+            }
+            if (e.key === 'Escape' && query) {
+              // Clears the field without also closing the drawer.
+              e.stopPropagation();
+              setQuery('');
+              leaveSearch();
+            }
+          }}
           placeholder="Hae"
           aria-label="Hae keskusteluja"
           className="h-9 w-full rounded-md border border-border bg-bg pr-2 pl-8 placeholder:text-fg-muted"
@@ -202,15 +260,35 @@ export function Sidebar({ expanded, onNavigate }: { expanded: boolean; onNavigat
       </div>
       {archivedView && <p className="px-4 py-1 text-secondary text-fg-muted">Arkistoidut</p>}
       <ul className="min-h-0 flex-1 overflow-y-auto pb-2">
-        {visible.map(({ chat, label }) => (
-          <ChatRow
-            key={chat.id}
-            chat={chat}
-            label={label}
-            active={chat.id === activeChatId && !vaultScreen}
-            onOpen={() => open(chat.id)}
-          />
-        ))}
+        {pinned.map(row)}
+        {groups.map(({ t, rows }) => {
+          // A search shows every match, so groups open while filtering.
+          const isOpen = !!q || !collapsed.includes(t.id);
+          return (
+            <li key={t.id}>
+              <h3 className="px-2">
+                <button
+                  type="button"
+                  aria-expanded={isOpen}
+                  onClick={() => toggleTopic(t.id)}
+                  className="flex h-9 w-full items-center gap-1 rounded-md px-2 text-secondary text-fg-muted hover:bg-bg-sunken hover:text-fg"
+                >
+                  <ChevronRight
+                    size={16}
+                    className={clsx(
+                      'shrink-0 transition-transform duration-(--duration)',
+                      isOpen && 'rotate-90',
+                    )}
+                  />
+                  <span className="min-w-0 flex-1 truncate text-left">{t.name}</span>
+                  <span className="tabular-nums">{rows.length}</span>
+                </button>
+              </h3>
+              {isOpen && <ul>{rows.map(row)}</ul>}
+            </li>
+          );
+        })}
+        {loose.map(row)}
       </ul>
       <div className="flex items-center gap-1 border-t border-border p-2 pb-[max(env(safe-area-inset-bottom),8px)]">
         <button

@@ -20,6 +20,10 @@ export type Streaming = {
 };
 export type Theme = 'system' | 'light' | 'dark';
 export type Toast = { id: number; message: string };
+type Of<T extends ServerMessage['type']> = Extract<ServerMessage, { type: T }>;
+type TopicState = Of<'topic.state'>;
+type SearchResults = Of<'search.results'>;
+type RelatedState = Of<'chat.related'>;
 
 type State = {
   auth: 'unknown' | 'out' | 'in';
@@ -36,9 +40,17 @@ type State = {
   /** Annotated spans show the surrogate the model saw instead of the real value. */
   showModelSaw: boolean;
   /** What `main` shows. Choosing a chat returns to `chat`. */
-  screen: 'chat' | 'vault';
+  screen: 'chat' | 'vault' | 'search' | 'topics';
   /** Last `vault.state`; null until the first one arrives. */
   vault: { entities: VaultEntity[]; pending: VaultPending[] } | null;
+  topics: TopicState['topics'];
+  proposals: TopicState['proposals'];
+  /** The running search; `results` is null until `search.results` for `q` arrives. */
+  search: { q: string; results: SearchResults['results'] | null } | null;
+  related: Record<string, RelatedState['related']>;
+  /** Message to scroll to once the open chat's messages are loaded. */
+  scrollTo: string | null;
+  setScrollTo(messageId: string | null): void;
   setScreen(screen: State['screen']): void;
   apply(msg: ServerMessage): void;
   setAuth(auth: State['auth']): void;
@@ -119,6 +131,11 @@ export const useStore = create<State>()((set, get) => {
     activeChatId: null,
     screen: 'chat',
     vault: null,
+    topics: [],
+    proposals: [],
+    search: null,
+    related: {},
+    scrollTo: null,
     messages: {},
     streaming: {},
     agentStatus: {},
@@ -148,7 +165,9 @@ export const useStore = create<State>()((set, get) => {
           });
         case 'chat.titled':
           return set((st) => ({
-            chats: st.chats.map((c) => (c.id === msg.chatId ? { ...c, title: msg.title } : c)),
+            chats: st.chats.map((c) =>
+              c.id === msg.chatId ? { ...c, title: msg.title, topicId: msg.topicId } : c,
+            ),
           }));
         case 'chat.state':
           return set((st) => ({ messages: { ...st.messages, [msg.chat.id]: msg.messages } }));
@@ -199,6 +218,14 @@ export const useStore = create<State>()((set, get) => {
             // A turn that ended without a final (error, abort) must not leave a stale stream.
             streaming: msg.state === 'idle' ? omit(st.streaming, msg.chatId) : st.streaming,
           }));
+        case 'topic.state':
+          return set({ topics: msg.topics, proposals: msg.proposals });
+        case 'search.results':
+          return set((st) =>
+            st.search?.q === msg.q ? { search: { q: msg.q, results: msg.results } } : {},
+          );
+        case 'chat.related':
+          return set((st) => ({ related: { ...st.related, [msg.chatId]: msg.related } }));
         case 'vault.state':
           return set({ vault: { entities: msg.entities, pending: msg.pending } });
         case 'error':
@@ -211,6 +238,7 @@ export const useStore = create<State>()((set, get) => {
     setAuth: (auth) => set({ auth }),
     setActive: (activeChatId) => set({ activeChatId, screen: 'chat' }),
     setScreen: (screen) => set({ screen }),
+    setScrollTo: (scrollTo) => set({ scrollTo }),
     setArchivedView: (archivedView) => set({ archivedView }),
     addLocalMessage: (chatId, m) =>
       set((st) => ({

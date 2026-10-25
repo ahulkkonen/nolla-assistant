@@ -3,7 +3,6 @@ import {
   Brackets,
   Check,
   EyeOff,
-  MoreHorizontal,
   Pin,
   PinOff,
   RefreshCw,
@@ -13,11 +12,11 @@ import {
   UserRound,
   X,
 } from 'lucide-react';
-import { AlertDialog, DropdownMenu } from 'radix-ui';
+import { AlertDialog } from 'radix-ui';
 import { useEffect, useState } from 'react';
 import { useStore } from '../store.ts';
 import { send } from '../ws.ts';
-import { IconButton } from './IconButton.tsx';
+import { type Action, ActionMenu, ActionRow } from './Actions.tsx';
 
 export const VAULT_TITLE = 'Nimisuoja';
 
@@ -32,13 +31,6 @@ const KIND: Record<string, string> = {
 const kind = (k: string) => KIND[k] ?? k;
 const MODE = { realistic: 'realistinen', placeholder: 'paikkamerkki' } as const;
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString('fi-FI') : '–');
-
-type Action = {
-  label: string;
-  Icon: typeof Pin;
-  run?: () => void;
-  pressed?: boolean;
-};
 
 /** One list for the desktop icon row and the mobile menu. No `run` means not available yet. */
 function actionsOf(e: VaultEntity, askNeverDetect: (e: VaultEntity) => void): Action[] {
@@ -75,57 +67,6 @@ function actionsOf(e: VaultEntity, askNeverDetect: (e: VaultEntity) => void): Ac
     // `vault.state` carries no span ids, so a split has nothing to select yet.
     { label: 'Jakaminen ei ole vielä käytettävissä', Icon: Split },
   ];
-}
-
-function ActionRow({ actions }: { actions: Action[] }) {
-  return (
-    <div className="flex">
-      {actions.map(({ label, Icon, run, pressed }) => (
-        <IconButton
-          key={label}
-          label={label}
-          {...(pressed !== undefined ? { 'aria-pressed': pressed } : {})}
-          {...(run ? { onClick: run } : { 'aria-disabled': 'true' as const })}
-        >
-          <Icon size={16} />
-        </IconButton>
-      ))}
-    </div>
-  );
-}
-
-const menuItem =
-  'flex h-11 cursor-default items-center gap-3 rounded-sm px-3 outline-none data-[disabled]:text-fg-muted data-[highlighted]:bg-bg-sunken';
-
-function ActionMenu({ label, actions }: { label: string; actions: Action[] }) {
-  return (
-    <DropdownMenu.Root>
-      <DropdownMenu.Trigger asChild>
-        <IconButton label={label}>
-          <MoreHorizontal size={20} />
-        </IconButton>
-      </DropdownMenu.Trigger>
-      <DropdownMenu.Portal>
-        <DropdownMenu.Content
-          align="end"
-          sideOffset={4}
-          collisionPadding={8}
-          className="z-50 min-w-60 rounded-md border border-border bg-bg-raised p-1"
-        >
-          {actions.map(({ label, Icon, run }) => (
-            <DropdownMenu.Item
-              key={label}
-              className={menuItem}
-              {...(run ? { onSelect: run } : { disabled: true })}
-            >
-              <Icon size={16} />
-              {label}
-            </DropdownMenu.Item>
-          ))}
-        </DropdownMenu.Content>
-      </DropdownMenu.Portal>
-    </DropdownMenu.Root>
-  );
 }
 
 const button = 'h-10 rounded-md px-4 font-medium';

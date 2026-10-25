@@ -6,9 +6,11 @@ import { HttpError, me } from './api.ts';
 import { Composer } from './components/Composer.tsx';
 import { IconButton } from './components/IconButton.tsx';
 import { Login } from './components/Login.tsx';
+import { SEARCH_TITLE, SearchScreen } from './components/SearchScreen.tsx';
 import { Sidebar, UNTITLED } from './components/Sidebar.tsx';
 import { Thread } from './components/Thread.tsx';
 import { Toasts } from './components/Toasts.tsx';
+import { TOPICS_TITLE, TopicsScreen } from './components/TopicsScreen.tsx';
 import { VAULT_TITLE, VaultScreen } from './components/VaultScreen.tsx';
 import { firstUserLine, useStore } from './store.ts';
 import { connect } from './ws.ts';
@@ -23,13 +25,15 @@ const useMobile = () =>
     () => mobileQuery?.matches ?? false,
   );
 
+const SCREEN_TITLE = { vault: VAULT_TITLE, search: SEARCH_TITLE, topics: TOPICS_TITLE };
+
 function Shell() {
   const mobile = useMobile();
   const sidebarOpen = useStore((s) => s.sidebarOpen);
   const setSidebarOpen = useStore((s) => s.setSidebarOpen);
-  const vault = useStore((s) => s.screen === 'vault');
+  const screen = useStore((s) => s.screen);
   const title = useStore((s) => {
-    if (s.screen === 'vault') return VAULT_TITLE;
+    if (s.screen !== 'chat') return SCREEN_TITLE[s.screen];
     const id = s.activeChatId;
     if (!id) return UNTITLED;
     return s.chats.find((c) => c.id === id)?.title ?? firstUserLine(s.messages[id]) ?? UNTITLED;
@@ -75,12 +79,14 @@ function Shell() {
             </IconButton>
           </header>
         )}
-        {vault && <VaultScreen />}
+        {screen === 'vault' && <VaultScreen />}
+        {screen === 'search' && <SearchScreen />}
+        {screen === 'topics' && <TopicsScreen />}
         {/* Hidden, not unmounted, on the vault screen: the composer owns the global shortcuts. */}
         <div
           className={clsx(
             'flex min-h-0 flex-1 flex-col',
-            vault && 'hidden',
+            screen !== 'chat' && 'hidden',
             empty && 'justify-end md:justify-center',
           )}
         >

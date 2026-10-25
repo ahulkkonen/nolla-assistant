@@ -16,6 +16,8 @@ export function useShortcuts(onSend: () => void) {
       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && st.screen === 'chat') {
         e.preventDefault();
         sendRef.current();
+      } else if (e.key === 'Escape' && !e.defaultPrevented && st.screen === 'search') {
+        st.setScreen('chat');
       } else if (e.key === 'Escape' && !e.defaultPrevented) {
         const id = st.activeChatId;
         if (id && st.agentStatus[id] === 'running') send({ type: 'user.stop', chatId: id });

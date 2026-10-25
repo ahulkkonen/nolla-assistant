@@ -1,5 +1,5 @@
 import { clsx } from 'clsx';
-import { KeyRound, LogOut, Monitor, Moon, Settings, ShieldCheck, Sun, X } from 'lucide-react';
+import { KeyRound, LogOut, Monitor, Moon, Settings, ShieldCheck, Sun, Tags, X } from 'lucide-react';
 import { Dialog } from 'radix-ui';
 import { useRef, useState } from 'react';
 import { logout, passkeyRegister } from '../api.ts';
@@ -100,19 +100,27 @@ export function SettingsDialog({ onNavigate }: { onNavigate?: () => void }) {
             Näytä mitä malli näki
           </label>
           <div className="flex flex-col gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                leaving.current = true;
-                setOpen(false);
-                onNavigate?.();
-                useStore.getState().setScreen('vault');
-              }}
-              className="flex h-10 items-center gap-2 rounded-md border border-border px-3 hover:bg-bg-sunken"
-            >
-              <ShieldCheck size={16} />
-              Nimisuoja
-            </button>
+            {(
+              [
+                ['vault', ShieldCheck, 'Nimisuoja'],
+                ['topics', Tags, 'Aiheet'],
+              ] as const
+            ).map(([screen, Icon, label]) => (
+              <button
+                key={screen}
+                type="button"
+                onClick={() => {
+                  leaving.current = true;
+                  setOpen(false);
+                  onNavigate?.();
+                  useStore.getState().setScreen(screen);
+                }}
+                className="flex h-10 items-center gap-2 rounded-md border border-border px-3 hover:bg-bg-sunken"
+              >
+                <Icon size={16} />
+                {label}
+              </button>
+            ))}
             <button
               type="button"
               onClick={() => void addPasskey()}
