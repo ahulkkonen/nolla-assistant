@@ -36,41 +36,64 @@ test('titleLocked on the wire; artifacts after the final and in chat.state', {
   expect((await c2.next('chat.list')).chats[0]?.titleLocked).toBe(true);
 });
 
-test('chat.delete removes the row, files, and session; all sockets hear it', {
+test('chat.delete removes only its own row, files, and session; all sockets hear it', {
   timeout: 30_000,
 }, async () => {
-  const { c, chat, config, srv } = await bootChat([{ text: 'Moi' }]);
-  c.send({ type: 'user.message', chatId: chat.id, text: 'Hei' });
-  await c.idle();
-  const path = join('files', 'aleksi', 'f1');
+  const { c, chat, config, srv } = await bootChat([{ text: 'Moi' }, { text: 'Toinen' }]);
+  c.send({ type: 'chat.create' });
+  const { chat: keep } = await c.next('chat.created');
+  for (const id of [chat.id, keep.id]) {
+    c.send({ type: 'user.message', chatId: id, text: 'Hei' });
+    await c.idle();
+  }
   mkdirSync(join(config.dataDir, 'files', 'aleksi'), { recursive: true });
-  writeFileSync(join(config.dataDir, path), 'x');
-  srv.db
-    .insert(files)
-    .values({
-      id: 'f1',
-      userId: 'aleksi',
-      chatId: chat.id,
-      name: 'a.txt',
-      mime: 'text/plain',
-      size: 1,
-      path,
-      createdAt: new Date().toISOString(),
-    })
-    .run();
-  const sessionFiles = () =>
-    readdirSync(srv.registry.sessionDir).filter((f) => f.includes(chat.id));
-  expect(sessionFiles()).toHaveLength(1);
+  const addFile = (id: string, chatId: string) => {
+    const path = join('files', 'aleksi', id);
+    writeFileSync(join(config.dataDir, path), 'x');
+    srv.db
+      .insert(files)
+      .values({
+        id,
+        userId: 'aleksi',
+        chatId,
+        name: 'a.txt',
+        mime: 'text/plain',
+        size: 1,
+        path,
+        createdAt: new Date().toISOString(),
+      })
+      .run();
+    return join(config.dataDir, path);
+  };
+  const gone = addFile('f1', chat.id);
+  const kept = addFile('f2', keep.id);
+  const sessionFiles = (id: string) =>
+    readdirSync(srv.registry.sessionDir).filter((f) => f.includes(id));
+  expect(sessionFiles(chat.id)).toHaveLength(1);
 
   const other = await connect(config.port);
   c.send({ type: 'chat.delete', chatId: chat.id });
   expect(await c.next('chat.deleted')).toEqual({ type: 'chat.deleted', chatId: chat.id });
   expect(await other.next('chat.deleted')).toEqual({ type: 'chat.deleted', chatId: chat.id });
-  expect(srv.db.select().from(chats).all()).toHaveLength(0);
-  expect(srv.db.select().from(files).all()).toHaveLength(0);
-  expect(existsSync(join(config.dataDir, path))).toBe(false);
-  expect(sessionFiles()).toHaveLength(0);
+  expect(srv.db.select({ id: chats.id }).from(chats).all()).toEqual([{ id: keep.id }]);
+  expect(srv.db.select({ id: files.id }).from(files).all()).toEqual([{ id: 'f2' }]);
+  expect(existsSync(gone)).toBe(false);
+  expect(existsSync(kept)).toBe(true);
+  expect(sessionFiles(chat.id)).toHaveLength(0);
+  expect(sessionFiles(keep.id)).toHaveLength(1);
 
   c.send({ type: 'chat.open', chatId: chat.id });
   await expect(c.next('chat.state')).rejects.toThrow(/not_found/);
+});
+
+test("chat.delete of another user's chat is not_found", { timeout: 30_000 }, async () => {
+  const { c, srv } = await bootChat([]);
+  const now = new Date().toISOString();
+  srv.db
+    .insert(chats)
+    .values({ id: 'x1', userId: 'mallory', sessionPath: 's/', createdAt: now, updatedAt: now })
+    .run();
+  c.send({ type: 'chat.delete', chatId: 'x1' });
+  await expect(c.next('chat.deleted')).rejects.toThrow(/not_found/);
+  expect(srv.db.select({ id: chats.id }).from(chats).all()).toContainEqual({ id: 'x1' });
 });

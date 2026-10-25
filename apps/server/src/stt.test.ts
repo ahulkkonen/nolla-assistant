@@ -54,3 +54,14 @@ test('transcribe maps an upstream failure to 502', { timeout: 30_000 }, async ()
   expect(res.status).toBe(502);
   expect(await res.json()).toEqual({ error: 'stt_failed' });
 });
+
+test('transcribe allows 10 requests a minute', { timeout: 30_000 }, async () => {
+  const { config, run } = await boot([]);
+  await run();
+  const { cookie } = await login(config.port);
+  const wrong = new Blob([new Uint8Array(10)], { type: 'video/mp4' });
+  for (let i = 0; i < 10; i++) expect((await upload(config.port, cookie, wrong)).status).toBe(415);
+  const res = await upload(config.port, cookie, wrong);
+  expect(res.status).toBe(429);
+  expect(await res.json()).toEqual({ error: 'rate_limited' });
+});

@@ -57,7 +57,9 @@ test('push: settled and approval notify unfocused chats; 410 drops the row', {
 }, async () => {
   const fake = await fakePushService();
   const spy = vi.spyOn(webpush, 'generateRequestDetails');
-  const payloads = () => spy.mock.calls.map((c) => JSON.parse(String(c[1])));
+  // Skips the subscribe-time dry runs (payload 'x').
+  const payloads = () =>
+    spy.mock.calls.filter((c) => c[1] !== 'x').map((c) => JSON.parse(String(c[1])));
   const { c, chat, config, srv } = await bootChat(
     [
       { text: 'Yksi' },
@@ -82,9 +84,12 @@ test('push: settled and approval notify unfocused chats; 410 drops the row', {
   const hit = fake.hits[0];
   expect(String(hit?.headers.authorization)).toMatch(/^vapid t=.+, k=/);
   expect(hit?.headers['content-encoding']).toBe('aes128gcm');
+  expect(hit?.headers.topic).toMatch(/^[A-Za-z0-9_-]{1,32}$/);
   expect(hit?.body.length).toBeGreaterThan(0);
   expect(hit?.body.toString('latin1')).not.toContain(chat.id);
-  expect(payloads()).toEqual([{ title: 'Uusi keskustelu', chatId: chat.id, kind: 'settled' }]);
+  expect(payloads()).toEqual([
+    { title: 'Uusi keskustelu', chatId: chat.id, kind: 'settled', tag: chat.id },
+  ]);
 
   // Focused: no POST.
   c.send({ type: 'chat.focus', chatId: chat.id });
@@ -112,6 +117,7 @@ test('push: settled and approval notify unfocused chats; 410 drops the row', {
     title: 'Uusi keskustelu',
     chatId: chat.id,
     kind: 'approval',
+    tag: chat.id,
   });
   c.send({ type: 'approval.respond', requestId: req.requestId, approve: true });
   await c.idle();
@@ -128,6 +134,11 @@ test('push: endpoint allowlist, unsubscribe, disabled without VAPID', {
   expect((await post(subscription('http://127.0.0.1:9/push'))).status).toBe(400);
   expect((await post(subscription('https://evil.example/push'))).status).toBe(400);
   expect((await post({ endpoint: 'nope' })).status).toBe(400);
+  const badKeys = {
+    ...subscription('https://fcm.googleapis.com/x'),
+    keys: { p256dh: 'AA', auth: 'AA' },
+  };
+  expect((await post(badKeys)).status).toBe(400);
   const ok = subscription('https://fcm.googleapis.com/fcm/send/abc');
   expect((await post(ok)).status).toBe(200);
   expect((await post(subscription('https://web.push.apple.com/x'))).status).toBe(200);
@@ -135,6 +146,14 @@ test('push: endpoint allowlist, unsubscribe, disabled without VAPID', {
   const del = json(cookie, 'DELETE', { endpoint: ok.endpoint });
   expect((await api(config.port, '/api/push/subscribe', del)).status).toBe(200);
   expect(srv.db.select().from(pushSubscriptions).all()).toHaveLength(1);
+  // At most 20 per user: the oldest goes.
+  for (let i = 0; i < 20; i++)
+    expect((await post(subscription(`https://fcm.googleapis.com/fcm/send/n${i}`))).status).toBe(
+      200,
+    );
+  const rows = srv.db.select().from(pushSubscriptions).all();
+  expect(rows).toHaveLength(20);
+  expect(rows.some((r) => r.endpoint === 'https://web.push.apple.com/x')).toBe(false);
 
   const off = await boot([]);
   await off.run();

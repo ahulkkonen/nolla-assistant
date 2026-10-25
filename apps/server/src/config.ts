@@ -12,6 +12,14 @@ function required(env: Env, name: string): string {
   return v;
 }
 
+/** Test only; never in production. */
+function pushAnyHost(env: Env) {
+  if (env.PUSH_ALLOW_ANY_HOST !== '1') return false;
+  if (env.NODE_ENV !== 'production') return true;
+  console.warn('PUSH_ALLOW_ANY_HOST ignored: NODE_ENV is production');
+  return false;
+}
+
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
 
 /** Returns a frozen config; throws when a required value is missing or invalid. */
@@ -69,7 +77,7 @@ export function loadConfig(env: Env = process.env) {
     // All three or push is off (plan §5).
     vapid,
     // Test only: accepts any push endpoint host (a loopback fake push service).
-    pushAllowAnyHost: env.PUSH_ALLOW_ANY_HOST === '1',
+    pushAllowAnyHost: pushAnyHost(env),
     // Both or nothing: without them no `bash` tool exists (Pi's built-in one is never enabled).
     broker:
       env.BROKER_URL && env.BROKER_TOKEN

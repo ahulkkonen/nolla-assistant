@@ -91,6 +91,10 @@ export function approvals(send: (chatId: string, msg: ServerMessage) => void) {
       p?.finish(approve ? 'approved' : 'denied');
       return !!p;
     },
+    /** Ends every open request of a chat as `expired` (the tool is denied). */
+    cancel(chatId: string) {
+      for (const p of [...pending.values()]) if (p.request.chatId === chatId) p.finish('expired');
+    },
     /** Chat id of a recently resolved request, for a late answer. */
     resolvedChat: (requestId: string) => resolved.get(requestId),
     /** Open requests, for one chat or all. */

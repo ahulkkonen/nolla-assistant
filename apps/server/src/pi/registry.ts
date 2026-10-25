@@ -65,9 +65,15 @@ type Entry = { session: Promise<AgentSession>; lastUsed: number; unsubscribe?: (
 async function stop(e: Entry) {
   e.unsubscribe?.();
   const s = await e.session;
-  await s.abort();
-  s.dispose();
+  try {
+    await s.abort();
+  } finally {
+    s.dispose();
+  }
 }
+
+/** `get` on a chat whose row is gone (deleted while the session was loading). */
+export class ChatNotFound extends Error {}
 
 export class SessionRegistry {
   readonly agentDir: string;
@@ -92,13 +98,19 @@ export class SessionRegistry {
   }
 
   /** Opens the chat's session. Pi writes the JSONL only after the first message, so a missing file means an empty chat. */
-  get(chatId: string): Promise<AgentSession> {
-    return this.track(chatId, this.opts.getAgentId(chatId) ?? 'assistant', () => {
+  async get(chatId: string): Promise<AgentSession> {
+    const session = await this.track(chatId, this.opts.getAgentId(chatId) ?? 'assistant', () => {
       const path = SessionManager.findById(this.cwd, chatId, this.sessionDir);
       return path
         ? SessionManager.open(path, this.sessionDir)
         : SessionManager.create(this.cwd, this.sessionDir, { id: chatId });
     });
+    // `chat.delete` may have run while the session loaded.
+    if (this.opts.getAgentId(chatId) === undefined) {
+      await this.remove(chatId);
+      throw new ChatNotFound();
+    }
+    return session;
   }
 
   has(chatId: string): boolean {

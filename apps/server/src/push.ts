@@ -1,6 +1,7 @@
+import { createHash } from 'node:crypto';
 import { chats, type Db, pushSubscriptions } from '@pa/db';
 import { PushSubscription } from '@pa/protocol';
-import { and, eq } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import type { FastifyBaseLogger, FastifyInstance, preHandlerHookHandler } from 'fastify';
 import webpush from 'web-push';
 import { z } from 'zod';
@@ -9,16 +10,21 @@ import type { Config } from './config.ts';
 export type PushKind = 'settled' | 'approval' | 'automation';
 const DEFAULT_TITLE = 'Uusi keskustelu';
 const SEND_TIMEOUT_MS = 10_000;
+const MAX_SUBSCRIPTIONS = 20;
+const TTL = 24 * 3600;
 // Apple, Google (FCM), Microsoft (WNS) and Mozilla push services.
 const SUFFIXES = ['.push.apple.com', '.notify.windows.com', '.push.services.mozilla.com'];
 const EXACT = new Set(['fcm.googleapis.com', 'updates.push.services.mozilla.com']);
 
-export class BadEndpoint extends Error {}
+export class BadSubscription extends Error {}
 type RequestDetailsFn = (
   sub: PushSubscription,
   payload: string,
   options: webpush.RequestOptions,
 ) => webpush.RequestDetails;
+// The typings' overloads reduce the payload variant to `never`; read at call time so tests can spy.
+const requestDetails: RequestDetailsFn = (...args) =>
+  (webpush.generateRequestDetails as RequestDetailsFn)(...args);
 
 export function pushService({
   db,
@@ -57,12 +63,30 @@ export function pushService({
       else focus.delete(socket);
     },
     subscribe(sub: PushSubscription) {
-      if (!allowed(sub.endpoint)) throw new BadEndpoint();
-      const row = { userId, subscription: sub, createdAt: new Date().toISOString() };
+      if (!allowed(sub.endpoint)) throw new BadSubscription();
+      // Dry run: bad keys fail here (encryption needs a valid p256dh and auth), not at send time.
+      try {
+        requestDetails(sub, 'x', { TTL, ...(vapid ? { vapidDetails: vapid } : {}) });
+      } catch {
+        throw new BadSubscription();
+      }
+      const set = { subscription: sub, createdAt: new Date().toISOString() };
+      // An endpoint keeps its first owner (`userId` is not updated): with several users, one cannot
+      // take over another's subscription.
       db.insert(pushSubscriptions)
-        .values({ endpoint: sub.endpoint, ...row })
-        .onConflictDoUpdate({ target: pushSubscriptions.endpoint, set: row })
+        .values({ endpoint: sub.endpoint, userId, ...set })
+        .onConflictDoUpdate({ target: pushSubscriptions.endpoint, set })
         .run();
+      const stale = db
+        .select({ id: pushSubscriptions.id })
+        .from(pushSubscriptions)
+        .where(eq(pushSubscriptions.userId, userId))
+        .orderBy(desc(pushSubscriptions.createdAt), desc(pushSubscriptions.id))
+        .all()
+        .slice(MAX_SUBSCRIPTIONS)
+        .map((r) => r.id);
+      if (stale.length)
+        db.delete(pushSubscriptions).where(inArray(pushSubscriptions.id, stale)).run();
     },
     unsubscribe: drop,
     /**
@@ -91,17 +115,19 @@ export function pushService({
         .from(chats)
         .where(and(eq(chats.id, chatId), eq(chats.userId, userId)))
         .get()?.title ?? DEFAULT_TITLE;
-    const payload = JSON.stringify({ title, chatId, kind });
+    // `tag` (notification) and `Topic` (push service) make a repeat replace the earlier one.
+    const payload = JSON.stringify({ title, chatId, kind, tag: chatId });
+    // Topic: at most 32 URL-safe base64 characters, so a hash of the chat id.
+    const topic = createHash('sha1').update(chatId).digest('base64url');
     await Promise.all(
       subs.map(async ({ endpoint, subscription }) => {
         try {
           // web-push only speaks https; fetch sends its prepared request (and reaches test fakes).
-          // The typings' overloads reduce the payload variant to `never`.
-          const req = (webpush.generateRequestDetails as RequestDetailsFn)(
-            subscription as PushSubscription,
-            payload,
-            { vapidDetails: vapid, TTL: 24 * 3600 },
-          );
+          const req = requestDetails(subscription as PushSubscription, payload, {
+            vapidDetails: vapid,
+            TTL,
+            topic,
+          });
           const res = await fetch(req.endpoint, {
             method: req.method,
             headers: req.headers,
@@ -134,7 +160,8 @@ export function pushRoutes(app: FastifyInstance, auth: preHandlerHookHandler, pu
     try {
       push.subscribe(sub.data);
     } catch (err) {
-      if (err instanceof BadEndpoint) return reply.code(400).send({ error: 'bad_endpoint' });
+      if (err instanceof BadSubscription)
+        return reply.code(400).send({ error: 'bad_subscription' });
       throw err;
     }
     return { ok: true };

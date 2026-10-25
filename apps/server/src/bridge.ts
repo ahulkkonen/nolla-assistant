@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { rmSync } from 'node:fs';
-import { join as joinPath } from 'node:path';
+import { join as joinPath, resolve, sep } from 'node:path';
 import type { AgentSession, AgentSessionEvent } from '@earendil-works/pi-coding-agent';
 import { chats, type Db, files, topicProposals, topics } from '@pa/db';
 import { FULL } from '@pa/pi-ext-memory';
@@ -28,8 +28,8 @@ import type { Automations } from './automations.ts';
 import { AttachmentNotFound, chatFiles, ingestAttachments } from './files.ts';
 import { MemoryError, type MemoryStore, PSEUDO_REQUIRED } from './memory.ts';
 import { GUARD_REASON } from './pi/guard.ts';
-import type { SessionRegistry } from './pi/registry.ts';
-import { BadEndpoint, type Push } from './push.ts';
+import { ChatNotFound, type SessionRegistry } from './pi/registry.ts';
+import { BadSubscription, type Push } from './push.ts';
 import { indexChat, related, search } from './search.ts';
 import { topicState } from './topics.ts';
 
@@ -426,20 +426,47 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
       case 'chat.pin':
         return update(msg.chatId, { pinned: msg.pinned });
       case 'chat.delete': {
-        owned(msg.chatId);
-        await registry.remove(msg.chatId);
-        const paths = db
-          .select({ path: files.path })
-          .from(files)
-          .where(and(eq(files.chatId, msg.chatId), eq(files.userId, userId)))
-          .all();
-        // Cascades to chunks, tags, proposals and file rows.
-        db.delete(chats)
-          .where(and(eq(chats.id, msg.chatId), eq(chats.userId, userId)))
-          .run();
-        for (const { path } of paths) rmSync(joinPath(dataDir, path), { force: true });
-        rooms.delete(msg.chatId);
-        const deleted: ServerMessage = { type: 'chat.deleted', chatId: msg.chatId };
+        const { chatId } = msg;
+        owned(chatId);
+        // Row first: a concurrent `registry.get` then fails instead of reviving the chat.
+        const paths = db.transaction((tx) => {
+          const own = and(eq(files.chatId, chatId), eq(files.userId, userId));
+          const rows = tx.select({ path: files.path }).from(files).where(own).all();
+          tx.delete(files).where(own).run();
+          // Cascades to chunks, tags and proposals.
+          tx.delete(chats)
+            .where(and(eq(chats.id, chatId), eq(chats.userId, userId)))
+            .run();
+          return rows.map((r) => r.path);
+        });
+        approvals.cancel(chatId);
+        broadcast(rooms, chatId, { type: 'subagent.state', chatId, children: [] });
+        await registry
+          .remove(chatId)
+          .catch((err: unknown) =>
+            log.warn(
+              { chatId, error: err instanceof Error ? err.message : 'unknown' },
+              'remove failed',
+            ),
+          );
+        const filesDir = resolve(dataDir, 'files') + sep;
+        for (const path of paths) {
+          const abs = resolve(dataDir, path);
+          if (!abs.startsWith(filesDir)) {
+            log.warn({ chatId }, 'file path outside files/, not removed');
+            continue;
+          }
+          try {
+            rmSync(abs, { force: true });
+          } catch (err) {
+            log.warn(
+              { chatId, error: err instanceof Error ? err.message : 'unknown' },
+              'rm failed',
+            );
+          }
+        }
+        rooms.delete(chatId);
+        const deleted: ServerMessage = { type: 'chat.deleted', chatId };
         for (const s of sockets)
           try {
             send(s, deleted);
@@ -453,7 +480,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
         try {
           return push.subscribe(msg.subscription);
         } catch (err) {
-          if (err instanceof BadEndpoint) return send(socket, errorMsg('bad_message'));
+          if (err instanceof BadSubscription) return send(socket, errorMsg('bad_message'));
           throw err;
         }
       case 'user.message': {
@@ -579,7 +606,11 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
       return send(socket, errorMsg('bad_message'));
     }
     handle(parsed.data).catch((err: unknown) => {
-      if (err instanceof NotFound || err instanceof AttachmentNotFound)
+      if (
+        err instanceof NotFound ||
+        err instanceof AttachmentNotFound ||
+        err instanceof ChatNotFound
+      )
         return send(socket, errorMsg('not_found'));
       if (err instanceof PseudoDownError) return send(socket, errorMsg('pseudo_down'));
       if (err instanceof MemoryError)
@@ -658,8 +689,10 @@ function forward(
     const message = toMessage(entry?.id ?? streamId, m, toolRows(m, statuses));
     ({ text: message.text, annotations: message.annotations } = await restore(message.text));
     emit({ type: 'message.final', chatId, message });
-    for (const artifact of extractArtifacts(message.id, message.text))
-      emit({ type: 'artifact.upsert', chatId, artifact });
+    // Ids must match `chat.state`; without the entry id the next `chat.state` carries them.
+    if (entry)
+      for (const artifact of extractArtifacts(entry.id, message.text))
+        emit({ type: 'artifact.upsert', chatId, artifact });
   };
 
   const handle = async (e: AgentSessionEvent) => {
