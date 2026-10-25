@@ -1,4 +1,12 @@
-import type { Annotation, ChatSummary, Message, ServerMessage, ToolRow } from '@pa/protocol';
+import type {
+  Annotation,
+  ChatSummary,
+  Message,
+  ServerMessage,
+  ToolRow,
+  VaultEntity,
+  VaultPending,
+} from '@pa/protocol';
 import { create } from 'zustand';
 
 export type ToolView = ToolRow & { argsPreview?: string };
@@ -27,6 +35,11 @@ type State = {
   theme: Theme;
   /** Annotated spans show the surrogate the model saw instead of the real value. */
   showModelSaw: boolean;
+  /** What `main` shows. Choosing a chat returns to `chat`. */
+  screen: 'chat' | 'vault';
+  /** Last `vault.state`; null until the first one arrives. */
+  vault: { entities: VaultEntity[]; pending: VaultPending[] } | null;
+  setScreen(screen: State['screen']): void;
   apply(msg: ServerMessage): void;
   setAuth(auth: State['auth']): void;
   setActive(chatId: string | null): void;
@@ -104,6 +117,8 @@ export const useStore = create<State>()((set, get) => {
     chats: [],
     archivedView: false,
     activeChatId: null,
+    screen: 'chat',
+    vault: null,
     messages: {},
     streaming: {},
     agentStatus: {},
@@ -184,6 +199,8 @@ export const useStore = create<State>()((set, get) => {
             // A turn that ended without a final (error, abort) must not leave a stale stream.
             streaming: msg.state === 'idle' ? omit(st.streaming, msg.chatId) : st.streaming,
           }));
+        case 'vault.state':
+          return set({ vault: { entities: msg.entities, pending: msg.pending } });
         case 'error':
           return get().pushError(ERROR_TEXT[msg.code] ?? msg.message);
         default:
@@ -192,7 +209,8 @@ export const useStore = create<State>()((set, get) => {
     },
 
     setAuth: (auth) => set({ auth }),
-    setActive: (activeChatId) => set({ activeChatId }),
+    setActive: (activeChatId) => set({ activeChatId, screen: 'chat' }),
+    setScreen: (screen) => set({ screen }),
     setArchivedView: (archivedView) => set({ archivedView }),
     addLocalMessage: (chatId, m) =>
       set((st) => ({

@@ -131,6 +131,7 @@ export const ClientMessage = z.discriminatedUnion('type', [
   z.object({ type: z.literal('vault.pin'), entityId: z.int(), pinned: z.boolean() }),
   z.object({ type: z.literal('vault.allowlist'), entityId: z.int(), allowlisted: z.boolean() }),
   z.object({ type: z.literal('vault.regenerate'), entityId: z.int() }),
+  z.object({ type: z.literal('vault.neverDetect'), entityId: z.int() }),
   z.object({
     type: z.literal('vault.setMode'),
     entityId: z.int(),

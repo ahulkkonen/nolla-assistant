@@ -9,6 +9,7 @@ import { Login } from './components/Login.tsx';
 import { Sidebar, UNTITLED } from './components/Sidebar.tsx';
 import { Thread } from './components/Thread.tsx';
 import { Toasts } from './components/Toasts.tsx';
+import { VAULT_TITLE, VaultScreen } from './components/VaultScreen.tsx';
 import { firstUserLine, useStore } from './store.ts';
 import { connect } from './ws.ts';
 
@@ -26,7 +27,9 @@ function Shell() {
   const mobile = useMobile();
   const sidebarOpen = useStore((s) => s.sidebarOpen);
   const setSidebarOpen = useStore((s) => s.setSidebarOpen);
+  const vault = useStore((s) => s.screen === 'vault');
   const title = useStore((s) => {
+    if (s.screen === 'vault') return VAULT_TITLE;
     const id = s.activeChatId;
     if (!id) return UNTITLED;
     return s.chats.find((c) => c.id === id)?.title ?? firstUserLine(s.messages[id]) ?? UNTITLED;
@@ -72,8 +75,14 @@ function Shell() {
             </IconButton>
           </header>
         )}
+        {vault && <VaultScreen />}
+        {/* Hidden, not unmounted, on the vault screen: the composer owns the global shortcuts. */}
         <div
-          className={clsx('flex min-h-0 flex-1 flex-col', empty && 'justify-end md:justify-center')}
+          className={clsx(
+            'flex min-h-0 flex-1 flex-col',
+            vault && 'hidden',
+            empty && 'justify-end md:justify-center',
+          )}
         >
           {!empty && <Thread />}
           <Composer />

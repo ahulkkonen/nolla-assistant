@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { deflateSync } from 'node:zlib';
 import type { Page } from '@playwright/test';
-import { expect, test } from './fixtures.ts';
+import { expect, openVault, test } from './fixtures.ts';
 
 const DIR = join(import.meta.dirname, '../screenshots');
 mkdirSync(DIR, { recursive: true });
@@ -138,6 +138,33 @@ for (const scheme of ['light', 'dark'] as const) {
       });
 
       if (vp.width !== 1024) {
+        test.describe('pseudo', () => {
+          test.use({ pseudo: true });
+
+          test('vault', async ({ app, page }) => {
+            app.llm.push({ text: 'Selvä, Pekka Laaksonen.' });
+            await app.login(page);
+            await send(page, 'Matti Virtanen ja Liisa Korhonen, hetu 010190-123M');
+            await expect(page.locator('.md').last()).toHaveText('Selvä, Matti Virtanen.');
+            await openVault(page);
+            await expect(page.getByText('Koski')).toBeVisible();
+            await expect(page.getByLabel(/^Valitse /).filter({ visible: true })).toHaveCount(3);
+            await shot(page, 'vault', vp.width, scheme);
+          });
+
+          test('chat-annotated', async ({ app, page }) => {
+            app.llm.push({ text: 'Hei Pekka Laaksonen! Hetu 010190-900B on tallessa.' });
+            await app.login(page);
+            await send(page, 'Moi, olen Matti Virtanen, hetu 010190-123M');
+            await expect(page.locator('.md').last()).toHaveText(
+              'Hei Matti Virtanen! Hetu 010190-123M on tallessa.',
+            );
+            await page.locator('.md span[tabindex="0"]').first().focus();
+            await expect(page.getByRole('tooltip')).toHaveText('Malli näki: Pekka Laaksonen');
+            await shot(page, 'chat-annotated', vp.width, scheme);
+          });
+        });
+
         test('login-error', async ({ app, page }) => {
           await page.goto(app.url);
           await page.getByLabel('Salasana').fill('väärin');

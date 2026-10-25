@@ -13,7 +13,7 @@ export function useShortcuts(onSend: () => void) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const st = useStore.getState();
-      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && st.screen === 'chat') {
         e.preventDefault();
         sendRef.current();
       } else if (e.key === 'Escape' && !e.defaultPrevented) {

@@ -1,6 +1,6 @@
 import { createServer } from 'node:http';
 import { listenLocal } from '@pa/fake-llm';
-import type { Json } from './client.ts';
+import type { Json, VaultEntityRow, VaultPendingRow } from './client.ts';
 
 type Pair = { from: string; to: string; id: number };
 type Hit = { start: number; end: number; pair: Pair };
@@ -49,13 +49,19 @@ function holdOf(s: string, surrogates: string[]) {
 
 const kindOf = (real: string) => (/\d/.test(real) ? 'hetu' : 'person');
 
+type PendingSeed = Omit<VaultPendingRow, 'id' | 'session_id'>;
+
 /**
  * Test double for `pseudo-svc` (contract in docs/decisions/phase-3.md). `dictionary` maps real
  * values to surrogates; entity ids are 1-based dictionary positions. Offsets are UTF-16 code units
  * (native JS string indexes), as the contract requires. `passthrough` makes `/mask`
- * return its input unchanged (for seeding a leak).
+ * return its input unchanged (for seeding a leak). Vault entities appear on their first mask (or
+ * seed); `pending` fills the pending lane.
  */
-export async function startFakeSidecar(dictionary: Record<string, string>) {
+export async function startFakeSidecar(
+  dictionary: Record<string, string>,
+  opts: { pending?: PendingSeed[] } = {},
+) {
   const byLength = (a: Pair, b: Pair) => b.from.length - a.from.length;
   const entries = Object.entries(dictionary);
   const toFake = entries.map(([from, to], i) => ({ from, to, id: i + 1 })).sort(byLength);
@@ -63,16 +69,107 @@ export async function startFakeSidecar(dictionary: Record<string, string>) {
   const requests: { path: string; body: any }[] = [];
   const state = { passthrough: false };
 
+  // Vault: entities by id, merged ids → target id, ids never to detect again.
+  const entities = new Map<number, VaultEntityRow>();
+  const mergedInto = new Map<number, number>();
+  const ignored = new Set<number>();
+  let nextId = entries.length + 1;
+  const pending: VaultPendingRow[] = (opts.pending ?? []).map((p, i) => ({
+    ...p,
+    id: i + 1,
+    session_id: '',
+  }));
+  const entity = (kind: string, canonical: string, surrogate: string, id = nextId++) => {
+    const e: VaultEntityRow = {
+      id,
+      kind,
+      canonical,
+      surrogate,
+      mode: 'realistic',
+      pinned: false,
+      allowlisted: false,
+      seen_count: 0,
+      last_seen: null,
+    };
+    entities.set(id, e);
+    return e;
+  };
+  /** The live entity for a dictionary pair, created on first sight. */
+  const seen = (pair: Pair) => {
+    let id = pair.id;
+    while (mergedInto.has(id)) id = mergedInto.get(id) as number;
+    const e = entities.get(id) ?? entity(kindOf(pair.from), pair.from, pair.to, id);
+    e.seen_count++;
+    e.last_seen = new Date().toISOString();
+    return e;
+  };
+  const vault = (path: string, body: any) => {
+    const m = /^\/vault\/(entity|pending)\/(\d+)$/.exec(path);
+    if (m?.[1] === 'entity') {
+      const e = entities.get(Number(m[2]));
+      if (!e) return;
+      if (body.pinned !== undefined) e.pinned = body.pinned;
+      if (body.allowlisted !== undefined) e.allowlisted = body.allowlisted;
+      if (body.mode) e.mode = body.mode;
+      if (body.regenerate) e.surrogate += ' 2';
+      if (body.never_detect) {
+        ignored.add(e.id);
+        entities.delete(e.id);
+      }
+      return { entity: e };
+    }
+    if (m?.[1] === 'pending') {
+      const i = pending.findIndex((p) => p.id === Number(m[2]));
+      const [p] = i >= 0 ? pending.splice(i, 1) : [];
+      if (!p) return;
+      if (body.action !== 'dismiss') {
+        const e = entity(p.kind, p.text, `[${p.kind} ${nextId}]`);
+        e.allowlisted = body.action === 'allowlist';
+      }
+      return { ok: true };
+    }
+    switch (path) {
+      case '/vault/merge': {
+        const into = entities.get(body.into_id);
+        if (!into) return;
+        for (const id of body.from_ids as number[]) {
+          const from = entities.get(id);
+          if (!from) continue;
+          into.seen_count += from.seen_count;
+          entities.delete(id);
+          mergedInto.set(id, into.id);
+        }
+        return { ok: true };
+      }
+      case '/vault/split': {
+        const from = entities.get(body.entity_id);
+        if (!from) return;
+        return {
+          ok: true,
+          new_entity_id: entity(from.kind, from.canonical, `${from.surrogate} B`).id,
+        };
+      }
+      case '/vault/seed': {
+        const ids = (body.entities as { canonical: string; kind: string }[]).map(
+          (s) => entity(s.kind, s.canonical, dictionary[s.canonical] ?? `[${s.kind} ${nextId}]`).id,
+        );
+        return { ok: true, ids };
+      }
+    }
+  };
+
   const handle = (path: string, body: any) => {
     const hits: Hit[] = [];
+    if (path.startsWith('/vault/')) return vault(path, body);
     switch (path) {
       case '/mask': {
         const value: Json = 'text' in body ? body.text : body.json;
-        const masked = state.passthrough ? value : deep(value, toFake, hits);
+        const live = toFake.filter((p) => !ignored.has(p.id));
+        const masked = state.passthrough ? value : deep(value, live, hits);
         const spans = hits.map(({ start, end, pair }) => ({
           start,
           end,
-          entity_id: pair.id,
+          entity_id: seen(pair).id,
           kind: kindOf(pair.from),
           surrogate: pair.to,
           real_form: pair.from,
@@ -118,8 +215,14 @@ export async function startFakeSidecar(dictionary: Record<string, string>) {
       res.writeHead(status, { 'content-type': 'application/json' });
       res.end(JSON.stringify(obj));
     };
-    const path = req.url?.split('?')[0] ?? '';
+    const url = new URL(req.url ?? '/', 'http://fake');
+    const path = url.pathname;
     if (req.method === 'GET' && path === '/healthz') return json(200, { ok: true });
+    if (req.method === 'GET' && path === '/vault/entities') {
+      if (!url.searchParams.get('user_id')) return json(400, { error: 'bad request' });
+      requests.push({ path, body: {} });
+      return json(200, { entities: [...entities.values()], pending });
+    }
     let raw = '';
     req.on('data', (c) => (raw += c));
     req.on('end', () => {

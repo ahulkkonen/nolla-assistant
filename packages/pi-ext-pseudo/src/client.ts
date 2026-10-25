@@ -29,6 +29,34 @@ export type Leak = {
 };
 export type ScanMessage = { role: string; content: string };
 
+/** `canonical` and pending `text` are real values: never log them. */
+export type VaultEntityRow = {
+  id: number;
+  kind: string;
+  canonical: string;
+  surrogate: string;
+  mode: 'realistic' | 'placeholder';
+  pinned: boolean;
+  allowlisted: boolean;
+  seen_count: number;
+  last_seen: string | null;
+};
+export type VaultPendingRow = {
+  id: number;
+  kind: string;
+  text: string;
+  detector: string;
+  score: number;
+  session_id: string;
+};
+export type VaultPatch = {
+  pinned?: boolean;
+  allowlisted?: boolean;
+  mode?: 'realistic' | 'placeholder';
+  regenerate?: true;
+  never_detect?: true;
+};
+
 export class PseudoDownError extends Error {
   override name = 'PseudoDownError';
 }
@@ -71,20 +99,56 @@ export class PseudoClient {
     );
   }
 
-  private async post<R>(path: string, body: object, timeout = TIMEOUT_MS): Promise<R> {
+  vaultList() {
+    return this.post<{ entities: VaultEntityRow[]; pending: VaultPendingRow[] }>(
+      `/vault/entities?user_id=${encodeURIComponent(this.userId)}`,
+      null,
+    );
+  }
+
+  vaultMerge(fromIds: number[], intoId: number) {
+    return this.post<{ ok: true }>('/vault/merge', { from_ids: fromIds, into_id: intoId });
+  }
+
+  vaultSplit(entityId: number, spanIds: number[]) {
+    return this.post<{ ok: true; new_entity_id: number }>('/vault/split', {
+      entity_id: entityId,
+      span_ids: spanIds,
+    });
+  }
+
+  vaultUpdate(entityId: number, patch: VaultPatch) {
+    return this.post<{ entity: VaultEntityRow }>(`/vault/entity/${entityId}`, patch);
+  }
+
+  vaultPending(pendingId: number, action: 'confirm' | 'dismiss' | 'allowlist') {
+    return this.post<{ ok: true }>(`/vault/pending/${pendingId}`, { action });
+  }
+
+  vaultSeed(entities: { canonical: string; kind: string }[]) {
+    return this.post<{ ok: true; ids: number[] }>('/vault/seed', { entities });
+  }
+
+  /** `body: null` sends a GET (the path carries `user_id`). */
+  private async post<R>(path: string, body: object | null, timeout = TIMEOUT_MS): Promise<R> {
+    const route = path.split('?')[0];
     try {
       const res = await fetch(this.url + path, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ user_id: this.userId, ...body }),
+        ...(body
+          ? {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ user_id: this.userId, ...body }),
+            }
+          : {}),
         signal: AbortSignal.timeout(timeout),
       });
       // The status only: a body may echo real values.
-      if (!res.ok) throw new PseudoDownError(`pseudo-svc ${path} status ${res.status}`);
+      if (!res.ok) throw new PseudoDownError(`pseudo-svc ${route} status ${res.status}`);
       return (await res.json()) as R;
     } catch (err) {
       if (err instanceof PseudoDownError) throw err;
-      throw new PseudoDownError(`pseudo-svc ${path} unreachable`, { cause: err });
+      throw new PseudoDownError(`pseudo-svc ${route} unreachable`, { cause: err });
     }
   }
 }

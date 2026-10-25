@@ -1,7 +1,7 @@
 import { clsx } from 'clsx';
-import { KeyRound, LogOut, Monitor, Moon, Settings, Sun, X } from 'lucide-react';
+import { KeyRound, LogOut, Monitor, Moon, Settings, ShieldCheck, Sun, X } from 'lucide-react';
 import { Dialog } from 'radix-ui';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { logout, passkeyRegister } from '../api.ts';
 import { type Theme, useStore } from '../store.ts';
 import { disconnect } from '../ws.ts';
@@ -13,8 +13,11 @@ const THEMES: { value: Theme; label: string; Icon: typeof Sun }[] = [
   { value: 'dark', label: 'Tumma', Icon: Moon },
 ];
 
-/** The whole settings for now: theme, passkey registration, logout. */
-export function SettingsDialog() {
+/** Settings: theme, the vault screen, passkey registration, logout. */
+export function SettingsDialog({ onNavigate }: { onNavigate?: () => void }) {
+  const [open, setOpen] = useState(false);
+  // Leaving for another screen: focus must not return to the gear (its tooltip would open).
+  const leaving = useRef(false);
   const theme = useStore((s) => s.theme);
   const setTheme = useStore((s) => s.setTheme);
   const showModelSaw = useStore((s) => s.showModelSaw);
@@ -41,7 +44,7 @@ export function SettingsDialog() {
   };
 
   return (
-    <Dialog.Root>
+    <Dialog.Root open={open} onOpenChange={setOpen}>
       <Dialog.Trigger asChild>
         <IconButton label="Asetukset">
           <Settings size={20} />
@@ -49,7 +52,13 @@ export function SettingsDialog() {
       </Dialog.Trigger>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-40 bg-fg/30 data-[state=closed]:animate-fade-out data-[state=open]:animate-fade-in" />
-        <Dialog.Content className="fixed inset-x-4 top-1/2 z-50 mx-auto max-w-sm -translate-y-1/2 data-[state=closed]:animate-fade-out data-[state=open]:animate-fade-in rounded-lg border border-border bg-bg-raised p-6">
+        <Dialog.Content
+          onCloseAutoFocus={(e) => {
+            if (leaving.current) e.preventDefault();
+            leaving.current = false;
+          }}
+          className="fixed inset-x-4 top-1/2 z-50 mx-auto max-w-sm -translate-y-1/2 data-[state=closed]:animate-fade-out data-[state=open]:animate-fade-in rounded-lg border border-border bg-bg-raised p-6"
+        >
           <div className="mb-4 flex items-center justify-between">
             <Dialog.Title className="font-semibold">Asetukset</Dialog.Title>
             <Dialog.Close asChild>
@@ -91,6 +100,19 @@ export function SettingsDialog() {
             Näytä mitä malli näki
           </label>
           <div className="flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                leaving.current = true;
+                setOpen(false);
+                onNavigate?.();
+                useStore.getState().setScreen('vault');
+              }}
+              className="flex h-10 items-center gap-2 rounded-md border border-border px-3 hover:bg-bg-sunken"
+            >
+              <ShieldCheck size={16} />
+              Nimisuoja
+            </button>
             <button
               type="button"
               onClick={() => void addPasskey()}

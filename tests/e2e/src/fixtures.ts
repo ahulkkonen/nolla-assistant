@@ -3,6 +3,7 @@ import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { startFakeLlm } from '@pa/fake-llm';
+import { startFakeSidecar } from '@pa/pi-ext-pseudo/fake-sidecar';
 import { hashPassword } from '@pa/server/src/auth/password.ts';
 import { loadConfig } from '@pa/server/src/config.ts';
 import { start } from '@pa/server/src/main.ts';
@@ -20,6 +21,13 @@ const freePort = async () => {
   return port;
 };
 
+/** Real values and the surrogates the model sees, for `pseudo: true`. */
+export const DICT = {
+  'Matti Virtanen': 'Pekka Laaksonen',
+  'Liisa Korhonen': 'Anna Mäkinen',
+  '010190-123M': '010190-900B',
+};
+
 export type App = {
   url: string;
   dataDir: string;
@@ -27,9 +35,16 @@ export type App = {
   login: (page: Page) => Promise<void>;
 };
 
-export const test = base.extend<{ app: App }>({
-  app: async ({}, use) => {
+export const test = base.extend<{ app: App; pseudo: boolean }>({
+  // Starts the fake sidecar (DICT plus one pending item) and sets PSEUDO_URL.
+  pseudo: [false, { option: true }],
+  app: async ({ pseudo }, use) => {
     const llm = await startFakeLlm([]);
+    const sidecar = pseudo
+      ? await startFakeSidecar(DICT, {
+          pending: [{ kind: 'person', text: 'Koski', detector: 'gliner', score: 0.42 }],
+        })
+      : undefined;
     const dataDir = mkdtempSync(join(tmpdir(), 'pa-e2e-'));
     mkdirSync(join(dataDir, 'work/aleksi'), { recursive: true });
     const port = await freePort();
@@ -47,6 +62,7 @@ export const test = base.extend<{ app: App }>({
         PORT: String(port),
         USER_ID: 'aleksi',
         LOG_LEVEL: 'warn',
+        ...(sidecar ? { PSEUDO_URL: sidecar.url } : {}),
       }),
     );
     const url = `http://127.0.0.1:${port}`;
@@ -59,9 +75,18 @@ export const test = base.extend<{ app: App }>({
     await use({ url, dataDir, llm, login });
     await srv.close();
     await llm.close();
+    await sidecar?.close();
     rmSync(dataDir, { recursive: true, force: true });
   },
   baseURL: async ({ app }, use) => use(app.url),
 });
+
+/** Settings sits in the drawer under 768 px and in the sidebar footer above. */
+export const openVault = async (page: Page) => {
+  const menu = page.getByRole('button', { name: 'Valikko' });
+  if (await menu.isVisible()) await menu.click();
+  await page.getByRole('button', { name: 'Asetukset' }).click();
+  await page.getByRole('button', { name: 'Nimisuoja' }).click();
+};
 
 export { expect };

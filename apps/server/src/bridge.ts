@@ -1,7 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import type { AgentSession, AgentSessionEvent } from '@earendil-works/pi-coding-agent';
 import { chats, type Db } from '@pa/db';
-import type { PseudoClient } from '@pa/pi-ext-pseudo';
+import {
+  type PseudoClient,
+  PseudoDownError,
+  type VaultEntityRow,
+  type VaultPendingRow,
+} from '@pa/pi-ext-pseudo';
 import {
   type Annotation,
   type ChatSummary,
@@ -199,6 +204,43 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
     registry.subscribe(chatId, session, forward(chatId, session, deps));
   };
 
+  /** Applies one vault change, then answers this socket (not the room) with a fresh state. */
+  const vault = async (msg: Extract<ClientMessage, { type: `vault.${string}` }>) => {
+    if (!pseudo) return send(socket, errorMsg('not_implemented'));
+    switch (msg.type) {
+      case 'vault.merge':
+        await pseudo.vaultMerge(msg.fromIds, msg.intoId);
+        break;
+      case 'vault.split':
+        await pseudo.vaultSplit(msg.entityId, msg.spanIds);
+        break;
+      case 'vault.pin':
+        await pseudo.vaultUpdate(msg.entityId, { pinned: msg.pinned });
+        break;
+      case 'vault.allowlist':
+        await pseudo.vaultUpdate(msg.entityId, { allowlisted: msg.allowlisted });
+        break;
+      case 'vault.regenerate':
+        await pseudo.vaultUpdate(msg.entityId, { regenerate: true });
+        break;
+      case 'vault.neverDetect':
+        await pseudo.vaultUpdate(msg.entityId, { never_detect: true });
+        break;
+      case 'vault.setMode':
+        await pseudo.vaultUpdate(msg.entityId, { mode: msg.mode });
+        break;
+      case 'vault.pending.resolve':
+        await pseudo.vaultPending(msg.pendingId, msg.action);
+        break;
+    }
+    const { entities, pending } = await pseudo.vaultList();
+    send(socket, {
+      type: 'vault.state',
+      entities: entities.map(vaultEntity),
+      pending: pending.map(vaultPending),
+    });
+  };
+
   const handle = async (msg: ClientMessage) => {
     switch (msg.type) {
       case 'ping':
@@ -278,6 +320,16 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
         owned(msg.chatId);
         if (registry.has(msg.chatId)) await (await registry.get(msg.chatId)).abort();
         return;
+      case 'vault.list':
+      case 'vault.merge':
+      case 'vault.split':
+      case 'vault.pin':
+      case 'vault.allowlist':
+      case 'vault.regenerate':
+      case 'vault.neverDetect':
+      case 'vault.setMode':
+      case 'vault.pending.resolve':
+        return vault(msg);
       default:
         return send(socket, errorMsg('not_implemented'));
     }
@@ -297,6 +349,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
     handle(parsed.data).catch((err: unknown) => {
       if (err instanceof NotFound || err instanceof AttachmentNotFound)
         return send(socket, errorMsg('not_found'));
+      if (err instanceof PseudoDownError) return send(socket, errorMsg('pseudo_down'));
       log.warn({ err, type: parsed.data.type }, 'client message failed');
       send(socket, errorMsg('failed'));
     });
@@ -439,6 +492,27 @@ function forward(
       .catch((err: unknown) => log.warn({ chatId, err }, 'forward'));
   };
 }
+
+/** Sidecar snake_case to protocol camelCase. `lastSeen` is normalised to UTC ISO for zod. */
+const vaultEntity = (e: VaultEntityRow) => ({
+  id: e.id,
+  kind: e.kind,
+  canonical: e.canonical,
+  surrogate: e.surrogate,
+  mode: e.mode,
+  pinned: e.pinned,
+  allowlisted: e.allowlisted,
+  seenCount: e.seen_count,
+  lastSeen: e.last_seen ? new Date(e.last_seen).toISOString() : null,
+});
+const vaultPending = (p: VaultPendingRow) => ({
+  id: p.id,
+  kind: p.kind,
+  text: p.text,
+  detector: p.detector,
+  score: p.score,
+  chatId: p.session_id,
+});
 
 function toolRows(m: AgentMessage, statuses: Map<string, ToolStatus>): ToolRow[] {
   if (m.role !== 'assistant') return [];

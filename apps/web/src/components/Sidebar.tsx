@@ -220,7 +220,7 @@ export function Sidebar({ expanded, onNavigate }: { expanded: boolean; onNavigat
         >
           {archivedView ? 'Keskustelut' : 'Arkistoidut'}
         </button>
-        <SettingsDialog />
+        <SettingsDialog {...(onNavigate ? { onNavigate } : {})} />
       </div>
     </nav>
   );

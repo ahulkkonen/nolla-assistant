@@ -387,6 +387,9 @@ importers:
       '@pa/fake-llm':
         specifier: workspace:*
         version: link:../fake-llm
+      '@pa/pi-ext-pseudo':
+        specifier: workspace:*
+        version: link:../../packages/pi-ext-pseudo
       '@pa/server':
         specifier: workspace:*
         version: link:../../apps/server

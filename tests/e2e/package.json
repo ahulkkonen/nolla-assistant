@@ -8,6 +8,7 @@
   },
   "devDependencies": {
     "@pa/fake-llm": "workspace:*",
+    "@pa/pi-ext-pseudo": "workspace:*",
     "@pa/server": "workspace:*",
     "@playwright/test": "1.64.1",
     "@types/node": "26.6.5",

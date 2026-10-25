@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { deflateSync } from 'node:zlib';
 import type { Page } from '@playwright/test';
-import { expect, test } from './fixtures.ts';
+import { expect, openVault, test } from './fixtures.ts';
 
 const send = async (page: Page, text: string) => {
   await page.getByLabel('Viesti').fill(text);
@@ -148,4 +148,27 @@ test('keyboard: [ toggles sidebar, Tab reaches send with focus ring', async ({ a
   const sendBtn = page.getByRole('button', { name: 'Lähetä' });
   await expect(sendBtn).toBeFocused();
   expect(await sendBtn.evaluate((el) => el.matches(':focus-visible'))).toBe(true);
+});
+
+test.describe('vault', () => {
+  test.use({ pseudo: true });
+
+  test('open from settings, merge two, confirm pending', async ({ app, page }) => {
+    app.llm.push({ text: 'Selvä.' });
+    await app.login(page);
+    await send(page, 'Matti Virtanen ja Liisa Korhonen, hetu 010190-123M');
+    await expect(page.locator('.md')).toHaveText('Selvä.');
+    await openVault(page);
+    const rows = page.locator('tbody tr');
+    await expect(rows).toHaveCount(3);
+    await page.getByRole('checkbox', { name: 'Valitse Matti Virtanen' }).check();
+    await page.getByRole('checkbox', { name: 'Valitse Liisa Korhonen' }).check();
+    await page.getByRole('button', { name: 'Yhdistä', exact: true }).click();
+    await expect(rows).toHaveCount(2);
+    await expect(rows.filter({ hasText: 'Liisa Korhonen' })).toHaveCount(0);
+    await page.getByRole('button', { name: 'Vahvista' }).click();
+    await expect(page.getByRole('heading', { name: 'Vahvistettavat' })).toHaveCount(0);
+    await expect(rows).toHaveCount(3);
+    await expect(rows.filter({ hasText: 'Koski' })).toHaveCount(1);
+  });
 });
