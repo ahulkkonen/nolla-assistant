@@ -1,5 +1,10 @@
 # Phase 2 — PWA shell, auth, attachments, deploy
 
+**Status 2026-10-25:** code complete; UI reviewer passed after two rounds; e2e 46 tests green;
+Docker image builds. Open user steps: Coolify deploy, iPhone install (`docs/deploy.md`).
+Lighthouse no longer has a PWA category (removed in Lighthouse 12); the e2e suite checks the
+manifest, icons, service worker registration and `apple-touch-icon` instead.
+
 Gate (plan §13): installs on an iPhone and on desktop Chrome; UI reviewer signs off sidebar,
 thread, composer; Lighthouse PWA checks pass.
 
