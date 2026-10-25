@@ -36,15 +36,28 @@ export const SCREENS = [
 ] as const;
 
 const row =
-  'flex h-10 items-center gap-2 rounded-md border border-border px-3 hover:bg-bg-sunken max-md:h-11';
-const check = 'size-4 accent-accent';
-const field = 'h-9 rounded-md border border-border bg-bg px-2 max-md:h-11';
+  'flex h-10 items-center gap-2 rounded-md border border-border px-3 hover:bg-accent max-md:h-11';
+const check = 'size-4 accent-primary';
+const field = 'h-9 rounded-md border border-border bg-card px-2 max-md:h-11';
 
 /** Opens the one settings dialog (rendered by the app shell). */
-export function SettingsButton() {
+export function SettingsButton({
+  className,
+  tipSide,
+  iconSize = 20,
+}: {
+  className?: string;
+  tipSide?: 'right';
+  iconSize?: number;
+}) {
   return (
-    <IconButton label="Asetukset" onClick={() => useStore.setState({ settingsOpen: true })}>
-      <Settings size={20} />
+    <IconButton
+      label="Asetukset"
+      {...(className ? { className } : {})}
+      {...(tipSide ? { tipSide } : {})}
+      onClick={() => useStore.setState({ settingsOpen: true })}
+    >
+      <Settings size={iconSize} />
     </IconButton>
   );
 }
@@ -52,7 +65,7 @@ export function SettingsButton() {
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="flex flex-col gap-2">
-      <h3 className="text-secondary text-fg-muted">{title}</h3>
+      <h3 className="text-meta text-muted-foreground">{title}</h3>
       {children}
     </section>
   );
@@ -68,7 +81,7 @@ function Notifications() {
     );
   }, []);
   if (!pushSupported())
-    return <p className="text-secondary text-fg-muted">Selain ei tue ilmoituksia.</p>;
+    return <p className="text-meta text-muted-foreground">Selain ei tue ilmoituksia.</p>;
   const toggle = async (next: boolean) => {
     setBusy(true);
     try {
@@ -132,7 +145,7 @@ function Integrations() {
       <div className="flex items-center gap-3">
         <div className="min-w-0 flex-1">
           <div>Google Workspace</div>
-          <div className="text-secondary text-fg-muted">
+          <div className="text-meta text-muted-foreground">
             {google === null ? 'Tarkistetaan…' : google.connected ? 'Yhdistetty' : 'Ei yhdistetty'}
           </div>
         </div>
@@ -141,13 +154,13 @@ function Integrations() {
             type="button"
             disabled={busy}
             onClick={() => void connect()}
-            className="h-9 rounded-md border border-border px-3 hover:bg-bg-sunken disabled:text-fg-muted max-md:h-11"
+            className="h-9 rounded-md border border-border px-3 hover:bg-accent disabled:opacity-50 max-md:h-11"
           >
             Yhdistä
           </button>
         )}
       </div>
-      <p className="text-secondary text-fg-muted">
+      <p className="text-meta text-muted-foreground">
         Yhteyden voi katkaista Google-tilin asetuksista: Tietoturva → Yhteydet kolmansien osapuolten
         sovelluksiin.
       </p>
@@ -202,13 +215,13 @@ export function SettingsDialog() {
   return (
     <Dialog.Root open={open} onOpenChange={setOpen}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-40 bg-fg/30 data-[state=closed]:animate-fade-out data-[state=open]:animate-fade-in" />
+        <Dialog.Overlay className="fixed inset-0 z-40 bg-black/40 dark:bg-black/60 data-[state=closed]:animate-fade-out data-[state=open]:animate-fade-in" />
         <Dialog.Content
           onCloseAutoFocus={(e) => {
             if (leaving.current) e.preventDefault();
             leaving.current = false;
           }}
-          className="fixed inset-4 z-50 mx-auto flex max-h-full max-w-sm flex-col gap-6 overflow-y-auto rounded-lg border border-border bg-bg-raised p-6 pb-8 data-[state=closed]:animate-fade-out data-[state=open]:animate-fade-in"
+          className="fixed inset-4 z-50 mx-auto flex max-h-full max-w-sm flex-col gap-6 overflow-y-auto rounded-lg border border-border bg-card p-6 pb-8 data-[state=closed]:animate-fade-out data-[state=open]:animate-fade-in"
         >
           <div className="flex items-center justify-between">
             <Dialog.Title className="font-semibold">Asetukset</Dialog.Title>
@@ -222,8 +235,8 @@ export function SettingsDialog() {
             Teema, näkymät, puhe, ilmoitukset, integraatiot ja tili
           </Dialog.Description>
           <fieldset>
-            <legend className="mb-2 text-secondary text-fg-muted">Teema</legend>
-            <div className="flex gap-1 rounded-md bg-bg-sunken p-1">
+            <legend className="mb-2 text-meta text-muted-foreground">Teema</legend>
+            <div className="flex gap-1 rounded-md bg-muted p-1">
               {THEMES.map(({ value, label, Icon }) => (
                 <button
                   key={value}
@@ -231,8 +244,10 @@ export function SettingsDialog() {
                   aria-pressed={theme === value}
                   onClick={() => setTheme(value)}
                   className={clsx(
-                    'flex h-8 flex-1 items-center justify-center gap-1 rounded-sm text-secondary',
-                    theme === value ? 'bg-bg text-accent' : 'text-fg-muted hover:text-fg',
+                    'flex h-8 flex-1 items-center justify-center gap-1 rounded-sm text-meta',
+                    theme === value
+                      ? 'bg-card text-foreground'
+                      : 'text-muted-foreground hover:text-foreground',
                   )}
                 >
                   <Icon size={16} />
@@ -293,7 +308,7 @@ export function SettingsDialog() {
               Lisää avain
             </button>
             {note && (
-              <p role="status" className="text-secondary text-fg-muted">
+              <p role="status" className="text-meta text-muted-foreground">
                 {note}
               </p>
             )}

@@ -18,7 +18,7 @@ export function MemoryChipRow({ chip }: { chip: MemoryChip }) {
   const [open, setOpen] = useState(false);
   const [first, ...rest] = chip.lines;
   return (
-    <div className="flex flex-col gap-1 text-secondary text-fg-muted">
+    <div className="flex flex-col gap-1 text-meta text-muted-foreground">
       {/* Phones: status and link on the first line, the change below; one line on wider screens. */}
       <p className="flex flex-wrap items-center gap-x-2">
         <span>
@@ -27,7 +27,7 @@ export function MemoryChipRow({ chip }: { chip: MemoryChip }) {
         {(first || rest.length > 0) && (
           <span className="flex min-w-0 items-baseline gap-2 max-md:order-last max-md:basis-full">
             {first && (
-              <span className="flex min-w-0 max-w-full items-baseline truncate rounded-sm bg-bg-sunken px-1 font-mono">
+              <span className="flex min-w-0 max-w-full items-baseline truncate rounded-sm bg-muted px-1 font-mono">
                 <Line line={first} />
               </span>
             )}
@@ -36,7 +36,7 @@ export function MemoryChipRow({ chip }: { chip: MemoryChip }) {
                 type="button"
                 aria-expanded={open}
                 onClick={() => setOpen(!open)}
-                className="shrink-0 underline underline-offset-2 hover:text-fg max-md:min-h-11"
+                className="shrink-0 underline underline-offset-2 hover:text-foreground max-md:min-h-11"
               >
                 {open ? 'Näytä vähemmän' : `+${rest.length} muuta`}
               </button>
@@ -46,7 +46,7 @@ export function MemoryChipRow({ chip }: { chip: MemoryChip }) {
         <button
           type="button"
           onClick={() => useStore.getState().setScreen('memory')}
-          className="inline-flex items-center underline underline-offset-2 hover:text-fg max-md:min-h-11"
+          className="inline-flex items-center underline underline-offset-2 hover:text-foreground max-md:min-h-11"
         >
           Avaa muisti
         </button>

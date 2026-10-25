@@ -22,18 +22,18 @@ export function ConfirmDialog({
   return (
     <AlertDialog.Root open={open} onOpenChange={(o) => !o && onClose()}>
       <AlertDialog.Portal>
-        <AlertDialog.Overlay className="fixed inset-0 z-40 bg-fg/30 data-[state=closed]:animate-fade-out data-[state=open]:animate-fade-in" />
-        <AlertDialog.Content className="fixed inset-x-4 top-1/2 z-50 mx-auto max-w-sm -translate-y-1/2 rounded-lg border border-border bg-bg-raised p-6 data-[state=closed]:animate-fade-out data-[state=open]:animate-fade-in">
+        <AlertDialog.Overlay className="fixed inset-0 z-40 bg-black/40 dark:bg-black/60 data-[state=closed]:animate-fade-out data-[state=open]:animate-fade-in" />
+        <AlertDialog.Content className="fixed inset-x-4 top-1/2 z-50 mx-auto max-w-sm -translate-y-1/2 rounded-lg border border-border bg-card p-6 data-[state=closed]:animate-fade-out data-[state=open]:animate-fade-in">
           <AlertDialog.Title className="mb-2 font-semibold">{title}</AlertDialog.Title>
-          <AlertDialog.Description className="mb-6 text-fg-muted">
+          <AlertDialog.Description className="mb-6 text-muted-foreground">
             {children}
           </AlertDialog.Description>
           <div className="flex justify-end gap-2">
-            <AlertDialog.Cancel className={`${button} border border-border hover:bg-bg-sunken`}>
+            <AlertDialog.Cancel className={`${button} border border-border hover:bg-accent`}>
               Peruuta
             </AlertDialog.Cancel>
             <AlertDialog.Action
-              className={`${button} bg-accent text-accent-fg`}
+              className={`${button} bg-primary text-primary-foreground`}
               onClick={onConfirm}
             >
               {action}

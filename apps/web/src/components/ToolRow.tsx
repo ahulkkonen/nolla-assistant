@@ -1,73 +1,68 @@
-import { Ban, Check, ChevronRight, Clock, LoaderCircle, X } from 'lucide-react';
-import { useState } from 'react';
+import { Ban, Check, ChevronRight, Clock, Loader2, X } from 'lucide-react';
+import { Collapsible } from 'radix-ui';
+import { cn } from '@/lib/utils';
 import { type ToolView, useStore } from '../store.ts';
 
-const STATUS = {
-  running: { Icon: LoaderCircle, text: 'käynnissä' },
-  ok: { Icon: Check, text: 'valmis' },
-  error: { Icon: X, text: 'virhe' },
-  denied: { Icon: Ban, text: 'estetty' },
+export const STATUS_WORD = {
+  running: 'käynnissä',
+  ok: 'valmis',
+  error: 'virhe',
+  denied: 'estetty',
 } as const;
 
+/** Status icons (brief 7.5): spinner muted, done success, error destructive, waiting warning. */
+const ICON = {
+  running: { Icon: Loader2, className: 'animate-spin text-muted-foreground' },
+  ok: { Icon: Check, className: 'text-success' },
+  error: { Icon: X, className: 'text-destructive' },
+  denied: { Icon: Ban, className: 'text-destructive' },
+  waiting: { Icon: Clock, className: 'text-warning' },
+} as const;
+
+/** The collapsed tool row trigger; the subagents row reuses it. */
+export const toolTrigger =
+  'flex max-w-full items-center gap-2 rounded-md text-meta text-muted-foreground hover:text-foreground h-8 max-md:min-h-11 [@media(pointer:coarse)]:min-h-11';
+
 export function ToolRow({ tool }: { tool: ToolView }) {
-  const [open, setOpen] = useState(false);
-  // A gated call waits for the user, not the tool: no spinner.
-  const waiting = useStore(
-    (s) =>
-      tool.status === 'running' &&
-      s.approvals.some(
-        (a) =>
-          !a.expired &&
-          a.chatId === s.activeChatId &&
-          (a.callId ? a.callId === tool.callId : a.tool === tool.name),
-      ),
-  );
-  // A denial by timeout reads as expired, matching the "Hyväksyntä vanheni" row.
-  const expired = useStore(
-    (s) =>
-      tool.status === 'denied' &&
-      s.approvals.some(
-        (a) =>
-          a.expired &&
-          a.chatId === s.activeChatId &&
-          (a.callId ? a.callId === tool.callId : a.tool === tool.name),
-      ),
-  );
-  const { Icon, text } = waiting
-    ? { Icon: Clock, text: 'odottaa hyväksyntää' }
-    : expired
-      ? { Icon: Clock, text: 'vanhentunut' }
-      : STATUS[tool.status];
+  // A gated call waits for the user, not the tool (no spinner); a denial by timeout reads as
+  // expired, matching the "Hyväksyntä vanheni" row.
+  const gate = useStore((s) => {
+    const a = s.approvals.find(
+      (x) =>
+        x.chatId === s.activeChatId &&
+        (x.callId ? x.callId === tool.callId : x.tool === tool.name) &&
+        (tool.status === 'running' ? !x.expired : tool.status === 'denied' && x.expired),
+    );
+    return a ? (a.expired ? 'expired' : 'waiting') : null;
+  });
+  const waiting = gate === 'waiting';
+  const expired = gate === 'expired';
+  const { Icon, className } = waiting || expired ? ICON.waiting : ICON[tool.status];
+  const word = waiting ? 'odottaa hyväksyntää' : expired ? 'vanhentunut' : STATUS_WORD[tool.status];
   // Live output while running; the final summary replaces it.
   const detail = [tool.argsPreview, tool.summary || tool.output].filter(Boolean);
   return (
-    <div className="text-secondary text-fg-muted">
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => setOpen(!open)}
-        className="flex max-w-full items-center gap-2 rounded-sm py-1 hover:text-fg max-md:min-h-11"
-      >
-        <Icon
-          size={16}
-          className={tool.status === 'running' && !waiting ? 'animate-spin' : undefined}
-        />
-        <span className="truncate font-mono">{tool.name}</span>
-        <span>{text}</span>
+    <Collapsible.Root>
+      <Collapsible.Trigger className={cn(toolTrigger, 'group')}>
+        <Icon size={16} className={cn('shrink-0', className)} />
+        <span className="truncate font-mono">{tool.name}</span> <span aria-hidden="true">·</span>{' '}
+        <span className="shrink-0">{word}</span>
         <ChevronRight
           size={16}
-          className={
-            open
-              ? 'rotate-90 transition-transform duration-(--duration)'
-              : 'transition-transform duration-(--duration)'
-          }
+          className="shrink-0 transition-transform duration-150 group-data-[state=open]:rotate-90"
         />
-      </button>
-      {open && (
-        <div className="mt-1 mb-2 space-y-2 rounded-md bg-bg-sunken p-3 font-mono break-words whitespace-pre-wrap">
+      </Collapsible.Trigger>
+      <Collapsible.Content className="overflow-hidden data-closed:animate-collapsible-up data-open:animate-collapsible-down">
+        <div
+          role="region"
+          aria-label={`${tool.name}: tuloste`}
+          // A scrollable region must be focusable (brief 7.8).
+          tabIndex={0}
+          className="mt-2 max-h-80 space-y-2 overflow-auto rounded-md bg-muted p-3 font-mono text-[13px] leading-5 break-words whitespace-pre-wrap text-foreground"
+        >
           {detail.length ? detail.map((d) => <div key={d}>{d}</div>) : <div>—</div>}
         </div>
-      )}
-    </div>
+      </Collapsible.Content>
+    </Collapsible.Root>
   );
 }

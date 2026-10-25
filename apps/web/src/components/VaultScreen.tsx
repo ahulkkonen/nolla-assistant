@@ -82,18 +82,18 @@ const pendingActions = (p: VaultPending): Action[] => {
 function PendingLane({ pending }: { pending: VaultPending[] }) {
   return (
     <section aria-labelledby="pending-title" className="flex flex-col gap-2">
-      <h2 id="pending-title" className="text-secondary text-fg-muted">
+      <h2 id="pending-title" className="text-meta text-muted-foreground">
         Vahvistettavat
       </h2>
       <ul className="flex flex-col gap-2">
         {pending.map((p) => (
           <li
             key={p.id}
-            className="flex items-center gap-3 rounded-lg border border-border bg-bg-raised py-1 pr-1 pl-4"
+            className="flex items-center gap-3 rounded-lg border border-border bg-card py-1 pr-1 pl-4"
           >
             <div className="min-w-0 flex-1">
               <div className="truncate">{p.text}</div>
-              <div className="text-secondary text-fg-muted">
+              <div className="text-meta text-muted-foreground">
                 {kind(p.kind)} · suojattu kunnes vahvistat · {Math.round(p.score * 100)} %
               </div>
             </div>
@@ -140,7 +140,7 @@ export function VaultScreen() {
         aria-label={`Valitse ${e.canonical}`}
         checked={picked.includes(e.id)}
         onChange={() => toggle(e.id)}
-        className="size-4 accent-accent"
+        className="size-4 accent-primary"
       />
     </label>
   );
@@ -150,32 +150,32 @@ export function VaultScreen() {
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 py-6">
         <h1 className="font-semibold max-md:hidden">{VAULT_TITLE}</h1>
         {!vault ? (
-          <p className="text-fg-muted">Ladataan…</p>
+          <p className="text-muted-foreground">Ladataan…</p>
         ) : (
           <>
             {!entities.length && !vault.pending.length && (
-              <p className="text-fg-muted">Ei vielä tunnistettuja nimiä tai tunnuksia.</p>
+              <p className="text-muted-foreground">Ei vielä tunnistettuja nimiä tai tunnuksia.</p>
             )}
             <label className="flex items-center gap-2 self-start max-md:min-h-11">
               <input
                 type="checkbox"
                 checked={showModelSaw}
                 onChange={(e) => setShowModelSaw(e.target.checked)}
-                className="size-4 accent-accent"
+                className="size-4 accent-primary"
               />
               Näytä mitä malli näki
             </label>
             {vault.pending.length > 0 && <PendingLane pending={vault.pending} />}
             {selected.length >= 2 && target && (
-              <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-bg-raised p-2 pl-4">
-                <label htmlFor="merge-into" className="text-secondary text-fg-muted">
+              <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card p-2 pl-4">
+                <label htmlFor="merge-into" className="text-meta text-muted-foreground">
                   {selected.length} valittu, yhdistä kohteeseen
                 </label>
                 <select
                   id="merge-into"
                   value={target.id}
                   onChange={(e) => setInto(Number(e.target.value))}
-                  className="h-9 rounded-md border border-border bg-bg px-2 max-md:h-11"
+                  className="h-9 rounded-md border border-border bg-card px-2 max-md:h-11"
                 >
                   {selected.map((e) => (
                     <option key={e.id} value={e.id}>
@@ -186,7 +186,7 @@ export function VaultScreen() {
                 <button
                   type="button"
                   onClick={merge}
-                  className="ml-auto h-9 rounded-md bg-accent px-4 font-medium text-accent-fg max-md:h-11"
+                  className="ml-auto h-9 rounded-md bg-primary px-4 font-medium text-primary-foreground max-md:h-11"
                 >
                   Yhdistä
                 </button>
@@ -197,7 +197,7 @@ export function VaultScreen() {
                 {/* Only the table may outgrow the page column (wide screens); below that it scrolls. */}
                 <div className="overflow-x-auto max-md:hidden min-[87.5rem]:-mx-32">
                   <table className="w-full text-left whitespace-nowrap">
-                    <thead className="text-secondary text-fg-muted">
+                    <thead className="text-meta text-muted-foreground">
                       <tr>
                         <th className="w-8 py-2 pr-3">
                           <span className="sr-only">Valitse</span>
@@ -217,12 +217,12 @@ export function VaultScreen() {
                       {entities.map((e) => (
                         <tr key={e.id} className="border-t border-border">
                           <td className="py-1 pr-3">{check(e)}</td>
-                          <td className="py-1 pr-4 text-fg-muted">{kind(e.kind)}</td>
+                          <td className="py-1 pr-4 text-muted-foreground">{kind(e.kind)}</td>
                           <td className="py-1 pr-4">{e.canonical}</td>
-                          <td className="py-1 pr-4 text-fg-muted">{e.surrogate}</td>
-                          <td className="py-1 pr-4 text-fg-muted">{MODE[e.mode]}</td>
+                          <td className="py-1 pr-4 text-muted-foreground">{e.surrogate}</td>
+                          <td className="py-1 pr-4 text-muted-foreground">{MODE[e.mode]}</td>
                           <td className="py-1 pr-4 text-right tabular-nums">{e.seenCount}</td>
-                          <td className="py-1 pr-4 text-fg-muted tabular-nums">
+                          <td className="py-1 pr-4 text-muted-foreground tabular-nums">
                             {when(e.lastSeen)}
                           </td>
                           <td className="py-1">
@@ -240,7 +240,7 @@ export function VaultScreen() {
                         {check(e)}
                         <div className="min-w-0 flex-1">
                           <div className="truncate">{e.canonical}</div>
-                          <div className="text-secondary text-fg-muted">
+                          <div className="text-meta text-muted-foreground">
                             {e.surrogate} · {kind(e.kind)} · {MODE[e.mode]} · nähty {e.seenCount} ·{' '}
                             {when(e.lastSeen)}
                           </div>
@@ -255,7 +255,7 @@ export function VaultScreen() {
                 </ul>
               </>
             )}
-            <ul className="flex flex-col gap-1 text-secondary text-fg-muted">
+            <ul className="flex flex-col gap-1 text-meta text-muted-foreground">
               <li>
                 Tunnistus ei ole täydellinen. Tunnistamatta jääneet arvot näkyvät korostamattomina.
               </li>

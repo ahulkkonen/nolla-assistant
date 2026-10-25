@@ -29,12 +29,12 @@ export function SubagentRow({ items }: { items: SubagentChild[] }) {
         .join(', ')
     : `${items.length} aliagenttia valmiina${failed ? ', virheitä' : ''}`;
   return (
-    <div className="text-secondary text-fg-muted">
+    <div className="text-meta text-muted-foreground">
       <button
         type="button"
         aria-expanded={open}
         onClick={() => setOpen(!open)}
-        className="flex max-w-full items-center gap-2 rounded-sm py-1 hover:text-fg max-md:min-h-11"
+        className="flex max-w-full items-center gap-2 rounded-sm py-1 hover:text-foreground max-md:min-h-11"
       >
         <Icon size={16} className={active ? 'animate-spin' : undefined} />
         <span>{text}</span>
@@ -44,13 +44,13 @@ export function SubagentRow({ items }: { items: SubagentChild[] }) {
         />
       </button>
       {open && (
-        <ul className="mt-1 mb-2 flex flex-col gap-1 rounded-md bg-bg-sunken p-3">
+        <ul className="mt-1 mb-2 flex flex-col gap-1 rounded-md bg-muted p-3">
           {items.map((c) => {
             const s = STATUS[c.status];
             return (
               <li key={c.id} className="flex items-center gap-2">
                 <s.Icon size={16} className={c.status === 'running' ? 'animate-spin' : undefined} />
-                <span className="min-w-0 flex-1 truncate text-fg">{c.label}</span>
+                <span className="min-w-0 flex-1 truncate text-foreground">{c.label}</span>
                 <span>{s.text}</span>
               </li>
             );

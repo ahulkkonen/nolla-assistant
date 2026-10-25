@@ -1,5 +1,4 @@
 import type { Annotation, AttachmentRef } from '@pa/protocol';
-import { clsx } from 'clsx';
 import { Check, Copy, Eye, EyeOff, FileText, PanelRight, Pencil, RotateCcw } from 'lucide-react';
 import { Popover } from 'radix-ui';
 import {
@@ -9,12 +8,18 @@ import {
   memo,
   type ReactNode,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
 } from 'react';
 import Markdown, { type ExtraProps } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { Button } from '@/components/ui/button';
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet';
+import { Textarea } from '@/components/ui/textarea';
+import { cn } from '@/lib/utils';
+import { touch } from '../media.ts';
 import { type SubagentChild, type ToolView, useStore } from '../store.ts';
 import { IconButton, Tip } from './IconButton.tsx';
 import { SubagentRow } from './SubagentRow.tsx';
@@ -75,8 +80,9 @@ function Pre(props: ComponentProps<'pre'>) {
     <div className="relative">
       <pre
         ref={ref}
-        className={clsx(
-          'overflow-x-auto rounded-md bg-bg-sunken p-3 font-mono text-secondary',
+        translate="no"
+        className={cn(
+          'overflow-x-auto rounded-lg bg-muted p-4 font-mono',
           kind ? 'pr-20 max-md:pr-24' : 'pr-12',
         )}
       >
@@ -97,9 +103,6 @@ function Pre(props: ComponentProps<'pre'>) {
 /** One message's own "what the model saw" switch; the global setting still wins. */
 const SawContext = createContext(false);
 
-// Touch screens have no hover, so the hint opens on tap there.
-const touch = globalThis.matchMedia?.('(hover: none)').matches ?? false;
-
 /** A restored real value; the tooltip (or the global toggle) shows the surrogate the model saw. */
 function Anno({ real, saw }: { real: string; saw: string }) {
   const local = useContext(SawContext);
@@ -109,12 +112,13 @@ function Anno({ real, saw }: { real: string; saw: string }) {
     <span
       tabIndex={0}
       aria-description={hint}
-      className="rounded-sm bg-bg-sunken underline decoration-fg-muted decoration-dotted underline-offset-2"
+      className="rounded-xs bg-mask px-0.5 underline decoration-mask-line decoration-dotted decoration-1 underline-offset-3 [box-decoration-break:clone]"
     >
       {show ? saw : real}
     </span>
   );
   if (!touch) return <Tip label={hint}>{span}</Tip>;
+  // Touch screens have no hover: a tap toggles the hint.
   return (
     <Popover.Root>
       <Popover.Trigger asChild>{span}</Popover.Trigger>
@@ -122,7 +126,7 @@ function Anno({ real, saw }: { real: string; saw: string }) {
         <Popover.Content
           sideOffset={4}
           collisionPadding={8}
-          className="z-50 rounded-sm bg-fg px-2 py-1 text-secondary text-bg"
+          className="z-50 rounded-sm bg-primary px-2 py-1 text-micro text-primary-foreground"
         >
           {hint}
         </Popover.Content>
@@ -201,6 +205,24 @@ const rehypeAnnotate = (pairs: [string, string][]) => () => (tree: HNode) => {
   walk(tree);
 };
 
+/** Rehype plugin: the streaming caret after the last character (brief 7.5). */
+const rehypeCaret = () => (tree: HNode) => {
+  let parent: HNode | undefined;
+  const walk = (n: HNode) => {
+    const last = n.children?.at(-1);
+    if (!last) return;
+    if (last.type === 'text') parent = n;
+    else walk(last);
+  };
+  walk(tree);
+  (parent ?? tree).children?.push({
+    type: 'element',
+    tagName: 'span',
+    properties: { className: ['caret'], ariaHidden: 'true' },
+    children: [],
+  });
+};
+
 const components = { pre: Pre, span: Span };
 const plugins = [remarkGfm];
 const NONE: Annotation[] = [];
@@ -208,9 +230,11 @@ const NONE: Annotation[] = [];
 export const MarkdownText = memo(function MarkdownText({
   text,
   annotations = NONE,
+  live = false,
 }: {
   text: string;
   annotations?: Annotation[];
+  live?: boolean;
 }) {
   const key = JSON.stringify(
     annotations
@@ -220,8 +244,8 @@ export const MarkdownText = memo(function MarkdownText({
   );
   const rehype = useMemo(() => {
     const pairs = JSON.parse(key) as [string, string][];
-    return pairs.length ? [rehypeAnnotate(pairs)] : [];
-  }, [key]);
+    return [...(pairs.length ? [rehypeAnnotate(pairs)] : []), ...(live ? [rehypeCaret] : [])];
+  }, [key, live]);
   return (
     <div className="md break-words">
       <Markdown remarkPlugins={plugins} rehypePlugins={rehype} components={components}>
@@ -235,29 +259,35 @@ function Attachment({ a }: { a: AttachmentRef }) {
   const src = `/api/files/${encodeURIComponent(a.id)}`;
   return a.kind === 'image' ? (
     <a href={src} target="_blank" rel="noreferrer">
-      <img src={src} alt={a.name} className="h-32 rounded-md border border-border object-cover" />
+      <img src={src} alt={a.name} className="h-32 rounded-lg border border-border object-cover" />
     </a>
   ) : (
     <a
       href={src}
       target="_blank"
       rel="noreferrer"
-      className="flex max-w-60 items-center gap-2 rounded-md border border-border px-3 py-2 text-secondary"
+      className="flex h-10 max-w-60 items-center gap-2 rounded-md border border-border pr-3 pl-1 text-meta"
     >
-      <FileText size={16} className="shrink-0 text-fg-muted" />
+      <span className="flex size-8 shrink-0 items-center justify-center rounded-xs bg-muted">
+        <FileText size={16} className="text-muted-foreground" />
+      </span>
       <span className="truncate">{a.name}</span>
     </a>
   );
 }
 
 type Props = {
+  /** Message id: ↑ in an empty composer opens this message in edit mode. */
+  id?: string;
   role: 'user' | 'assistant';
   text: string;
   annotations?: Annotation[];
   attachments?: AttachmentRef[];
   tools?: ToolView[];
-  /** Still streaming: no hover actions yet. */
+  /** Still streaming: the caret shows and the action row is only reserved. */
   live?: boolean;
+  /** The latest turn of its role: its actions show without hover (brief 7.5). */
+  latest?: boolean;
   /** Live children of a `subagent` call: that tool's row becomes the subagent row. */
   subagents?: SubagentChild[];
   /** User message: sends the edited text as a new message. */
@@ -266,8 +296,8 @@ type Props = {
   onRetry?: () => void;
 };
 
-// 24 px icons for the mouse; 44 px touch targets on phones, where the row is in the flow.
-const small = 'size-6 max-md:size-11';
+// 32 px icons in the action row; 44 px touch targets on phones.
+const small = 'size-8';
 
 function EditBox({
   text,
@@ -280,8 +310,8 @@ function EditBox({
 }) {
   const [value, setValue] = useState(text);
   return (
-    <div className="flex w-full max-w-xl flex-col gap-2">
-      <textarea
+    <div className="flex w-full max-w-[80%] flex-col gap-2 max-md:max-w-full">
+      <Textarea
         autoFocus
         aria-label="Muokattava viesti"
         value={value}
@@ -294,36 +324,29 @@ function EditBox({
             onSend(value.trim());
           }
         }}
-        className="w-full resize-y rounded-lg border border-border bg-bg px-4 py-2"
+        className="field-sizing-fixed resize-y rounded-xl px-4"
       />
       <div className="flex justify-end gap-2">
-        <button
-          type="button"
-          onClick={onCancel}
-          className="h-9 rounded-md border border-border px-3 hover:bg-bg-sunken"
-        >
+        <Button variant="outline" onClick={onCancel}>
           Peruuta
-        </button>
-        <button
-          type="button"
-          disabled={!value.trim()}
-          onClick={() => onSend(value.trim())}
-          className="h-9 rounded-md bg-accent px-3 font-medium text-accent-fg disabled:bg-bg-sunken disabled:text-fg-muted"
-        >
+        </Button>
+        <Button disabled={!value.trim()} onClick={() => onSend(value.trim())}>
           Lähetä muokattuna
-        </button>
+        </Button>
       </div>
     </div>
   );
 }
 
 export function MessageView({
+  id,
   role,
   text,
   annotations = NONE,
   attachments = [],
   tools = [],
   live,
+  latest,
   subagents = [],
   onEdit,
   onRetry,
@@ -331,9 +354,30 @@ export function MessageView({
   const user = role === 'user';
   const [saw, setSaw] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [sheet, setSheet] = useState(false);
+  const press = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const editRequested = useStore((s) => !!id && s.editMessageId === id);
+  useEffect(() => {
+    if (!editRequested) return;
+    setEditing(true);
+    useStore.setState({ editMessageId: null });
+  }, [editRequested]);
+
+  const copy = () => void navigator.clipboard.writeText(text);
+  const actions = !live && !editing && text;
   return (
     <SawContext.Provider value={saw}>
-      <div className={clsx('group relative flex flex-col gap-2', user && 'items-end')}>
+      <div
+        className={cn('group flex flex-col gap-2', user && 'items-end')}
+        // Long-press 500 ms on touch opens the action sheet (brief 7.7).
+        onPointerDown={(e) => {
+          if (e.pointerType !== 'touch' || !actions) return;
+          press.current = setTimeout(() => setSheet(true), 500);
+        }}
+        onPointerUp={() => clearTimeout(press.current)}
+        onPointerCancel={() => clearTimeout(press.current)}
+        onPointerMove={() => clearTimeout(press.current)}
+      >
         {attachments.length > 0 && (
           <div className="flex flex-wrap justify-end gap-2">
             {attachments.map((a) => (
@@ -342,7 +386,7 @@ export function MessageView({
           </div>
         )}
         {tools.length > 0 && (
-          <div className="flex flex-col">
+          <div className="flex flex-col gap-1">
             {tools.map((t) =>
               t.name === 'subagent' && subagents.length ? (
                 <SubagentRow key={t.callId} items={subagents} />
@@ -363,49 +407,86 @@ export function MessageView({
           />
         ) : user ? (
           text && (
-            <div className="max-w-xl rounded-lg bg-user-bubble px-4 py-2 break-words whitespace-pre-wrap">
+            <div className="max-w-[80%] rounded-xl bg-secondary px-4 py-2.5 text-body text-pretty whitespace-pre-wrap text-secondary-foreground hyphens-auto [overflow-wrap:anywhere] max-md:max-w-[85%]">
               {annotate(text, annotations)}
             </div>
           )
         ) : (
-          <MarkdownText text={text} annotations={annotations} />
+          <MarkdownText text={text} annotations={annotations} live={!!live} />
         )}
-        {/* Out of flow: the 24 px row sits in the thread gap. */}
-        {!live && !editing && text && (
+        {/* 32 px, reserved while streaming so nothing jumps. */}
+        {(live || actions) && (
           <div
-            className={clsx(
-              'absolute top-full flex gap-2 opacity-0 transition-opacity duration-(--duration) group-focus-within:opacity-100 group-hover:opacity-100 max-md:static max-md:gap-1 max-md:opacity-100 [@media(hover:none)]:opacity-100',
-              user ? 'right-0' : 'left-0',
+            className={cn(
+              'flex h-8 items-center gap-1 transition-opacity duration-100 [-webkit-touch-callout:none] max-md:h-11',
+              // Hover devices: on hover or focus, except under the latest assistant turn.
+              !(latest && !user) &&
+                '[@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:focus-within:opacity-100',
+              // Touch: only under the latest user and the latest assistant turn.
+              !latest && '[@media(hover:none)]:hidden',
             )}
           >
-            <CopyButton text={() => text} className={small} />
-            {user && onEdit && (
-              <IconButton
-                label="Muokkaa ja lähetä uutena"
-                className={small}
-                onClick={() => setEditing(true)}
-              >
-                <Pencil size={16} />
-              </IconButton>
-            )}
-            {!user && onRetry && (
-              <IconButton label="Yritä uudelleen" className={small} onClick={onRetry}>
-                <RotateCcw size={16} />
-              </IconButton>
-            )}
-            {annotations.length > 0 && (
-              <IconButton
-                label={saw ? 'Näytä alkuperäiset' : 'Mitä malli näki'}
-                aria-pressed={saw}
-                className={small}
-                onClick={() => setSaw(!saw)}
-              >
-                {saw ? <EyeOff size={16} /> : <Eye size={16} />}
-              </IconButton>
+            {actions && (
+              <>
+                <CopyButton text={() => text} className={small} />
+                {user && onEdit && (
+                  <IconButton label="Muokkaa" className={small} onClick={() => setEditing(true)}>
+                    <Pencil size={16} />
+                  </IconButton>
+                )}
+                {!user && onRetry && (
+                  <IconButton label="Yritä uudelleen" className={small} onClick={onRetry}>
+                    <RotateCcw size={16} />
+                  </IconButton>
+                )}
+                {annotations.length > 0 && (
+                  <IconButton
+                    label={saw ? 'Näytä alkuperäiset' : 'Mitä malli näki'}
+                    aria-pressed={saw}
+                    className={small}
+                    onClick={() => setSaw(!saw)}
+                  >
+                    {saw ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </IconButton>
+                )}
+              </>
             )}
           </div>
         )}
       </div>
+      {touch && actions && (
+        <Sheet open={sheet} onOpenChange={setSheet}>
+          <SheetContent
+            side="bottom"
+            className="gap-1 rounded-t-xl px-2 pt-2 pb-[max(env(safe-area-inset-bottom),8px)]"
+          >
+            <SheetTitle className="sr-only">Viestin toiminnot</SheetTitle>
+            <SheetDescription className="sr-only">{text.slice(0, 80)}</SheetDescription>
+            {[
+              { label: 'Kopioi', Icon: Copy, run: copy },
+              ...(user && onEdit
+                ? [{ label: 'Muokkaa', Icon: Pencil, run: () => setEditing(true) }]
+                : []),
+              ...(!user && onRetry
+                ? [{ label: 'Yritä uudelleen', Icon: RotateCcw, run: onRetry }]
+                : []),
+            ].map(({ label, Icon, run }) => (
+              <Button
+                key={label}
+                variant="ghost"
+                className="h-11 justify-start gap-3 font-normal"
+                onClick={() => {
+                  setSheet(false);
+                  run();
+                }}
+              >
+                <Icon size={16} className="text-muted-foreground" />
+                {label}
+              </Button>
+            ))}
+          </SheetContent>
+        </Sheet>
+      )}
     </SawContext.Provider>
   );
 }

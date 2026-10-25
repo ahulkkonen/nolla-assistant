@@ -17,9 +17,9 @@ export default defineConfig({
         short_name: 'Assistant',
         start_url: '/',
         display: 'standalone',
-        // Light --color-bg from src/tokens.css.
-        theme_color: '#ffffff',
-        background_color: '#ffffff',
+        // Light --background from src/tokens.css.
+        theme_color: '#faf9f5',
+        background_color: '#faf9f5',
         icons: [
           { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
           { src: '/icon-512.png', sizes: '512x512', type: 'image/png' },
@@ -37,7 +37,13 @@ export default defineConfig({
         importScripts: ['push-sw.js'],
         // The app's own chunks; Mermaid's lazy chunks (`assets/lazy/`) and the artifact runtime
         // are fetched (and cached) on first use instead of adding ~5 MB to the install.
-        globPatterns: ['index.html', 'assets/*.{js,css,woff2}', '*.{png,webmanifest}'],
+        // Fonts: only the latin `wght` files (Finnish ä, ö, å are in it); other subsets load on use.
+        globPatterns: [
+          'index.html',
+          'assets/*.{js,css}',
+          'assets/*-latin-wght-*.woff2',
+          '*.{png,webmanifest}',
+        ],
         globIgnores: ['assets/lazy/**', 'assets/artifact-runtime-*.js'],
         runtimeCaching: [
           {

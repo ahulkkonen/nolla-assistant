@@ -8,6 +8,7 @@ import type {
   VaultEntity,
   VaultPending,
 } from '@pa/protocol';
+import { toast } from 'sonner';
 import { create } from 'zustand';
 
 /** `output`: live `tool.update` text while the tool runs. */
@@ -21,7 +22,6 @@ export type Streaming = {
   tools: ToolView[];
 };
 export type Theme = 'system' | 'light' | 'dark';
-export type Toast = { id: number; message: string };
 type Of<T extends ServerMessage['type']> = Extract<ServerMessage, { type: T }>;
 type TopicState = Of<'topic.state'>;
 type SearchResults = Of<'search.results'>;
@@ -60,13 +60,20 @@ export function memoryChanges(prev: MemoryState | null, next: MemoryState): stri
 type State = {
   auth: 'unknown' | 'out' | 'in';
   chats: ChatSummary[];
+  /** The first `chat.list` has arrived (the sidebar shows skeletons until then). */
+  chatsLoaded: boolean;
   /** The sidebar lists archived chats instead of active ones. */
   archivedView: boolean;
   activeChatId: string | null;
   messages: Record<string, UiMessage[]>;
   streaming: Record<string, Streaming>;
   agentStatus: Record<string, 'idle' | 'running'>;
-  errors: Toast[];
+  /** Counts error toasts: screens that wait for a server echo also stop waiting on an error. */
+  errorCount: number;
+  /** A failed reply per chat, shown inline in the thread until the next message. */
+  failed: Record<string, string>;
+  /** A user message to open in edit mode (↑ in an empty composer). */
+  editMessageId: string | null;
   sidebarOpen: boolean;
   theme: Theme;
   /** Annotated spans show the surrogate the model saw instead of the real value. */
@@ -92,6 +99,7 @@ type State = {
   openArtifact: { chatId: string; id: string } | null;
   paletteOpen: boolean;
   settingsOpen: boolean;
+  shortcutsOpen: boolean;
   integrations: Of<'integrations.state'>['google'] | null;
   showArtifact(chatId: string, a: Artifact): void;
   /** Voice: send the transcript at once, and the language hint (both kept in localStorage). */
@@ -118,7 +126,7 @@ type State = {
   setArchivedView(on: boolean): void;
   addLocalMessage(chatId: string, msg: UiMessage): void;
   pushError(message: string): void;
-  dismissError(id: number): void;
+  notify(message: string): void;
   setSidebarOpen(open: boolean): void;
   setTheme(theme: Theme): void;
   setShowModelSaw(on: boolean): void;
@@ -199,11 +207,15 @@ const ERROR_TEXT: Record<string, string> = {
   memory_conflict: 'Teksti on muuttunut, lataa uudelleen.',
 };
 
+/** Inline failed-reply text; the alert's "Yritä uudelleen" button says what to do. */
+const FAILED_TEXT: Record<string, string> = {
+  llm_failed: 'Mallin kutsu epäonnistui.',
+  prompt_failed: 'Viestin lähetys epäonnistui.',
+};
+
 /** Delta annotations are chunk-relative; `offset` is the chunk's start in the message. */
 const shift = (annotations: Annotation[], offset: number) =>
   annotations.map((a) => ({ ...a, start: a.start + offset, end: a.end + offset }));
-
-let toastId = 0;
 
 export const useStore = create<State>()((set, get) => {
   const patchStream = (chatId: string, fn: (s: Streaming) => Streaming) =>
@@ -224,6 +236,7 @@ export const useStore = create<State>()((set, get) => {
   return {
     auth: 'unknown',
     chats: [],
+    chatsLoaded: false,
     archivedView: false,
     activeChatId: null,
     screen: 'chat',
@@ -238,6 +251,7 @@ export const useStore = create<State>()((set, get) => {
     openArtifact: null,
     paletteOpen: false,
     settingsOpen: false,
+    shortcutsOpen: false,
     integrations: null,
     ...loadStt(),
     vault: null,
@@ -249,8 +263,11 @@ export const useStore = create<State>()((set, get) => {
     messages: {},
     streaming: {},
     agentStatus: {},
-    errors: [],
-    sidebarOpen: globalThis.matchMedia?.('(min-width: 1200px)').matches ?? false,
+    errorCount: 0,
+    failed: {},
+    editMessageId: null,
+    // Docked from 1024 px (brief 7.4); below, the rail or the drawer starts closed.
+    sidebarOpen: globalThis.matchMedia?.('(min-width: 1024px)').matches ?? false,
     theme: loadTheme(),
     showModelSaw: false,
 
@@ -259,7 +276,7 @@ export const useStore = create<State>()((set, get) => {
         case 'auth.state':
           return set({ auth: msg.authenticated ? 'in' : 'out' });
         case 'chat.list':
-          return set({ chats: sortChats(msg.chats) });
+          return set({ chats: sortChats(msg.chats), chatsLoaded: true });
         case 'chat.created':
           return set((st) => ({
             chats: sortChats([msg.chat, ...st.chats.filter((c) => c.id !== msg.chat.id)]),
@@ -306,6 +323,7 @@ export const useStore = create<State>()((set, get) => {
             streaming: omit(st.streaming, msg.chatId),
             agentStatus: omit(st.agentStatus, msg.chatId),
             memoryChip: omit(st.memoryChip, msg.chatId),
+            failed: omit(st.failed, msg.chatId),
             approvals: st.approvals.filter((a) => a.chatId !== msg.chatId),
             ...(st.activeChatId === msg.chatId
               ? { activeChatId: null, screen: 'chat', scrollTo: null }
@@ -425,6 +443,16 @@ export const useStore = create<State>()((set, get) => {
             if (st.activeChatId && !st.chats.some((c) => c.id === st.activeChatId))
               set({ activeChatId: null, scrollTo: null });
           }
+          // A failed reply in the open chat is an inline alert with a retry (brief 7.5).
+          if (
+            (msg.code === 'llm_failed' || msg.code === 'prompt_failed') &&
+            msg.chatId &&
+            msg.chatId === get().activeChatId
+          )
+            return set((st) => ({
+              failed: { ...st.failed, [msg.chatId as string]: FAILED_TEXT[msg.code] as string },
+              errorCount: st.errorCount + 1,
+            }));
           return get().pushError(ERROR_TEXT[msg.code] ?? msg.message);
         default:
           return;
@@ -467,14 +495,15 @@ export const useStore = create<State>()((set, get) => {
       set((st) => ({
         approvals: st.approvals.filter((a) => a.chatId !== chatId || !a.expired),
         memoryChip: omit(st.memoryChip, chatId),
+        failed: omit(st.failed, chatId),
         messages: { ...st.messages, [chatId]: [...(st.messages[chatId] ?? []), m] },
       })),
+    // Toasts (brief 7.5): 4 s, errors 6 s with a close button.
     pushError(message) {
-      const id = ++toastId;
-      set((st) => ({ errors: [...st.errors, { id, message }] }));
-      setTimeout(() => get().dismissError(id), 6000);
+      toast.error(message, { duration: 6000, closeButton: true });
+      set((st) => ({ errorCount: st.errorCount + 1 }));
     },
-    dismissError: (id) => set((st) => ({ errors: st.errors.filter((e) => e.id !== id) })),
+    notify: (message) => void toast.success(message),
     setSidebarOpen: (sidebarOpen) => set({ sidebarOpen }),
     setTheme(theme) {
       try {

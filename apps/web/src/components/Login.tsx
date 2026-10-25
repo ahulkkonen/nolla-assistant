@@ -1,5 +1,7 @@
-import { KeyRound } from 'lucide-react';
+import { AlertCircle, KeyRound } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { HttpError, me, passkeyLogin, passwordLogin } from '../api.ts';
 import { useStore } from '../store.ts';
 import { connect } from '../ws.ts';
@@ -13,6 +15,7 @@ const message = (err: unknown) =>
         : 'Kirjautuminen epäonnistui.'
     : 'Kirjautuminen epäonnistui.';
 
+/** Brief 7.5: no card on phones (top at 20dvh); from 768 px a 400 px card. */
 export function Login() {
   const setAuth = useStore((s) => s.setAuth);
   const [password, setPassword] = useState('');
@@ -40,43 +43,47 @@ export function Login() {
   };
 
   return (
-    <main className="flex h-dvh items-center justify-center p-4">
-      <div className="w-full max-w-sm rounded-lg border border-border bg-bg-raised p-6">
-        <h1 className="mb-6 font-semibold">Assistant</h1>
-        <form onSubmit={onSubmit} className="flex flex-col gap-3">
-          <label htmlFor="password" className="text-secondary text-fg-muted">
+    <main className="flex h-dvh justify-center px-6 pt-[20dvh] md:items-center md:pt-0">
+      <div className="w-full max-w-sm md:max-w-[400px] md:rounded-xl md:border md:border-border md:bg-card md:p-8 md:shadow-sm">
+        <h1 className="mb-6 text-title">Assistant</h1>
+        <form onSubmit={onSubmit} className="flex flex-col gap-2">
+          <label htmlFor="password" className="text-ui">
             Salasana
           </label>
-          <input
+          <Input
             id="password"
             type="password"
             autoComplete="current-password"
             value={password}
+            aria-invalid={error ? true : undefined}
+            aria-describedby={error ? 'login-error' : undefined}
             onChange={(e) => setPassword(e.target.value)}
-            className="h-10 rounded-md border border-border bg-bg px-3 max-md:h-11"
+            className="h-11"
           />
-          <button
-            type="submit"
-            disabled={busy || !password}
-            className="h-10 rounded-md bg-accent font-medium max-md:h-11 text-accent-fg disabled:bg-bg-sunken disabled:text-fg-muted"
-          >
+          {error && (
+            <p
+              id="login-error"
+              role="alert"
+              className="flex items-center gap-1.5 text-meta text-destructive"
+            >
+              <AlertCircle size={16} className="shrink-0" />
+              {error}
+            </p>
+          )}
+          <Button type="submit" size="lg" disabled={busy || !password} className="mt-2 w-full">
             Kirjaudu
-          </button>
+          </Button>
         </form>
-        <button
-          type="button"
+        <Button
+          variant="outline"
+          size="lg"
           disabled={busy}
           onClick={() => void run(passkeyLogin)}
-          className="mt-3 flex h-10 w-full max-md:h-11 items-center justify-center gap-2 rounded-md border border-border hover:bg-bg-sunken disabled:text-fg-muted"
+          className="mt-3 w-full"
         >
           <KeyRound size={16} />
           Käytä avainta
-        </button>
-        {error && (
-          <p role="alert" className="mt-3 text-secondary text-fg">
-            {error}
-          </p>
-        )}
+        </Button>
       </div>
     </main>
   );

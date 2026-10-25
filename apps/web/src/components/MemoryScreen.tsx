@@ -22,9 +22,9 @@ const PLACEHOLDER = {
 } as const;
 
 const primary =
-  'h-10 rounded-md bg-accent px-4 font-medium text-accent-fg disabled:bg-bg-sunken disabled:text-fg-muted max-md:h-11';
+  'h-10 rounded-md bg-primary px-4 font-medium text-primary-foreground disabled:opacity-50 max-md:h-11';
 const secondary =
-  'h-10 rounded-md border border-border px-4 font-medium hover:bg-bg-sunken disabled:text-fg-muted max-md:h-11';
+  'h-10 rounded-md border border-border px-4 font-medium hover:bg-accent disabled:opacity-50 max-md:h-11';
 
 /**
  * The proposed file from the server's whole-file unified diff (context and `+` lines of that
@@ -45,13 +45,13 @@ export function proposed(diff: string, file: string, current: string): string {
 
 function Diff({ diff }: { diff: string }) {
   return (
-    <div className="overflow-x-auto rounded-md border border-border bg-bg p-3 font-mono text-secondary">
+    <div className="overflow-x-auto rounded-md border border-border bg-card p-3 font-mono text-meta">
       {diff.split('\n').map((line, i) => {
         if (line.startsWith('--- ') || line.startsWith('@@')) return null;
         const key = `${i}:${line}`;
         if (line.startsWith('+++ b/'))
           return (
-            <div key={key} className="pt-2 font-sans text-fg-muted first:pt-0">
+            <div key={key} className="pt-2 font-sans text-muted-foreground first:pt-0">
               {line.slice(6)}
             </div>
           );
@@ -61,8 +61,8 @@ function Diff({ diff }: { diff: string }) {
             key={key}
             className={clsx(
               'flex gap-2 whitespace-pre-wrap break-words',
-              sign === '+' && 'bg-bg-sunken',
-              sign === '-' && 'text-fg-muted line-through',
+              sign === '+' && 'bg-muted',
+              sign === '-' && 'text-muted-foreground line-through',
             )}
           >
             <span aria-hidden className="w-3 shrink-0 select-none no-underline">
@@ -89,13 +89,13 @@ function PendingItem({ p }: { p: MemoryState['pending'][number] }) {
   const lines = pendingLines(p);
   const long = lines.length > 3 || p.text.length > 240;
   return (
-    <li className="flex flex-col gap-2 rounded-lg border border-border bg-bg-raised p-4">
-      <div className="text-secondary text-fg-muted">
+    <li className="flex flex-col gap-2 rounded-lg border border-border bg-card p-4">
+      <div className="text-meta text-muted-foreground">
         {ACTION[p.action]} · {TARGET[p.target]} ·{' '}
         <button
           type="button"
           onClick={() => openChat(p.chatId)}
-          className="underline underline-offset-2 hover:text-fg"
+          className="underline underline-offset-2 hover:text-foreground"
         >
           {chatTitle ?? UNTITLED}
         </button>
@@ -107,7 +107,7 @@ function PendingItem({ p }: { p: MemoryState['pending'][number] }) {
         <button
           type="button"
           onClick={() => setOpen(!open)}
-          className="self-start text-secondary text-fg-muted underline underline-offset-2 hover:text-fg"
+          className="self-start text-meta text-muted-foreground underline underline-offset-2 hover:text-foreground"
         >
           {open ? 'Näytä vähemmän' : 'Näytä lisää'}
         </button>
@@ -162,13 +162,13 @@ function Pane({
         </label>
         <span className="flex items-baseline gap-2">
           {saved && (
-            <span role="status" className="text-secondary text-fg-muted">
+            <span role="status" className="text-meta text-muted-foreground">
               Tallennettu
             </span>
           )}
           <span
             id={`${id}-count`}
-            className={clsx('text-secondary text-fg tabular-nums', over && 'font-medium')}
+            className={clsx('text-meta text-foreground tabular-nums', over && 'font-medium')}
           >
             {value.length} / {CAPS[target]}
             {over && ' · liian pitkä'}
@@ -192,8 +192,8 @@ function Pane({
           }
         }}
         className={clsx(
-          'w-full rounded-md border border-border p-3 font-mono text-secondary placeholder:text-fg-muted',
-          readOnly ? 'resize-none bg-bg-sunken' : 'resize-y bg-bg',
+          'w-full rounded-md border border-border p-3 font-mono text-meta placeholder:text-muted-foreground',
+          readOnly ? 'resize-none bg-muted' : 'resize-y bg-card',
         )}
       />
       {onSave && !readOnly && (
@@ -212,7 +212,7 @@ function Pane({
 
 export function MemoryScreen() {
   const mem = useStore((s) => s.memory);
-  const errors = useStore((s) => s.errors.length);
+  const errors = useStore((s) => s.errorCount);
   const [drafts, setDrafts] = useState<Drafts>({ user: null, memory: null });
   // Panes hold the consolidation proposal as editable drafts.
   const [editing, setEditing] = useState(false);
@@ -269,7 +269,7 @@ export function MemoryScreen() {
   if (!mem)
     return (
       <div className="min-h-0 flex-1 overflow-y-auto px-4">
-        <p className="mx-auto w-full max-w-3xl py-6 text-fg-muted">Ladataan…</p>
+        <p className="mx-auto w-full max-w-3xl py-6 text-muted-foreground">Ladataan…</p>
       </div>
     );
 
@@ -329,7 +329,7 @@ export function MemoryScreen() {
         </div>
         {mem.pending.length > 0 && (
           <section aria-labelledby="pending-writes" className="flex flex-col gap-2">
-            <h2 id="pending-writes" className="text-secondary text-fg-muted">
+            <h2 id="pending-writes" className="text-meta text-muted-foreground">
               Odottavat kirjoitukset
             </h2>
             <ul className="flex flex-col gap-2">
@@ -341,11 +341,11 @@ export function MemoryScreen() {
         )}
         {c ? (
           <section aria-labelledby="consolidation" className="flex flex-col gap-2">
-            <h2 id="consolidation" className="text-secondary text-fg-muted">
+            <h2 id="consolidation" className="text-meta text-muted-foreground">
               Tiivistysehdotus
             </h2>
             {editing ? (
-              <p className="text-secondary text-fg-muted">
+              <p className="text-meta text-muted-foreground">
                 Muokkaat ehdotusta alla. Hyväksy tallentaa molemmat tiedostot.
               </p>
             ) : (
@@ -383,7 +383,7 @@ export function MemoryScreen() {
           </section>
         ) : null}
         {c && !editing && (
-          <p className="text-secondary text-fg-muted">
+          <p className="text-meta text-muted-foreground">
             Ratkaise tiivistysehdotus ennen muokkausta.
           </p>
         )}

@@ -14,7 +14,7 @@ export function AgentsScreen() {
             <li key={a.id} className="flex items-center gap-3 border-t border-border py-2">
               <div className="min-w-0 flex-1">
                 <div>{a.name}</div>
-                <div className="truncate text-secondary text-fg-muted">
+                <div className="truncate text-meta text-muted-foreground">
                   <span className="font-mono">{a.id}</span> · {a.model} · aliagentit{' '}
                   {a.subagents ? 'käytössä' : 'ei käytössä'}
                 </div>
@@ -22,7 +22,7 @@ export function AgentsScreen() {
             </li>
           ))}
         </ul>
-        <p className="text-secondary text-fg-muted">Muokkaa tiedostoja kansiossa agents/.</p>
+        <p className="text-meta text-muted-foreground">Muokkaa tiedostoja kansiossa agents/.</p>
       </div>
     </div>
   );

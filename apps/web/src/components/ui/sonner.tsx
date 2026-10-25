@@ -6,21 +6,33 @@ import {
   TriangleAlertIcon,
 } from 'lucide-react';
 import { Toaster as Sonner, type ToasterProps } from 'sonner';
+import { useMobile } from '@/media';
 import { useStore } from '@/store';
 
+/**
+ * Brief 7.5: 360 wide, radius 12, popover with border and shadow; desktop bottom-right 16 from
+ * the edges; phone bottom-center above the composer (`--toast-bottom`, set by the composer).
+ */
 const Toaster = ({ ...props }: ToasterProps) => {
   // The app theme, not next-themes (shadcn's default): 'system' | 'light' | 'dark'.
   const theme = useStore((s) => s.theme);
+  const mobile = useMobile();
+  const bottom = { bottom: 'var(--toast-bottom)' };
 
   return (
     <Sonner
       theme={theme}
+      position={mobile ? 'bottom-center' : 'bottom-right'}
+      offset={mobile ? bottom : 16}
+      mobileOffset={bottom}
+      duration={4000}
+      customAriaLabel="Ilmoitukset"
       className="toaster group"
       icons={{
-        success: <CircleCheckIcon className="size-4" />,
-        info: <InfoIcon className="size-4" />,
-        warning: <TriangleAlertIcon className="size-4" />,
-        error: <OctagonXIcon className="size-4" />,
+        success: <CircleCheckIcon className="size-4 text-success" />,
+        info: <InfoIcon className="size-4 text-info" />,
+        warning: <TriangleAlertIcon className="size-4 text-warning" />,
+        error: <OctagonXIcon className="size-4 text-destructive" />,
         loading: <Loader2Icon className="size-4 animate-spin" />,
       }}
       style={
@@ -29,11 +41,16 @@ const Toaster = ({ ...props }: ToasterProps) => {
           '--normal-text': 'var(--popover-foreground)',
           '--normal-border': 'var(--border)',
           '--border-radius': 'var(--radius)',
+          '--width': '360px',
         } as React.CSSProperties
       }
       toastOptions={{
+        closeButtonAriaLabel: 'Sulje',
         classNames: {
-          toast: 'cn-toast',
+          toast: 'font-sans shadow-md!',
+          title: 'text-ui! font-medium!',
+          description: 'text-meta! text-muted-foreground!',
+          actionButton: 'h-8! rounded-md! border! border-border! bg-transparent! text-foreground!',
         },
       }}
       {...props}

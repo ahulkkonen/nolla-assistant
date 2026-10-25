@@ -10,9 +10,9 @@ export const TOPICS_TITLE = 'Aiheet';
 type Proposal = ReturnType<typeof useStore.getState>['proposals'][number];
 type Editing = { id: number; mode: 'rename' | 'merge' } | null;
 
-const field = 'h-9 min-w-0 flex-1 rounded-md border border-border bg-bg px-2';
+const field = 'h-9 min-w-0 flex-1 rounded-md border border-border bg-card px-2';
 const primary =
-  'h-9 rounded-md bg-accent px-4 font-medium text-accent-fg disabled:bg-bg-sunken disabled:text-fg-muted';
+  'h-9 rounded-md bg-primary px-4 font-medium text-primary-foreground disabled:opacity-50';
 
 function ProposalRow({
   p,
@@ -53,12 +53,12 @@ function ProposalRow({
   const target = into || topics[0]?.id || '';
 
   return (
-    <li className="flex flex-col gap-2 rounded-lg border border-border bg-bg-raised py-2 pr-1 pl-4">
+    <li className="flex flex-col gap-2 rounded-lg border border-border bg-card py-2 pr-1 pl-4">
       <div className="flex items-center gap-3">
         <div className="min-w-0 flex-1">
           <div className="font-medium">{p.name}</div>
-          <div className="text-secondary text-fg-muted">{p.why}</div>
-          <div className="truncate text-secondary text-fg-muted">
+          <div className="text-meta text-muted-foreground">{p.why}</div>
+          <div className="truncate text-meta text-muted-foreground">
             Keskustelusta: {chatTitle ?? UNTITLED}
           </div>
         </div>
@@ -130,7 +130,7 @@ export function TopicsScreen() {
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 py-6">
         <h1 className="font-semibold max-md:hidden">{TOPICS_TITLE}</h1>
         <section aria-labelledby="inbox-title" className="flex flex-col gap-2">
-          <h2 id="inbox-title" className="text-secondary text-fg-muted">
+          <h2 id="inbox-title" className="text-meta text-muted-foreground">
             Ehdotukset
           </h2>
           {proposals.length ? (
@@ -140,11 +140,11 @@ export function TopicsScreen() {
               ))}
             </ul>
           ) : (
-            <p className="text-fg-muted">Ei ehdotuksia.</p>
+            <p className="text-muted-foreground">Ei ehdotuksia.</p>
           )}
         </section>
         <section aria-labelledby="topics-title" className="flex flex-col gap-2">
-          <h2 id="topics-title" className="text-secondary text-fg-muted">
+          <h2 id="topics-title" className="text-meta text-muted-foreground">
             Omat aiheet
           </h2>
           {topics.length ? (
@@ -154,10 +154,12 @@ export function TopicsScreen() {
                   <div className="min-w-0 flex-1">
                     <div>{t.name}</div>
                     {t.description && (
-                      <div className="truncate text-secondary text-fg-muted">{t.description}</div>
+                      <div className="truncate text-meta text-muted-foreground">
+                        {t.description}
+                      </div>
                     )}
                   </div>
-                  <span className="text-fg-muted tabular-nums">
+                  <span className="text-muted-foreground tabular-nums">
                     {t.count}
                     <span className="sr-only"> keskustelua</span>
                   </span>
@@ -165,7 +167,7 @@ export function TopicsScreen() {
               ))}
             </ul>
           ) : (
-            <p className="text-fg-muted">Ei vielä aiheita.</p>
+            <p className="text-muted-foreground">Ei vielä aiheita.</p>
           )}
         </section>
       </div>

@@ -18,9 +18,9 @@ import { UNTITLED } from './Sidebar.tsx';
 type Page = 'root' | 'agents' | 'themes';
 
 const item =
-  'flex h-11 cursor-default items-center gap-3 rounded-md px-3 data-[selected=true]:bg-bg-sunken';
+  'flex h-11 cursor-default items-center gap-3 rounded-md px-3 data-[selected=true]:bg-accent';
 const group =
-  '[&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:py-1 [&_[cmdk-group-heading]]:text-secondary [&_[cmdk-group-heading]]:text-fg-muted';
+  '[&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:py-1 [&_[cmdk-group-heading]]:text-meta [&_[cmdk-group-heading]]:text-muted-foreground';
 
 function Item({
   icon,
@@ -35,7 +35,7 @@ function Item({
 }) {
   return (
     <Command.Item className={item} onSelect={onSelect} {...(keywords ? { keywords } : {})}>
-      <span className="text-fg-muted">{icon}</span>
+      <span className="text-muted-foreground">{icon}</span>
       <span className="min-w-0 flex-1 truncate">{children}</span>
     </Command.Item>
   );
@@ -72,8 +72,8 @@ export function CommandPalette() {
       open={open}
       onOpenChange={(o) => (o ? useStore.setState({ paletteOpen: true }) : close())}
       label="Komennot"
-      overlayClassName="fixed inset-0 z-40 bg-fg/30"
-      contentClassName="fixed inset-x-4 top-16 z-50 mx-auto max-w-xl overflow-hidden rounded-lg border border-border bg-bg-raised max-md:top-4"
+      overlayClassName="fixed inset-0 z-40 bg-black/40 dark:bg-black/60"
+      contentClassName="fixed inset-x-4 top-16 z-50 mx-auto max-w-xl overflow-hidden rounded-lg border border-border bg-card max-md:top-4"
       onKeyDown={(e) => {
         // Backspace on an empty field leaves a submenu.
         if (e.key === 'Backspace' && !search && page !== 'root') {
@@ -83,7 +83,7 @@ export function CommandPalette() {
       }}
     >
       <div className="flex items-center gap-2 border-b border-border px-3">
-        <Search size={16} className="shrink-0 text-fg-muted" />
+        <Search size={16} className="shrink-0 text-muted-foreground" />
         <Command.Input
           value={search}
           onValueChange={setSearch}
@@ -94,12 +94,12 @@ export function CommandPalette() {
                 ? 'Valitse teema'
                 : 'Hae komentoa tai keskustelua'
           }
-          className="h-12 min-w-0 flex-1 bg-transparent placeholder:text-fg-muted focus-visible:outline-none"
+          className="h-12 min-w-0 flex-1 bg-transparent placeholder:text-muted-foreground focus-visible:outline-none"
         />
       </div>
       {/* Ends on a half row, so the list visibly continues. */}
       <Command.List className="max-h-80 overflow-y-auto p-2">
-        <Command.Empty className="px-3 py-2 text-fg-muted">Ei osumia.</Command.Empty>
+        <Command.Empty className="px-3 py-2 text-muted-foreground">Ei osumia.</Command.Empty>
         {page === 'agents' &&
           agents.map((a) => (
             <Item
@@ -146,7 +146,7 @@ export function CommandPalette() {
               </Item>
               <Item icon={<Bot size={16} />} onSelect={sub('agents')} keywords={['agentti']}>
                 <span className="flex items-center justify-between gap-2">
-                  Vaihda agenttia <ChevronRight size={16} className="text-fg-muted" />
+                  Vaihda agenttia <ChevronRight size={16} className="text-muted-foreground" />
                 </span>
               </Item>
               {SCREENS.map(([screen, Icon, label]) => (
@@ -162,7 +162,7 @@ export function CommandPalette() {
               </Item>
               <Item icon={<Palette size={16} />} onSelect={sub('themes')} keywords={['teema']}>
                 <span className="flex items-center justify-between gap-2">
-                  Teema <ChevronRight size={16} className="text-fg-muted" />
+                  Teema <ChevronRight size={16} className="text-muted-foreground" />
                 </span>
               </Item>
             </Command.Group>

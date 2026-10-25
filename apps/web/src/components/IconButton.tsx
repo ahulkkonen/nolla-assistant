@@ -1,42 +1,48 @@
-import { clsx } from 'clsx';
-import { Tooltip } from 'radix-ui';
 import type { ComponentProps, ReactElement, ReactNode } from 'react';
+import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { cn } from '@/lib/utils';
+import { touch } from '../media.ts';
 
-type Props = ComponentProps<'button'> & { label: string; variant?: 'ghost' | 'primary' };
+type TipProps = {
+  label: ReactNode;
+  children: ReactElement;
+  side?: 'top' | 'right' | 'bottom' | 'left';
+  /** Controlled: `false` keeps it shut (e.g. while recording), `true` shows a hint. */
+  open?: boolean;
+};
 
-/** Radix tooltip around one trigger element. */
-export function Tip({ label, children }: { label: ReactNode; children: ReactElement }) {
+/** Kit tooltip around one trigger element; none on touch screens (brief 7.5). */
+export function Tip({ label, children, side, open }: TipProps) {
+  if (touch && open === undefined) return children;
   return (
-    <Tooltip.Root>
-      <Tooltip.Trigger asChild>{children}</Tooltip.Trigger>
-      <Tooltip.Portal>
-        <Tooltip.Content
-          sideOffset={4}
-          collisionPadding={8}
-          className="z-50 rounded-sm bg-fg px-2 py-1 text-secondary text-bg"
-        >
-          {label}
-        </Tooltip.Content>
-      </Tooltip.Portal>
-    </Tooltip.Root>
+    <Tooltip {...(open === undefined ? {} : { open })}>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipContent sideOffset={4} collisionPadding={8} {...(side ? { side } : {})}>
+        {label}
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
-export function IconButton({ label, variant = 'ghost', className, type, ...rest }: Props) {
+type Props = ComponentProps<'button'> & {
+  label: string;
+  variant?: 'ghost' | 'primary';
+  tipSide?: TipProps['side'];
+};
+
+/** An icon-only button: a Finnish `aria-label` and a desktop tooltip with the same text. */
+export function IconButton({ label, variant = 'ghost', tipSide, className, ...rest }: Props) {
   return (
-    <Tip label={label}>
-      <button
-        type={type ?? 'button'}
+    <Tip label={label} {...(tipSide ? { side: tipSide } : {})}>
+      <Button
+        type="button"
+        size="icon"
+        variant={variant === 'primary' ? 'default' : 'ghost'}
         aria-label={label}
-        className={clsx(
-          'inline-flex shrink-0 items-center justify-center rounded-md transition-colors duration-(--duration) ease-out',
-          // Tailwind cannot order two size utilities, so the default applies only without one.
-          !className?.includes('size-') && 'size-9 max-md:size-11',
-          variant === 'primary'
-            ? 'bg-accent text-accent-fg disabled:bg-bg-sunken disabled:text-fg-muted'
-            : rest['aria-disabled']
-              ? 'cursor-not-allowed text-fg-muted opacity-50'
-              : 'text-fg-muted hover:bg-bg-sunken hover:text-fg',
+        className={cn(
+          variant === 'ghost' && 'text-muted-foreground hover:text-foreground',
+          rest['aria-disabled'] && 'cursor-not-allowed opacity-50 hover:bg-transparent',
           className,
         )}
         {...rest}

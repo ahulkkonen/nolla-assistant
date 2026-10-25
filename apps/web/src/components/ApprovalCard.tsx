@@ -9,13 +9,13 @@ function Value({ text }: { text: string }) {
   const [more, setMore] = useState(false);
   const long = text.length > LONG;
   return (
-    <dd className="min-w-0 flex-1 font-mono text-secondary break-words whitespace-pre-wrap">
+    <dd className="min-w-0 flex-1 font-mono text-meta break-words whitespace-pre-wrap">
       {long && !more ? `${text.slice(0, LONG)}…` : text}
       {long && (
         <button
           type="button"
           onClick={() => setMore(!more)}
-          className="ml-2 font-sans text-fg-muted underline underline-offset-2 hover:text-fg max-md:ml-0 max-md:flex max-md:min-h-11 max-md:items-center"
+          className="ml-2 font-sans text-muted-foreground underline underline-offset-2 hover:text-foreground max-md:ml-0 max-md:flex max-md:min-h-11 max-md:items-center"
         >
           {more ? 'Näytä vähemmän' : 'Näytä lisää'}
         </button>
@@ -47,7 +47,7 @@ export function ApprovalCard({ a }: { a: Approval }) {
 
   if (a.expired)
     return (
-      <p className="flex items-center gap-2 text-secondary text-fg-muted">
+      <p className="flex items-center gap-2 text-meta text-muted-foreground">
         <Clock size={16} />
         Hyväksyntä vanheni: <span className="font-mono">{a.tool}</span>
       </p>
@@ -63,16 +63,16 @@ export function ApprovalCard({ a }: { a: Approval }) {
     <section
       role="alertdialog"
       aria-labelledby={titleId}
-      className="flex flex-col gap-3 rounded-lg border border-border bg-bg-raised p-4"
+      className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4"
     >
       <h2 id={titleId} aria-live="assertive" className="font-medium">
         Hyväksytäänkö työkalu <span className="font-mono">{a.tool}</span>?
       </h2>
-      {reason && <p className="text-secondary text-fg-muted">{reason}</p>}
+      {reason && <p className="text-meta text-muted-foreground">{reason}</p>}
       <dl className="flex flex-col gap-1">
         {args.map(([k, v]) => (
           <div key={k} className="flex gap-3 max-md:flex-col max-md:gap-0">
-            <dt className="w-24 shrink-0 truncate font-mono max-md:w-auto text-secondary text-fg-muted">
+            <dt className="w-24 shrink-0 truncate font-mono max-md:w-auto text-meta text-muted-foreground">
               {k}
             </dt>
             <Value text={show(v)} />
@@ -80,11 +80,11 @@ export function ApprovalCard({ a }: { a: Approval }) {
         ))}
       </dl>
       <div className="flex flex-wrap items-center justify-end gap-2">
-        <p className="mr-auto text-secondary text-fg-muted">Vanhenee klo {clock(a.expiresAt)}</p>
+        <p className="mr-auto text-meta text-muted-foreground">Vanhenee klo {clock(a.expiresAt)}</p>
         <button
           type="button"
           onClick={() => respondApproval(a.requestId, false)}
-          className="h-10 rounded-md border border-border px-4 font-medium hover:bg-bg-sunken max-md:h-11"
+          className="h-10 rounded-md border border-border px-4 font-medium hover:bg-accent max-md:h-11"
         >
           Hylkää
         </button>
@@ -92,7 +92,7 @@ export function ApprovalCard({ a }: { a: Approval }) {
           ref={approve}
           type="button"
           onClick={() => respondApproval(a.requestId, true)}
-          className="h-10 rounded-md bg-accent px-4 font-medium text-accent-fg max-md:h-11"
+          className="h-10 rounded-md bg-primary px-4 font-medium text-primary-foreground max-md:h-11"
         >
           Hyväksy
         </button>

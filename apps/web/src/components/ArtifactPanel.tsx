@@ -169,7 +169,7 @@ export function ArtifactPanel() {
   return (
     <aside
       aria-label="Artefaktit"
-      className="fixed inset-0 z-30 flex flex-col bg-bg pt-[env(safe-area-inset-top)] xl:static xl:z-auto xl:w-120 xl:shrink-0 xl:border-l xl:border-border"
+      className="fixed inset-0 z-30 flex flex-col bg-card pt-[env(safe-area-inset-top)] xl:static xl:z-auto xl:w-120 xl:shrink-0 xl:border-l xl:border-border"
     >
       <div className="flex items-center gap-1 border-b border-border px-2 py-1">
         <div role="tablist" className="flex min-w-0 flex-1 gap-1 overflow-x-auto">
@@ -181,8 +181,10 @@ export function ArtifactPanel() {
               aria-selected={x.id === a.id}
               onClick={() => useStore.setState({ openArtifact: { chatId: open.chatId, id: x.id } })}
               className={clsx(
-                'h-9 max-w-48 shrink-0 truncate rounded-md px-3 text-secondary max-md:h-11',
-                x.id === a.id ? 'bg-bg-sunken text-fg' : 'text-fg-muted hover:text-fg',
+                'h-9 max-w-48 shrink-0 truncate rounded-md px-3 text-meta max-md:h-11',
+                x.id === a.id
+                  ? 'bg-muted text-foreground'
+                  : 'text-muted-foreground hover:text-foreground',
               )}
             >
               {x.title}
@@ -216,18 +218,20 @@ export function ArtifactPanel() {
       </div>
       <div role="tabpanel" aria-label={a.title} className="min-h-0 flex-1 overflow-auto">
         {a.kind === 'code' || a.kind === 'file' ? (
-          <pre className="p-4 font-mono text-secondary whitespace-pre">{a.content}</pre>
+          <pre className="p-4 font-mono text-meta whitespace-pre">{a.content}</pre>
         ) : ready?.error ? (
-          <p className="p-4 text-fg-muted">Artefaktin näyttäminen epäonnistui: {ready.error}</p>
+          <p className="p-4 text-muted-foreground">
+            Artefaktin näyttäminen epäonnistui: {ready.error}
+          </p>
         ) : ready?.html ? (
           <iframe
             title={a.title}
             sandbox="allow-scripts"
             srcDoc={ready.html}
-            className="block size-full border-0 bg-bg"
+            className="block size-full border-0 bg-card"
           />
         ) : (
-          <p className="p-4 text-fg-muted">Ladataan…</p>
+          <p className="p-4 text-muted-foreground">Ladataan…</p>
         )}
       </div>
     </aside>

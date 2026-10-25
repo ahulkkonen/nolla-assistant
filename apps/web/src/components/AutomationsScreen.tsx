@@ -63,14 +63,14 @@ export function AutomationsScreen() {
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 py-6">
         <h1 className="font-semibold max-md:hidden">{AUTOMATIONS_TITLE}</h1>
         {!automations ? (
-          <p className="text-fg-muted">Ladataan…</p>
+          <p className="text-muted-foreground">Ladataan…</p>
         ) : !automations.length ? (
-          <p className="text-fg-muted">Ei automaatioita.</p>
+          <p className="text-muted-foreground">Ei automaatioita.</p>
         ) : (
           <>
             <div className="overflow-x-auto max-md:hidden">
               <table className="w-full text-left">
-                <thead className="text-secondary text-fg-muted">
+                <thead className="text-meta text-muted-foreground">
                   <tr>
                     <th className="py-2 pr-4 font-normal">Nimi</th>
                     <th className="py-2 pr-4 font-normal">Ajastus</th>
@@ -88,14 +88,16 @@ export function AutomationsScreen() {
                   {automations.map((a) => (
                     <tr key={a.id} className="border-t border-border">
                       <td className="py-1 pr-4 font-mono">{a.id}</td>
-                      <td className="py-1 pr-4 text-fg-muted">
+                      <td className="py-1 pr-4 text-muted-foreground">
                         <Cron cron={a.cron} />
                       </td>
                       <td className="py-1 pr-4">{agentName(a.agentId)}</td>
-                      <td className="py-1 pr-4 text-fg-muted">{deliver(a)}</td>
-                      <td className="py-1 pr-4 text-fg-muted">{a.enabled ? 'kyllä' : 'ei'}</td>
-                      <td className="py-1 pr-4 text-fg-muted">{ago(a.lastRunAt)}</td>
-                      <td className="py-1 pr-4 text-fg-muted">{status(a.lastStatus)}</td>
+                      <td className="py-1 pr-4 text-muted-foreground">{deliver(a)}</td>
+                      <td className="py-1 pr-4 text-muted-foreground">
+                        {a.enabled ? 'kyllä' : 'ei'}
+                      </td>
+                      <td className="py-1 pr-4 text-muted-foreground">{ago(a.lastRunAt)}</td>
+                      <td className="py-1 pr-4 text-muted-foreground">{status(a.lastStatus)}</td>
                       <td className="py-1">
                         <RunButton a={a} />
                       </td>
@@ -112,7 +114,7 @@ export function AutomationsScreen() {
                 >
                   <div className="min-w-0 flex-1">
                     <div className="truncate font-mono">{a.id}</div>
-                    <div className="text-secondary text-fg-muted">
+                    <div className="text-meta text-muted-foreground">
                       <Cron cron={a.cron} /> · {agentName(a.agentId)} · {deliver(a)} ·{' '}
                       {a.enabled ? 'käytössä' : 'ei käytössä'} · {ago(a.lastRunAt)} ·{' '}
                       {status(a.lastStatus)}

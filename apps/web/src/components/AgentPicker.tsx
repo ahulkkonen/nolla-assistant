@@ -1,10 +1,16 @@
-import { Check, ChevronDown } from 'lucide-react';
-import { DropdownMenu } from 'radix-ui';
+import { ChevronDown } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { useStore } from '../store.ts';
-import { menuItem } from './Actions.tsx';
 import { Tip } from './IconButton.tsx';
 
-const chip = 'flex h-8 items-center gap-1 rounded-md px-2 text-secondary text-fg-muted max-md:h-11';
+const chip = 'h-8 rounded-full px-3 font-normal text-muted-foreground max-md:h-11';
 
 /** Composer chip: picks the agent for a new chat; an existing chat keeps its agent. */
 export function AgentPicker() {
@@ -24,42 +30,41 @@ export function AgentPicker() {
   if (chatId)
     return (
       <Tip label="Agentti valitaan uuden keskustelun alussa">
-        <button type="button" aria-disabled="true" className={`${chip} cursor-not-allowed`}>
+        <Button
+          variant="ghost"
+          aria-disabled="true"
+          className={`${chip} cursor-not-allowed hover:bg-transparent hover:text-muted-foreground`}
+        >
           {label}
-        </button>
+        </Button>
       </Tip>
     );
+  // Not modal: a modal menu hides the page from assistive technology (axe `aria-hidden-focus`).
   return (
-    <DropdownMenu.Root>
-      <DropdownMenu.Trigger asChild>
-        <button type="button" className={`${chip} hover:bg-bg-sunken hover:text-fg`}>
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" className={`${chip} hover:text-foreground`}>
           {label}
           <ChevronDown size={16} />
-        </button>
-      </DropdownMenu.Trigger>
-      <DropdownMenu.Portal>
-        <DropdownMenu.Content
-          side="top"
-          align="end"
-          sideOffset={4}
-          collisionPadding={8}
-          className="z-50 min-w-48 rounded-md border border-border bg-bg-raised p-1"
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        side="top"
+        align="start"
+        collisionPadding={8}
+        className="w-auto min-w-48"
+      >
+        <DropdownMenuRadioGroup
+          value={current}
+          onValueChange={(id) => useStore.getState().setPendingAgentId(id)}
         >
-          <DropdownMenu.RadioGroup
-            value={current}
-            onValueChange={(id) => useStore.getState().setPendingAgentId(id)}
-          >
-            {agents.map((a) => (
-              <DropdownMenu.RadioItem key={a.id} value={a.id} className={menuItem}>
-                <span className="flex-1">{a.name}</span>
-                <DropdownMenu.ItemIndicator>
-                  <Check size={16} />
-                </DropdownMenu.ItemIndicator>
-              </DropdownMenu.RadioItem>
-            ))}
-          </DropdownMenu.RadioGroup>
-        </DropdownMenu.Content>
-      </DropdownMenu.Portal>
-    </DropdownMenu.Root>
+          {agents.map((a) => (
+            <DropdownMenuRadioItem key={a.id} value={a.id}>
+              {a.name}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

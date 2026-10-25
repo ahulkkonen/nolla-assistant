@@ -69,13 +69,23 @@ describe('store reducers', () => {
     expect(useStore.getState().chats.map((c) => c.id)).toEqual(['pin', 'new', 'old']);
   });
 
-  it('shows an error toast and dismisses it after 6 s', () => {
-    vi.useFakeTimers();
+  it('counts an error toast; a failed reply in the open chat is inline until the next message', () => {
+    const before = useStore.getState().errorCount;
     useStore.getState().apply({ type: 'error', code: 'failed', message: 'Request failed' });
-    expect(useStore.getState().errors.map((e) => e.message)).toEqual(['Toiminto epäonnistui.']);
-    vi.advanceTimersByTime(6000);
-    expect(useStore.getState().errors).toEqual([]);
-    vi.useRealTimers();
+    expect(useStore.getState().errorCount).toBe(before + 1);
+    useStore.getState().setActive('c1');
+    useStore.getState().apply({ type: 'error', code: 'llm_failed', message: 'x', chatId: 'c1' });
+    expect(useStore.getState().failed.c1).toBe('Mallin kutsu epäonnistui.');
+    useStore.getState().addLocalMessage('c1', {
+      id: 'm1',
+      role: 'user',
+      text: 'Uudelleen',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      annotations: [],
+      attachments: [],
+      tools: [],
+    } as never);
+    expect(useStore.getState().failed.c1).toBeUndefined();
   });
 
   it('keeps approval cards until answered, resolved or the chat goes idle', () => {

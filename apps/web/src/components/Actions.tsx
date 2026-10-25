@@ -1,5 +1,10 @@
 import { type LucideIcon, MoreHorizontal } from 'lucide-react';
-import { DropdownMenu } from 'radix-ui';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { IconButton } from './IconButton.tsx';
 
 /** One action list renders as an icon row (desktop) or a labelled menu (under 768 px). */
@@ -10,7 +15,7 @@ export type Action = {
   pressed?: boolean;
 };
 
-/** `small`: 32 px buttons for dense rows (sidebar). */
+/** `small`: 28 px buttons for dense rows (sidebar, tables). */
 export function ActionRow({ actions, small }: { actions: Action[]; small?: boolean }) {
   return (
     <div className="flex">
@@ -18,7 +23,7 @@ export function ActionRow({ actions, small }: { actions: Action[]; small?: boole
         <IconButton
           key={label}
           label={label}
-          {...(small ? { className: 'size-8' } : {})}
+          {...(small ? { className: 'size-7' } : {})}
           {...(pressed !== undefined ? { 'aria-pressed': pressed } : {})}
           {...(run ? { onClick: run } : { 'aria-disabled': 'true' as const })}
         >
@@ -29,44 +34,42 @@ export function ActionRow({ actions, small }: { actions: Action[]; small?: boole
   );
 }
 
-export const menuItem =
-  'flex h-11 cursor-default items-center gap-3 rounded-sm px-3 outline-none data-[disabled]:text-fg-muted data-[highlighted]:bg-bg-sunken';
-
+/**
+ * The ⋯ menu. Not modal: a modal menu hides the rest of the page from assistive technology
+ * while its trigger keeps focus (axe `aria-hidden-focus`).
+ */
 export function ActionMenu({
   label,
   actions,
   small,
+  open,
+  onOpenChange,
 }: {
   label: string;
   actions: Action[];
   small?: boolean;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   return (
-    <DropdownMenu.Root>
-      <DropdownMenu.Trigger asChild>
-        <IconButton label={label} {...(small ? { className: 'size-8' } : {})}>
-          <MoreHorizontal size={20} />
+    <DropdownMenu
+      modal={false}
+      {...(open === undefined ? {} : { open })}
+      {...(onOpenChange ? { onOpenChange } : {})}
+    >
+      <DropdownMenuTrigger asChild>
+        <IconButton label={label} {...(small ? { className: 'size-7' } : {})}>
+          <MoreHorizontal size={16} />
         </IconButton>
-      </DropdownMenu.Trigger>
-      <DropdownMenu.Portal>
-        <DropdownMenu.Content
-          align="end"
-          sideOffset={4}
-          collisionPadding={8}
-          className="z-50 min-w-60 rounded-md border border-border bg-bg-raised p-1"
-        >
-          {actions.map(({ label, Icon, run }) => (
-            <DropdownMenu.Item
-              key={label}
-              className={menuItem}
-              {...(run ? { onSelect: run } : { disabled: true })}
-            >
-              <Icon size={16} />
-              {label}
-            </DropdownMenu.Item>
-          ))}
-        </DropdownMenu.Content>
-      </DropdownMenu.Portal>
-    </DropdownMenu.Root>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" collisionPadding={8} className="w-auto min-w-48">
+        {actions.map(({ label, Icon, run }) => (
+          <DropdownMenuItem key={label} {...(run ? { onSelect: run } : { disabled: true })}>
+            <Icon size={16} className="text-muted-foreground" />
+            {label}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

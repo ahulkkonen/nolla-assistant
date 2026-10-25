@@ -649,11 +649,10 @@ for (const scheme of ['light', 'dark'] as const) {
           // No scripted turn: fake-llm answers 500 and the server sends `llm_failed`.
           await app.login(page);
           await send(page, 'Hei');
-          await expect(page.getByRole('status').getByText('Mallin kutsu epäonnistui.')).toBeVisible(
-            {
-              timeout: 30_000,
-            },
-          );
+          // A failed reply is an inline alert in the thread, not a toast (brief 7.5).
+          await expect(page.getByRole('alert').getByText('Mallin kutsu epäonnistui.')).toBeVisible({
+            timeout: 30_000,
+          });
           await shot(page, 'error-toast', vp.width, scheme);
         });
 

@@ -1,7 +1,9 @@
-import { clsx } from 'clsx';
 import { Menu, SquarePen } from 'lucide-react';
-import { Dialog, Tooltip } from 'radix-ui';
-import { useEffect, useSyncExternalStore } from 'react';
+import { useEffect, useRef } from 'react';
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet';
+import { Toaster } from '@/components/ui/sonner';
+import { TooltipProvider } from '@/components/ui/tooltip';
+import { cn } from '@/lib/utils';
 import { HttpError, me } from './api.ts';
 import { AGENTS_TITLE, AgentsScreen } from './components/AgentsScreen.tsx';
 import { ArtifactPanel } from './components/ArtifactPanel.tsx';
@@ -13,24 +15,15 @@ import { Login } from './components/Login.tsx';
 import { MEMORY_TITLE, MemoryScreen } from './components/MemoryScreen.tsx';
 import { SEARCH_TITLE, SearchScreen } from './components/SearchScreen.tsx';
 import { SettingsDialog } from './components/SettingsDialog.tsx';
+import { ShortcutsDialog } from './components/ShortcutsDialog.tsx';
 import { Sidebar, UNTITLED } from './components/Sidebar.tsx';
 import { Thread } from './components/Thread.tsx';
-import { Toasts } from './components/Toasts.tsx';
 import { TOPICS_TITLE, TopicsScreen } from './components/TopicsScreen.tsx';
 import { VAULT_TITLE, VaultScreen } from './components/VaultScreen.tsx';
+import { useMobile } from './media.ts';
 import { resyncPush } from './push.ts';
 import { firstUserLine, useStore } from './store.ts';
 import { connect, openChat, reportFocus } from './ws.ts';
-
-const mobileQuery = globalThis.matchMedia?.('(max-width: 767.98px)');
-const useMobile = () =>
-  useSyncExternalStore(
-    (fn) => {
-      mobileQuery?.addEventListener('change', fn);
-      return () => mobileQuery?.removeEventListener('change', fn);
-    },
-    () => mobileQuery?.matches ?? false,
-  );
 
 const SCREEN_TITLE = {
   vault: VAULT_TITLE,
@@ -40,6 +33,56 @@ const SCREEN_TITLE = {
   automations: AUTOMATIONS_TITLE,
   memory: MEMORY_TITLE,
 };
+
+/** `--background` of each scheme (tokens.css), for the browser chrome (brief 7.7). */
+const THEME_COLOR = { light: '#faf9f5', dark: '#262624' } as const;
+const darkQuery = globalThis.matchMedia?.('(prefers-color-scheme: dark)');
+
+/** Edge swipe (first 20 px) opens the drawer on phones (brief 7.7). */
+function useEdgeSwipe(enabled: boolean, open: () => void) {
+  useEffect(() => {
+    if (!enabled) return;
+    let start: { x: number; y: number } | null = null;
+    const down = (e: TouchEvent) => {
+      const t = e.touches[0];
+      start = t && t.clientX <= 20 ? { x: t.clientX, y: t.clientY } : null;
+    };
+    const move = (e: TouchEvent) => {
+      const t = e.touches[0];
+      if (!start || !t) return;
+      if (t.clientX - start.x > 48 && Math.abs(t.clientY - start.y) < 32) {
+        start = null;
+        open();
+      }
+    };
+    window.addEventListener('touchstart', down, { passive: true });
+    window.addEventListener('touchmove', move, { passive: true });
+    return () => {
+      window.removeEventListener('touchstart', down);
+      window.removeEventListener('touchmove', move);
+    };
+  }, [enabled, open]);
+}
+
+/** `--kb`: the height the on-screen keyboard covers; the shell lifts the composer by it. */
+function useKeyboardInset() {
+  useEffect(() => {
+    const vv = globalThis.visualViewport;
+    if (!vv) return;
+    const root = document.documentElement;
+    const update = () => {
+      const kb = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+      root.style.setProperty('--kb', `${kb}px`);
+      root.toggleAttribute('data-kb', kb > 0);
+    };
+    vv.addEventListener('resize', update);
+    vv.addEventListener('scroll', update);
+    return () => {
+      vv.removeEventListener('resize', update);
+      vv.removeEventListener('scroll', update);
+    };
+  }, []);
+}
 
 function Shell() {
   const mobile = useMobile();
@@ -53,11 +96,18 @@ function Shell() {
     if (!id) return UNTITLED;
     return s.chats.find((c) => c.id === id)?.title ?? firstUserLine(s.messages[id]) ?? UNTITLED;
   });
-  // Empty chat: the composer sits in the vertical centre until the first send.
+  // Empty chat: the greeting and the composer sit at 40 % height until the first send.
   const empty = useStore((s) => {
     const id = s.activeChatId;
     return !id || (!s.messages[id]?.length && !s.streaming[id] && s.agentStatus[id] !== 'running');
   });
+  // 768–1023 px: the rail stays and the sidebar opens over the content (brief 7.4).
+  const overlay = useRef(globalThis.matchMedia?.('(max-width: 1023.98px)'));
+  const drawer = mobile || !!overlay.current?.matches;
+  const openDrawer = useRef(() => setSidebarOpen(true)).current;
+  useEdgeSwipe(mobile && !sidebarOpen, openDrawer);
+  const swipe = useRef<number | null>(null);
+  useKeyboardInset();
 
   // Deep links: `?chat=` from a notification click, `?integrations=` from the Google callback.
   useEffect(() => {
@@ -65,10 +115,8 @@ function Shell() {
     const chat = params.get('chat');
     const integration = params.get('integrations');
     if (chat) openChat(chat);
-    if (integration)
-      useStore
-        .getState()
-        .pushError(integration === 'google' ? 'Google yhdistetty.' : 'Yhdistäminen epäonnistui.');
+    if (integration === 'google') useStore.getState().notify('Google yhdistetty.');
+    else if (integration) useStore.getState().pushError('Yhdistäminen epäonnistui.');
     if (chat || integration) history.replaceState(null, '', '/');
     // A notification click on an open window: the service worker posts the chat id.
     const onMessage = (e: MessageEvent<{ type?: string; chatId?: unknown }>) => {
@@ -97,39 +145,54 @@ function Shell() {
   }, []);
 
   return (
-    <div className="relative flex h-dvh overflow-hidden">
-      {mobile ? (
-        <Dialog.Root open={sidebarOpen} onOpenChange={setSidebarOpen}>
-          <Dialog.Portal>
-            <Dialog.Overlay className="fixed inset-0 z-40 bg-fg/30 data-[state=closed]:animate-fade-out data-[state=open]:animate-fade-in" />
-            <Dialog.Content className="fixed inset-y-0 left-0 z-50 max-w-xs data-[state=closed]:animate-slide-out data-[state=open]:animate-slide-in">
-              <Dialog.Title className="sr-only">Keskustelut</Dialog.Title>
-              <Dialog.Description className="sr-only">Keskustelulista</Dialog.Description>
-              <Sidebar expanded onNavigate={() => setSidebarOpen(false)} />
-            </Dialog.Content>
-          </Dialog.Portal>
-        </Dialog.Root>
-      ) : (
+    <div className="relative flex h-dvh overflow-hidden px-[env(safe-area-inset-left)_env(safe-area-inset-right)] pb-(--kb)">
+      {drawer && (
+        <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
+          <SheetContent
+            side="left"
+            showCloseButton={false}
+            // Swipe left closes the drawer (brief 7.7).
+            onTouchStart={(e) => {
+              swipe.current = e.touches[0]?.clientX ?? null;
+            }}
+            onTouchMove={(e) => {
+              const x = e.touches[0]?.clientX;
+              if (swipe.current !== null && x !== undefined && swipe.current - x > 48) {
+                swipe.current = null;
+                setSidebarOpen(false);
+              }
+            }}
+            className="w-[min(85vw,320px)] gap-0 border-sidebar-border bg-sidebar p-0 shadow-lg data-[side=left]:w-[min(85vw,320px)] data-[side=left]:sm:max-w-none"
+          >
+            <SheetTitle className="sr-only">Keskustelut</SheetTitle>
+            <SheetDescription className="sr-only">Keskustelulista</SheetDescription>
+            <Sidebar expanded drawer onNavigate={() => setSidebarOpen(false)} />
+          </SheetContent>
+        </Sheet>
+      )}
+      {!mobile && (
         <div
-          className={clsx(
-            'shrink-0 overflow-hidden transition-[width] duration-(--duration) ease-out',
-            sidebarOpen ? 'w-70' : 'w-14',
+          className={cn(
+            'z-(--z-sidebar) shrink-0 overflow-hidden transition-[width] duration-200 ease-drawer',
+            sidebarOpen && !drawer ? 'w-66' : 'w-14',
           )}
         >
-          <Sidebar expanded={sidebarOpen} />
+          <Sidebar expanded={sidebarOpen && !drawer} />
         </div>
       )}
       <main className="relative flex min-w-0 flex-1 flex-col">
-        {mobile && (
-          <header className="flex shrink-0 items-center gap-1 border-b border-border px-2 pt-[env(safe-area-inset-top)]">
+        {mobile ? (
+          <header className="z-(--z-header) box-content flex h-12 shrink-0 items-center gap-1 border-b border-border bg-background px-1 pt-[env(safe-area-inset-top)]">
             <IconButton label="Valikko" onClick={() => setSidebarOpen(true)}>
               <Menu size={20} />
             </IconButton>
-            <h1 className="min-w-0 flex-1 truncate py-3 text-center font-medium">{title}</h1>
+            <h1 className="min-w-0 flex-1 truncate text-center text-heading">{title}</h1>
             <IconButton label={UNTITLED} onClick={() => useStore.getState().setActive(null)}>
               <SquarePen size={20} />
             </IconButton>
           </header>
+        ) : (
+          screen === 'chat' && <h1 className="sr-only">{title}</h1>
         )}
         {screen === 'vault' && <VaultScreen />}
         {screen === 'search' && <SearchScreen />}
@@ -137,21 +200,25 @@ function Shell() {
         {screen === 'agents' && <AgentsScreen />}
         {screen === 'automations' && <AutomationsScreen />}
         {screen === 'memory' && <MemoryScreen />}
-        {/* Hidden, not unmounted, on the vault screen: the composer owns the global shortcuts. */}
-        <div
-          className={clsx(
-            'flex min-h-0 flex-1 flex-col',
-            screen !== 'chat' && 'hidden',
-            empty && 'justify-end md:justify-center',
+        {/* Hidden, not unmounted, on other screens: the composer owns the global shortcuts. */}
+        <div className={cn('flex min-h-0 flex-1 flex-col', screen !== 'chat' && 'hidden')}>
+          {empty ? (
+            <>
+              <div className="flex-[2]" />
+              <h2 className="mx-auto mb-6 w-full max-w-(--thread-max) px-4 text-center font-serif text-display">
+                Mitä tänään tehdään?
+              </h2>
+            </>
+          ) : (
+            <Thread />
           )}
-        >
-          {!empty && <Thread />}
           <Composer />
+          {empty && <div className="flex-[3]" />}
         </div>
-        <Toasts />
       </main>
       <ArtifactPanel />
       <SettingsDialog />
+      <ShortcutsDialog />
       <CommandPalette />
     </div>
   );
@@ -161,9 +228,24 @@ export function App() {
   const auth = useStore((s) => s.auth);
   const theme = useStore((s) => s.theme);
 
+  // data-theme overrides the OS; both theme-color metas then carry the active canvas.
   useEffect(() => {
-    if (theme === 'system') document.documentElement.removeAttribute('data-theme');
-    else document.documentElement.dataset.theme = theme;
+    const metas = document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]');
+    const sync = () => {
+      if (theme === 'system') document.documentElement.removeAttribute('data-theme');
+      else document.documentElement.dataset.theme = theme;
+      for (const m of metas) {
+        const own = m.media.includes('dark') ? 'dark' : 'light';
+        m.content = THEME_COLOR[theme === 'system' ? own : theme];
+      }
+    };
+    // No transitions for the one frame of a theme switch (brief 7.6).
+    const root = document.documentElement;
+    root.classList.add('[&_*]:transition-none!');
+    sync();
+    requestAnimationFrame(() => root.classList.remove('[&_*]:transition-none!'));
+    darkQuery?.addEventListener('change', sync);
+    return () => darkQuery?.removeEventListener('change', sync);
   }, [theme]);
 
   useEffect(() => {
@@ -180,9 +262,12 @@ export function App() {
   }, []);
 
   return (
-    <Tooltip.Provider delayDuration={400}>
+    <TooltipProvider>
       {auth === 'in' ? <Shell /> : auth === 'out' ? <Login /> : null}
-      {auth !== 'in' && <Toasts />}
-    </Tooltip.Provider>
+      <Toaster />
+      {/* Screen-reader announcements (brief 7.8): stream start and end, tool status. */}
+      <div id="live-polite" aria-live="polite" className="sr-only" />
+      <div id="live-assertive" aria-live="assertive" className="sr-only" />
+    </TooltipProvider>
   );
 }

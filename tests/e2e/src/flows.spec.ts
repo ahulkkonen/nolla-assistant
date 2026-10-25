@@ -25,6 +25,8 @@ const send = async (page: Page, text: string) => {
 };
 const newChat = (page: Page) =>
   page.getByRole('button', { name: 'Uusi keskustelu' }).first().click();
+/** The thread, not `main`: `main` also holds the sr-only chat title (h1). */
+const thread = (page: Page) => page.getByRole('region', { name: 'Keskustelu' });
 
 const crcTable = Array.from({ length: 256 }, (_, n) => {
   let c = n;
@@ -75,7 +77,7 @@ test('new chat streams a reply, then survives reload', async ({ app, page }) => 
   await app.login(page);
   await newChat(page);
   await send(page, 'Moi');
-  const user = page.getByRole('main').getByText('Moi', { exact: true });
+  const user = thread(page).getByText('Moi', { exact: true });
   await expect(user).toBeVisible();
   const box = await user.boundingBox();
   const vp = page.viewportSize()!;
@@ -87,7 +89,7 @@ test('new chat streams a reply, then survives reload', async ({ app, page }) => 
   await page.reload();
   // Left edge: hovering a row shows its actions over the right part of the title.
   await page.locator('nav li > button').click({ position: { x: 16, y: 16 } });
-  await expect(page.getByRole('main').getByText('Moi', { exact: true })).toBeVisible();
+  await expect(thread(page).getByText('Moi', { exact: true })).toBeVisible();
   await expect(page.locator('.md')).toHaveText('Hei! Tässä vastaus.');
 });
 
@@ -149,18 +151,18 @@ test('PWA: manifest, service worker, icons', async ({ app, page, request }) => {
 test('keyboard: [ toggles sidebar, Tab reaches send with focus ring', async ({ app, page }) => {
   await page.setViewportSize({ width: 1024, height: 768 });
   await app.login(page);
-  // Below 1200 px the sidebar starts as the icon rail.
-  await expect(page.getByRole('button', { name: 'Avaa sivupalkki' })).toBeVisible();
-  await page.keyboard.press('[');
+  // From 1024 px the sidebar starts docked; `[` collapses it to the icon rail and back.
   await expect(page.getByRole('button', { name: 'Sulje sivupalkki' })).toBeVisible();
   await page.keyboard.press('[');
   await expect(page.getByRole('button', { name: 'Avaa sivupalkki' })).toBeVisible();
+  await page.keyboard.press('[');
+  await expect(page.getByRole('button', { name: 'Sulje sivupalkki' })).toBeVisible();
 
   // Send is disabled when empty, so type first.
   await page.getByLabel('Viesti').fill('x');
   await page.keyboard.press('Tab'); // attach
-  await page.keyboard.press('Tab'); // mic
   await page.keyboard.press('Tab'); // agent picker (a new chat can still choose)
+  await page.keyboard.press('Tab'); // mic
   await page.keyboard.press('Tab'); // send
   const sendBtn = page.getByRole('button', { name: 'Lähetä', exact: true });
   await expect(sendBtn).toBeFocused();
@@ -215,7 +217,7 @@ test('search finds the chat by a word from its message and opens it', async ({ a
   await expect(hit).toContainText(TAX.title, { timeout: 15_000 });
   await expect(hit.locator('mark').first()).toBeVisible();
   await hit.click();
-  await expect(page.getByRole('main').getByText(TAX.ask)).toBeVisible();
+  await expect(thread(page).getByText(TAX.ask)).toBeVisible();
   await page.getByLabel('Hae keskusteluja').fill('');
 });
 

@@ -11,7 +11,7 @@ function Snippet({ text }: { text: string }) {
     <>
       {text.split(/\*\*(.+?)\*\*/).map((part, i) =>
         i % 2 ? (
-          <mark key={i} className="bg-transparent font-semibold text-fg">
+          <mark key={i} className="bg-transparent font-semibold text-foreground">
             {part}
           </mark>
         ) : (
@@ -39,7 +39,7 @@ export function SearchScreen() {
         >
           <Search
             size={16}
-            className="pointer-events-none absolute inset-y-0 left-3 my-auto text-fg-muted"
+            className="pointer-events-none absolute inset-y-0 left-3 my-auto text-muted-foreground"
           />
           {/* Keyed by the query so a new search from the sidebar refills it. */}
           <input
@@ -48,13 +48,13 @@ export function SearchScreen() {
             type="search"
             defaultValue={search?.q ?? ''}
             aria-label="Hakusanat"
-            className="h-10 w-full rounded-md border border-border bg-bg pr-2 pl-9"
+            className="h-10 w-full rounded-md border border-border bg-card pr-2 pl-9"
           />
         </form>
         {!search?.results ? (
-          <p className="text-fg-muted">Haetaan…</p>
+          <p className="text-muted-foreground">Haetaan…</p>
         ) : !search.results.length ? (
-          <p className="text-fg-muted">Ei osumia.</p>
+          <p className="text-muted-foreground">Ei osumia.</p>
         ) : (
           <ul className="flex flex-col gap-2" aria-label={`Haku: ${search.q}`}>
             {search.results.map((r) => (
@@ -62,10 +62,10 @@ export function SearchScreen() {
                 <button
                   type="button"
                   onClick={() => openChat(r.chatId, r.messageId)}
-                  className="flex w-full flex-col gap-1 rounded-lg border border-border px-4 py-3 text-left hover:bg-bg-raised"
+                  className="flex w-full flex-col gap-1 rounded-lg border border-border px-4 py-3 text-left hover:bg-accent"
                 >
                   <span className="font-medium">{r.title || UNTITLED}</span>
-                  <span className="text-secondary text-fg-muted">
+                  <span className="text-meta text-muted-foreground">
                     <Snippet text={r.snippet} />
                   </span>
                 </button>

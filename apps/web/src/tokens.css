@@ -72,42 +72,72 @@
   }
 }
 
+/* Design brief: docs/decisions/phase-9-ui.md, section 7. */
 @theme {
-  /* Only these colours exist: the default palette is removed. */
+  /* Only the brief's colours exist: the default palette is removed. */
   --color-*: initial;
-  --color-accent: #2a55c4;
-  --color-accent-fg: #ffffff;
-  --color-bg: #ffffff;
-  --color-bg-raised: #f6f6f7;
-  --color-bg-sunken: #ebebed;
-  --color-fg: #1b1b1f;
-  --color-fg-muted: #5c5c66;
-  --color-border: #dcdce0;
-  --color-user-bubble: #efeff1;
-  --color-destructive: #c0262d;
   --color-black: #000000;
-
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
+  --color-white: #ffffff;
 
   --font-sans: "Inter Variable", system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --font-serif: "Source Serif 4 Variable", Georgia, serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, monospace;
 
+  /* Type roles (7.2). Phone sizes and dark weights are set on :root below. */
   --text-*: initial;
+  --text-display: 28px;
+  --text-display--line-height: 36px;
+  --text-title: 20px;
+  --text-title--line-height: 28px;
+  --text-title--font-weight: var(--font-weight-semibold);
+  --text-heading: 16px;
+  --text-heading--line-height: 24px;
+  --text-heading--font-weight: var(--font-weight-semibold);
+  --text-prose: 17px;
+  --text-prose--line-height: 28px;
   --text-body: 15px;
-  --text-body--line-height: 1.5;
-  --text-secondary: 13px;
-  --text-secondary--line-height: 1.5;
+  --text-body--line-height: 24px;
+  --text-ui: 14px;
+  --text-ui--line-height: 20px;
+  --text-meta: 13px;
+  --text-meta--line-height: 18px;
+  --text-meta--font-weight: 400;
+  --text-micro: 12px;
+  --text-micro--line-height: 16px;
+  --text-micro--font-weight: var(--font-weight-medium);
+  --text-code: 14px;
+  --text-code--line-height: 22px;
+  --text-code--font-weight: 400;
 
-  --breakpoint-xl: 75rem; /* 1200px; rem like the defaults, or the media queries sort wrong */
+  /* Radius (7.4): 4 / 8 / 12 / 16 / 24 / full. */
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 24px;
+
+  /* Shadows: the values switch per scheme on :root (Tailwind inlines theme shadows). */
+  --shadow-xs: 0 0 #0000;
+  --shadow-sm: var(--elevation-sm);
+  --shadow-md: var(--elevation-md);
+  --shadow-lg: var(--elevation-lg);
+
+  /* Z layers. */
+  --z-header: 20;
+  --z-sidebar: 30;
+  --z-modal: 40;
+  --z-dropdown: 50;
+  --z-toast: 60;
+
+  --breakpoint-xl: 80rem; /* 1280px; rem like the defaults, or the media queries sort wrong */
 
   --duration: 150ms;
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
 
   --animate-fade-in: fade-in var(--duration) ease-out;
   --animate-fade-out: fade-out var(--duration) ease-out;
-  --animate-slide-in: slide-in var(--duration) ease-out;
-  --animate-slide-out: slide-out var(--duration) ease-out;
+  --animate-ring: ring 1.2s ease-out infinite;
 
   @keyframes fade-in {
     from {
@@ -119,25 +149,18 @@
       opacity: 0;
     }
   }
-  @keyframes slide-in {
+  @keyframes ring {
     from {
-      transform: translateX(-100%);
+      transform: scale(1);
+      opacity: 0.6;
     }
-  }
-  @keyframes slide-out {
     to {
-      transform: translateX(-100%);
+      transform: scale(1.35);
+      opacity: 0;
     }
   }
 }
 
-/*
- * shadcn/ui colour roles. The values alias the app tokens above, so dark mode comes from the
- * same `--color-*` overrides. Two kit roles are not mapped because their names are taken:
- * `--color-accent` keeps the app meaning (the blue action colour), and a `--color-secondary`
- * would turn `text-secondary` (a font size) into a colour. The kit's `bg-accent` is therefore
- * blue and its `bg-secondary` is empty until the design brief renames these tokens.
- */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -147,82 +170,204 @@
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-primary-hover: var(--primary-hover);
+  --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-destructive-hover: var(--destructive-hover);
+  --color-destructive-subtle: var(--destructive-subtle);
+  --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-link: var(--link);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-success: var(--success);
+  --color-success-subtle: var(--success-subtle);
+  --color-warning: var(--warning);
+  --color-warning-subtle: var(--warning-subtle);
+  --color-warning-line: var(--warning-line);
+  --color-info: var(--info);
+  --color-info-subtle: var(--info-subtle);
+  --color-mask: var(--mask);
+  --color-mask-line: var(--mask-line);
 }
 
+/* Light values; `@variant dark` emits the dark ones for html[data-theme="dark"] and, while
+   data-theme is unset, for prefers-color-scheme: dark. */
 :root {
-  --background: var(--color-bg);
-  --foreground: var(--color-fg);
-  --card: var(--color-bg-raised);
-  --card-foreground: var(--color-fg);
-  --popover: var(--color-bg-raised);
-  --popover-foreground: var(--color-fg);
-  --primary: var(--color-accent);
-  --primary-foreground: var(--color-accent-fg);
-  --secondary: var(--color-bg-sunken);
-  --secondary-foreground: var(--color-fg);
-  --muted: var(--color-bg-sunken);
-  --muted-foreground: var(--color-fg-muted);
-  --accent-foreground: var(--color-accent-fg);
-  --border: var(--color-border);
-  --input: var(--color-border);
-  --ring: var(--color-accent);
-  --radius: var(--radius-lg);
+  --background: #faf9f5;
+  --foreground: #141413;
+  --card: #ffffff;
+  --card-foreground: #141413;
+  --popover: #ffffff;
+  --popover-foreground: #141413;
+  --primary: #1f1e1d;
+  --primary-foreground: #faf9f5;
+  --primary-hover: #3a3936;
+  --secondary: #ebe9e0;
+  --secondary-foreground: #141413;
+  --muted: #f0eee6;
+  --muted-foreground: #64635d;
+  --accent: #ebe9e0;
+  --accent-foreground: #141413;
+  --destructive: #b42318;
+  --destructive-foreground: #ffffff;
+  --destructive-hover: #9a1d14;
+  --destructive-subtle: #fbe7e4;
+  --border: #1f1e1d1f;
+  --input: #8a8880;
+  --ring: #2563c9;
+  --link: #1d5bbf;
+  --sidebar: #f3f1ea;
+  --sidebar-foreground: #141413;
+  --sidebar-accent: #e8e6dd;
+  --sidebar-accent-foreground: #141413;
+  --sidebar-primary: #1f1e1d;
+  --sidebar-primary-foreground: #faf9f5;
+  --sidebar-border: #1f1e1d1a;
+  --sidebar-ring: #2563c9;
+  --success: #26702b;
+  --success-subtle: #e6f2e3;
+  --warning: #8a5300;
+  --warning-subtle: #fbefd9;
+  --warning-line: #b7791f;
+  --info: #1d5bbf;
+  --info-subtle: #e5eefb;
+  --mask: #ece4fb;
+  --mask-line: #7151c4;
+  --radius: 12px;
+  --elevation-sm: 0 1px 2px rgb(20 20 19 / 0.05);
+  --elevation-md: 0 1px 3px rgb(20 20 19 / 0.06), 0 4px 16px rgb(20 20 19 / 0.08);
+  --elevation-lg: 0 16px 48px rgb(20 20 19 / 0.16);
+  --thread-max: 42rem;
+  --page-max: 60rem;
+  /* Height of the on-screen keyboard over the layout viewport (App.tsx sets it). */
+  --kb: 0px;
+  /* Phone toasts: 16 px + safe area; above the composer while it shows (Composer.tsx). */
+  --toast-bottom: calc(16px + env(safe-area-inset-bottom));
+  color-scheme: light;
+
+  @variant dark {
+    --background: #262624;
+    --foreground: #ecebe4;
+    --card: #30302e;
+    --card-foreground: #ecebe4;
+    --popover: #30302e;
+    --popover-foreground: #ecebe4;
+    --primary: #ecebe4;
+    --primary-foreground: #1f1e1d;
+    --primary-hover: #d6d4cb;
+    --secondary: #3a3936;
+    --secondary-foreground: #ecebe4;
+    --muted: #1f1e1d;
+    --muted-foreground: #aeaca3;
+    --accent: #3f3e3a;
+    --accent-foreground: #ecebe4;
+    --destructive: #f28b82;
+    --destructive-foreground: #1f1e1d;
+    --destructive-hover: #f4a19a;
+    --destructive-subtle: #45282a;
+    --border: #ecebe41f;
+    --input: #85837b;
+    --ring: #7eaaf2;
+    --link: #8fb6f5;
+    --sidebar: #1f1e1d;
+    --sidebar-foreground: #ecebe4;
+    --sidebar-accent: #302f2c;
+    --sidebar-accent-foreground: #ecebe4;
+    --sidebar-primary: #ecebe4;
+    --sidebar-primary-foreground: #1f1e1d;
+    --sidebar-border: #ecebe414;
+    --sidebar-ring: #7eaaf2;
+    --success: #86c98a;
+    --success-subtle: #24392a;
+    --warning: #e6b45e;
+    --warning-subtle: #3d3220;
+    --warning-line: #e6b45e;
+    --info: #8fb6f5;
+    --info-subtle: #22314a;
+    --mask: #3e3557;
+    --mask-line: #b8a3f0;
+    --elevation-sm: 0 0 #0000;
+    --elevation-md: 0 8px 32px rgb(0 0 0 / 0.45);
+    --elevation-lg: 0 8px 32px rgb(0 0 0 / 0.45);
+    /* Lower weights in dark (7.2). */
+    --font-weight-normal: 380;
+    --font-weight-medium: 480;
+    --font-weight-semibold: 560;
+    color-scheme: dark;
+  }
+  @media (max-width: 767.98px) {
+    --text-display: 24px;
+    --text-display--line-height: 32px;
+    --text-title: 18px;
+    --text-title--line-height: 26px;
+    --text-prose: 16px;
+    --text-prose--line-height: 26px;
+    --text-code: 13px;
+    --text-code--line-height: 20px;
+  }
 }
 
 @layer base {
-  /* Kit components carry data-slot; this gives them shadcn's border default only. */
-  [data-slot] {
-    border-color: var(--color-border);
+  html {
+    -webkit-tap-highlight-color: transparent;
   }
-  @media (prefers-color-scheme: dark) {
-    html:not([data-theme]) {
-      --color-accent: #93b2ff;
-      --color-accent-fg: #10183a;
-      --color-bg: #1b1b1e;
-      --color-bg-raised: #232327;
-      --color-bg-sunken: #2e2e33;
-      --color-fg: #ececf0;
-      --color-fg-muted: #a3a3ad;
-      --color-border: #3a3a40;
-      --color-user-bubble: #2e2e33;
-      --color-destructive: #ff8b85;
-      color-scheme: dark;
-    }
-  }
-  html[data-theme="dark"] {
-    --color-accent: #93b2ff;
-    --color-accent-fg: #10183a;
-    --color-bg: #1b1b1e;
-    --color-bg-raised: #232327;
-    --color-bg-sunken: #2e2e33;
-    --color-fg: #ececf0;
-    --color-fg-muted: #a3a3ad;
-    --color-border: #3a3a40;
-    --color-user-bubble: #2e2e33;
-    --color-destructive: #ff8b85;
-    color-scheme: dark;
-  }
-  html[data-theme="light"] {
-    color-scheme: light;
-  }
-
   html,
   body {
-    background: var(--color-bg);
-    color: var(--color-fg);
+    background: var(--background);
+    color: var(--foreground);
     font-family: var(--font-sans);
     font-size: var(--text-body);
-    line-height: 1.5;
+    line-height: var(--text-body--line-height);
+    font-weight: var(--font-weight-normal);
+  }
+  body {
+    overscroll-behavior: none;
+  }
+  button {
+    touch-action: manipulation;
+  }
+  /* Icons: lucide, stroke 1.75 everywhere (7.4). */
+  .lucide {
+    stroke-width: 1.75;
+  }
+  code,
+  pre,
+  kbd,
+  samp,
+  .font-mono {
+    font-variant-ligatures: none;
+    hyphens: manual;
+  }
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
   }
   :focus-visible {
-    outline: 2px solid var(--color-accent);
+    outline: 2px solid var(--ring);
     outline-offset: 2px;
+  }
+  /* Every input and textarea is 16 px on phones: iOS zooms into smaller text. */
+  @media (max-width: 767.98px) {
+    input,
+    textarea,
+    select {
+      font-size: 16px;
+    }
   }
   @media (prefers-reduced-motion: reduce) {
     *,
@@ -235,9 +380,32 @@
   }
 }
 
-/* Markdown body: no typography plugin, only spacing on the 4 px grid. */
+/* Streaming caret (7.5): a 0.5em × 1em block, on half of each second (7.6). */
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+.md .caret {
+  display: inline-block;
+  width: 0.5em;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: -0.125em;
+  background: var(--foreground);
+  animation: blink 1s step-end infinite;
+}
+
+/* Assistant prose (7.2): serif, markdown without a typography plugin. */
+.md {
+  font-family: var(--font-serif);
+  font-size: var(--text-prose);
+  line-height: var(--text-prose--line-height);
+  hyphens: auto;
+  text-wrap: pretty;
+}
 .md > * + * {
-  margin-top: 12px;
+  margin-top: 16px;
 }
 .md ul {
   list-style: disc;
@@ -247,35 +415,59 @@
   list-style: decimal;
   padding-left: 24px;
 }
+.md li + li {
+  margin-top: 4px;
+}
 .md h1,
 .md h2,
 .md h3 {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
+  hyphens: manual;
+}
+.md h1 {
+  font-size: 20px;
+  line-height: 28px;
+}
+.md h2 {
+  font-size: 18px;
+  line-height: 26px;
+}
+.md h3 {
+  font-size: 17px;
+  line-height: 28px;
 }
 .md a {
+  color: var(--link);
   text-decoration: underline;
 }
 .md code {
   font-family: var(--font-mono);
-  font-size: var(--text-secondary);
+  font-size: 0.875em;
+}
+.md pre code {
+  font-size: var(--text-code);
+  line-height: var(--text-code--line-height);
 }
 .md :not(pre) > code {
-  background: var(--color-bg-sunken);
-  border-radius: var(--radius-sm);
+  background: var(--muted);
+  border-radius: var(--radius-xs);
   padding: 2px 4px;
 }
 .md blockquote {
-  border-left: 2px solid var(--color-border);
-  padding-left: 12px;
-  color: var(--color-fg-muted);
+  border-left: 2px solid var(--border);
+  padding-left: 16px;
+  color: var(--muted-foreground);
 }
 .md table {
   border-collapse: collapse;
   display: block;
   overflow-x: auto;
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
 }
 .md th,
 .md td {
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--border);
   padding: 4px 8px;
+  overflow-wrap: anywhere;
 }

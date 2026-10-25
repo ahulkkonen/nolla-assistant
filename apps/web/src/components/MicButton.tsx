@@ -1,12 +1,19 @@
-import { clsx } from 'clsx';
-import { LoaderCircle, Mic } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { Mic, MicOff } from 'lucide-react';
+import { type RefObject, useEffect, useRef, useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { HttpError, transcribe } from '../api.ts';
 import { useStore } from '../store.ts';
-import { IconButton } from './IconButton.tsx';
+import { Tip } from './IconButton.tsx';
 
 const MAX_MS = 55_000;
+/** Released sooner than this: a tap, not a hold; it shows the hold hint instead. */
+const TAP_MS = 300;
+/** Slid this far left while holding: release cancels (brief 7.5). */
+const CANCEL_PX = 64;
 const TRANSCRIBE_TIMEOUT_MS = 30_000;
+
+export type MicState = 'idle' | 'starting' | 'recording' | 'cancel' | 'transcribing';
 
 type Rec = {
   recorder?: MediaRecorder;
@@ -35,16 +42,33 @@ const transcribeError = (err: unknown) =>
 
 /**
  * Hold to record, release to transcribe (plan §12): `MediaRecorder` audio goes to
- * `/api/transcribe`; the text lands in the composer. Esc cancels. Hidden without `MediaRecorder`.
+ * `/api/transcribe`; the text lands in the composer. Esc or a slide left cancels. The composer
+ * shows the status row (`onState`) and owns the level bar (`meter`). Hidden without
+ * `MediaRecorder`.
  */
-export function MicButton({ onText }: { onText: (text: string) => void }) {
-  const [state, setState] = useState<'idle' | 'starting' | 'recording' | 'transcribing'>('idle');
+export function MicButton({
+  onText,
+  onState,
+  meter,
+}: {
+  onText: (text: string) => void;
+  onState: (state: MicState) => void;
+  meter: RefObject<HTMLDivElement | null>;
+}) {
+  const [state, setStateRaw] = useState<MicState>('idle');
+  const [denied, setDenied] = useState(false);
+  const [hint, setHint] = useState(false);
   const rec = useRef<Rec | null>(null);
   const transcribing = useRef<AbortController | null>(null);
-  // The level bar is written per frame through the DOM, not React state.
-  const meter = useRef<HTMLDivElement>(null);
+  const press = useRef<{ x: number; at: number } | null>(null);
   const textRef = useRef(onText);
   textRef.current = onText;
+  const stateRef = useRef(onState);
+  stateRef.current = onState;
+  const setState = (next: MicState) => {
+    setStateRaw(next);
+    stateRef.current(next);
+  };
 
   const cleanup = (r: Rec) => {
     if (r.raf) cancelAnimationFrame(r.raf);
@@ -93,13 +117,12 @@ export function MicButton({ onText }: { onText: (text: string) => void }) {
     } catch (err) {
       rec.current = null;
       setState('idle');
-      error(
-        err instanceof DOMException && err.name === 'NotAllowedError'
-          ? 'Mikrofonin käyttö estetty.'
-          : 'Mikrofonia ei saatu käyttöön.',
-      );
+      const blocked = err instanceof DOMException && err.name === 'NotAllowedError';
+      setDenied(blocked);
+      error(blocked ? 'Mikrofonin käyttö estetty.' : 'Mikrofonia ei saatu käyttöön.');
       return;
     }
+    setDenied(false);
     // Unmounted or cancelled while the permission prompt was open.
     if (r.cancelled) return abandon(r);
     const type = mimeType();
@@ -144,7 +167,7 @@ export function MicButton({ onText }: { onText: (text: string) => void }) {
     }
     r.timer = setTimeout(() => stop(), MAX_MS);
     setState('recording');
-    if (r.released) stop();
+    if (r.released) stop(r.cancelled);
   };
 
   // Esc cancels a recording or a running transcription.
@@ -161,6 +184,12 @@ export function MicButton({ onText }: { onText: (text: string) => void }) {
     return () => window.removeEventListener('keydown', onKey, true);
   }, [state]);
 
+  useEffect(() => {
+    if (!hint) return;
+    const t = setTimeout(() => setHint(false), 1500);
+    return () => clearTimeout(t);
+  }, [hint]);
+
   // Unmount: no microphone, timer or request may outlive the button.
   useEffect(
     () => () => {
@@ -175,21 +204,51 @@ export function MicButton({ onText }: { onText: (text: string) => void }) {
   );
 
   if (typeof MediaRecorder === 'undefined' || !navigator.mediaDevices) return null;
-  const recording = state === 'recording' || state === 'starting';
+  const live = state === 'recording' || state === 'starting' || state === 'cancel';
+  const release = () => {
+    const p = press.current;
+    press.current = null;
+    if (p && Date.now() - p.at < TAP_MS) {
+      stop(true);
+      setHint(true);
+      return;
+    }
+    stop(state === 'cancel');
+  };
+  const label = live ? 'Vapauta lopettaaksesi' : 'Pidä pohjassa ja puhu';
+  // No tooltip over the status row while recording; a short tap shows the hold hint.
+  const tip = hint ? 'Pidä painettuna' : denied ? 'Mikrofoni on estetty' : label;
+  const open = live ? false : hint ? true : undefined;
 
   return (
-    <div className="flex min-w-0 flex-1 items-center gap-2" data-recording={recording || undefined}>
-      <IconButton
-        label={recording ? 'Vapauta lopettaaksesi' : 'Pidä pohjassa ja puhu'}
-        aria-pressed={recording}
+    <Tip label={tip} {...(open === undefined ? {} : { open })}>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        aria-label={label}
+        aria-pressed={live}
         disabled={state === 'transcribing'}
-        className={clsx(recording && 'bg-bg-sunken')}
+        className={cn(
+          'relative rounded-full text-muted-foreground [-webkit-touch-callout:none] hover:text-foreground aria-pressed:bg-transparent',
+          live &&
+            'bg-destructive text-destructive-foreground hover:bg-destructive hover:text-destructive-foreground aria-pressed:bg-destructive',
+          state === 'cancel' &&
+            'bg-muted text-muted-foreground hover:bg-muted aria-pressed:bg-muted',
+        )}
         onPointerDown={(e) => {
           e.preventDefault();
           e.currentTarget.setPointerCapture(e.pointerId);
+          press.current = { x: e.clientX, at: Date.now() };
           void start();
         }}
-        onPointerUp={() => stop()}
+        onPointerMove={(e) => {
+          const p = press.current;
+          if (!p || (state !== 'recording' && state !== 'cancel')) return;
+          const armed = p.x - e.clientX > CANCEL_PX;
+          if (armed !== (state === 'cancel')) setState(armed ? 'cancel' : 'recording');
+        }}
+        onPointerUp={release}
         onPointerCancel={() => stop(true)}
         onKeyDown={(e) => {
           if ((e.key === ' ' || e.key === 'Enter') && !e.repeat) {
@@ -204,27 +263,20 @@ export function MicButton({ onText }: { onText: (text: string) => void }) {
         onBlur={() => stop()}
         onContextMenu={(e) => e.preventDefault()}
       >
-        <Mic size={20} />
-      </IconButton>
-      {state === 'recording' && (
-        <div
-          role="status"
-          className="flex min-w-0 flex-1 items-center gap-2 text-secondary text-fg-muted"
-        >
-          <div className="h-1 w-16 shrink-0 overflow-hidden rounded-full bg-bg-sunken">
-            <div ref={meter} className="h-full w-0 rounded-full bg-accent" />
-          </div>
-          <span className="truncate">
-            Kuuntelee<span className="max-md:hidden"> · Esc peruu</span>
-          </span>
-        </div>
-      )}
-      {state === 'transcribing' && (
-        <div role="status" className="flex items-center gap-2 text-secondary text-fg-muted">
-          <LoaderCircle size={16} className="animate-spin" />
-          Litteroidaan…
-        </div>
-      )}
-    </div>
+        {denied ? <MicOff size={16} /> : <Mic size={16} />}
+        {state === 'recording' && (
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 animate-ring rounded-full ring-2 ring-destructive"
+          />
+        )}
+      </Button>
+    </Tip>
   );
 }
+
+/** "0:07": recording time, tabular (brief 7.5). */
+export const clock = (ms: number) => {
+  const s = Math.floor(ms / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+};
