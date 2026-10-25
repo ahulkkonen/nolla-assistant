@@ -29,6 +29,32 @@
   --breakpoint-xl: 1200px;
 
   --duration: 150ms;
+
+  --animate-fade-in: fade-in var(--duration) ease-out;
+  --animate-fade-out: fade-out var(--duration) ease-out;
+  --animate-slide-in: slide-in var(--duration) ease-out;
+  --animate-slide-out: slide-out var(--duration) ease-out;
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+  }
+  @keyframes fade-out {
+    to {
+      opacity: 0;
+    }
+  }
+  @keyframes slide-in {
+    from {
+      transform: translateX(-100%);
+    }
+  }
+  @keyframes slide-out {
+    to {
+      transform: translateX(-100%);
+    }
+  }
 }
 
 @layer base {

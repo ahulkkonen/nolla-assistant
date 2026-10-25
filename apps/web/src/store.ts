@@ -40,6 +40,13 @@ function loadTheme(): Theme {
   }
 }
 
+/** First line of the first user message: the label for an untitled chat. */
+export const firstUserLine = (msgs?: UiMessage[]) =>
+  msgs
+    ?.find((m) => m.role === 'user' && m.text.trim())
+    ?.text.trim()
+    .split('\n')[0];
+
 export const sortChats = (chats: ChatSummary[]) =>
   [...chats].sort(
     (a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt.localeCompare(a.updatedAt),

@@ -85,7 +85,7 @@ type Props = {
 export function MessageView({ role, text, attachments = [], tools = [], live }: Props) {
   const user = role === 'user';
   return (
-    <div className={clsx('group flex flex-col gap-2', user && 'items-end')}>
+    <div className={clsx('group relative flex flex-col gap-2', user && 'items-end')}>
       {attachments.length > 0 && (
         <div className="flex flex-wrap justify-end gap-2">
           {attachments.map((a) => (
@@ -102,16 +102,17 @@ export function MessageView({ role, text, attachments = [], tools = [], live }: 
       )}
       {user ? (
         text && (
-          <div className="max-w-[85%] rounded-lg bg-user-bubble px-4 py-2 break-words whitespace-pre-wrap">
+          <div className="max-w-xl rounded-lg bg-user-bubble px-4 py-2 break-words whitespace-pre-wrap">
             {text}
           </div>
         )
       ) : (
         <MarkdownText text={text} />
       )}
-      {!live && text && (
-        <div className="-mt-1 opacity-0 transition-opacity duration-(--duration) group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100">
-          <CopyButton text={() => text} />
+      {/* Out of flow: the 24 px row sits in the thread gap. User copy waits for phase 7 edit. */}
+      {!user && !live && text && (
+        <div className="absolute top-full left-0 opacity-0 transition-opacity duration-(--duration) group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100">
+          <CopyButton text={() => text} className="size-6!" />
         </div>
       )}
     </div>

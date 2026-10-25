@@ -12,9 +12,9 @@ export function IconButton({ label, variant = 'ghost', className, type, ...rest 
           type={type ?? 'button'}
           aria-label={label}
           className={clsx(
-            'inline-flex size-9 shrink-0 items-center justify-center rounded-md transition-colors duration-(--duration) ease-out disabled:opacity-50',
+            'inline-flex size-9 shrink-0 items-center justify-center rounded-md transition-colors duration-(--duration) ease-out max-md:size-11',
             variant === 'primary'
-              ? 'bg-accent text-accent-fg'
+              ? 'bg-accent text-accent-fg disabled:bg-bg-sunken disabled:text-fg-muted'
               : 'text-fg-muted hover:bg-bg-sunken hover:text-fg',
             className,
           )}

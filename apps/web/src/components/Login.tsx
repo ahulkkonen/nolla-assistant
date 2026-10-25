@@ -58,7 +58,7 @@ export function Login() {
           <button
             type="submit"
             disabled={busy || !password}
-            className="h-10 rounded-md bg-accent font-medium text-accent-fg disabled:opacity-50"
+            className="h-10 rounded-md bg-accent font-medium text-accent-fg disabled:bg-bg-sunken disabled:text-fg-muted"
           >
             Kirjaudu
           </button>
@@ -67,14 +67,16 @@ export function Login() {
           type="button"
           disabled={busy}
           onClick={() => void run(passkeyLogin)}
-          className="mt-3 flex h-10 w-full items-center justify-center gap-2 rounded-md border border-border hover:bg-bg-sunken disabled:opacity-50"
+          className="mt-3 flex h-10 w-full items-center justify-center gap-2 rounded-md border border-border hover:bg-bg-sunken disabled:text-fg-muted"
         >
           <KeyRound size={16} />
           Käytä avainta
         </button>
-        <p role="alert" className="mt-3 min-h-5 text-secondary text-fg">
-          {error}
-        </p>
+        {error && (
+          <p role="alert" className="mt-3 text-secondary text-fg">
+            {error}
+          </p>
+        )}
       </div>
     </main>
   );

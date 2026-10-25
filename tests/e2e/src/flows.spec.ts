@@ -61,7 +61,7 @@ test('new chat streams a reply, then survives reload', async ({ app, page }) => 
   await app.login(page);
   await newChat(page);
   await send(page, 'Moi');
-  const user = page.getByText('Moi', { exact: true });
+  const user = page.getByRole('main').getByText('Moi', { exact: true });
   await expect(user).toBeVisible();
   const box = await user.boundingBox();
   const vp = page.viewportSize()!;
@@ -72,7 +72,7 @@ test('new chat streams a reply, then survives reload', async ({ app, page }) => 
 
   await page.reload();
   await page.locator('nav li > button').click();
-  await expect(page.getByText('Moi', { exact: true })).toBeVisible();
+  await expect(page.getByRole('main').getByText('Moi', { exact: true })).toBeVisible();
   await expect(page.locator('.md')).toHaveText('Hei! Tässä vastaus.');
 });
 

@@ -1,3 +1,4 @@
+import { clsx } from 'clsx';
 import { Menu, SquarePen } from 'lucide-react';
 import { Dialog, Tooltip } from 'radix-ui';
 import { useEffect, useSyncExternalStore } from 'react';
@@ -8,7 +9,7 @@ import { Login } from './components/Login.tsx';
 import { Sidebar, UNTITLED } from './components/Sidebar.tsx';
 import { Thread } from './components/Thread.tsx';
 import { Toasts } from './components/Toasts.tsx';
-import { useStore } from './store.ts';
+import { firstUserLine, useStore } from './store.ts';
 import { connect } from './ws.ts';
 
 const mobileQuery = globalThis.matchMedia?.('(max-width: 767.98px)');
@@ -25,15 +26,24 @@ function Shell() {
   const mobile = useMobile();
   const sidebarOpen = useStore((s) => s.sidebarOpen);
   const setSidebarOpen = useStore((s) => s.setSidebarOpen);
-  const title = useStore((s) => s.chats.find((c) => c.id === s.activeChatId)?.title ?? UNTITLED);
+  const title = useStore((s) => {
+    const id = s.activeChatId;
+    if (!id) return UNTITLED;
+    return s.chats.find((c) => c.id === id)?.title ?? firstUserLine(s.messages[id]) ?? UNTITLED;
+  });
+  // Empty chat: the composer sits in the vertical centre until the first send.
+  const empty = useStore((s) => {
+    const id = s.activeChatId;
+    return !id || (!s.messages[id]?.length && !s.streaming[id] && s.agentStatus[id] !== 'running');
+  });
 
   return (
     <div className="flex h-dvh overflow-hidden">
       {mobile ? (
         <Dialog.Root open={sidebarOpen} onOpenChange={setSidebarOpen}>
           <Dialog.Portal>
-            <Dialog.Overlay className="fixed inset-0 z-40 bg-fg/30" />
-            <Dialog.Content className="fixed inset-y-0 left-0 z-50 max-w-[85vw]">
+            <Dialog.Overlay className="fixed inset-0 z-40 bg-fg/30 data-[state=closed]:animate-fade-out data-[state=open]:animate-fade-in" />
+            <Dialog.Content className="fixed inset-y-0 left-0 z-50 max-w-xs data-[state=closed]:animate-slide-out data-[state=open]:animate-slide-in">
               <Dialog.Title className="sr-only">Keskustelut</Dialog.Title>
               <Dialog.Description className="sr-only">Keskustelulista</Dialog.Description>
               <Sidebar expanded onNavigate={() => setSidebarOpen(false)} />
@@ -41,7 +51,14 @@ function Shell() {
           </Dialog.Portal>
         </Dialog.Root>
       ) : (
-        <Sidebar expanded={sidebarOpen} />
+        <div
+          className={clsx(
+            'shrink-0 overflow-hidden transition-[width] duration-(--duration) ease-out',
+            sidebarOpen ? 'w-70' : 'w-14',
+          )}
+        >
+          <Sidebar expanded={sidebarOpen} />
+        </div>
       )}
       <main className="flex min-w-0 flex-1 flex-col">
         {mobile && (
@@ -55,8 +72,10 @@ function Shell() {
             </IconButton>
           </header>
         )}
-        <Thread />
-        <Composer />
+        <div className={clsx('flex min-h-0 flex-1 flex-col', empty && 'justify-center')}>
+          {!empty && <Thread />}
+          <Composer />
+        </div>
       </main>
     </div>
   );

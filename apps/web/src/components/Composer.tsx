@@ -1,5 +1,5 @@
 import type { AttachmentRef } from '@pa/protocol';
-import { ArrowUp, ChevronDown, FileText, LoaderCircle, Paperclip, Square, X } from 'lucide-react';
+import { ArrowUp, FileText, LoaderCircle, Paperclip, Square, X } from 'lucide-react';
 import { type ClipboardEvent, type DragEvent, useRef, useState } from 'react';
 import { uploadFiles } from '../api.ts';
 import { useShortcuts } from '../shortcuts.ts';
@@ -101,7 +101,7 @@ export function Composer() {
       <div
         onDragOver={(e) => e.preventDefault()}
         onDrop={onDrop}
-        className="mx-auto max-w-3xl rounded-lg border border-border bg-bg-raised p-2 focus-within:border-accent"
+        className="mx-auto w-full max-w-3xl rounded-lg border border-border bg-bg-raised p-2 focus-within:border-accent"
       >
         {chips.length > 0 && (
           <ul className="flex flex-wrap gap-2 p-1" aria-label="Liitteet">
@@ -157,14 +157,8 @@ export function Composer() {
               e.target.value = '';
             }}
           />
-          <button
-            type="button"
-            disabled
-            className="ml-auto flex h-8 items-center gap-1 rounded-md px-2 text-secondary text-fg-muted"
-          >
-            Assistant
-            <ChevronDown size={16} />
-          </button>
+          {/* Static until phase 5 gives the agent picker a menu. */}
+          <span className="ml-auto px-2 text-secondary text-fg-muted">Assistant</span>
           {running && chatId ? (
             <IconButton
               label="Pysäytä"

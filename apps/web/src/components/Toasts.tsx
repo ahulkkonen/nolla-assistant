@@ -9,7 +9,7 @@ export function Toasts() {
     <div
       role="status"
       aria-live="polite"
-      className="pointer-events-none fixed inset-x-0 top-0 z-50 flex flex-col items-center gap-2 px-4 pt-[calc(env(safe-area-inset-top)+16px)]"
+      className="pointer-events-none fixed inset-x-0 top-0 z-50 flex flex-col items-center gap-2 px-4 pt-[calc(env(safe-area-inset-top)+16px)] max-md:pt-[calc(env(safe-area-inset-top)+60px)]"
     >
       {errors.map((e) => (
         <div

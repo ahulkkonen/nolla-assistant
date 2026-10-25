@@ -25,9 +25,9 @@ export function Thread() {
         const el = e.currentTarget;
         pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
       }}
-      className="min-h-0 flex-1 overflow-y-auto"
+      className="min-h-0 flex-1 overflow-y-auto px-4"
     >
-      <div className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-6">
+      <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 py-6">
         {messages.map((m) => (
           <MessageView
             key={m.id}
@@ -51,7 +51,7 @@ export function Thread() {
                   <span
                     key={d}
                     style={{ animationDelay: `${d}ms` }}
-                    className="size-1.5 animate-pulse rounded-full bg-fg-muted"
+                    className="size-2 animate-pulse rounded-full bg-fg-muted"
                   />
                 ))}
               </span>

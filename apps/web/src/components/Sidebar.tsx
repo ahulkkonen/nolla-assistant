@@ -11,19 +11,21 @@ import {
   SquarePen,
 } from 'lucide-react';
 import { useRef, useState } from 'react';
-import { useStore } from '../store.ts';
+import { firstUserLine, useStore } from '../store.ts';
 import { send } from '../ws.ts';
 import { IconButton } from './IconButton.tsx';
-import { SettingsDialog, ThemeMenu } from './ThemeMenu.tsx';
+import { SettingsDialog } from './SettingsDialog.tsx';
 
 export const UNTITLED = 'Uusi keskustelu';
 
 function ChatRow({
   chat,
+  label,
   active,
   onOpen,
 }: {
   chat: ChatSummary;
+  label: string | undefined;
   active: boolean;
   onOpen: () => void;
 }) {
@@ -79,10 +81,10 @@ function ChatRow({
         aria-current={active ? 'page' : undefined}
         className={clsx(
           'h-9 min-w-0 flex-1 truncate rounded-md px-2 text-left',
-          active ? 'text-accent' : chat.title ? 'text-fg' : 'text-fg-muted',
+          active ? 'text-accent' : label ? 'text-fg' : 'text-fg-muted',
         )}
       >
-        {chat.title ?? UNTITLED}
+        {label ?? UNTITLED}
       </button>
       <div className="flex opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100">
         <IconButton
@@ -114,6 +116,7 @@ export function Sidebar({ expanded, onNavigate }: { expanded: boolean; onNavigat
   const archivedView = useStore((s) => s.archivedView);
   const sidebarOpen = useStore((s) => s.sidebarOpen);
   const setSidebarOpen = useStore((s) => s.setSidebarOpen);
+  const messages = useStore((s) => s.messages);
   const [query, setQuery] = useState('');
 
   const newChat = () => {
@@ -125,6 +128,10 @@ export function Sidebar({ expanded, onNavigate }: { expanded: boolean; onNavigat
     send({ type: 'chat.open', chatId });
     onNavigate?.();
   };
+  const search = () => {
+    setSidebarOpen(true);
+    requestAnimationFrame(() => document.getElementById('chat-search')?.focus());
+  };
   const toggleArchived = () => {
     useStore.getState().setArchivedView(!archivedView);
     send({ type: 'chat.list', archived: !archivedView });
@@ -132,22 +139,36 @@ export function Sidebar({ expanded, onNavigate }: { expanded: boolean; onNavigat
 
   if (!expanded) {
     return (
-      <nav className="flex h-full w-14 flex-col items-center gap-1 border-r border-border bg-bg-raised py-2">
+      <nav className="flex h-full w-14 flex-col items-center gap-1 border-r border-border bg-bg-raised pt-2">
         <IconButton label="Avaa sivupalkki" onClick={() => setSidebarOpen(true)}>
           <PanelLeft size={20} />
         </IconButton>
         <IconButton label={UNTITLED} onClick={newChat}>
           <SquarePen size={20} />
         </IconButton>
+        <IconButton label="Hae keskusteluja" onClick={search}>
+          <Search size={20} />
+        </IconButton>
+        <div className="mt-auto pb-[max(env(safe-area-inset-bottom),8px)]">
+          <SettingsDialog />
+        </div>
       </nav>
     );
   }
 
   const q = query.trim().toLowerCase();
-  const visible = q ? chats.filter((c) => (c.title ?? UNTITLED).toLowerCase().includes(q)) : chats;
+  const labelled = chats.map((c) => ({ chat: c, label: c.title ?? firstUserLine(messages[c.id]) }));
+  const visible = q
+    ? labelled.filter((r) => (r.label ?? UNTITLED).toLowerCase().includes(q))
+    : labelled;
 
   return (
-    <nav className="flex h-full w-70 flex-col border-r border-border bg-bg-raised pt-[env(safe-area-inset-top)]">
+    <nav
+      className={clsx(
+        'flex h-full w-70 flex-col border-r border-border bg-bg-raised pt-[env(safe-area-inset-top)]',
+        onNavigate && 'pl-[env(safe-area-inset-left)]',
+      )}
+    >
       <div className="flex items-center gap-1 p-2">
         <button
           type="button"
@@ -164,8 +185,12 @@ export function Sidebar({ expanded, onNavigate }: { expanded: boolean; onNavigat
         )}
       </div>
       <div className="relative mx-2 mb-2">
-        <Search size={16} className="pointer-events-none absolute top-2.5 left-2.5 text-fg-muted" />
+        <Search
+          size={16}
+          className="pointer-events-none absolute inset-y-0 left-3 my-auto text-fg-muted"
+        />
         <input
+          id="chat-search"
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -176,8 +201,14 @@ export function Sidebar({ expanded, onNavigate }: { expanded: boolean; onNavigat
       </div>
       {archivedView && <p className="px-4 py-1 text-secondary text-fg-muted">Arkistoidut</p>}
       <ul className="min-h-0 flex-1 overflow-y-auto pb-2">
-        {visible.map((c) => (
-          <ChatRow key={c.id} chat={c} active={c.id === activeChatId} onOpen={() => open(c.id)} />
+        {visible.map(({ chat, label }) => (
+          <ChatRow
+            key={chat.id}
+            chat={chat}
+            label={label}
+            active={chat.id === activeChatId}
+            onOpen={() => open(chat.id)}
+          />
         ))}
       </ul>
       <div className="flex items-center gap-1 border-t border-border p-2 pb-[max(env(safe-area-inset-bottom),8px)]">
@@ -189,7 +220,6 @@ export function Sidebar({ expanded, onNavigate }: { expanded: boolean; onNavigat
         >
           {archivedView ? 'Keskustelut' : 'Arkistoidut'}
         </button>
-        <ThemeMenu />
         <SettingsDialog />
       </div>
     </nav>
