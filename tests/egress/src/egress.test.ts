@@ -47,6 +47,9 @@ describe.skipIf(!hasDocker)(
         OPENROUTER_API_KEY: 'test',
         LITELLM_MASTER_KEY: MASTER_KEY,
         EGRESS_MOCK_PORT: String(mock.port),
+        // compose.yaml requires these for services this suite does not start.
+        PSEUDO_VAULT_KEY: process.env.PSEUDO_VAULT_KEY ?? 'x'.repeat(40),
+        BROKER_TOKEN: process.env.BROKER_TOKEN ?? 'x'.repeat(40),
       };
       compose('up', '-d', '--wait', '--wait-timeout', '120', ...SERVICES);
       // The override publishes 4000 on an ephemeral loopback port; ask compose which one.
