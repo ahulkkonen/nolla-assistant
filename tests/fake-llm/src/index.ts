@@ -16,13 +16,38 @@ export async function startFakeLlm(turns: FakeTurn[] = []) {
   const queue = [...turns];
   const requests: FakeRequest[] = [];
   let callN = 0;
+  let transcript = 'fake transcript';
 
   const server = createServer((req, res) => {
     const json = (status: number, obj: unknown) => {
       res.writeHead(status, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(obj));
     };
-    if (req.method !== 'POST' || !req.url?.split('?')[0]?.endsWith('/chat/completions')) {
+    const path = req.url?.split('?')[0] ?? '';
+    if (req.method === 'POST' && path.endsWith('/audio/transcriptions')) {
+      // Records the multipart text fields and the file's name, type and size.
+      const chunks: Buffer[] = [];
+      req.on('data', (c: Buffer) => chunks.push(c));
+      req.on('end', async () => {
+        try {
+          const form = await new Request('http://x', {
+            method: 'POST',
+            headers: { 'content-type': String(req.headers['content-type']) },
+            body: Buffer.concat(chunks),
+          }).formData();
+          const body: Record<string, unknown> = {};
+          form.forEach((v, k) => {
+            body[k] = typeof v === 'string' ? v : { name: v.name, type: v.type, size: v.size };
+          });
+          requests.push({ path: req.url ?? '', headers: req.headers, body });
+          json(200, { text: transcript });
+        } catch {
+          json(400, { error: { message: 'fake-llm: bad multipart' } });
+        }
+      });
+      return;
+    }
+    if (req.method !== 'POST' || !path.endsWith('/chat/completions')) {
       return json(404, { error: { message: 'fake-llm: not found' } });
     }
     let raw = '';
@@ -102,6 +127,8 @@ export async function startFakeLlm(turns: FakeTurn[] = []) {
     url: `${origin}/v1`,
     requests,
     push: (turn: FakeTurn) => void queue.push(turn),
+    /** Text the `/audio/transcriptions` route returns. */
+    setTranscript: (text: string) => void (transcript = text),
     close,
   };
 }

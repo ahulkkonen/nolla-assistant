@@ -8,7 +8,10 @@ export const TIMEOUT_REASON = 'hyväksyntä aikakatkaistiin';
 export const UNATTENDED_REASON = 'ajastettu ajo: työkalu vaatii hyväksynnän';
 
 type ApprovalRequest = Extract<ServerMessage, { type: 'approval.request' }>;
-export type AskInput = Pick<ApprovalRequest, 'chatId' | 'tool' | 'args' | 'reason' | 'expiresAt'>;
+export type AskInput = Pick<
+  ApprovalRequest,
+  'chatId' | 'callId' | 'tool' | 'args' | 'reason' | 'expiresAt'
+>;
 /** Resolves with the user's answer, or `false` (request dropped) when `signal` aborts. */
 export type Ask = (req: AskInput, signal: AbortSignal) => Promise<boolean>;
 
@@ -40,7 +43,8 @@ export const approvalGate =
       const signal = ctx.signal ? AbortSignal.any([timeout, ctx.signal]) : timeout;
       const expiresAt = new Date(Date.now() + timeoutMs).toISOString();
       const reason = `Työkalu ${tool} vaatii hyväksynnän.`;
-      if (await ask({ chatId, tool, args: event.input, reason, expiresAt }, signal)) return;
+      const req = { chatId, callId: event.toolCallId, tool, args: event.input, reason, expiresAt };
+      if (await ask(req, signal)) return;
       return { block: true, reason: timeout.aborted ? TIMEOUT_REASON : DENIED_REASON };
     });
   };

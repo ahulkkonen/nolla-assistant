@@ -3,7 +3,8 @@ import { createMcpExtension, type ExtensionFactory } from '@earendil-works/pi-co
 import { parse } from 'yaml';
 import { z } from 'zod';
 
-// Names stay inside Pi's `[A-Za-z0-9_]`, so `mcp__<server>__<tool>` needs no sanitizing.
+// Names stay inside Pi's `[A-Za-z0-9_]`, so `mcp__<server>__<tool>` needs no sanitizing. A server
+// name has no `__`, so the tool name splits back unambiguously.
 const Server = z
   .object({
     url: z.url({ protocol: /^https?$/ }),
@@ -13,11 +14,20 @@ const Server = z
       .array(
         z.object({ name: z.string().regex(/^[A-Za-z0-9_]{1,40}$/), write: z.boolean() }).strict(),
       )
-      .min(1),
+      .min(1)
+      .refine((t) => new Set(t.map((x) => x.name)).size === t.length, 'duplicate tool name'),
   })
   .strict();
 const File = z
-  .object({ servers: z.record(z.string().regex(/^[a-z0-9_]{1,16}$/), Server) })
+  .object({
+    servers: z.record(
+      z
+        .string()
+        .regex(/^[a-z0-9]+(_[a-z0-9]+)*$/)
+        .max(16),
+      Server,
+    ),
+  })
   .strict();
 
 export type McpServer = z.infer<typeof Server> & { name: string };
@@ -65,3 +75,22 @@ export function mcpExtension(servers: McpServer[], logPath: string): ExtensionFa
     startupWaitMs: 5000,
   });
 }
+
+/**
+ * Warns once per session when allowlisted tools are missing, for example while the server is down
+ * or after it renamed a tool. Pi registers MCP tools when the server connects, after
+ * `bindExtensions`, so the check runs at the first `before_agent_start`: load it after
+ * `mcpExtension`, whose handler waits for the server first.
+ */
+export const mcpToolCheck =
+  (expected: string[], warn: (missing: string[]) => void): ExtensionFactory =>
+  (pi) => {
+    let done = false;
+    pi.on('before_agent_start', () => {
+      if (done) return;
+      done = true;
+      const active = new Set(pi.getActiveTools());
+      const missing = expected.filter((t) => !active.has(t));
+      if (missing.length) warn(missing);
+    });
+  };

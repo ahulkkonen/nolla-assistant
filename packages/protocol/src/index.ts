@@ -29,6 +29,8 @@ export const ChatSummary = z.object({
   agentId: id64,
   pinned: z.boolean(),
   archived: z.boolean(),
+  /** True after a manual rename: automatic titling no longer changes the title. */
+  titleLocked: z.boolean().optional(),
   updatedAt: z.iso.datetime(),
 });
 export type ChatSummary = z.infer<typeof ChatSummary>;
@@ -78,6 +80,24 @@ export const VaultPending = z.object({
 });
 export type VaultPending = z.infer<typeof VaultPending>;
 
+export const Artifact = z.object({
+  id: z.string(),
+  kind: z.enum(['html', 'react', 'code', 'mermaid', 'file']),
+  title: z.string(),
+  language: z.string().optional(),
+  content: z.string(),
+  mime: z.string().optional(),
+});
+export type Artifact = z.infer<typeof Artifact>;
+
+/** A browser `PushSubscription` as JSON (`POST /api/push/subscribe` and `push.subscribe`). */
+export const PushSubscription = z.object({
+  endpoint: z.url().max(2048),
+  expirationTime: z.number().nullable().optional(),
+  keys: z.object({ p256dh: z.string().max(512), auth: z.string().max(512) }),
+});
+export type PushSubscription = z.infer<typeof PushSubscription>;
+
 /** Client to server messages. `auth.login` is itself a union on `method`. */
 const authLogin = z.literal('auth.login');
 export const AuthLogin = z.discriminatedUnion('method', [
@@ -107,6 +127,9 @@ export const ClientMessage = z.discriminatedUnion('type', [
     title: z.string().min(1).max(120),
   }),
   z.object({ type: z.literal('chat.pin'), chatId: id64, pinned: z.boolean() }),
+  z.object({ type: z.literal('chat.delete'), chatId: id64 }),
+  /** The chat this client shows in the foreground; `null` when hidden. Push skips focused chats. */
+  z.object({ type: z.literal('chat.focus'), chatId: id64.nullable() }),
   z.object({
     type: z.literal('user.message'),
     chatId: id64,
@@ -174,14 +197,7 @@ export const ClientMessage = z.discriminatedUnion('type', [
     q: z.string().min(1).max(500),
     limit: z.int().min(1).max(50).default(20),
   }),
-  z.object({
-    type: z.literal('push.subscribe'),
-    subscription: z.object({
-      endpoint: z.url(),
-      expirationTime: z.number().nullable().optional(),
-      keys: z.object({ p256dh: z.string().max(512), auth: z.string().max(512) }),
-    }),
-  }),
+  z.object({ type: z.literal('push.subscribe'), subscription: PushSubscription }),
   z.object({ type: z.literal('ping') }),
 ]);
 export type ClientMessage = z.infer<typeof ClientMessage>;
@@ -204,7 +220,12 @@ export const ServerMessage = z.discriminatedUnion('type', [
       z.object({ id: id64, name: z.string(), model: z.string(), subagents: z.boolean() }),
     ),
   }),
-  z.object({ type: z.literal('chat.state'), chat: ChatSummary, messages: z.array(Message) }),
+  z.object({
+    type: z.literal('chat.state'),
+    chat: ChatSummary,
+    messages: z.array(Message),
+    artifacts: z.array(Artifact).optional(),
+  }),
   z.object({ type: z.literal('chat.list'), chats: z.array(ChatSummary) }),
   z.object({ type: z.literal('chat.created'), chat: ChatSummary }),
   z.object({
@@ -214,6 +235,7 @@ export const ServerMessage = z.discriminatedUnion('type', [
     topicId: id64.nullable(),
   }),
   z.object({ type: z.literal('chat.updated'), chat: ChatSummary }),
+  z.object({ type: z.literal('chat.deleted'), chatId: id64 }),
   z.object({
     type: z.literal('chat.related'),
     chatId: id64,
@@ -279,14 +301,7 @@ export const ServerMessage = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('artifact.upsert'),
     chatId: id64,
-    artifact: z.object({
-      id: z.string(),
-      kind: z.enum(['html', 'react', 'code', 'mermaid', 'file']),
-      title: z.string(),
-      language: z.string().optional(),
-      content: z.string(),
-      mime: z.string().optional(),
-    }),
+    artifact: Artifact,
   }),
   z.object({
     type: z.literal('agent.status'),

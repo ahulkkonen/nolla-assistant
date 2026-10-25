@@ -1,4 +1,4 @@
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
   type AgentSession,
@@ -16,7 +16,13 @@ import { type Child, subagentsExtension } from '@pa/pi-ext-subagents';
 import { topicsExtension } from '@pa/pi-ext-topics';
 import type { Agents } from '../agents.ts';
 import { type Ask, approvalGate } from '../approval.ts';
-import { allowedToolNames, type McpServers, mcpExtension, writeTools } from '../mcp.ts';
+import {
+  allowedToolNames,
+  type McpServers,
+  mcpExtension,
+  mcpToolCheck,
+  writeTools,
+} from '../mcp.ts';
 import type { MemoryStore } from '../memory.ts';
 import { pathGuard } from './guard.ts';
 
@@ -34,6 +40,8 @@ type RegistryOptions = {
   extensionFactories?: InlineExtension[];
   /** `infra/mcp.yaml`; a profile reaches the servers named in `tools.mcp`. */
   mcp?: McpServers;
+  /** Warns about allowlisted MCP tools the session did not get. */
+  mcpWarn?: (chatId: string, missing: string[]) => void;
   /** Called at every `agent_settled` through `pi-ext-topics`; `sessionId` is the chat id. */
   onSettled?: Parameters<typeof topicsExtension>[0]['onSettled'];
   /** Loads `pi-ext-pseudo` per chat when set; `log` receives its logs with the chat id. */
@@ -53,6 +61,13 @@ type RegistryOptions = {
   };
 };
 type Entry = { session: Promise<AgentSession>; lastUsed: number; unsubscribe?: () => void };
+
+async function stop(e: Entry) {
+  e.unsubscribe?.();
+  const s = await e.session;
+  await s.abort();
+  s.dispose();
+}
 
 export class SessionRegistry {
   readonly agentDir: string;
@@ -111,14 +126,16 @@ export class SessionRegistry {
   async dispose(): Promise<void> {
     const all = [...this.entries.values()];
     this.entries.clear();
-    await Promise.allSettled(
-      all.map(async (e) => {
-        e.unsubscribe?.();
-        const s = await e.session;
-        await s.abort();
-        s.dispose();
-      }),
-    );
+    await Promise.allSettled(all.map(stop));
+  }
+
+  /** Stops and drops the chat's session, then deletes its JSONL file. */
+  async remove(chatId: string): Promise<void> {
+    const e = this.entries.get(chatId);
+    this.entries.delete(chatId);
+    if (e) await stop(e).catch(() => {});
+    const path = SessionManager.findById(this.cwd, chatId, this.sessionDir);
+    if (path) rmSync(path, { force: true });
   }
 
   /** Shared model runtime. Pi cannot create one without built-in providers, so the test asserts only `zdr` resolves credentials (invariant 2 guard). */
@@ -166,7 +183,7 @@ export class SessionRegistry {
     // Pi's built-in `bash` is never enabled (invariant 8): `bash` stays only with the broker tool.
     const tools = profile.tools.allow.filter((t) => t !== 'bash' || broker);
     const skills = new Set(profile.skills);
-    const mcp = (profile.tools.mcp ?? []).flatMap((n) => this.opts.mcp?.get(n) ?? []);
+    const mcp = [...new Set(profile.tools.mcp)].flatMap((n) => this.opts.mcp?.get(n) ?? []);
     const mcpTools = mcp.flatMap(allowedToolNames);
     // MCP writes always ask (decision 0005); `never` cannot remove them.
     const mcpWrites = mcp.flatMap(writeTools);
@@ -269,7 +286,12 @@ export class SessionRegistry {
           : []),
         ...(this.opts.onSettled ? [topicsExtension({ onSettled: this.opts.onSettled })] : []),
         // Only adds tools; the pseudo and approval handlers above see MCP calls too.
-        ...(mcp.length ? [mcpExtension(mcp, resolve(this.agentDir, 'mcp.log'))] : []),
+        ...(mcp.length
+          ? [
+              mcpExtension(mcp, resolve(this.agentDir, 'mcp.log')),
+              mcpToolCheck(mcpTools, (missing) => this.opts.mcpWarn?.(chatId, missing)),
+            ]
+          : []),
         ...(this.opts.extensionFactories ?? []),
       ],
     });

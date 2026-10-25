@@ -42,7 +42,7 @@ const RP_NAME = 'Personal Assistant';
 type Purpose = 'reg' | 'auth';
 
 /** Counts failed attempts per key; blocked after `max` failures in `windowMs`. */
-function limiter(app: FastifyInstance, max = 5, windowMs = 60_000) {
+export function limiter(app: FastifyInstance, max = 5, windowMs = 60_000) {
   const fails = new Map<string, number[]>();
   const recent = (key: string, now = Date.now()) =>
     (fails.get(key) ?? []).filter((t) => now - t < windowMs);

@@ -1,4 +1,3 @@
-import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openDb, users } from '@pa/db';
@@ -16,6 +15,7 @@ import { loadMcp } from './mcp.ts';
 import { memoryStore } from './memory.ts';
 import { writeModelsJson } from './pi/models.ts';
 import { SessionRegistry } from './pi/registry.ts';
+import { pushService } from './push.ts';
 import { indexIdle } from './search.ts';
 import { titleJobs } from './topics.ts';
 
@@ -50,6 +50,9 @@ export async function start(
     for (const a of agentMap.values())
       if (!config.broker && a.tools.allow.includes('bash'))
         agentLog(a.id, 'bash listed but BROKER_URL/BROKER_TOKEN unset: no bash tool', 'warn');
+    for (const a of agentMap.values())
+      for (const n of a.tools.mcp ?? [])
+        if (!mcp.has(n)) agentLog(a.id, `MCP server ${n} not in ${config.mcpConfig}`, 'warn');
   };
   // Startup fails without `assistant`; a later bad edit keeps the previous profile versions.
   // `app` does not exist yet, so the first load logs to the console.
@@ -71,9 +74,6 @@ export async function start(
   );
   const agents = () => agentMap;
   const mcp = loadMcp(config.mcpConfig);
-  // Token directory of mcp-workspace (compose mounts this pa-data subpath; it must exist first).
-  if (mcp.has('workspace'))
-    mkdirSync(join(config.dataDir, 'mcp', 'workspace'), { recursive: true, mode: 0o700 });
   const integrations = integrationStore({
     workspace: mcp.get('workspace'),
     callbackBase: config.mcpWorkspaceUrl,
@@ -81,7 +81,11 @@ export async function start(
     sendAll,
     log: () => app.log,
   });
-  const approvals = approvalStore((chatId, msg) => broadcast(rooms, chatId, msg));
+  const push = pushService({ db, userId: config.userId, config, log: () => app.log });
+  const approvals = approvalStore((chatId, msg) => {
+    broadcast(rooms, chatId, msg);
+    if (msg.type === 'approval.request') void push.notify(chatId, 'approval');
+  });
   const pseudoLog = (chatId: string, ...[level, msg, data]: Parameters<PseudoLog>) => {
     app.log[level]({ chatId, ...data }, msg);
     // A dropped input starts no turn, so the bridge never sees it; mid-turn failures the bridge
@@ -109,6 +113,7 @@ export async function start(
     skillsDir: config.skillsDir,
     broker: config.broker,
     mcp,
+    mcpWarn: (chatId, missing) => app.log.warn({ chatId, missing }, 'mcp tools missing'),
     onSettled: ({ sessionId }) => titles.scheduleTitleJob(sessionId),
     ...(pseudo ? { pseudo: { client: pseudo, log: pseudoLog } } : {}),
     memory: {
@@ -134,6 +139,7 @@ export async function start(
     approvals,
     sockets,
     memory,
+    push,
     automations: () => automations,
     integrations,
     ...(logStream ? { logStream } : {}),
@@ -157,11 +163,19 @@ export async function start(
     agents,
     unattended: approvals.unattended,
     prompt: async (chatId, text) => void (await (await registry.get(chatId)).prompt(text)),
+    notify: (chatId) => push.notify(chatId, 'automation'),
     log: app.log,
   });
   checkBash();
   if (!pseudo) app.log.warn('memory disabled: PSEUDO_URL unset');
-  if (pseudo && config.selfEmail) void allowlistSelf(pseudo, config.selfEmail, app.log);
+  if (!push.enabled) app.log.info('push disabled: VAPID_PUBLIC/VAPID_PRIVATE/VAPID_SUBJECT unset');
+  const selfSeed = new AbortController();
+  if (pseudo && config.selfEmail)
+    void allowlistSelf(pseudo, config.selfEmail, app.log, selfSeed.signal);
+  if (mcp.has('workspace') && !config.selfEmail)
+    app.log.warn(
+      'SELF_EMAIL unset: your Google address reaches the model unmasked in tool schemas',
+    );
   void integrations.refresh();
   await app.listen({ port: config.port, host: config.host });
   const timer = setInterval(() => void registry.evictIdle(), 5 * 60_000);
@@ -169,6 +183,7 @@ export async function start(
   const purge = setInterval(() => purgeExpiredSessions(db), 60 * 60_000);
   purge.unref();
   const close = async () => {
+    selfSeed.abort();
     stopWatch();
     automations?.close();
     memory.close();
@@ -191,15 +206,24 @@ async function allowlistSelf(
   pseudo: PseudoClient,
   email: string,
   log: { warn: (o: object, m: string) => void },
+  signal: AbortSignal,
 ) {
-  for (let i = 0; i < 30; i++) {
+  for (let i = 0; i < 30 && !signal.aborted; i++) {
     try {
       const { ids } = await pseudo.vaultSeed([{ kind: 'EMAIL', canonical: email }]);
-      if (ids[0] !== undefined) await pseudo.vaultUpdate(ids[0], { allowlisted: true });
+      if (ids[0] === undefined) return log.warn({}, 'self email allowlist: seed returned no id');
+      await pseudo.vaultUpdate(ids[0], { allowlisted: true });
       return;
     } catch (err) {
-      if (i === 29) log.warn({ error: String(err) }, 'self email allowlist failed');
-      await new Promise((r) => setTimeout(r, 10_000).unref());
+      // A 4xx will not change on retry (bad address, API mismatch).
+      const client = /status 4\d\d/.test(String(err));
+      if (client || i === 29)
+        return log.warn({ error: String(err) }, 'self email allowlist failed');
+      await new Promise((r) => {
+        const t = setTimeout(r, 10_000);
+        t.unref();
+        signal.addEventListener('abort', () => (clearTimeout(t), r(undefined)), { once: true });
+      });
     }
   }
 }

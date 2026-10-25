@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
+import { rmSync } from 'node:fs';
+import { join as joinPath } from 'node:path';
 import type { AgentSession, AgentSessionEvent } from '@earendil-works/pi-coding-agent';
-import { chats, type Db, topicProposals, topics } from '@pa/db';
+import { chats, type Db, files, topicProposals, topics } from '@pa/db';
 import { FULL } from '@pa/pi-ext-memory';
 import {
   type PseudoClient,
@@ -21,11 +23,13 @@ import { and, desc, eq } from 'drizzle-orm';
 import type { FastifyBaseLogger } from 'fastify';
 import type { Agents } from './agents.ts';
 import { type Approvals, DENIED_REASON, TIMEOUT_REASON } from './approval.ts';
+import { extractArtifacts, messageArtifacts } from './artifacts.ts';
 import type { Automations } from './automations.ts';
 import { AttachmentNotFound, chatFiles, ingestAttachments } from './files.ts';
 import { MemoryError, type MemoryStore, PSEUDO_REQUIRED } from './memory.ts';
 import { GUARD_REASON } from './pi/guard.ts';
 import type { SessionRegistry } from './pi/registry.ts';
+import { BadEndpoint, type Push } from './push.ts';
 import { indexChat, related, search } from './search.ts';
 import { topicState } from './topics.ts';
 
@@ -50,6 +54,7 @@ export type BridgeDeps = {
   /** Unset until the runner has started. */
   automations: () => Automations | undefined;
   memory: MemoryStore;
+  push: Push;
   /** Restores surrogates for display. Unset in dev (no masking, see config `pseudoUrl`). */
   pseudo?: PseudoClient;
 };
@@ -107,6 +112,7 @@ export const summary = (r: ChatRow): ChatSummary => ({
   agentId: r.agentId,
   pinned: r.pinned,
   archived: r.archived,
+  titleLocked: r.titleLocked,
   updatedAt: r.updatedAt,
 });
 
@@ -216,8 +222,20 @@ export const agentsState = (agents: Agents): ServerMessage => ({
 });
 
 export function attachBridge(socket: Socket, deps: BridgeDeps) {
-  const { registry, db, userId, dataDir, log, rooms, pseudo, agents, approvals, sockets, memory } =
-    deps;
+  const {
+    registry,
+    db,
+    userId,
+    dataDir,
+    log,
+    rooms,
+    pseudo,
+    agents,
+    approvals,
+    sockets,
+    memory,
+    push,
+  } = deps;
   const open = new Set<string>();
   sockets.add(socket);
   /** Memory is per user: every open screen gets the new state. */
@@ -369,10 +387,12 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
         const session = await registry.get(msg.chatId);
         join(msg.chatId, session);
         const restore = restorer(pseudo, () => send(socket, errorMsg('pseudo_down', msg.chatId)));
+        const messages = await history(session, chatFiles(db, userId, msg.chatId), restore);
         send(socket, {
           type: 'chat.state',
           chat: summary(r),
-          messages: await history(session, chatFiles(db, userId, msg.chatId), restore),
+          messages,
+          artifacts: messageArtifacts(messages),
         });
         for (const a of approvals.list(msg.chatId)) send(socket, a);
         if (r.summary)
@@ -405,6 +425,37 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
       }
       case 'chat.pin':
         return update(msg.chatId, { pinned: msg.pinned });
+      case 'chat.delete': {
+        owned(msg.chatId);
+        await registry.remove(msg.chatId);
+        const paths = db
+          .select({ path: files.path })
+          .from(files)
+          .where(and(eq(files.chatId, msg.chatId), eq(files.userId, userId)))
+          .all();
+        // Cascades to chunks, tags, proposals and file rows.
+        db.delete(chats)
+          .where(and(eq(chats.id, msg.chatId), eq(chats.userId, userId)))
+          .run();
+        for (const { path } of paths) rmSync(joinPath(dataDir, path), { force: true });
+        rooms.delete(msg.chatId);
+        const deleted: ServerMessage = { type: 'chat.deleted', chatId: msg.chatId };
+        for (const s of sockets)
+          try {
+            send(s, deleted);
+          } catch {}
+        return;
+      }
+      case 'chat.focus':
+        return push.setFocus(socket, msg.chatId);
+      case 'push.subscribe':
+        if (!push.enabled) return send(socket, errorMsg('not_implemented'));
+        try {
+          return push.subscribe(msg.subscription);
+        } catch (err) {
+          if (err instanceof BadEndpoint) return send(socket, errorMsg('bad_message'));
+          throw err;
+        }
       case 'user.message': {
         // `msg.agentId` is ignored: an existing chat keeps its agent (decision 1).
         const { chatId } = msg;
@@ -549,6 +600,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
 
   socket.on('close', () => {
     sockets.delete(socket);
+    push.setFocus(socket, null);
     for (const chatId of open) {
       const room = rooms.get(chatId);
       room?.delete(socket);
@@ -566,7 +618,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
 function forward(
   chatId: string,
   session: AgentSession,
-  { db, rooms, log, userId, pseudo }: BridgeDeps,
+  { db, rooms, log, userId, pseudo, push }: BridgeDeps,
 ) {
   const emit = (msg: ServerMessage) => broadcast(rooms, chatId, msg);
   let streamId = randomUUID();
@@ -606,6 +658,8 @@ function forward(
     const message = toMessage(entry?.id ?? streamId, m, toolRows(m, statuses));
     ({ text: message.text, annotations: message.annotations } = await restore(message.text));
     emit({ type: 'message.final', chatId, message });
+    for (const artifact of extractArtifacts(message.id, message.text))
+      emit({ type: 'artifact.upsert', chatId, artifact });
   };
 
   const handle = async (e: AgentSessionEvent) => {
@@ -673,6 +727,7 @@ function forward(
           .get();
         if (r) emit({ type: 'chat.updated', chat: summary(r) });
         emit({ type: 'agent.status', chatId, state: 'idle' });
+        if (!e.aborted) void push.notify(chatId, 'settled');
         // Background: embedding takes a moment and must not hold the event chain.
         indexChat(db, userId, chatId, transcript(session)).catch((err: unknown) =>
           log.warn(

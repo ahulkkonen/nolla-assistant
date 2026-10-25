@@ -69,6 +69,8 @@ export type AutomationsDeps = {
   unattended: Map<string, string[]>;
   /** Sends `text` to the chat's session the way `user.message` does. Resolves when the run ends. */
   prompt: (chatId: string, text: string) => Promise<void>;
+  /** Web Push for `deliver: push | both`, after a successful run. */
+  notify?: (chatId: string) => Promise<void>;
   log: FastifyBaseLogger;
 };
 
@@ -82,6 +84,7 @@ export function startAutomations({
   agents,
   unattended,
   prompt,
+  notify,
   log,
 }: AutomationsDeps) {
   let list: Automation[] = [];
@@ -148,7 +151,6 @@ export function startAutomations({
         .run();
       unattended.set(chatId, a.autoApprove);
       const session = await registry.create(chatId, a.agentId);
-      if (a.deliver !== 'chat') log.info({ id: a.id }, 'push not available until phase 7');
       await prompt(chatId, a.prompt);
       const last = session.messages.findLast((m) => m.role === 'assistant');
       if (last && 'stopReason' in last && last.stopReason === 'error')
@@ -162,6 +164,7 @@ export function startAutomations({
       );
       record(a.id, 'ok', chatId, null);
       log.info({ id: a.id, chatId }, 'automation ran');
+      if (a.deliver !== 'chat') void notify?.(chatId);
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err);
       log.warn({ id: a.id, chatId, error }, 'automation failed');
@@ -213,11 +216,12 @@ export function startAutomations({
       );
       return {
         type: 'automations.state',
-        automations: list.map(({ id, cron, agentId, enabled }) => ({
+        automations: list.map(({ id, cron, agentId, enabled, deliver }) => ({
           id,
           cron,
           agentId,
           enabled,
+          deliver,
           lastRunAt: runs.get(id)?.lastRunAt ?? null,
           lastStatus: running.has(id) ? 'running' : (runs.get(id)?.lastStatus ?? null),
           lastChatId: runs.get(id)?.lastChatId ?? null,

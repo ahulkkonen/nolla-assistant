@@ -10,6 +10,8 @@ import { attachBridge, type BridgeDeps } from './bridge.ts';
 import type { Config } from './config.ts';
 import { fileRoutes, MAX_FILE_BYTES, MAX_FILES } from './files.ts';
 import type { Integrations } from './integrations.ts';
+import { pushRoutes } from './push.ts';
+import { sttRoutes } from './stt.ts';
 
 const NO_CACHE = new Set(['index.html', 'sw.js', 'manifest.webmanifest']);
 const HTML_CSP = [
@@ -43,6 +45,7 @@ export async function buildServer({
   | 'automations'
   | 'sockets'
   | 'memory'
+  | 'push'
 > & {
   config: Config;
   integrations: Integrations;
@@ -77,6 +80,8 @@ export async function buildServer({
   authRoutes(app, db, config);
   fileRoutes(app, db, config.dataDir, auth);
   integrations.routes(app, auth);
+  sttRoutes(app, auth, config);
+  pushRoutes(app, auth, bridge.push);
   app.get(
     '/ws',
     {

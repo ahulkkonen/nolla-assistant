@@ -28,6 +28,12 @@ export function loadConfig(env: Env = process.env) {
     throw new Error('AUTH_ORIGIN must be https unless the host is loopback');
   const trust = env.TRUST_PROXY;
   const cookieSecret = required(env, 'COOKIE_SECRET');
+  const vapid =
+    env.VAPID_PUBLIC && env.VAPID_PRIVATE && env.VAPID_SUBJECT
+      ? { publicKey: env.VAPID_PUBLIC, privateKey: env.VAPID_PRIVATE, subject: env.VAPID_SUBJECT }
+      : undefined;
+  if (vapid && !vapid.subject.startsWith('mailto:'))
+    throw new Error('VAPID_SUBJECT must be a mailto: address');
   if (cookieSecret.length < 32) throw new Error('COOKIE_SECRET must be at least 32 characters');
   return Object.freeze({
     port,
@@ -59,7 +65,11 @@ export function loadConfig(env: Env = process.env) {
     // Base URL for the OAuth callback forward; unset means the origin of the `workspace` URL.
     mcpWorkspaceUrl: env.MCP_WORKSPACE_URL || undefined,
     // The user's own Google address: allowlisted in the vault at startup (decision 0005).
-    selfEmail: env.SELF_EMAIL || undefined,
+    selfEmail: env.SELF_EMAIL?.trim().toLowerCase() || undefined,
+    // All three or push is off (plan §5).
+    vapid,
+    // Test only: accepts any push endpoint host (a loopback fake push service).
+    pushAllowAnyHost: env.PUSH_ALLOW_ANY_HOST === '1',
     // Both or nothing: without them no `bash` tool exists (Pi's built-in one is never enabled).
     broker:
       env.BROKER_URL && env.BROKER_TOKEN
