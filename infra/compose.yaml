@@ -1,0 +1,34 @@
+# Later phases add: pseudo-svc, litellm, presidio-analyzer, presidio-anonymizer,
+# mcp-workspace, sandbox-broker, backup.
+services:
+  pa-server:
+    build: { context: .., dockerfile: infra/Dockerfile.server }
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    user: "10001:10001"
+    volumes: [pa-data:/data]
+    environment:
+      LITELLM_URL: ${LITELLM_URL}
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+      AUTH_ORIGIN: ${AUTH_ORIGIN}
+      AUTH_PASSKEY_RP_ID: ${AUTH_PASSKEY_RP_ID}
+      AUTH_PASSWORD_HASH: ${AUTH_PASSWORD_HASH}
+      COOKIE_SECRET: ${COOKIE_SECRET}
+      USER_ID: ${USER_ID}
+      MODEL: ${MODEL}
+    # ports: no mapping. Coolify's proxy attaches to container port 3000.
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 3s
+    mem_limit: 400m
+    networks: [internal]
+
+volumes:
+  pa-data:
+
+networks:
+  internal:

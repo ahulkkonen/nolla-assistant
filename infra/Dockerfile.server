@@ -1,0 +1,48 @@
+# Build context: repo root. docker build -f infra/Dockerfile.server -t pa-server:dev .
+
+# Node 22.23.2 pushed to Docker Hub 2026-09-19 (newest 22.x tag at least 7 days old on 2026-10-25).
+FROM node:22.23.2-bookworm-slim AS base
+ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+RUN npm install -g corepack && corepack enable && corepack prepare pnpm@12.15.0 --activate
+WORKDIR /app
+
+FROM base AS deps
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml .npmrc ./
+COPY apps/server/package.json apps/server/
+COPY packages/db/package.json packages/db/
+COPY packages/protocol/package.json packages/protocol/
+COPY tests/contract/package.json tests/contract/
+COPY tests/fake-llm/package.json tests/fake-llm/
+# Optional workspaces: copied only when present.
+RUN --mount=type=bind,source=apps,target=/src \
+    [ ! -f /src/web/package.json ] || { mkdir -p apps/web && cp /src/web/package.json apps/web/; }
+RUN --mount=type=bind,source=services,target=/src \
+    [ ! -f /src/sandbox-broker/package.json ] || { mkdir -p services/sandbox-broker && cp /src/sandbox-broker/package.json services/sandbox-broker/; }
+RUN pnpm install --frozen-lockfile
+
+FROM deps AS web
+COPY apps/web apps/web
+COPY packages/protocol packages/protocol
+# ponytail: no apps/web/package.json yet means empty dist; drop the guard once the web app lands.
+RUN if [ -f apps/web/package.json ]; then pnpm --filter @pa/web build; else mkdir -p apps/web/dist; fi
+
+FROM deps AS prod
+COPY apps/server apps/server
+COPY packages/protocol packages/protocol
+COPY packages/db packages/db
+# Not `pnpm deploy`: it copies workspace packages into node_modules, where Node refuses to strip types.
+RUN pnpm install --frozen-lockfile --prod --filter @pa/server...
+
+FROM base AS runtime
+RUN useradd --uid 10001 --user-group --no-create-home app && mkdir /data && chown app:app /data
+COPY --from=prod --chown=app:app /app/node_modules /app/node_modules
+COPY --from=prod --chown=app:app /app/apps/server /app/apps/server
+COPY --from=prod --chown=app:app /app/packages/protocol /app/packages/protocol
+COPY --from=prod --chown=app:app /app/packages/db /app/packages/db
+COPY --chown=app:app infra/models.json /app/infra/models.json
+COPY --from=web --chown=app:app /app/apps/web/dist /app/apps/web/dist
+ENV NODE_ENV=production WEB_DIST=/app/apps/web/dist DATA_DIR=/data HOST=0.0.0.0 PORT=3000
+USER app
+EXPOSE 3000
+HEALTHCHECK --interval=30s --timeout=3s CMD node -e "fetch('http://127.0.0.1:3000/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+CMD ["node", "apps/server/src/main.ts"]
