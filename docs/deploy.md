@@ -52,6 +52,48 @@ Phase 2 ships only `pa-server`. Later phases add services to `infra/compose.yaml
 - Logging out and back in with the passkey works.
 - The app opens from the Home Screen in standalone mode (no browser chrome).
 
-## Restore and backups
+## Backups
 
-Phase 4 adds `scripts/restore.sh` and the backup sidecar. Until then, back up the `pa-data` volume manually.
+The `backup` service replicates `app.db` and `vault.db` to the S3 bucket with Litestream and snapshots `/data` with restic every night at 03:00 Europe/Helsinki. The service mounts `/data` read-write because Litestream opens the live database and keeps its state next to it.
+
+### Set up
+
+1. Create an S3-compatible bucket and a key pair that can read and write it.
+2. Add these environment variables in Coolify. Do not commit them.
+
+   | Variable | Value |
+   |---|---|
+   | `S3_ENDPOINT` | the endpoint URL, with scheme and no trailing slash |
+   | `S3_BUCKET` | the bucket name |
+   | `S3_ACCESS_KEY`, `S3_SECRET_KEY` | the key pair |
+   | `RESTIC_PASSWORD` | a long random string. Store a copy outside the VPS: without it the restic snapshots are lost. |
+
+3. Deploy. The first nightly run creates the restic repository. To snapshot now, run `docker compose exec backup /backup-now.sh`.
+
+### Verify that Litestream replicates
+
+```sh
+docker compose exec backup litestream ltx -config /etc/litestream.yml -level all /data/app.db
+```
+
+The command lists LTX files with a recent `created` time. Litestream 0.5 has no `snapshots` command. The log line `restic run ok` appears after each nightly run.
+
+### Restore on a new VPS
+
+1. Set the same environment variables on the new host. Do not start the stack yet: the volume must be empty when the restore starts.
+2. Run the restore into the empty `pa-data` volume:
+
+   ```sh
+   docker compose run --rm --no-deps backup /scripts/restore.sh
+   ```
+
+   The script restores both databases with Litestream, then restores sessions, files and Pi state from the latest restic snapshot. It prints each restored file.
+3. Start the stack: `docker compose up -d`.
+
+### Restore drill
+
+```sh
+scripts/restore-drill.sh
+```
+
+The drill starts a local S3 server (rustfs; MinIO has no image on Docker Hub), creates a chat, backs up, deletes the volume, restores and checks that the chat opens. It needs Docker and Node and takes about 20 seconds after the images are pulled.

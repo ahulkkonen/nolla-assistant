@@ -11,6 +11,8 @@ COPY package.json pnpm-workspace.yaml pnpm-lock.yaml .npmrc ./
 COPY apps/server/package.json apps/server/
 COPY packages/db/package.json packages/db/
 COPY packages/protocol/package.json packages/protocol/
+COPY packages/pi-ext-pseudo/package.json packages/pi-ext-pseudo/
+COPY packages/pi-ext-topics/package.json packages/pi-ext-topics/
 COPY tests/contract/package.json tests/contract/
 COPY tests/fake-llm/package.json tests/fake-llm/
 # Optional workspaces: copied only when present.
@@ -30,6 +32,8 @@ FROM deps AS prod
 COPY apps/server apps/server
 COPY packages/protocol packages/protocol
 COPY packages/db packages/db
+COPY packages/pi-ext-pseudo packages/pi-ext-pseudo
+COPY packages/pi-ext-topics packages/pi-ext-topics
 # Not `pnpm deploy`: it copies workspace packages into node_modules, where Node refuses to strip types.
 RUN pnpm install --frozen-lockfile --prod --filter @pa/server...
 
@@ -39,6 +43,8 @@ COPY --from=prod --chown=app:app /app/node_modules /app/node_modules
 COPY --from=prod --chown=app:app /app/apps/server /app/apps/server
 COPY --from=prod --chown=app:app /app/packages/protocol /app/packages/protocol
 COPY --from=prod --chown=app:app /app/packages/db /app/packages/db
+COPY --from=prod --chown=app:app /app/packages/pi-ext-pseudo /app/packages/pi-ext-pseudo
+COPY --from=prod --chown=app:app /app/packages/pi-ext-topics /app/packages/pi-ext-topics
 COPY --chown=app:app infra/models.json /app/infra/models.json
 COPY --from=web --chown=app:app /app/apps/web/dist /app/apps/web/dist
 ENV NODE_ENV=production WEB_DIST=/app/apps/web/dist DATA_DIR=/data HOST=0.0.0.0 PORT=3000
