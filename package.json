@@ -1,0 +1,22 @@
+{
+  "name": "assistant-2",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.19.0",
+    "pnpm": ">=10.16"
+  },
+  "packageManager": "pnpm@12.15.0",
+  "scripts": {
+    "typecheck": "pnpm -r --if-present typecheck",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "test": "pnpm -r --if-present test",
+    "test:contract": "pnpm --filter @pa/contract-tests test",
+    "build": "pnpm -r --if-present build"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.15",
+    "typescript": "5.9.3"
+  }
+}

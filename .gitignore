@@ -1,0 +1,16 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+/data/
+.venv/
+__pycache__/
+.pytest_cache/
+playwright-report/
+test-results/
+tests/e2e/screenshots/*-actual.png
+tests/e2e/screenshots/*-diff.png
+.serena/cache/
+.DS_Store
