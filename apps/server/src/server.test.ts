@@ -1,16 +1,21 @@
+import { randomUUID } from 'node:crypto';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type FakeTurn, startFakeLlm } from '@pa/fake-llm';
-import type { ClientMessageInput, ServerMessage } from '@pa/protocol';
+import type { AttachmentRef, ClientMessageInput, ServerMessage } from '@pa/protocol';
+import sharp from 'sharp';
 import { afterEach, expect, test } from 'vitest';
 import WebSocket from 'ws';
+import { hashPassword } from './auth/password.ts';
 import { loadConfig } from './config.ts';
 import { start } from './main.ts';
 
 const KEY = 'sk-test-master';
 const SCRIPTED = 'Hei! Miten voin auttaa?';
+const PASSWORD = 'correct horse';
+const PASSWORD_HASH = hashPassword(PASSWORD);
 const cleanups: (() => Promise<void> | void)[] = [];
 afterEach(async () => {
   for (const c of cleanups.splice(0).reverse()) await c();
@@ -35,6 +40,9 @@ async function boot(turns: FakeTurn[]) {
     PORT: String(await freePort()),
     HOST: '127.0.0.1',
     LOG_LEVEL: 'warn',
+    AUTH_ORIGIN: 'http://localhost:3000',
+    COOKIE_SECRET: 'x'.repeat(32),
+    AUTH_PASSWORD_HASH: PASSWORD_HASH,
   });
   cleanups.push(
     () => llm.close(),
@@ -48,8 +56,25 @@ async function boot(turns: FakeTurn[]) {
   return { llm, config, run };
 }
 
-async function connect(port: number, origin?: string) {
-  const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`, origin ? { origin } : {});
+const api = (port: number, path: string, init: RequestInit = {}) =>
+  fetch(`http://127.0.0.1:${port}${path}`, init);
+
+/** Logs in with the password and returns the `pa_session=...` cookie pair. */
+async function login(port: number, password = PASSWORD) {
+  const res = await api(port, '/api/auth/password', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ password }),
+  });
+  return { res, cookie: res.headers.getSetCookie()[0]?.split(';')[0] ?? '' };
+}
+
+async function connect(port: number, origin?: string, cookie?: string) {
+  cookie ??= (await login(port)).cookie;
+  const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`, {
+    ...(origin ? { origin } : {}),
+    headers: { cookie },
+  });
   const inbox: ServerMessage[] = [];
   const waiters: (() => void)[] = [];
   ws.on('message', (d) => {
@@ -166,4 +191,85 @@ test('only the zdr provider resolves credentials (invariant 2)', { timeout: 30_0
   const available = await (await srv.registry.modelRuntime()).getAvailable();
   expect(available.length).toBeGreaterThan(0);
   expect(available.every((m) => m.provider === 'zdr')).toBe(true);
+});
+
+test('auth: cookie required, password login, rate limit, logout', { timeout: 30_000 }, async () => {
+  const { config, run } = await boot([]);
+  await run();
+  const { port } = config;
+  await expect(connect(port, undefined, '')).rejects.toThrow(/401/);
+  expect((await api(port, '/api/auth/me')).status).toBe(401);
+  expect((await api(port, '/healthz')).status).toBe(200);
+
+  const { res, cookie } = await login(port);
+  expect(res.status).toBe(200);
+  expect(await res.json()).toEqual({ userId: 'aleksi' });
+  expect(res.headers.getSetCookie()[0]).toMatch(/^pa_session=.+HttpOnly; SameSite=Strict/);
+  const me = await api(port, '/api/auth/me', { headers: { cookie } });
+  expect(await me.json()).toEqual({ userId: 'aleksi', passkeys: 0 });
+
+  const c = await connect(port, undefined, cookie);
+  expect(await c.next('auth.state')).toEqual({
+    type: 'auth.state',
+    authenticated: true,
+    userId: 'aleksi',
+  });
+
+  expect((await login(port, 'wrong')).res.status).toBe(401);
+  for (let i = 0; i < 3; i++) await login(port, 'wrong');
+  expect((await login(port, 'wrong')).res.status).toBe(429);
+
+  const out = await api(port, '/api/auth/logout', { method: 'POST', headers: { cookie } });
+  expect(out.status).toBe(204);
+  expect((await api(port, '/api/auth/me', { headers: { cookie } })).status).toBe(401);
+});
+
+test('attachments: image and txt reach the model; owner-only download', {
+  timeout: 30_000,
+}, async () => {
+  const { llm, config, run } = await boot([{ text: SCRIPTED }]);
+  await run();
+  const { port } = config;
+  const { cookie } = await login(port);
+  const png = await sharp({
+    create: { width: 4, height: 4, channels: 3, background: '#f00' },
+  })
+    .png()
+    .toBuffer();
+  const form = new FormData();
+  form.append('files', new Blob([new Uint8Array(png)], { type: 'image/png' }), 'dot.png');
+  form.append('files', new Blob(['muistiinpano 42'], { type: 'text/plain' }), 'note.txt');
+  const up = await api(port, '/api/files', { method: 'POST', body: form, headers: { cookie } });
+  expect(up.status).toBe(200);
+  const { files } = (await up.json()) as { files: AttachmentRef[] };
+  expect(files.map((f) => [f.name, f.kind])).toEqual([
+    ['dot.png', 'image'],
+    ['note.txt', 'document'],
+  ]);
+
+  const got = await api(port, `/api/files/${files[0]?.id}`, { headers: { cookie } });
+  expect(got.headers.get('content-type')).toBe('image/png');
+  expect(Buffer.from(await got.arrayBuffer()).equals(png)).toBe(true);
+  expect((await api(port, `/api/files/${randomUUID()}`, { headers: { cookie } })).status).toBe(404);
+
+  const c = await connect(port, undefined, cookie);
+  c.send({ type: 'chat.create' });
+  const { chat } = await c.next('chat.created');
+  c.send({ type: 'user.message', chatId: chat.id, text: 'Katso', attachments: files });
+  await c.next('message.final');
+  await c.idle();
+  const user = llm.requests[0]?.body.messages.find((m: { role: string }) => m.role === 'user');
+  const text = user.content.find((p: { type: string }) => p.type === 'text').text;
+  expect(text).toContain('Katso');
+  expect(text).toContain('[Liite: note.txt]\nmuistiinpano 42');
+  const image = user.content.find((p: { type: string }) => p.type === 'image_url');
+  expect(image).toEqual({
+    type: 'image_url',
+    image_url: { url: expect.stringMatching(/^data:image\/png;base64,[A-Za-z0-9+/=]+$/) },
+  });
+
+  c.send({ type: 'chat.open', chatId: chat.id });
+  const [first] = (await c.next('chat.state')).messages;
+  expect(first?.text).toBe('Katso');
+  expect(first?.attachments.map((a) => a.name)).toEqual(['dot.png', 'note.txt']);
 });

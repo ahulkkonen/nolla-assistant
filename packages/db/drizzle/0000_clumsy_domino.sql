@@ -1,3 +1,11 @@
+CREATE TABLE `authSessions` (
+	`id` text PRIMARY KEY NOT NULL,
+	`userId` text NOT NULL,
+	`createdAt` text NOT NULL,
+	`expiresAt` text NOT NULL,
+	`lastSeenAt` text NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE `chats` (
 	`id` text PRIMARY KEY NOT NULL,
 	`userId` text NOT NULL,
@@ -38,6 +46,16 @@ CREATE TABLE `memoryPending` (
 	`status` text DEFAULT 'pending' NOT NULL,
 	`createdAt` text NOT NULL,
 	FOREIGN KEY (`chatId`) REFERENCES `chats`(`id`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
+CREATE TABLE `passkeys` (
+	`id` text PRIMARY KEY NOT NULL,
+	`userId` text NOT NULL,
+	`publicKey` text NOT NULL,
+	`counter` integer DEFAULT 0 NOT NULL,
+	`transports` text,
+	`createdAt` text NOT NULL,
+	`lastUsedAt` text
 );
 --> statement-breakpoint
 CREATE TABLE `pushSubscriptions` (

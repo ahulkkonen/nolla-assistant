@@ -93,3 +93,24 @@ export const files = sqliteTable('files', {
   path: text().notNull(),
   createdAt: text().notNull(),
 });
+
+export const authSessions = sqliteTable('authSessions', {
+  // sha256 hex of the raw cookie token; the token itself is never stored.
+  id: text().primaryKey(),
+  userId: text().notNull(),
+  createdAt: text().notNull(),
+  expiresAt: text().notNull(),
+  lastSeenAt: text().notNull(),
+});
+
+export const passkeys = sqliteTable('passkeys', {
+  // credential id, base64url
+  id: text().primaryKey(),
+  userId: text().notNull(),
+  // base64url COSE public key
+  publicKey: text().notNull(),
+  counter: integer().notNull().default(0),
+  transports: text({ mode: 'json' }).$type<string[]>(),
+  createdAt: text().notNull(),
+  lastUsedAt: text(),
+});

@@ -17,6 +17,9 @@ export function loadConfig(env: Env = process.env) {
   const userId = env.USER_ID ?? 'aleksi';
   if (!/^[A-Za-z0-9_-]{1,64}$/.test(userId))
     throw new Error('USER_ID must match [A-Za-z0-9_-]{1,64}');
+  const authOrigin = required(env, 'AUTH_ORIGIN');
+  const cookieSecret = required(env, 'COOKIE_SECRET');
+  if (cookieSecret.length < 32) throw new Error('COOKIE_SECRET must be at least 32 characters');
   return Object.freeze({
     port,
     host: env.HOST ?? '127.0.0.1',
@@ -25,7 +28,12 @@ export function loadConfig(env: Env = process.env) {
     litellmMasterKey: required(env, 'LITELLM_MASTER_KEY'),
     userId,
     model: env.MODEL ?? 'zdr/strong',
-    allowedOrigin: env.ALLOWED_ORIGIN ?? `http://localhost:${port}`,
+    authOrigin,
+    passkeyRpId: env.AUTH_PASSKEY_RP_ID ?? new URL(authOrigin).hostname,
+    passwordHash: env.AUTH_PASSWORD_HASH || undefined,
+    cookieSecret,
+    cookieSecure: authOrigin.startsWith('https'),
+    webDist: env.WEB_DIST || undefined,
     logLevel: env.LOG_LEVEL ?? 'info',
   });
 }

@@ -18,13 +18,7 @@ export async function start(config: Config = loadConfig()) {
     model: config.model,
   });
   writeModelsJson(registry.agentDir, config.litellmUrl);
-  const app = await buildServer({
-    registry,
-    db,
-    userId: config.userId,
-    logLevel: config.logLevel,
-    allowedOrigin: config.allowedOrigin,
-  });
+  const app = await buildServer({ registry, db, config });
   await app.listen({ port: config.port, host: config.host });
   const timer = setInterval(() => void registry.evictIdle(), 5 * 60_000);
   timer.unref();

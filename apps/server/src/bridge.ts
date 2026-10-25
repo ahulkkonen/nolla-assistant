@@ -11,6 +11,7 @@ import {
 } from '@pa/protocol';
 import { and, desc, eq } from 'drizzle-orm';
 import type { FastifyBaseLogger } from 'fastify';
+import { AttachmentNotFound, chatFiles, ingestAttachments } from './files.ts';
 import { GUARD_REASON } from './pi/guard.ts';
 import type { SessionRegistry } from './pi/registry.ts';
 
@@ -24,6 +25,7 @@ export type BridgeDeps = {
   registry: SessionRegistry;
   db: Db;
   userId: string;
+  dataDir: string;
   log: FastifyBaseLogger;
   /** chatId → sockets that have the chat open. Shared by all connections of one server. */
   rooms: Map<string, Set<Socket>>;
@@ -102,7 +104,7 @@ const argsPreview = (args: unknown) =>
     .slice(0, 200);
 
 export function attachBridge(socket: Socket, deps: BridgeDeps) {
-  const { registry, db, userId, log, rooms } = deps;
+  const { registry, db, userId, dataDir, log, rooms } = deps;
   const open = new Set<string>();
 
   const owned = (chatId: string) => {
@@ -172,7 +174,11 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
         const r = owned(msg.chatId);
         const session = await registry.get(msg.chatId);
         join(msg.chatId, session);
-        return send(socket, { type: 'chat.state', chat: summary(r), messages: history(session) });
+        return send(socket, {
+          type: 'chat.state',
+          chat: summary(r),
+          messages: history(session, chatFiles(db, userId, msg.chatId)),
+        });
       }
       case 'chat.archive':
         return update(msg.chatId, { archived: msg.archived });
@@ -183,13 +189,25 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
       case 'user.message': {
         const { chatId } = msg;
         owned(chatId);
+        const { images, text } = await ingestAttachments(
+          db,
+          { dataDir },
+          userId,
+          chatId,
+          msg.attachments,
+        );
         const session = await registry.get(chatId);
         join(chatId, session);
-        log.debug({ chatId, length: msg.text.length }, 'user.message');
-        session.prompt(msg.text, { streamingBehavior: 'steer' }).catch((err: unknown) => {
-          log.warn({ chatId, err }, 'prompt failed');
-          broadcast(rooms, chatId, errorMsg('prompt_failed', chatId));
-        });
+        log.debug(
+          { chatId, length: msg.text.length, attachments: msg.attachments.length },
+          'user.message',
+        );
+        session
+          .prompt(msg.text + text, { streamingBehavior: 'steer', images })
+          .catch((err: unknown) => {
+            log.warn({ chatId, err }, 'prompt failed');
+            broadcast(rooms, chatId, errorMsg('prompt_failed', chatId));
+          });
         return;
       }
       case 'user.stop':
@@ -213,7 +231,8 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
       return send(socket, errorMsg('bad_message'));
     }
     handle(parsed.data).catch((err: unknown) => {
-      if (err instanceof NotFound) return send(socket, errorMsg('not_found'));
+      if (err instanceof NotFound || err instanceof AttachmentNotFound)
+        return send(socket, errorMsg('not_found'));
       log.warn({ err, type: parsed.data.type }, 'client message failed');
       send(socket, errorMsg('failed'));
     });
@@ -350,7 +369,13 @@ function toMessage(id: string, m: AgentMessage, tools: ToolRow[]): Message {
   };
 }
 
-function history(session: AgentSession): Message[] {
+/**
+ * Rebuilds messages from the Pi branch. A user message gets the chat's files uploaded after the
+ * previous user message and up to its own timestamp; the appended `[Liite: ...]` blocks are cut
+ * from its text.
+ */
+// ponytail: timestamp window, not a stored message link; a file uploaded but sent with a later message shows on the earlier one. Add files.messageId if that happens.
+function history(session: AgentSession, files: ReturnType<typeof chatFiles>): Message[] {
   const entries = session.sessionManager.getBranch();
   const statuses = new Map<string, ToolStatus>();
   for (const e of entries) {
@@ -358,9 +383,20 @@ function history(session: AgentSession): Message[] {
       statuses.set(e.message.toolCallId, toolStatus(e.message.isError, textOf(e.message)));
     }
   }
-  return entries.flatMap((e) =>
-    e.type === 'message' && (e.message.role === 'user' || e.message.role === 'assistant')
-      ? [toMessage(e.id, e.message, toolRows(e.message, statuses))]
-      : [],
-  );
+  let prev = '';
+  return entries.flatMap((e) => {
+    if (e.type !== 'message' || (e.message.role !== 'user' && e.message.role !== 'assistant'))
+      return [];
+    const m = toMessage(e.id, e.message, toolRows(e.message, statuses));
+    if (m.role === 'user') {
+      m.attachments = files
+        .filter((f) => f.createdAt > prev && f.createdAt <= m.createdAt)
+        .map(({ createdAt: _, ...ref }) => ref);
+      prev = m.createdAt;
+      const doc = m.attachments.find((a) => a.kind === 'document');
+      const cut = doc ? m.text.indexOf(`\n\n[Liite: ${doc.name}]\n`) : -1;
+      if (cut >= 0) m.text = m.text.slice(0, cut);
+    }
+    return [m];
+  });
 }
