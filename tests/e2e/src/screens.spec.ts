@@ -207,7 +207,12 @@ const LONG = Array.from(
 for (const scheme of ['light', 'dark'] as const) {
   for (const vp of sizes) {
     test.describe(`${vp.width} ${scheme}`, () => {
-      test.use({ viewport: vp, colorScheme: scheme });
+      // The phone is a touch device: no hover, coarse pointer, touch-only states (brief 7.7).
+      test.use({
+        viewport: vp,
+        colorScheme: scheme,
+        ...(vp.width === 390 ? { hasTouch: true, isMobile: true } : {}),
+      });
 
       test('login', async ({ app, page }) => {
         await page.goto(app.url);
@@ -259,20 +264,30 @@ for (const scheme of ['light', 'dark'] as const) {
       test('settings-notifications', async ({ app, page }) => {
         await mockPush(page);
         await app.login(page);
+        await page.waitForFunction(() => navigator.serviceWorker.ready.then(() => true));
         await openSettings(page, 'Asetukset');
-        // To the top of the dialog body: "if needed" leaves a heading on the bottom edge.
+        // Its own state: notifications switched on.
+        const push = page.getByLabel('Ilmoita, kun vastaus tai hyväksyntä odottaa');
+        await push.click();
+        await expect(push).toBeChecked();
         await page
           .getByRole('heading', { name: 'Ilmoitukset' })
-          .evaluate((el) => el.scrollIntoView({ block: 'start' }));
+          .evaluate((el) => el.scrollIntoView({ block: 'center' }));
         await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
         await shot(page, 'settings-notifications', vp.width, scheme);
       });
 
       test('settings-integrations', async ({ app, page }) => {
+        // Its own state: Google connected (the connect call answers without a redirect).
+        await page.route('**/api/integrations/google/connect', (route) =>
+          route.fulfill({ json: { connected: true } }),
+        );
         await app.login(page);
         await openSettings(page, 'Asetukset');
         await expect(page.getByText('Ei yhdistetty')).toBeVisible();
-        // To the top of the dialog body: "if needed" leaves a heading on the bottom edge.
+        await page.getByRole('button', { name: 'Yhdistä' }).click();
+        await expect(page.getByText('Yhdistetty', { exact: true })).toBeVisible();
+        // To the top of the dialog body (as far as the content allows).
         await page
           .getByRole('heading', { name: 'Integraatiot' })
           .evaluate((el) => el.scrollIntoView({ block: 'start' }));
@@ -325,6 +340,17 @@ for (const scheme of ['light', 'dark'] as const) {
             await shot(page, 'vault-merge', vp.width, scheme);
           });
 
+          test('skeleton', async ({ app, page }) => {
+            // Holds the vault list, so its skeleton shows (after 300 ms of loading).
+            const g = await gate(page, 'vault.state');
+            g.close();
+            await app.login(page);
+            await openVault(page);
+            await expect(page.locator('[data-slot="skeleton"]').first()).toBeVisible();
+            await shot(page, 'skeleton', vp.width, scheme);
+            g.open();
+          });
+
           test('confirm-never-detect', async ({ app, page }) => {
             app.llm.push({ text: 'Selvä, Pekka Laaksonen.' });
             await app.login(page);
@@ -347,8 +373,17 @@ for (const scheme of ['light', 'dark'] as const) {
             await expect(page.locator('.md').last()).toHaveText(
               'Hei Matti Virtanen! Hetu 010190-123M on tallessa.',
             );
-            await page.locator('.md span[tabindex="0"]').first().focus();
-            await expect(page.getByRole('tooltip')).toHaveText('Malli näki: Pekka Laaksonen');
+            const masked = page.locator('.md span[tabindex="0"]').first();
+            if (vp.width === 390) {
+              // Touch: a tap opens the hint; there is no hover tooltip.
+              await masked.click();
+              await expect(
+                page.getByRole('dialog').getByText('Malli näki: Pekka Laaksonen'),
+              ).toBeVisible();
+            } else {
+              await masked.focus();
+              await expect(page.getByRole('tooltip')).toHaveText('Malli näki: Pekka Laaksonen');
+            }
             await shot(page, 'chat-annotated', vp.width, scheme);
             await page.keyboard.press('Escape');
             const menu = page.getByRole('button', { name: 'Valikko' });
@@ -385,6 +420,14 @@ for (const scheme of ['light', 'dark'] as const) {
           await page.getByRole('menuitem', { name: 'Poista' }).click();
           await expect(page.getByRole('alertdialog')).toBeVisible();
           await shot(page, 'confirm-delete', vp.width, scheme);
+        });
+
+        test('settings-top', async ({ app, page }) => {
+          await app.login(page);
+          await openSettings(page, 'Asetukset');
+          await expect(page.getByRole('heading', { name: 'Hallinta' })).toBeVisible();
+          await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+          await shot(page, 'settings-top', vp.width, scheme);
         });
 
         test('topics-inbox', async ({ app, page }) => {
@@ -631,6 +674,18 @@ for (const scheme of ['light', 'dark'] as const) {
             await expect(page.getByText('Lempiväri on sininen.')).toBeVisible();
             await blur(page);
             await shot(page, 'memory-chip', vp.width, scheme);
+          });
+
+          test('toast', async ({ app, page }) => {
+            await app.login(page);
+            await openSettings(page, 'Muisti');
+            const user = page.getByLabel('Käyttäjä (USER.md)');
+            await expect(user).toHaveValue(USER_MD);
+            await user.fill(`${USER_MD}\nAamuisin juon kahvia.`);
+            await page.getByRole('button', { name: 'Tallenna' }).first().click();
+            await expect(page.getByText('Tallennettu')).toBeVisible();
+            await blur(page);
+            await shot(page, 'toast', vp.width, scheme);
           });
 
           test('memory-overcap', async ({ app, page }) => {

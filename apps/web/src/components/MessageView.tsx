@@ -116,6 +116,8 @@ function Anno({ real, saw }: { real: string; saw: string }) {
   const span = (
     <span
       tabIndex={0}
+      // On touch it is the trigger of the hint: a button for assistive technology.
+      {...(touch ? { role: 'button' } : {})}
       aria-description={hint}
       className="rounded-xs bg-mask px-0.5 underline decoration-mask-line decoration-dotted decoration-1 underline-offset-3 [box-decoration-break:clone]"
     >
@@ -129,6 +131,7 @@ function Anno({ real, saw }: { real: string; saw: string }) {
       <Popover.Trigger asChild>{span}</Popover.Trigger>
       <Popover.Portal>
         <Popover.Content
+          aria-label={hint}
           sideOffset={4}
           collisionPadding={8}
           className="z-50 rounded-sm bg-primary px-2 py-1 text-micro text-primary-foreground"
@@ -293,6 +296,8 @@ type Props = {
   live?: boolean;
   /** While live, keep the empty action row (default); off when an approval card follows. */
   reserve?: boolean;
+  /** Rendered after the text and before the action row, at the 8 px in-turn gap. */
+  footer?: ReactNode;
   /** The latest turn of its role: its actions show without hover (brief 7.5). */
   latest?: boolean;
   /** Live children of a `subagent` call: that tool's row becomes the subagent row. */
@@ -354,6 +359,7 @@ export function MessageView({
   tools = [],
   live,
   reserve = true,
+  footer,
   latest,
   subagents = [],
   onEdit,
@@ -425,6 +431,8 @@ export function MessageView({
           // Before the first token nothing shows here: the tool row or the dots carry it.
           text && <MarkdownText text={text} annotations={annotations} live={!!live} />
         )}
+        {/* Turn extras (the memory chip) sit in the turn, above its action row. */}
+        {footer}
         {/* 32 px, reserved while streaming so nothing jumps. */}
         {((live && reserve) || actions) && (
           <div

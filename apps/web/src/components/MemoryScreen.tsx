@@ -18,8 +18,8 @@ type Drafts = Record<Target, string | null>;
 const CAPS = { user: 1500, memory: 2500 } as const;
 const FILE = { user: 'USER.md', memory: 'MEMORY.md' } as const;
 const LABEL = { user: 'Käyttäjä (USER.md)', memory: 'Muisti (MEMORY.md)' } as const;
-const ACTION = { add: 'Lisää', replace: 'Korvaa', remove: 'Poista' } as const;
-const TARGET = { user: 'käyttäjä', memory: 'muisti' } as const;
+/** "Lisäys: MEMORY.md": what the write does, and to which file. */
+const ACTION = { add: 'Lisäys', replace: 'Korvaus', remove: 'Poisto' } as const;
 const PLACEHOLDER = {
   user: 'Kerro itsestäsi: kuka olet, mitä toivot vastauksilta, pysyvät ohjeet.',
   memory: 'Agentti lisää tänne pysyviä tietoja. Voit muokata niitä itse.',
@@ -104,7 +104,7 @@ function PendingItem({ p }: { p: MemoryState['pending'][number] }) {
   return (
     <li className="flex flex-col gap-3 rounded-lg border bg-card p-4">
       <div className="flex flex-wrap items-center gap-x-1 text-meta text-muted-foreground">
-        {ACTION[p.action]} · {TARGET[p.target]} ·
+        {ACTION[p.action]}: <span className="font-mono">{FILE[p.target]}</span> ·
         <Button variant="link" className="text-meta" onClick={() => openChat(p.chatId)}>
           {chatTitle ?? UNTITLED}
         </Button>
@@ -338,14 +338,7 @@ export function MemoryScreen() {
           ) : (
             <Diff diff={c.diff} />
           )}
-          <div
-            className={cn(
-              'flex justify-end gap-2 max-md:grid',
-              // Phones: three equal buttons; while editing "Peruuta muokkaus" needs half a row,
-              // so Hyväksy takes the first row.
-              editing ? 'max-md:grid-cols-2' : 'max-md:grid-cols-3',
-            )}
-          >
+          <div className="flex justify-end gap-2 max-md:grid max-md:grid-cols-3">
             <Button variant="ghost" onClick={() => resolve(false)}>
               Hylkää
             </Button>
@@ -357,18 +350,14 @@ export function MemoryScreen() {
                   setDrafts({ user: null, memory: null });
                 }}
               >
-                Peruuta muokkaus
+                Peruuta
               </Button>
             ) : (
               <Button variant="outline" onClick={startEdit}>
                 Muokkaa
               </Button>
             )}
-            <Button
-              disabled={editing && overCap}
-              onClick={() => resolve(true)}
-              className={cn(editing && 'max-md:order-first max-md:col-span-2')}
-            >
+            <Button disabled={editing && overCap} onClick={() => resolve(true)}>
               Hyväksy
             </Button>
           </div>

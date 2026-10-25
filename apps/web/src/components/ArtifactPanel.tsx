@@ -293,7 +293,7 @@ export function ArtifactPanel() {
       <SheetContent
         side="right"
         showCloseButton={false}
-        className="gap-0 p-0 pt-[env(safe-area-inset-top)] data-[side=right]:w-full data-[side=right]:sm:max-w-none"
+        className="gap-0 p-0 pt-[env(safe-area-inset-top)] data-[side=right]:w-full data-[side=right]:border-l-0 data-[side=right]:sm:max-w-none"
       >
         <SheetTitle className="sr-only">{a.title}</SheetTitle>
         <SheetDescription className="sr-only">Artefakti</SheetDescription>

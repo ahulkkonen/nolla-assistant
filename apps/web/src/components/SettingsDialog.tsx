@@ -14,6 +14,7 @@ import {
   X,
 } from 'lucide-react';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -27,6 +28,7 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
 import { googleConnect, integrationsStatus, logout, passkeyRegister } from '../api.ts';
+import { useMobile } from '../media.ts';
 import { disablePush, enablePush, pushSubscription, pushSupported } from '../push.ts';
 import { type Theme, useStore } from '../store.ts';
 import { disconnect } from '../ws.ts';
@@ -174,16 +176,17 @@ function Integrations() {
   };
   return (
     <Row
-      label="Google Workspace"
-      helper={
-        <>
-          <span className="block">
-            {google === null ? 'Tarkistetaan…' : google.connected ? 'Yhdistetty' : 'Ei yhdistetty'}
-          </span>
-          Yhteyden voi katkaista Google-tilin asetuksista: Tietoturva → Yhteydet kolmansien
-          osapuolten sovelluksiin.
-        </>
+      label={
+        <span className="flex flex-wrap items-center gap-2">
+          Google Workspace
+          {google && (
+            <Badge variant={google.connected ? 'success' : 'secondary'}>
+              {google.connected ? 'Yhdistetty' : 'Ei yhdistetty'}
+            </Badge>
+          )}
+        </span>
       }
+      helper={google === null ? 'Tarkistetaan…' : 'Katkaise yhteys Google-tilin asetuksista.'}
     >
       {google && !google.connected && (
         <Button variant="outline" size="sm" disabled={busy} onClick={() => void connect()}>
@@ -192,6 +195,11 @@ function Integrations() {
       )}
     </Row>
   );
+}
+
+function Body({ mobile, children }: { mobile: boolean; children: ReactNode }) {
+  if (mobile) return <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>;
+  return <ScrollArea className="min-h-0 flex-1">{children}</ScrollArea>;
 }
 
 /** The whole settings (brief 7.5): theme, privacy, screens, voice, notifications, keys. */
@@ -207,6 +215,7 @@ export function SettingsDialog() {
   const sttAutoSend = useStore((s) => s.sttAutoSend);
   const sttLanguage = useStore((s) => s.sttLanguage);
   const setStt = useStore((s) => s.setStt);
+  const mobile = useMobile();
 
   const addPasskey = async () => {
     try {
@@ -259,7 +268,8 @@ export function SettingsDialog() {
         <DialogDescription className="sr-only">
           Teema, yksityisyys, näkymät, puhe, ilmoitukset, integraatiot ja avaimet
         </DialogDescription>
-        <ScrollArea className="min-h-0 flex-1">
+        {/* Phones scroll natively (no custom thumb); desktop gets the kit ScrollArea. */}
+        <Body mobile={mobile}>
           <div className="px-6 pb-6 max-md:px-4">
             <Section title="Teema">
               {/* Segmented control: track --muted, the selected item a raised card. */}
@@ -357,7 +367,7 @@ export function SettingsDialog() {
               </Row>
             </Section>
           </div>
-        </ScrollArea>
+        </Body>
       </DialogContent>
     </Dialog>
   );

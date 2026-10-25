@@ -29,7 +29,10 @@ export function Page({
         {/* Phones: the top bar carries the title; only an action keeps this row. */}
         <div className={cn('flex items-center gap-4', !action && 'max-md:hidden')}>
           <h1 className="min-w-0 flex-1 text-title max-md:hidden">{title}</h1>
-          {action && <div className="ml-auto">{action}</div>}
+          {/* Phones: the action is a full-width button (the title is in the top bar). */}
+          {action && (
+            <div className="ml-auto max-md:ml-0 max-md:w-full max-md:*:w-full">{action}</div>
+          )}
         </div>
         <div className="flex flex-col gap-8">{children}</div>
       </div>
@@ -57,7 +60,7 @@ export function EmptyState({
         </span>
       )}
       <h2 className="text-heading">{title}</h2>
-      {line && <p className="text-meta text-muted-foreground">{line}</p>}
+      {line && <p className="text-meta text-balance text-muted-foreground">{line}</p>}
       {children && <div className="mt-2">{children}</div>}
     </div>
   );

@@ -110,21 +110,29 @@ function PendingLane({ pending }: { pending: VaultPending[] }) {
         {pending.map((p) => {
           const { confirm, more } = pendingActions(p);
           return (
+            // Phones: "Vahvista" goes under the text so the text keeps its width.
             <li
               key={p.id}
-              className="flex items-center gap-3 rounded-lg border bg-card py-3 pr-2 pl-4"
+              className="grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-2 rounded-lg border bg-card py-3 pr-2 pl-4 md:grid-cols-[1fr_auto_auto]"
             >
-              <div className="min-w-0 flex-1">
+              <div className="col-start-1 row-start-1 min-w-0">
                 <div className="truncate font-medium">{p.text}</div>
                 <div className="text-meta text-muted-foreground">
                   {kind(p.kind)} · suojattu kunnes vahvistat · {Math.round(p.score * 100)} %
                 </div>
               </div>
-              <Button variant="outline" size="sm" onClick={confirm}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={confirm}
+                className="col-start-1 row-start-2 justify-self-start md:col-start-2 md:row-start-1"
+              >
                 <Check size={16} />
                 Vahvista
               </Button>
-              <ActionMenu label={`Toiminnot: ${p.text}`} actions={more} small />
+              <div className="col-start-2 row-start-1 md:col-start-3">
+                <ActionMenu label={`Toiminnot: ${p.text}`} actions={more} small />
+              </div>
             </li>
           );
         })}
@@ -316,16 +324,18 @@ export function VaultScreen() {
               </ul>
             </section>
           )}
-          <ul className="flex flex-col gap-1 text-meta text-muted-foreground text-pretty">
-            <li>
-              Tunnistus ei ole täydellinen. Tunnistamatta jääneet arvot näkyvät korostamattomina.
-            </li>
-            <li>Lempinimet tunnistetaan vain, jos lisäät ne käsin aliaksiksi.</li>
-            <li>
-              Pelkkä etunimi yhdistetään keskustelun viimeisimpään samannimiseen henkilöön.
-              Epäselvät tapaukset merkitään.
-            </li>
-          </ul>
+          {(entities.length > 0 || vault.pending.length > 0) && (
+            <ul className="flex flex-col gap-1 text-meta text-muted-foreground text-pretty">
+              <li>
+                Tunnistus ei ole täydellinen. Tunnistamatta jääneet arvot näkyvät korostamattomina.
+              </li>
+              <li>Lempinimet tunnistetaan vain, jos lisäät ne käsin aliaksiksi.</li>
+              <li>
+                Pelkkä etunimi yhdistetään keskustelun viimeisimpään samannimiseen henkilöön.
+                Epäselvät tapaukset merkitään.
+              </li>
+            </ul>
+          )}
         </>
       )}
       <ConfirmDialog

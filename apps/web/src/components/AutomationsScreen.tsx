@@ -141,13 +141,21 @@ export function AutomationsScreen() {
                 className="flex items-center gap-3 rounded-lg border bg-card py-3 pr-2 pl-4"
               >
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <span className="truncate font-mono font-medium">{a.id}</span>
+                    <Badge variant={a.enabled ? 'success' : 'secondary'}>
+                      {a.enabled ? 'käytössä' : 'ei käytössä'}
+                    </Badge>
                     {a.lastStatus && <Result a={a} />}
                   </div>
-                  <div className="text-meta text-muted-foreground">
-                    <Cron cron={a.cron} /> · {agentName(a.agentId)} · {deliver(a)} ·{' '}
-                    {a.enabled ? 'käytössä' : 'ei käytössä'} · {ago(a.lastRunAt)}
+                  {/* The separator ends a segment: a wrapped line never starts with "·". */}
+                  <div className="flex flex-wrap gap-x-1 text-meta text-muted-foreground">
+                    <span className="whitespace-nowrap">
+                      <Cron cron={a.cron} /> ·
+                    </span>
+                    <span className="whitespace-nowrap">{agentName(a.agentId)} ·</span>
+                    <span className="whitespace-nowrap">{deliver(a)} ·</span>
+                    <span className="whitespace-nowrap">{ago(a.lastRunAt)}</span>
                   </div>
                 </div>
                 <ActionMenu

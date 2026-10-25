@@ -345,7 +345,7 @@ Source: safe-area, theme-color pair, status-bar style, `dvh`, overscroll, long-p
 
 ## 8. Status (2026-10-25)
 
-Slices 0 to 3 passed the UI review. Slice 4 adds the axe rules from 7.8, the PWA icons, the dead-code removal and this section. The full-set review on a fresh reviewer agent is next.
+Slices 0 to 4 passed the UI review. A fresh reviewer then scored all 196 screenshots. The round after that review fixed its findings and added 12 screenshots (`toast`, `settings-top` and `skeleton`). The `screens` project now has 192 tests and 208 screenshots.
 
 ### Component map as built
 
@@ -389,7 +389,7 @@ The shadcn CLI 4.22.0 generated the kit. It is not a dependency. We removed `@ta
 
 ### Size
 
-The shell precache is 18 entries and 1373.84 KiB, under the 1.5 MB limit. The latin `wght` font files are 191 KB of it. The other font subsets load when a page needs them.
+The shell precache is 18 entries and 1376.42 KiB, under the 1.5 MB limit. The latin `wght` font files are 191 KB of it. The other font subsets load when a page needs them.
 
 ### Deviations from the brief
 
@@ -399,13 +399,17 @@ The shell precache is 18 entries and 1373.84 KiB, under the 1.5 MB limit. The la
 4. The `[` key toggles the sidebar. An e2e flow uses it, and the shortcuts dialog lists it.
 5. Mermaid artifacts use the light theme in both schemes, because the artifact keeps its own white page.
 6. The axe scan ignores the `region` rule on the Radix popper wrapper only. Radix portals open menus and tooltips to `<body>`, outside every landmark.
-7. `AXE_STRICT=1` stays an opt-in switch. We recommend that it becomes the default for `pnpm test`.
+7. The tool row of an expired approval shows `TimerOff` in the muted colour. The brief names only the waiting `Clock`.
 8. Vault row selection uses a native checkbox. The kit has no `Checkbox`.
 9. The settings dialog has a fixed height of 85dvh. The `ScrollArea` needs a fixed height to scroll.
 10. When the side panel holds the sidebar at the rail (1024–1279 px), "Avaa sivupalkki" closes the panel. The thread then keeps its 480 px.
 11. The composer does not scroll the thread on focus when the keyboard opens. The thread follows the bottom only while the user has not scrolled up.
 
 ### Test infrastructure
+
+The 390 px screenshots emulate a phone with `hasTouch` and `isMobile`. They show the touch states: the actions of the latest turns without hover, the touch recording hint, and a tap that opens the masked-text hint. No hover state stays after a tap. The 1024 and 1440 px screenshots emulate a mouse.
+
+The axe scan runs on every screenshot. A violation fails the test. The environment variable `AXE_STRICT=0` turns the failure into a printed warning.
 
 The fake LLM has an optional `match` on a scripted turn. A call takes the first turn whose `match` fits its last user message, else the first turn without `match`. The `holdAfter` helper in `screens.spec.ts` now holds once. Before, a later frame after the release started a new hold, so `subagents-row` failed under load.
 

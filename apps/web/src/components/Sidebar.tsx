@@ -4,6 +4,7 @@ import {
   ArchiveRestore,
   ChevronRight,
   Keyboard,
+  Lightbulb,
   Lock,
   PanelLeft,
   Pencil,
@@ -15,6 +16,7 @@ import {
   X,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -40,7 +42,9 @@ function loadCollapsed(): string[] {
 }
 
 const mac = /Mac|iPhone|iPad/.test(globalThis.navigator?.platform ?? '');
-export const MOD = mac ? '⌘' : 'Ctrl+';
+/** A shortcut as the platform writes it: "⌘⇧O" on a Mac, "Ctrl+Shift+O" elsewhere. */
+export const keys = (key: string, shift = false) =>
+  mac ? `⌘${shift ? '⇧' : ''}${key}` : `Ctrl+${shift ? 'Shift+' : ''}${key}`;
 
 /** Group label (brief 7.5): 12/16 500 muted, padding 16 12 4. */
 const groupLabel = 'mx-2 flex items-center px-3 pt-4 pb-1 text-micro text-muted-foreground';
@@ -221,6 +225,7 @@ export function Sidebar({
   const chatScreen = useStore((s) => s.screen === 'chat');
   const topics = useStore((s) => s.topics);
   const proposals = useStore((s) => s.proposals.length);
+  const topicsScreen = useStore((s) => s.screen === 'topics');
   const loaded = useStore((s) => s.chatsLoaded);
   const [query, setQuery] = useState('');
   const [collapsed, setCollapsed] = useState(loadCollapsed);
@@ -397,7 +402,7 @@ export function Sidebar({
             aria-hidden="true"
             className="pointer-events-none absolute inset-y-0 right-2 my-auto flex h-5 items-center rounded-xs border border-border px-1.5 font-sans text-micro text-muted-foreground"
           >
-            {MOD}K
+            {keys('K')}
           </kbd>
         )}
       </div>
@@ -453,24 +458,34 @@ export function Sidebar({
             </li>
           );
         })}
-        {loose.length > 0 && (pinned.length > 0 || groups.length > 0) && (
-          <li aria-hidden="true" className="h-3" />
+        {/* The label is its own item: rows stay direct items (`nav li` finds one row). */}
+        {loose.length > 0 && (
+          <li>
+            <h2 className={groupLabel}>Viimeisimmät</h2>
+          </li>
         )}
         {loose.map(row)}
         {proposals > 0 && (
-          <li className="px-2 pt-2">
+          <li className="mx-2 mt-2">
             <button
               type="button"
+              aria-current={topicsScreen ? 'page' : undefined}
               onClick={() => {
                 useStore.getState().setScreen('topics');
                 onNavigate?.();
               }}
               className={cn(
-                'flex w-full items-center rounded-md px-3 text-ui text-muted-foreground hover:bg-sidebar-accent hover:text-foreground',
+                'flex w-full items-center gap-2 rounded-md px-3 text-ui hover:bg-sidebar-accent',
                 rowH,
+                topicsScreen && 'bg-sidebar-accent font-medium',
               )}
             >
-              Aihe-ehdotuksia: {proposals}
+              <Lightbulb size={16} className="shrink-0 text-muted-foreground" />
+              <span className="min-w-0 flex-1 truncate text-left">Aihe-ehdotukset</span>
+              <Badge className="tabular-nums">
+                {proposals}
+                <span className="sr-only"> uutta</span>
+              </Badge>
             </button>
           </li>
         )}

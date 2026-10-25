@@ -1,4 +1,4 @@
-import { Ban, Check, ChevronRight, Clock, Loader2, X } from 'lucide-react';
+import { Ban, Check, ChevronRight, Clock, Loader2, TimerOff, X } from 'lucide-react';
 import { Collapsible } from 'radix-ui';
 import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
@@ -18,6 +18,8 @@ const ICON = {
   error: { Icon: X, className: 'text-destructive' },
   denied: { Icon: Ban, className: 'text-destructive' },
   waiting: { Icon: Clock, className: 'text-warning' },
+  // Decided by time, not by anyone: quiet, unlike the waiting clock.
+  expired: { Icon: TimerOff, className: 'text-muted-foreground' },
 } as const;
 
 const toolTrigger =
@@ -68,7 +70,13 @@ export function ToolRow({ tool }: { tool: ToolView }) {
     return a ? (a.expired ? 'expired' : a.denied ? 'rejected' : 'waiting') : null;
   });
   const { Icon, className } =
-    gate === 'rejected' ? ICON.error : gate ? ICON.waiting : ICON[tool.status];
+    gate === 'rejected'
+      ? ICON.error
+      : gate === 'expired'
+        ? ICON.expired
+        : gate
+          ? ICON.waiting
+          : ICON[tool.status];
   const word =
     gate === 'waiting'
       ? 'odottaa hyväksyntää'
@@ -78,7 +86,13 @@ export function ToolRow({ tool }: { tool: ToolView }) {
           ? 'hylätty'
           : STATUS_WORD[tool.status];
   // Live output while running; the final summary replaces it.
-  const detail = [tool.argsPreview, tool.summary || tool.output].filter(Boolean);
+  const result = tool.summary || tool.output;
+  const part = (label: string, text: string) => (
+    <div className="flex flex-col gap-1 border-t border-border pt-2 first:border-t-0 first:pt-0">
+      <div className="font-sans text-micro text-muted-foreground">{label}</div>
+      <div>{text}</div>
+    </div>
+  );
   return (
     <CollapsibleRow
       icon={<Icon size={16} className={cn('shrink-0', className)} />}
@@ -94,9 +108,12 @@ export function ToolRow({ tool }: { tool: ToolView }) {
         aria-label={`${tool.name}: tuloste`}
         // A scrollable region must be focusable (brief 7.8).
         tabIndex={0}
-        className="max-h-80 space-y-2 overflow-auto rounded-md bg-muted p-3 font-mono text-[13px] leading-5 break-words whitespace-pre-wrap text-foreground"
+        className="flex max-h-80 flex-col gap-2 overflow-auto rounded-md bg-muted p-3 font-mono text-[13px] leading-5 break-words whitespace-pre-wrap text-foreground"
       >
-        {detail.length ? detail.map((d) => <div key={d}>{d}</div>) : <div>—</div>}
+        {/* Arguments and result, each labelled (brief 7.5 tool output). */}
+        {tool.argsPreview && part('Syöte', tool.argsPreview)}
+        {result && part('Tulos', result)}
+        {!tool.argsPreview && !result && <div>—</div>}
       </div>
     </CollapsibleRow>
   );

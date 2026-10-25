@@ -59,7 +59,7 @@ export function AgentPicker() {
                 {a.name}
                 {/* Profiles have no description field; the model and subagents describe it. */}
                 <span className="truncate text-meta text-muted-foreground">
-                  {a.model} · aliagentit {a.subagents ? 'käytössä' : 'ei käytössä'}
+                  {a.model} · {a.subagents ? 'aliagentit käytössä' : 'ei aliagentteja'}
                 </span>
               </span>
             </DropdownMenuRadioItem>

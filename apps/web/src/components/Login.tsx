@@ -45,6 +45,14 @@ export function Login() {
   return (
     <main className="flex h-dvh justify-center px-6 pt-[20dvh] md:items-center md:pt-0">
       <div className="w-full max-w-sm md:max-w-[400px] md:rounded-xl md:border md:border-border md:bg-card md:p-8 md:shadow-sm">
+        {/* The PWA mark: a cream ring on ink (public/icon-192.png). */}
+        <img
+          src="/icon-192.png"
+          alt=""
+          width={40}
+          height={40}
+          className="mb-4 size-10 rounded-lg"
+        />
         <h1 className="mb-6 text-title">Avustaja</h1>
         <form onSubmit={onSubmit} className="flex flex-col gap-2">
           <label htmlFor="password" className="text-ui">

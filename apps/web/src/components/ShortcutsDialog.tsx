@@ -6,18 +6,18 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { useStore } from '../store.ts';
-import { MOD } from './Sidebar.tsx';
+import { keys } from './Sidebar.tsx';
 
 /** Exactly the shipped keys (shortcuts.ts, Composer, MicButton); brief 7.8. */
 const KEYS: [string, string][] = [
   ['Enter', 'Lähetä viesti'],
-  [`${MOD}Enter`, 'Lähetä viesti'],
+  [keys('Enter'), 'Lähetä viesti'],
   ['Shift+Enter', 'Uusi rivi'],
   ['Esc', 'Pysäytä vastaus, peru äänitys tai sulje ikkuna'],
   ['Välilyönti pohjassa', 'Sanele, kun mikrofoni on valittuna'],
   ['↑', 'Muokkaa viimeisintä viestiä, kun viestikenttä on tyhjä'],
-  [`${MOD}K`, 'Komennot'],
-  [`${MOD}Shift+O`, 'Uusi keskustelu'],
+  [keys('K'), 'Komennot'],
+  [keys('O', true), 'Uusi keskustelu'],
   ['Shift+Esc', 'Siirry viestikenttään'],
   ['[', 'Avaa tai sulje sivupalkki'],
 ];

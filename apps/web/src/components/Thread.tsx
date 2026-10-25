@@ -90,6 +90,9 @@ export function Thread() {
   }, [messages, scrollTo]);
 
   const lastUser = messages.findLastIndex((m) => m.role === 'user');
+  // The memory chip belongs to the turn that wrote memory: the live one, else the last reply.
+  const chip = memoryChip && <MemoryChipRow chip={memoryChip} />;
+  const chipAt = stream || running ? -1 : messages.findLastIndex((m) => m.role === 'assistant');
   const lastAssistant =
     stream || running ? -1 : messages.findLastIndex((m) => m.role === 'assistant');
   // A tool-only assistant message and the reply after it are one turn (8 px in-turn gap).
@@ -117,6 +120,7 @@ export function Thread() {
           live
           // A pending approval card follows in the same turn; no reserved row in between.
           reserve={!approvals.length}
+          footer={chip}
         />
       ) : (
         // Before the first token: three 6 px dots; the action row's 32 px is kept.
@@ -185,6 +189,7 @@ export function Thread() {
                         attachments={m.attachments}
                         tools={m.tools}
                         latest={i === lastUser || i === lastAssistant}
+                        {...(i === chipAt ? { footer: chip } : {})}
                         {...(m.role === 'user'
                           ? { onEdit: (text: string) => void sendUserMessage(text) }
                           : {})}
@@ -199,7 +204,8 @@ export function Thread() {
               </article>
             );
           })}
-          {memoryChip && <MemoryChipRow chip={memoryChip} />}
+          {/* No reply to hold it (the turn failed before any text): on its own. */}
+          {!(stream || running) && chipAt < 0 && chip}
           {!stream && !running && related.length > 0 && (
             <nav aria-label="Liittyvät keskustelut" className="flex flex-col gap-2">
               <h2 className="text-micro text-muted-foreground">Liittyvät keskustelut</h2>

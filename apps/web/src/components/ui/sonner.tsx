@@ -42,6 +42,10 @@ const Toaster = ({ ...props }: ToasterProps) => {
           '--normal-border': 'var(--border)',
           '--border-radius': 'var(--radius)',
           '--width': '360px',
+          // Errors' close button on the right corner, not over the icon.
+          '--toast-close-button-start': 'unset',
+          '--toast-close-button-end': '0',
+          '--toast-close-button-transform': 'translate(35%, -35%)',
         } as React.CSSProperties
       }
       toastOptions={{

@@ -5,6 +5,7 @@ import {
   FolderOpen,
   MessageSquare,
   Palette,
+  Repeat,
   Search,
   Settings,
   SquarePen,
@@ -15,7 +16,7 @@ import { useMobile } from '../media.ts';
 import { firstUserLine, useStore } from '../store.ts';
 import { openChat } from '../ws.ts';
 import { SCREENS, THEMES } from './SettingsDialog.tsx';
-import { MOD, UNTITLED } from './Sidebar.tsx';
+import { keys, UNTITLED } from './Sidebar.tsx';
 
 type Page = 'root' | 'agents' | 'themes';
 
@@ -177,7 +178,7 @@ export function CommandPalette() {
                 <Command.Group heading="Komennot" className={group}>
                   <Item
                     icon={<SquarePen size={16} />}
-                    shortcut={`${MOD}Shift+O`}
+                    shortcut={keys('O', true)}
                     onSelect={run(() => useStore.getState().setActive(null))}
                   >
                     Uusi keskustelu
@@ -193,7 +194,7 @@ export function CommandPalette() {
                   >
                     Haku
                   </Item>
-                  <Item icon={<Bot size={16} />} onSelect={sub('agents')} keywords={['agentti']}>
+                  <Item icon={<Repeat size={16} />} onSelect={sub('agents')} keywords={['agentti']}>
                     <span className="flex items-center justify-between gap-2">
                       Vaihda agenttia <ChevronRight size={16} className="text-muted-foreground" />
                     </span>
