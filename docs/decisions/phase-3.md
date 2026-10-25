@@ -31,6 +31,32 @@ All bodies are JSON. `user_id` is required on every call (invariant 6). `session
 The user's own name: the vault holds a `self` entity whose surrogate is the configured label
 (default `[sinä]`); its forms are never restored as a third-party name.
 
+### pseudo-svc security notes
+
+- Surrogate seed: `HMAC-SHA256(secret, user_id + "\0" + canonical [+ generation, attempt])`. The secret
+  is 32 random bytes made when the vault is created and kept in the `meta` table inside the encrypted
+  vault. Without the vault, nobody can recompute which real value a surrogate stands for, and nobody
+  can rebuild the mapping either: losing `vault.db` loses every mapping. `vault.db` is therefore backed
+  up hourly by restic (see `docs/deploy.md`, "Backups").
+- Phone surrogates stay in `048`. Traficom regulation 32 V/2025 M appendix 1 lists `047` and `048` as
+  mobile area codes held in Traficom's number reserve, not assigned to any operator (0003 question 8).
+  The regulation has no range for fiction. `010` is in use for nationwide corporate numbers, and
+  `099 999 xxxx` falls in the Uusimaa area code `09`, so both could reach real subscribers. Re-check
+  `048` when Traficom publishes a new regulation 32.
+- Placeholders (`[henkilö 3]`) take N from a per-user counter in the vault; numbers are never reused,
+  also after merges. Surrogate forms are unique per user; when a name pool has no free name, the pool
+  widens (no gradation match, then no harmony match, then any class) and finally falls back to
+  placeholder mode.
+- Limits: `text` ≤ 200,000 characters (422); `json` ≤ 32 levels and ≤ 20,000 values, each string
+  ≤ 200,000 characters (413); `messages`, seeded `entities`, `from_ids`, `span_ids` ≤ 500 (422).
+  Validation errors return only `loc` and `msg`, never the input.
+- `/healthz` returns 503 with `missing` when a layer named in `PSEUDO_REQUIRE_LAYERS` failed to load
+  (the image requires `omorfi,voikko,ner`).
+- Code surrogates (hetu 900–999, IBAN `9…`, phone `048`) are never masked again. A name or address
+  made only of surrogate forms that this session already sent is not masked again either. The
+  same name forms in another session are masked, because a real person can have the same name. Known gap:
+  in one session, a new real name identical to a surrogate already sent there is not masked.
+
 ## Pi extension `pi-ext-pseudo` (plan §6 table)
 
 | Hook | Action |

@@ -54,7 +54,7 @@ Phase 2 ships only `pa-server`. Later phases add services to `infra/compose.yaml
 
 ## Backups
 
-The `backup` service replicates `app.db` and `vault.db` to the S3 bucket with Litestream and snapshots `/data` with restic every night at 03:00 Europe/Helsinki. The service mounts `/data` read-write because Litestream opens the live database and keeps its state next to it.
+The `backup` service replicates `app.db` to the S3 bucket with Litestream and snapshots `/data` with restic every night at 03:00 Europe/Helsinki. `vault.db` is covered hourly by restic (tag `vault`, with its WAL file), because Litestream cannot read SQLCipher files. At most one hour of new mappings can be lost. A lost mapping cannot be rebuilt: surrogates are seeded with a random secret that exists only inside the vault. The service mounts `/data` read-write because Litestream opens the live database and keeps its state next to it.
 
 ### Set up
 
@@ -87,7 +87,7 @@ The command lists LTX files with a recent `created` time. Litestream 0.5 has no 
    docker compose run --rm --no-deps backup /scripts/restore.sh
    ```
 
-   The script restores both databases with Litestream, then restores sessions, files and Pi state from the latest restic snapshot. It prints each restored file.
+   The script restores `app.db` with Litestream, then sessions, files, Pi state and `vault.db` from restic (the vault from the newest snapshot with tag `vault`). It prints each restored file.
 3. Start the stack: `docker compose up -d`.
 
 ### Restore drill
