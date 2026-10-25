@@ -1,0 +1,18 @@
+{
+  "name": "@pa/contract-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "1.3.0"
+  },
+  "devDependencies": {
+    "@pa/fake-llm": "workspace:*",
+    "@types/node": "26.6.5",
+    "typescript": "5.9.3",
+    "vitest": "4.1.12"
+  }
+}
