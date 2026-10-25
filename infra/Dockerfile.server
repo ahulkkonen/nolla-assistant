@@ -51,6 +51,7 @@ COPY --from=prod --chown=app:app /app/packages/db /app/packages/db
 COPY --from=prod --chown=app:app /app/packages/pi-ext-pseudo /app/packages/pi-ext-pseudo
 COPY --from=prod --chown=app:app /app/packages/pi-ext-topics /app/packages/pi-ext-topics
 COPY --chown=app:app infra/models.json /app/infra/models.json
+COPY --chown=app:app agents /app/agents
 COPY --from=web --chown=app:app /app/apps/web/dist /app/apps/web/dist
 COPY --from=models /app/models /app/models
 ENV NODE_ENV=production WEB_DIST=/app/apps/web/dist DATA_DIR=/data HOST=0.0.0.0 PORT=3000 MODELS_DIR=/app/models

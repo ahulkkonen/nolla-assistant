@@ -183,6 +183,12 @@ export const ServerMessage = z.discriminatedUnion('type', [
     authenticated: z.boolean(),
     userId: z.string().optional(),
   }),
+  z.object({
+    type: z.literal('agents.state'),
+    agents: z.array(
+      z.object({ id: id64, name: z.string(), model: z.string(), subagents: z.boolean() }),
+    ),
+  }),
   z.object({ type: z.literal('chat.state'), chat: ChatSummary, messages: z.array(Message) }),
   z.object({ type: z.literal('chat.list'), chats: z.array(ChatSummary) }),
   z.object({ type: z.literal('chat.created'), chat: ChatSummary }),

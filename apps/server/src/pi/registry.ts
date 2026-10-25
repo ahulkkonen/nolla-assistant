@@ -11,12 +11,19 @@ import {
 } from '@earendil-works/pi-coding-agent';
 import { type PseudoClient, type PseudoLog, pseudoExtension } from '@pa/pi-ext-pseudo';
 import { topicsExtension } from '@pa/pi-ext-topics';
+import type { Agents } from '../agents.ts';
+import { type Ask, approvalGate } from '../approval.ts';
 import { pathGuard } from './guard.ts';
 
 type RegistryOptions = {
   dataDir: string;
   userId: string;
-  model: string;
+  /** Current agent profiles; read at every session build. */
+  agents: () => Agents;
+  /** The chat's `agentId` (DB row) for `get`. */
+  getAgentId: (chatId: string) => string | undefined;
+  approval: { ask: Ask; timeoutMs?: number };
+  skillsDir: string;
   extensionFactories?: InlineExtension[];
   /** Called at every `agent_settled` through `pi-ext-topics`; `sessionId` is the chat id. */
   onSettled?: Parameters<typeof topicsExtension>[0]['onSettled'];
@@ -41,15 +48,15 @@ export class SessionRegistry {
     for (const d of [this.agentDir, this.sessionDir, this.cwd]) mkdirSync(d, { recursive: true });
   }
 
-  create(chatId: string): Promise<AgentSession> {
-    return this.track(chatId, () =>
+  create(chatId: string, agentId: string): Promise<AgentSession> {
+    return this.track(chatId, agentId, () =>
       SessionManager.create(this.cwd, this.sessionDir, { id: chatId }),
     );
   }
 
   /** Opens the chat's session. Pi writes the JSONL only after the first message, so a missing file means an empty chat. */
   get(chatId: string): Promise<AgentSession> {
-    return this.track(chatId, () => {
+    return this.track(chatId, this.opts.getAgentId(chatId) ?? 'assistant', () => {
       const path = SessionManager.findById(this.cwd, chatId, this.sessionDir);
       return path
         ? SessionManager.open(path, this.sessionDir)
@@ -101,13 +108,17 @@ export class SessionRegistry {
     return this.runtime;
   }
 
-  private track(chatId: string, manager: () => SessionManager): Promise<AgentSession> {
+  private track(
+    chatId: string,
+    agentId: string,
+    manager: () => SessionManager,
+  ): Promise<AgentSession> {
     const existing = this.entries.get(chatId);
     if (existing) {
       existing.lastUsed = Date.now();
       return existing.session;
     }
-    const session = this.build(chatId, manager);
+    const session = this.build(chatId, agentId, manager);
     this.entries.set(chatId, { session, lastUsed: Date.now() });
     session.catch(() => {
       if (this.entries.get(chatId)?.session === session) this.entries.delete(chatId);
@@ -115,18 +126,36 @@ export class SessionRegistry {
     return session;
   }
 
-  private async build(chatId: string, manager: () => SessionManager): Promise<AgentSession> {
+  private async build(
+    chatId: string,
+    agentId: string,
+    manager: () => SessionManager,
+  ): Promise<AgentSession> {
+    const profile = this.opts.agents().get(agentId);
+    if (!profile) throw new Error(`Agent profile ${agentId} not found`);
     const sessionManager = manager();
     const { pseudo } = this.opts;
     const modelRuntime = await this.modelRuntime();
-    const model = modelRuntime.getModel('zdr', this.opts.model);
-    if (!model) throw new Error(`Model zdr/${this.opts.model} not found in models.json`);
+    const model = modelRuntime.getModel('zdr', profile.model);
+    if (!model)
+      throw new Error(`Model ${profile.model} of agent ${agentId} not found in models.json`);
+    const skills = new Set(profile.skills);
     const resourceLoader = new DefaultResourceLoader({
       cwd: this.cwd,
       agentDir: this.agentDir,
+      systemPrompt: profile.prompt,
       noContextFiles: true,
       noExtensions: true,
-      noSkills: true,
+      noSkills: skills.size === 0,
+      ...(skills.size > 0
+        ? {
+            additionalSkillPaths: [this.opts.skillsDir],
+            skillsOverride: (base) => ({
+              ...base,
+              skills: base.skills.filter((s) => skills.has(s.name)),
+            }),
+          }
+        : {}),
       noPromptTemplates: true,
       noThemes: true,
       extensionFactories: [
@@ -140,6 +169,8 @@ export class SessionRegistry {
               }),
             ]
           : []),
+        // After pseudo (the user approves real values), before the guard.
+        approvalGate({ chatId, policy: profile.approval, ...this.opts.approval }),
         pathGuard(this.cwd),
         ...(this.opts.onSettled ? [topicsExtension({ onSettled: this.opts.onSettled })] : []),
         ...(this.opts.extensionFactories ?? []),
@@ -153,7 +184,7 @@ export class SessionRegistry {
       model,
       sessionManager,
       resourceLoader,
-      tools: ['read', 'write', 'edit'],
+      tools: profile.tools.allow,
     });
     await session.bindExtensions({});
     return session;

@@ -151,7 +151,11 @@ async function connect(port: number) {
   const inbox: ServerMessage[] = [];
   const waiters: (() => void)[] = [];
   ws.on('message', (d) => {
-    inbox.push(JSON.parse(String(d)));
+    const m: ServerMessage = JSON.parse(String(d));
+    // The default agent asks before `write`; this test approves every request.
+    if (m.type === 'approval.request')
+      ws.send(JSON.stringify({ type: 'approval.respond', requestId: m.requestId, approve: true }));
+    inbox.push(m);
     for (const w of waiters.splice(0)) w();
   });
   cleanups.push(() => ws.close());

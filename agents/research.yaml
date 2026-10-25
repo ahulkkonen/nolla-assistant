@@ -1,0 +1,10 @@
+id: research
+name: Tutkija
+model: zdr/strong
+prompt: prompts/research.md
+tools:
+  allow: [read, write, edit]
+approval:
+  always: [write, edit]
+  never: [read]
+subagents: true

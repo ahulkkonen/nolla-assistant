@@ -30,7 +30,7 @@ export async function buildServer({
   config,
   logStream,
   ...bridge
-}: Pick<BridgeDeps, 'registry' | 'db' | 'pseudo' | 'rooms'> & {
+}: Pick<BridgeDeps, 'registry' | 'db' | 'pseudo' | 'rooms' | 'agents' | 'approvals'> & {
   config: Config;
   /** Test hook: receives the pino output instead of stdout. */
   logStream?: { write(line: string): void };

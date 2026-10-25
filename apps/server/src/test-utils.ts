@@ -102,6 +102,16 @@ export async function connect(port: number, origin?: string, cookie?: string) {
   return { ws, inbox, next, idle, send };
 }
 
+/** Boots and returns a socket on a new chat. */
+export async function bootChat(turns: FakeTurn[], env: Record<string, string> = {}) {
+  const b = await boot(turns, env);
+  const srv = await b.run();
+  const c = await connect(b.config.port);
+  c.send({ type: 'chat.create' });
+  const { chat } = await c.next('chat.created');
+  return { ...b, srv, c, chat };
+}
+
 /** Boots with PSEUDO_URL pointing at a fake sidecar; returns a socket on a new chat. */
 export async function bootPseudo(
   dictionary: Record<string, string>,
@@ -110,10 +120,5 @@ export async function bootPseudo(
 ) {
   const sc = await startFakeSidecar(dictionary, opts);
   cleanups.push(sc.close);
-  const b = await boot(turns, { PSEUDO_URL: sc.url });
-  const srv = await b.run();
-  const c = await connect(b.config.port);
-  c.send({ type: 'chat.create' });
-  const { chat } = await c.next('chat.created');
-  return { ...b, sc, srv, c, chat };
+  return { ...(await bootChat(turns, { PSEUDO_URL: sc.url })), sc };
 }

@@ -2,8 +2,10 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openDb, users } from '@pa/db';
 import { PSEUDO_DOWN, PseudoClient, type PseudoLog } from '@pa/pi-ext-pseudo';
+import { loadAgents, watchAgents } from './agents.ts';
+import { approvals as approvalStore } from './approval.ts';
 import { purgeExpiredSessions } from './auth/session.ts';
-import { type BridgeDeps, broadcast, errorMsg } from './bridge.ts';
+import { type BridgeDeps, broadcast, chatRow, errorMsg } from './bridge.ts';
 import { type Config, loadConfig } from './config.ts';
 import { buildServer } from './http.ts';
 import { writeModelsJson } from './pi/models.ts';
@@ -23,6 +25,21 @@ export async function start(
   purgeExpiredSessions(db);
   const pseudo = config.pseudoUrl ? new PseudoClient(config.pseudoUrl, config.userId) : undefined;
   const rooms: BridgeDeps['rooms'] = new Map();
+  const agentError = (file: string, err: unknown) =>
+    app.log.error({ file, error: err instanceof Error ? err.message : String(err) }, 'bad agent');
+  // Startup fails without `assistant`; a later bad edit keeps the previous profiles.
+  let agentMap = loadAgents(config.agentsDir, (file, err) =>
+    console.error('bad agent', file, err instanceof Error ? err.message : err),
+  );
+  const stopWatch = watchAgents(config.agentsDir, () => {
+    try {
+      agentMap = loadAgents(config.agentsDir, agentError);
+    } catch (err) {
+      agentError(config.agentsDir, err);
+    }
+  });
+  const agents = () => agentMap;
+  const approvals = approvalStore((chatId, msg) => broadcast(rooms, chatId, msg));
   const pseudoLog = (chatId: string, ...[level, msg, data]: Parameters<PseudoLog>) => {
     app.log[level]({ chatId, ...data }, msg);
     // A dropped input starts no turn, so the bridge never sees it; mid-turn failures the bridge
@@ -33,7 +50,10 @@ export async function start(
   const registry = new SessionRegistry({
     dataDir: config.dataDir,
     userId: config.userId,
-    model: config.model,
+    agents,
+    getAgentId: (chatId) => chatRow(db, config.userId, chatId)?.agentId,
+    approval: { ask: approvals.ask, timeoutMs: config.approvalTimeoutMs },
+    skillsDir: config.skillsDir,
     onSettled: ({ sessionId }) => titles.scheduleTitleJob(sessionId),
     ...(pseudo ? { pseudo: { client: pseudo, log: pseudoLog } } : {}),
   });
@@ -43,6 +63,8 @@ export async function start(
     db,
     config,
     rooms,
+    agents,
+    approvals,
     ...(logStream ? { logStream } : {}),
     ...(pseudo ? { pseudo } : {}),
   });
@@ -62,6 +84,7 @@ export async function start(
   const purge = setInterval(() => purgeExpiredSessions(db), 60 * 60_000);
   purge.unref();
   const close = async () => {
+    stopWatch();
     clearInterval(timer);
     clearInterval(purge);
     await titles.close();

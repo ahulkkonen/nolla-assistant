@@ -1,3 +1,5 @@
+import { fileURLToPath } from 'node:url';
+
 process.env.PI_OFFLINE = '1';
 process.env.PI_SKIP_VERSION_CHECK = '1';
 process.env.PI_TELEMETRY = '0';
@@ -34,7 +36,10 @@ export function loadConfig(env: Env = process.env) {
     litellmUrl: required(env, 'LITELLM_URL'),
     litellmMasterKey: required(env, 'LITELLM_MASTER_KEY'),
     userId,
-    model: env.MODEL ?? 'zdr/strong',
+    agentsDir: env.AGENTS_DIR || fileURLToPath(new URL('../../../agents', import.meta.url)),
+    skillsDir: env.SKILLS_DIR || fileURLToPath(new URL('../../../skills', import.meta.url)),
+    // Tests shorten it; the plan fixes 10 minutes.
+    approvalTimeoutMs: Number(env.APPROVAL_TIMEOUT_MS) || 10 * 60_000,
     authOrigin: origin.origin,
     passkeyRpId: env.AUTH_PASSKEY_RP_ID || origin.hostname,
     passwordHash: env.AUTH_PASSWORD_HASH || undefined,

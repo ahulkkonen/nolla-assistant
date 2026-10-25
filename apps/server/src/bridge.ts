@@ -18,6 +18,8 @@ import {
 } from '@pa/protocol';
 import { and, desc, eq } from 'drizzle-orm';
 import type { FastifyBaseLogger } from 'fastify';
+import type { Agents } from './agents.ts';
+import { type Approvals, DENIED_REASON, TIMEOUT_REASON } from './approval.ts';
 import { AttachmentNotFound, chatFiles, ingestAttachments } from './files.ts';
 import { GUARD_REASON } from './pi/guard.ts';
 import type { SessionRegistry } from './pi/registry.ts';
@@ -38,6 +40,8 @@ export type BridgeDeps = {
   log: FastifyBaseLogger;
   /** chatId → sockets that have the chat open. Shared by all connections of one server. */
   rooms: Map<string, Set<Socket>>;
+  agents: () => Agents;
+  approvals: Approvals;
   /** Restores surrogates for display. Unset in dev (no masking, see config `pseudoUrl`). */
   pseudo?: PseudoClient;
 };
@@ -123,8 +127,9 @@ function resultText(result: unknown): string {
     .join('\n');
 }
 
+const DENY_REASONS = [GUARD_REASON, DENIED_REASON, TIMEOUT_REASON];
 const toolStatus = (isError: boolean, text: string): ToolStatus =>
-  !isError ? 'ok' : text.includes(GUARD_REASON) ? 'denied' : 'error';
+  !isError ? 'ok' : DENY_REASONS.some((r) => text.includes(r)) ? 'denied' : 'error';
 
 const argsPreview = (args: unknown) =>
   Object.entries((args ?? {}) as Record<string, unknown>)
@@ -191,8 +196,19 @@ async function release(restore: Restore, pending: string, final: boolean) {
 }
 
 export function attachBridge(socket: Socket, deps: BridgeDeps) {
-  const { registry, db, userId, dataDir, log, rooms, pseudo } = deps;
+  const { registry, db, userId, dataDir, log, rooms, pseudo, agents, approvals } = deps;
   const open = new Set<string>();
+  send(socket, {
+    type: 'agents.state',
+    agents: [...agents().values()].map(({ id, name, model, subagents }) => ({
+      id,
+      name,
+      model,
+      subagents,
+    })),
+  });
+  // A reload must not lose open approvals.
+  for (const r of approvals.list()) send(socket, r);
 
   const owned = (chatId: string) => {
     const r = chatRow(db, userId, chatId);
@@ -285,8 +301,8 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
       case 'ping':
         return send(socket, { type: 'pong' });
       case 'chat.create': {
+        if (!agents().has(msg.agentId)) throw new NotFound();
         const id = randomUUID();
-        const session = await registry.create(id);
         const now = new Date().toISOString();
         const r = db
           .insert(chats)
@@ -302,7 +318,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
           })
           .returning()
           .get();
-        join(id, session);
+        join(id, await registry.create(id, msg.agentId));
         return send(socket, { type: 'chat.created', chat: summary(r) });
       }
       case 'chat.list': {
@@ -324,6 +340,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
           chat: summary(r),
           messages: await history(session, chatFiles(db, userId, msg.chatId), restore),
         });
+        for (const a of approvals.list(msg.chatId)) send(socket, a);
         if (r.summary)
           send(socket, {
             type: 'chat.related',
@@ -355,6 +372,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
       case 'chat.pin':
         return update(msg.chatId, { pinned: msg.pinned });
       case 'user.message': {
+        // `msg.agentId` is ignored: an existing chat keeps its agent (decision 1).
         const { chatId } = msg;
         owned(chatId);
         const { images, text } = await ingestAttachments(
@@ -378,6 +396,9 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
           });
         return;
       }
+      case 'approval.respond':
+        if (!approvals.respond(msg.requestId, msg.approve)) throw new NotFound();
+        return;
       case 'user.stop':
         owned(msg.chatId);
         if (registry.has(msg.chatId)) await (await registry.get(msg.chatId)).abort();

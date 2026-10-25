@@ -1,0 +1,10 @@
+id: assistant
+name: Avustaja
+model: zdr/strong
+prompt: prompts/assistant.md
+tools:
+  allow: [read, write, edit]
+approval:
+  always: [write, edit]
+  never: [read]
+subagents: false
