@@ -5,11 +5,13 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, model_validator
 
 UserId = Field(min_length=1, max_length=200)
+MAX_TEXT = 200_000
+MAX_ITEMS = 500
 
 
 class TextOrJson(BaseModel):
     user_id: str = UserId
-    text: str | None = None
+    text: str | None = Field(None, max_length=MAX_TEXT)
     json_: Any = Field(None, alias="json")
 
     @model_validator(mode="after")
@@ -71,7 +73,7 @@ class Message(BaseModel, extra="allow"):
 class ScanReq(BaseModel):
     user_id: str = UserId
     session_id: str = Field(min_length=1, max_length=200)
-    messages: list[Message]
+    messages: list[Message] = Field(max_length=MAX_ITEMS)
 
 
 class Leak(BaseModel):
@@ -80,6 +82,7 @@ class Leak(BaseModel):
     end: int
     kind: str
     entity_id: int
+    path: list[str | int] | None = None
 
 
 class ScanRes(BaseModel):
@@ -115,14 +118,14 @@ class EntitiesRes(BaseModel):
 
 class MergeReq(BaseModel):
     user_id: str = UserId
-    from_ids: list[int] = Field(min_length=1)
+    from_ids: list[int] = Field(min_length=1, max_length=MAX_ITEMS)
     into_id: int
 
 
 class SplitReq(BaseModel):
     user_id: str = UserId
     entity_id: int
-    span_ids: list[int] = []
+    span_ids: list[int] = Field([], max_length=MAX_ITEMS)
 
 
 class UpdateReq(BaseModel):
@@ -141,7 +144,7 @@ class SeedEntity(BaseModel):
 
 class SeedReq(BaseModel):
     user_id: str = UserId
-    entities: list[SeedEntity]
+    entities: list[SeedEntity] = Field(max_length=MAX_ITEMS)
 
 
 class PendingReq(BaseModel):

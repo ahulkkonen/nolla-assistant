@@ -191,7 +191,7 @@ def detect(text: str, ctx=None) -> list[Candidate]:
         i += 1
     for m, first, last in singles:
         w = m.group(0)
-        prev_word = text[:m.start()].split()[-1:] if m.start() else []
+        prev_word = text[max(0, m.start() - 200):m.start()].split()[-1:]
         titled = bool(prev_word and TITLES.match(prev_word[0].strip(",.:;()")))
         start_pos = _sentence_start(text, m.start())
         lemma = first or last

@@ -6,6 +6,8 @@ from collections import defaultdict
 from . import Candidate, trie_pattern
 from .gazetteer import _sentence_start, common_word, place
 
+MAX_FORM = 256  # longer stored forms are never matched (bounds the trie)
+
 
 def matcher(vault, user_id: str, side: str = "real"):
     """(compiled regex, form -> [(entity_id, part, analysis, kind)]) for one side of the vault, cached per version."""
@@ -16,7 +18,8 @@ def matcher(vault, user_id: str, side: str = "real"):
         return hit[1], hit[2]
     table = defaultdict(list)
     for form, eid, part, analysis, kind in vault.all_forms(user_id, side):
-        table[form].append((eid, part, analysis, kind))
+        if len(form) <= MAX_FORM:
+            table[form].append((eid, part, analysis, kind))
     rx = re.compile(r"(?<![\w-])(?:" + trie_pattern(table) + r")(?![\w])") if table else None
     cache[(user_id, side)] = (ver, rx, table)
     return rx, table

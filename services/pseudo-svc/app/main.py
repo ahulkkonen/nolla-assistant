@@ -5,12 +5,15 @@ import os
 import time
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 
 from . import api_models as m
 from . import forms, mask as pipeline
 from . import surrogate as S
 from .detect import codes, gazetteer, ner
+from .detect.codes import normalise
 from .vault import Vault
 
 log = logging.getLogger("pseudo")
@@ -30,11 +33,26 @@ async def lifespan(app: FastAPI):
     layers = {"omorfi": forms.omorfi() is not None, "voikko": gazetteer._voikko() is not None,
               "ner": ner.engine() is not None}
     state["layers"] = layers
+    required = [x.strip() for x in os.environ.get("PSEUDO_REQUIRE_LAYERS", "").split(",") if x.strip()]
+    state["missing"] = [x for x in required if not layers.get(x)]
+    if state["missing"]:
+        log.error("required layers missing: %s", state["missing"])
     log.info("startup layers=%s ms=%d", layers, (time.perf_counter() - t) * 1000)
     yield
 
 
 app = FastAPI(title="pseudo-svc", lifespan=lifespan)
+
+
+@app.exception_handler(RequestValidationError)
+async def invalid(request: Request, exc: RequestValidationError):
+    """Only where and why: the default handler echoes the input, which holds real values."""
+    return JSONResponse({"detail": [{"loc": e.get("loc"), "msg": e.get("msg")} for e in exc.errors()]}, 422)
+
+
+@app.exception_handler(pipeline.TooLarge)
+async def too_large(request: Request, exc: pipeline.TooLarge):
+    return JSONResponse({"detail": str(exc)}, 413)
 
 
 def timed(name: str, t: float, **counts) -> None:
@@ -43,6 +61,8 @@ def timed(name: str, t: float, **counts) -> None:
 
 @app.get("/healthz")
 def healthz():
+    if state.get("missing"):
+        return JSONResponse({"ok": False, "missing": state["missing"]}, 503)
     return {"ok": True, "layers": state.get("layers", {})}
 
 
@@ -91,6 +111,8 @@ def merge(req: m.MergeReq):
         vault().merge(req.user_id, req.from_ids, req.into_id)
     except KeyError:
         raise HTTPException(404, "entity not found")
+    except ValueError as e:
+        raise HTTPException(422, str(e))
     log.info("merge from=%s into=%d", req.from_ids, req.into_id)
     return {"ok": True}
 
@@ -110,6 +132,10 @@ def update(entity_id: int, req: m.UpdateReq):
     e = v.entity(req.user_id, entity_id)
     if not e:
         raise HTTPException(404, "entity not found")
+    if req.regenerate and e["pinned"]:
+        raise HTTPException(409, "entity is pinned")
+    if e["kind"] == "SELF" and (req.regenerate or req.mode or req.never_detect):
+        raise HTTPException(422, "the self entity keeps its label")
     fields = {k: int(getattr(req, k)) for k in ("pinned", "allowlisted") if getattr(req, k) is not None}
     v.set_fields(req.user_id, entity_id, **fields)
     if req.never_detect:
@@ -123,7 +149,11 @@ def update(entity_id: int, req: m.UpdateReq):
 
 @app.post("/vault/seed", response_model=m.Ok, response_model_exclude_none=True)
 def seed(req: m.SeedReq):
-    ids = [S.get_or_create_entity(vault(), req.user_id, e.kind, e.canonical)["id"] for e in req.entities]
+    canon = [normalise(e.kind, e.canonical) for e in req.entities]
+    errors = [{"index": i, "msg": f"not a valid {e.kind}"} for i, (e, c) in enumerate(zip(req.entities, canon)) if not c]
+    if errors:
+        raise HTTPException(422, errors)
+    ids = [S.get_or_create_entity(vault(), req.user_id, e.kind, c)["id"] for e, c in zip(req.entities, canon)]
     log.info("seed count=%d", len(ids))
     return {"ok": True, "ids": ids}
 
@@ -137,6 +167,8 @@ def pending(pending_id: int, req: m.PendingReq):
     e = v.entity(req.user_id, p["entity_id"]) if p["entity_id"] else None
     if req.action == "allowlist" and e:
         v.set_fields(req.user_id, e["id"], allowlisted=1)
+    if req.action == "confirm" and e:
+        v.set_fields(req.user_id, e["id"], confirmed=1)  # later low-score mentions are not queued again
     if req.action == "dismiss" and e:
         v.add_never_detect(req.user_id, e["kind"], e["canonical"])
     v.pending_set(req.user_id, pending_id, {"confirm": "confirmed", "dismiss": "dismissed", "allowlist": "allowlisted"}[req.action])

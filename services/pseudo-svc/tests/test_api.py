@@ -65,6 +65,8 @@ async def test_vault_routes(client):
 
     upd = await post(client, f"/vault/entity/{ids[0]}", {"pinned": True, "mode": "placeholder"})
     assert upd["entity"]["pinned"] and upd["entity"]["surrogate"].startswith("[henkilö ")
+    assert (await client.post(f"/vault/entity/{ids[0]}", json={**U, "regenerate": True})).status_code == 409
+    await post(client, f"/vault/entity/{ids[0]}", {"pinned": False})
     regen = await post(client, f"/vault/entity/{ids[0]}", {"regenerate": True})
     assert regen["entity"]["mode"] == "realistic"
     await post(client, f"/vault/entity/{ids[0]}", {"allowlisted": True})
@@ -83,3 +85,36 @@ async def test_vault_routes(client):
     assert (await client.post("/vault/pending/999", json={**U, "action": "confirm"})).status_code == 404
     assert (await client.post("/vault/entity/999", json=U)).status_code == 404
     assert (await client.post(f"/vault/entity/{ids[0]}", json={"user_id": "other"})).status_code == 404
+
+
+async def test_limits_and_errors(client, monkeypatch):
+    r = await client.post("/mask", json={**U, "session_id": "s", "text": "x" * 200_001})
+    assert r.status_code == 422 and "xxxx" not in r.text  # the input is never echoed
+    deep: list = []
+    for _ in range(40):
+        deep = [deep]
+    assert (await client.post("/mask", json={**U, "session_id": "s", "json": deep})).status_code == 413
+    wide = {"a": [1] * 20_001}
+    assert (await client.post("/mask", json={**U, "session_id": "s", "json": wide})).status_code == 413
+    bad = await client.post("/vault/seed", json={**U, "entities": [
+        {"canonical": "131052-308t", "kind": "HETU"}, {"canonical": "131052-308X", "kind": "HETU"}]})
+    assert bad.status_code == 422 and bad.json()["detail"] == [{"index": 1, "msg": "not a valid HETU"}]
+    assert "308X" not in bad.text
+    ok = await post(client, "/vault/seed", {"entities": [{"canonical": "040 123 4567", "kind": "PHONE"}]})
+    assert main.state["vault"].entity("u1", ok["ids"][0])["canonical"] == "+358401234567"
+    sid = (await post(client, "/vault/seed", {"entities": [{"canonical": "Mikko Virtanen", "kind": "PERSON"}]}))["ids"]
+    self_id = next(e["id"] for e in (await client.get("/vault/entities", params=U)).json()["entities"]
+                   if e["kind"] == "SELF")
+    assert (await client.post("/vault/merge", json={**U, "from_ids": [self_id], "into_id": sid[0]})).status_code == 422
+    assert (await client.post("/vault/merge", json={**U, "from_ids": ok["ids"], "into_id": sid[0]})).status_code == 422
+
+    monkeypatch.setitem(main.state, "missing", ["ner"])
+    h = await client.get("/healthz")
+    assert h.status_code == 503 and h.json()["missing"] == ["ner"]
+
+
+async def test_scan_leak_path(client):
+    await post(client, "/vault/seed", {"entities": [{"canonical": "Mikko Virtanen", "kind": "PERSON"}]})
+    sc = await post(client, "/scan", {"session_id": "s", "messages": [
+        {"role": "tool", "content": [{"type": "text", "text": "Mikko Virtanen"}]}]})
+    assert sc["leaked"][0]["path"] == [0, "text"]

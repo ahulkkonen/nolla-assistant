@@ -15,7 +15,8 @@ mkdir -p "$DATA/sessions" "$DATA/files" "$DATA/pi" "$DATA/work"
 
 # Databases first: Litestream restores the newest state, newer than the nightly snapshot.
 skip=
-for db in app vault; do
+# vault.db is SQLCipher (no SQLite header): restic only, hourly snapshots tagged `vault`.
+for db in app; do
   f=$DATA/$db.db
   if [ -e "$f" ]; then echo "skip $f: exists"; skip="$skip --exclude /data/$db.db"; continue; fi
   litestream restore -config "$CONFIG" -if-replica-exists -o "$f" "/data/$db.db"
@@ -26,5 +27,7 @@ done
 # Everything else (sessions, files, pi, memory) from the latest snapshot. A database without a
 # Litestream replica falls back to its snapshot copy.
 # shellcheck disable=SC2086
-restic restore latest --target / $skip
+restic restore latest --tag full --target / $skip --exclude /data/vault.db --exclude '/data/vault.db-*'
+# Newest hourly vault snapshot wins over the nightly copy.
+restic restore latest --tag vault --target / || echo "no vault snapshot yet"
 find "$DATA" -type f | sed "s|^$DATA/||" | sort | sed 's/^/restored: /'

@@ -15,12 +15,24 @@ FULL = (codes, vault_rec, gazetteer, ner)
 FAST = (codes, vault_rec)
 
 
+MAX_DEPTH, MAX_NODES, MAX_TEXT = 32, 20000, 200_000
+
+
+class TooLarge(ValueError):
+    """JSON body deeper or bigger than the limits (HTTP 413)."""
+
+
 def u16(text: str, spans: list[dict]) -> list[dict]:
-    """Rewrite start/end from code points to UTF-16 code units (the contract's unit) in place."""
+    """Rewrite start/end from code points to UTF-16 code units (the contract's unit) in place.
+    One O(n) pass over the text, only when it has characters outside the BMP."""
     if text.isascii() or all(ord(ch) < 0x10000 for ch in text):
         return spans
+    cum, n = [0], 0
+    for ch in text:
+        n += 2 if ord(ch) > 0xFFFF else 1
+        cum.append(n)
     for s in spans:
-        s["start"], s["end"] = (len(text[:s[k]].encode("utf-16-le")) // 2 for k in ("start", "end"))
+        s["start"], s["end"] = cum[s["start"]], cum[s["end"]]
     return spans
 
 
@@ -32,24 +44,36 @@ class Ctx:
 
 
 def walk(value, fn, path=()):
-    """Apply fn(str, path) -> (str, spans) to every string in a JSON value; keys stay as they are."""
-    if isinstance(value, str):
-        return fn(value, list(path))
-    spans = []
-    if isinstance(value, list):
-        out = []
-        for i, v in enumerate(value):
-            o, s = walk(v, fn, (*path, i))
-            out.append(o)
-            spans += s
-        return out, spans
-    if isinstance(value, dict):
-        out = {}
-        for k, v in value.items():
-            out[k], s = walk(v, fn, (*path, k))
-            spans += s
-        return out, spans
-    return value, []
+    """Apply fn(str, path) -> (str, spans) to every string in a JSON value; keys stay as they are.
+    Raises TooLarge past MAX_DEPTH levels or MAX_NODES values."""
+    nodes = 0
+
+    def go(v, path):
+        nonlocal nodes
+        nodes += 1
+        if nodes > MAX_NODES or len(path) > MAX_DEPTH:
+            raise TooLarge("json too large")
+        if isinstance(v, str):
+            if len(v) > MAX_TEXT:
+                raise TooLarge("string too long")
+            return fn(v, list(path))
+        spans = []
+        if isinstance(v, list):
+            out = []
+            for i, x in enumerate(v):
+                o, sp = go(x, (*path, i))
+                out.append(o)
+                spans += sp
+            return out, spans
+        if isinstance(v, dict):
+            out = {}
+            for k, x in v.items():
+                out[k], sp = go(x, (*path, k))
+                spans += sp
+            return out, spans
+        return v, []
+
+    return go(value, tuple(path))
 
 
 def _case(c, part: dict) -> str | None:
@@ -79,14 +103,41 @@ def _pieces(vault, user_id: str, c, e) -> list[tuple[int, int, str]]:
     return [(c.start, c.end, e["surrogate"])]
 
 
-def mask_text(vault, user_id: str, session_id: str, text: str, path=None, layers=FULL, skip=None):
+def _surrogate_cover(vault, user_id: str, session_id: str | None, text: str) -> list[tuple[int, int]]:
+    """Regions of text that are surrogates: code surrogates, and name or address forms of entities with
+    a span in this session, unless the form is also someone's real form. A surrogate-shaped name from elsewhere may be
+    a real person with the same name, so it is masked."""
+    rx, table, _, _ = _surrogates(vault, user_id)
+    if not rx or not session_id:
+        return []
+    _, real = vault_rec.matcher(vault, user_id)
+    hits = [(m, *table[m.group(0)][0][::3]) for m in rx.finditer(text) if m.group(0) not in real]
+    seen = vault.last_seen(session_id, list({eid for _, eid, _ in hits})) if hits else {}
+    # code surrogates come from ranges no real code uses (hetu 900-999, IBAN 9..., phone 048): always skip
+    return [(m.start(), m.end()) for m, eid, kind in hits if eid in seen or kind not in ("PERSON", "ADDRESS")]
+
+
+def _covered(c, cover: list[tuple[int, int]], text: str) -> bool:
+    """Every non-space character of c lies in a surrogate region: "Juha Laaksonen" from an earlier
+    mask stays as it is, but "Olavi Mäkinen" with only "Olavi" a surrogate is masked."""
+    inside = [(max(s, c.start), min(e, c.end)) for s, e in cover if s < c.end and c.start < e]
+    if not inside:
+        return False
+    pos = c.start
+    for s, e in sorted(inside):
+        if text[pos:s].strip():
+            return False
+        pos = max(pos, e)
+    return not text[pos:c.end].strip()
+
+
+def mask_text(vault, user_id: str, session_id: str, text: str, path=None, layers=FULL):
     ctx = Ctx(vault, user_id, session_id)
 
     def detect():
+        cover = _surrogate_cover(vault, user_id, session_id, text)  # per pass: new real forms count
         cands = [c for layer in layers for c in layer.detect(text, ctx)]
-        if skip:
-            cands = [c for c in cands if not any(c.start < e and s < c.end for s, e in skip)]
-        cands = resolve(cands, vault.never_detect(user_id))
+        cands = resolve([c for c in cands if not _covered(c, cover, text)], vault.never_detect(user_id))
         return cands, [vault.entity(user_id, c.entity_id) if c.entity_id else
                        get_or_create_entity(vault, user_id, c.kind, c.canonical, c.surface) for c in cands]
 
@@ -97,22 +148,24 @@ def mask_text(vault, user_id: str, session_id: str, text: str, path=None, layers
         extra = [(c, e) for c, e in zip(*detect()) if not any(c.start < d.end and d.start < c.end for d in cands)]
         pairs = sorted([*zip(cands, ents), *extra], key=lambda ce: ce[0].start)
         cands, ents = [c for c, _ in pairs], [e for _, e in pairs]
-    out, spans, pos = [], [], 0
+    out, spans, pos, n = [], [], 0, 0  # n: running length of the masked output
     for c, e in zip(cands, ents):
         if e is None or e["allowlisted"]:
             continue
         out.append(text[pos:c.start])
-        start = sum(map(len, out))
-        cur = c.start
+        n += c.start - pos
+        cur, piece = c.start, []
         for s, t, rep in _pieces(vault, user_id, c, e):
-            out += [text[cur:s], rep]
+            piece += [text[cur:s], rep]
             cur = t
-        out.append(text[cur:c.end])
+        piece.append(text[cur:c.end])
+        surrogate = "".join(piece)
+        out.append(surrogate)
         pos = c.end
-        end = sum(map(len, out))
-        pending = c.score < PENDING_BELOW
-        span = dict(start=start, end=end, entity_id=e["id"], kind=e["kind"], surrogate="".join(out)[start:end],
+        pending = c.score < PENDING_BELOW and not e["confirmed"]
+        span = dict(start=n, end=n + len(surrogate), entity_id=e["id"], kind=e["kind"], surrogate=surrogate,
                     real_form=c.surface, detector=c.detector, score=round(c.score, 3), pending=pending)
+        n += len(surrogate)
         if path is not None:
             span["path"] = path
         spans.append(span)
@@ -155,6 +208,7 @@ def _surrogates(vault, user_id: str):
 def unmask_text(vault, user_id: str, text: str, path=None):
     rx, table, stem_rx, _ = _surrogates(vault, user_id)
     out, spans, pos, ents = [], [], 0, {}
+    n = 0  # running length of the restored output
     for m in rx.finditer(text) if rx else ():
         eid, part, analysis, kind = table[m.group(0)][0]
         e = ents.get(eid) or ents.setdefault(eid, vault.entity(user_id, eid))
@@ -162,19 +216,19 @@ def unmask_text(vault, user_id: str, text: str, path=None):
             continue
         real = vault.real_form(eid, part, analysis) if part not in ("all", "self") else None
         real = real or (e["canonical"] if not (kind == "SELF" and e["canonical"] == "self") else m.group(0))
-        out.append(text[pos:m.start()])
-        start = sum(map(len, out))
-        out.append(real)
+        gap = text[pos:m.start()]
+        out += [gap, real]
+        start = n + len(gap)
+        n = start + len(real)
+        pos = m.end()
         prev = spans[-1] if spans else None
-        if prev and prev["entity_id"] == eid and text[pos:m.start()] == " " and prev["end"] == start - 1:
-            prev["end"], prev["surrogate_form"] = start + len(real), f'{prev["surrogate_form"]} {m.group(0)}'
-            pos = m.end()
+        if prev and prev["entity_id"] == eid and gap == " " and prev["end"] == start - 1:
+            prev["end"], prev["surrogate_form"] = n, f'{prev["surrogate_form"]} {m.group(0)}'
             continue  # "Juha Laaksoselle" is one span
-        span = dict(start=start, end=start + len(real), entity_id=eid, surrogate_form=m.group(0))
+        span = dict(start=start, end=n, entity_id=eid, surrogate_form=m.group(0))
         if path is not None:
             span["path"] = path
         spans.append(span)
-        pos = m.end()
     out.append(text[pos:])
     restored = "".join(out)
     unresolved = []
@@ -217,17 +271,16 @@ def hold(vault, user_id: str, text: str) -> int:
 
 
 def scan(vault, user_id: str, session_id: str, messages: list[dict]):
-    """Mask real values left in outgoing messages (vault + codes only) and report them as leaks."""
-    rx, _, _, _ = _surrogates(vault, user_id)
+    """Mask real values left in outgoing messages (vault + codes only) and report them as leaks.
+    Surrogates are skipped by mask_text itself."""
     out, leaked = [], []
     for i, msg in enumerate(messages):
-        def fn(s, p):
-            skip = [(m.start(), m.end()) for m in rx.finditer(s)] if rx else []
-            return mask_text(vault, user_id, session_id, s, p, FAST, skip)
-
-        content, spans = walk(msg.get("content"), fn)
+        content, spans = walk(msg.get("content"), lambda s, p: mask_text(vault, user_id, session_id, s, p, FAST))
         for s in spans:
-            leaked.append(dict(message_index=i, start=s["start"], end=s["end"], kind=s["kind"], entity_id=s["entity_id"]))
+            leak = dict(message_index=i, start=s["start"], end=s["end"], kind=s["kind"], entity_id=s["entity_id"])
+            if s.get("path"):
+                leak["path"] = s["path"]
+            leaked.append(leak)
         out.append({**msg, "content": content})
     if leaked:
         log.warning("scan leaked=%d kinds=%s", len(leaked), sorted({x["kind"] for x in leaked}))

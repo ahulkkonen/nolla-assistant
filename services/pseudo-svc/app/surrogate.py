@@ -2,6 +2,7 @@
 
 import bisect
 import hashlib
+import hmac
 import os
 import random
 import re
@@ -10,6 +11,7 @@ from functools import lru_cache
 from . import forms
 from .detect.codes import STREET_RE, STREET_SUFFIX, SUFFIX_CASE, hetu_check_char, luhn_ok
 from .detect.gazetteer import names
+from .vault import SurrogateConflict
 
 PLACEHOLDER = {"PERSON": "henkilö", "HETU": "hetu", "IBAN": "tili", "PHONE": "puhelin", "EMAIL": "sähköposti",
                "ADDRESS": "osoite", "POSTCODE_CITY": "postinumero", "PLATE": "rekisterinumero"}
@@ -26,8 +28,11 @@ def self_label() -> str:
     return os.environ.get("SELF_LABEL", "[sinä]")
 
 
-def rng(user_id: str, canonical: str, gen: int, attempt: int) -> random.Random:
-    h = hashlib.sha256(f"{user_id}{canonical}\0{gen}\0{attempt}".encode()).digest()
+def rng(vault, user_id: str, canonical: str, gen: int, attempt: int) -> random.Random:
+    """Deterministic per vault: HMAC-SHA256 keyed with the vault's random secret, so a surrogate
+    cannot be recomputed from a guessed real value without the vault."""
+    msg = f"{user_id}\0{canonical}\0{gen}\0{attempt}".encode()
+    h = hmac.new(vault.secret, msg, hashlib.sha256).digest()
     return random.Random(int.from_bytes(h[:8], "big"))
 
 
@@ -40,7 +45,7 @@ def pools() -> dict:
     rows += [("last", n, c, None) for n, c in db["last"].items() if c >= LAST_MIN and n.isalpha()]
     for kind, n, c, g in rows:
         cls, hv, gr = forms.classify(n, kind), forms.harmony(n), forms.grades(n, kind)
-        for key in dict.fromkeys(((kind, g, cls, hv, gr), (kind, g, cls, hv), (kind, g, hv), (kind, g), (kind, None))):
+        for key in dict.fromkeys(keys(kind, g, cls, hv, gr)):
             raw.setdefault(key, []).append((n, c))
     out = {}
     for key, lst in raw.items():
@@ -52,11 +57,19 @@ def pools() -> dict:
     return out
 
 
-def pick_name(r: random.Random, kind: str, real: str) -> str:
+def keys(kind, g, cls, hv, gr) -> tuple:
+    """Pool keys from narrow to wide: drop gradation, then harmony, then class, then gender."""
+    return (kind, g, cls, hv, gr), (kind, g, cls, hv), (kind, g, cls), (kind, g), (kind, None)
+
+
+WIDEN = 4  # pool levels make_surrogate tries before it falls back to placeholder mode
+
+
+def pick_name(r: random.Random, kind: str, real: str, level: int = 0) -> str:
     db = names()
     gender = db["first"].get(real, (0, None))[1] if kind == "first" else None
     cls, hv, gr = forms.classify(real, kind), forms.harmony(real), forms.grades(real, kind)
-    for key in ((kind, gender, cls, hv, gr), (kind, gender, cls, hv), (kind, gender, hv), (kind, gender), (kind, None)):
+    for key in keys(kind, gender, cls, hv, gr)[level:]:
         pool = pools().get(key)
         if pool and len(pool[0]) >= 3:
             names_, cum = pool
@@ -145,12 +158,14 @@ def code_surrogate(r: random.Random, kind: str, canonical: str) -> str:
 
 
 def make_surrogate(vault, user_id: str, kind: str, canonical: str, gen: int):
-    """(surrogate, infl_class, surrogate_rows) with forms unused anywhere in the vault."""
-    for attempt in range(60):
-        r = rng(user_id, canonical, gen, attempt)
+    """(surrogate, infl_class, surrogate_rows, mode) with forms unused by the user's other entities.
+    Widens the name pool step by step; placeholder mode when nothing free is left."""
+    per_level = 15
+    for attempt in range(per_level * WIDEN):
+        r = rng(vault, user_id, canonical, gen, attempt)
         if kind == "PERSON":
             parts = person_parts(canonical)
-            surr = [(part, pick_name(r, part_kind(part), lemma)) for part, lemma in parts]
+            surr = [(part, pick_name(r, part_kind(part), lemma, attempt // per_level)) for part, lemma in parts]
             if any(s == lemma for (_, s), (_, lemma) in zip(surr, parts)):
                 continue
             om = forms.omorfi()
@@ -165,9 +180,10 @@ def make_surrogate(vault, user_id: str, kind: str, canonical: str, gen: int):
             text, infl = code_surrogate(r, kind, canonical), None
             rows = [(f, c, "") for f, c in street_forms(text)] if kind == "ADDRESS" else [(text, "NOM", "")]
         if len({f for f, _, _ in rows}) == len({(f, c, p) for f, c, p in rows}) or kind == "PERSON":
-            if not vault.surrogate_taken([f for f, _, _ in rows]):
-                return text, infl, rows
-    raise RuntimeError("no free surrogate")
+            if not vault.surrogate_taken(user_id, [f for f, _, _ in rows]):
+                return text, infl, rows, "realistic"
+    ph = placeholder(vault, user_id, kind)
+    return ph, None, [(ph, "NOM", "all")], "placeholder"
 
 
 @lru_cache(maxsize=1)
@@ -192,9 +208,8 @@ def real_rows(kind: str, canonical: str, surface: str) -> list[tuple[str, str, s
     return [(surface, "NOM", ""), (canonical, "NOM", "")]
 
 
-def placeholder(vault, user_id: str, kind: str, entity_id: int) -> str:
-    n = vault.q("SELECT count(*) FROM entity WHERE user_id=? AND kind=? AND id<=?", (user_id, kind, entity_id))[0][0]
-    return f"[{PLACEHOLDER.get(kind, kind.lower())} {n}]"
+def placeholder(vault, user_id: str, kind: str) -> str:
+    return f"[{PLACEHOLDER.get(kind, kind.lower())} {vault.next_counter(user_id, 'placeholder:' + kind)}]"
 
 
 # -- entity operations
@@ -204,12 +219,18 @@ def get_or_create_entity(vault, user_id: str, kind: str, canonical: str, surface
     hit = vault.find(user_id, kinds, canonical)
     if hit:
         return hit
+    real = real_rows(kind, canonical, surface or canonical)
+    made = make_surrogate(vault, user_id, kind, canonical, 0)  # outside the lock: Omorfi is slow
     with vault.lock:
         hit = vault.find(user_id, kinds, canonical)
         if hit:
             return hit
-        surr, infl, rows = make_surrogate(vault, user_id, kind, canonical, 0)
-        return vault.create(user_id, kind, canonical, surr, infl, real_rows(kind, canonical, surface or canonical), rows)
+        try:
+            surr, infl, rows, mode = made
+            return vault.create(user_id, kind, canonical, surr, infl, real, rows, mode)
+        except SurrogateConflict:  # another request took a form meanwhile: retry under the lock
+            surr, infl, rows, mode = make_surrogate(vault, user_id, kind, canonical, 0)
+            return vault.create(user_id, kind, canonical, surr, infl, real, rows, mode)
 
 
 def ensure_self(vault, user_id: str):
@@ -220,33 +241,33 @@ def ensure_self(vault, user_id: str):
     real = name_rows(person_parts(name)) if name else []
     label = self_label()
     with vault.lock:
-        if vault.surrogate_taken([label]):  # one label row is shared by all users' self entities
-            return vault.create(user_id, "SELF", name or "self", label, "self", real, [])
-        return vault.create(user_id, "SELF", name or "self", label, "self", real, [(label, "NOM", "self")])
+        hit = vault.q("SELECT * FROM entity WHERE user_id=? AND kind='SELF'", (user_id,))
+        return hit[0] if hit else vault.create(user_id, "SELF", name or "self", label, "self", real,
+                                               [(label, "NOM", "self")])
 
 
 def regenerate(vault, user_id: str, entity) -> None:
     gen = entity["gen"] + 1
-    surr, infl, rows = make_surrogate(vault, user_id, entity["kind"], entity["canonical"], gen)
+    surr, infl, rows, mode = make_surrogate(vault, user_id, entity["kind"], entity["canonical"], gen)
     vault.add_forms(user_id, entity["id"], "surrogate", rows)  # old forms stay so past transcripts restore
-    vault.set_fields(user_id, entity["id"], surrogate=surr, infl_class=infl, gen=gen, surrogate_mode="realistic")
+    vault.set_fields(user_id, entity["id"], surrogate=surr, infl_class=infl, gen=gen, surrogate_mode=mode)
 
 
 def set_placeholder(vault, user_id: str, entity) -> None:
-    ph = placeholder(vault, user_id, entity["kind"], entity["id"])
+    ph = placeholder(vault, user_id, entity["kind"])
     vault.add_forms(user_id, entity["id"], "surrogate", [(ph, "NOM", "all")])
     vault.set_fields(user_id, entity["id"], surrogate=ph, surrogate_mode="placeholder")
 
 
 def split(vault, user_id: str, entity_id: int, span_ids: list[int]) -> int:
     e = vault.entity(user_id, entity_id)
-    if not e:
+    if not e or e["kind"] == "SELF":
         raise KeyError("entity")
-    surr, infl, rows = make_surrogate(vault, user_id, e["kind"], e["canonical"], e["gen"] + 1000)
+    surr, infl, rows, mode = make_surrogate(vault, user_id, e["kind"], e["canonical"], e["gen"] + 1000)
     real = [(r["form"], r["analysis"], r["part"]) for r in vault.forms_for(entity_id) if r["side"] == "real"]
-    new = vault.create(user_id, e["kind"], e["canonical"], surr, infl, real, rows)
+    new = vault.create(user_id, e["kind"], e["canonical"], surr, infl, real, rows, mode)
     if span_ids:
-        vault.reassign_spans(user_id, span_ids, new["id"])
+        vault.reassign_spans(user_id, entity_id, span_ids, new["id"])
     return new["id"]
 
 

@@ -15,7 +15,9 @@ HETU_RE = re.compile(r"(?<![\w-])(\d{6})([-+A-FU-Y])(\d{3})([0-9A-Y])(?![\w-])",
 IBAN_RE = re.compile(r"\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]{1,4}){3,8}\b")
 BBAN_RE = re.compile(r"(?<![\w-])(\d{6}-\d{2,8}|\d{14})(?![\w-])")
 BBAN_CTX = re.compile(r"^(tilinumero|tili|iban|pankkitili)", re.I)
-EMAIL_RE = re.compile(r"\b[\w.+-]+@[\w-]+(?:\.[\w-]+)*\.[A-Za-z]{2,}\b")
+EMAIL_RE = re.compile(r"\b[\w.+-]{1,64}@[\w-]{1,63}(?:\.[\w-]{1,63}){0,8}\.[A-Za-z]{2,24}\b")
+EMAIL_MAX = 254
+WINDOW = 200  # context lookups read at most this many characters around a match
 PLATE_RE = re.compile(r"\b(?:[A-ZÅÄÖ]{2,3}-[1-9]\d{0,2}|ÅL-\d{1,5})(?![\w-])")
 PLATE_CTX = re.compile(r"\b(auto|rekisteri|rekkari|pysäk|kilpi|kilve|kilv|ajoneuvo)", re.I)
 
@@ -127,8 +129,8 @@ def _cand(m, kind, canonical, score=1.0, group=0):
 
 
 def _near(text: str, start: int, end: int, pattern: re.Pattern, tokens: int = 5) -> bool:
-    before = text[:start].split()[-tokens:]
-    after = text[end:].split()[:tokens]
+    before = text[max(0, start - WINDOW):start].split()[-tokens:]
+    after = text[end:end + WINDOW].split()[:tokens]
     return any(pattern.match(t.strip("(),.;:")) for t in before + after)
 
 
@@ -152,7 +154,7 @@ def detect(text: str, ctx=None) -> list[Candidate]:
             groups.pop()
     for m in BBAN_RE.finditer(text):
         bban = bban_machine(m.group(1))
-        ctx_ok = any(BBAN_CTX.match(t) for t in text[:m.start()].split()[-5:])
+        ctx_ok = any(BBAN_CTX.match(t) for t in text[max(0, m.start() - WINDOW):m.start()].split()[-5:])
         hetu_shaped = re.fullmatch(r"\d{6}-\d{4}", m.group(1))
         if bban[0] != "0" and (("-" in m.group(1) and not hetu_shaped) or ctx_ok):
             out.append(_cand(m, "IBAN", bban, 1.0 if ctx_ok else 0.9, 1))
@@ -162,7 +164,8 @@ def detect(text: str, ctx=None) -> list[Candidate]:
             canon = phonenumbers.format_number(m.number, phonenumbers.PhoneNumberFormat.E164)
             out.append(Candidate(m.start, m.end, "PHONE", canon, "codes", 1.0, raw))
     for m in EMAIL_RE.finditer(text):
-        out.append(_cand(m, "EMAIL", m.group(0).lower()))
+        if len(m.group(0)) <= EMAIL_MAX:
+            out.append(_cand(m, "EMAIL", m.group(0).lower()))
     for m in PLATE_RE.finditer(text):
         if _near(text, m.start(), m.end(), PLATE_CTX):
             out.append(_cand(m, "PLATE", m.group(0)))
@@ -174,3 +177,34 @@ def detect(text: str, ctx=None) -> list[Candidate]:
         if after_street or locality(m.group(2)):
             out.append(_cand(m, "POSTCODE_CITY", m.group(1), 1.0, 1))  # the locality itself stays
     return out
+
+
+PERSON_RE = re.compile(r"[A-ZÅÄÖ][\w'-]*(?: [A-ZÅÄÖ][\w'-]*){0,5}")
+
+
+def normalise(kind: str, value: str) -> str | None:
+    """Canonical form of a seeded value as the detectors produce it, or None when it is not valid."""
+    v = " ".join(value.split())
+    if kind == "HETU":
+        return v.upper() if hetu_valid(v) else None
+    if kind == "IBAN":
+        c = v.replace(" ", "").upper()
+        return c if iban_valid(c) else None
+    if kind == "PHONE":
+        try:
+            n = phonenumbers.parse(v, "FI")
+        except phonenumbers.NumberParseException:
+            return None
+        return phonenumbers.format_number(n, phonenumbers.PhoneNumberFormat.E164) if phonenumbers.is_valid_number(n) else None
+    if kind == "EMAIL":
+        return v.lower() if len(v) <= EMAIL_MAX and EMAIL_RE.fullmatch(v) else None
+    if kind == "PLATE":
+        p = re.sub(r"^([A-ZÅÄÖ]{1,3})\s*-?\s*(\d+)$", r"\1-\2", v.upper())
+        return p if PLATE_RE.fullmatch(p) else None
+    if kind == "POSTCODE_CITY":
+        return v if re.fullmatch(r"\d{5}", v) else None
+    if kind == "ADDRESS":
+        return v if STREET_RE.fullmatch(v) else None
+    if kind == "PERSON":
+        return v if PERSON_RE.fullmatch(v) else None
+    return None

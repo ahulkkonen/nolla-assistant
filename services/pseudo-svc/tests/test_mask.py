@@ -1,3 +1,4 @@
+from conftest import KEY
 from app import mask as M
 from app import surrogate as S
 
@@ -41,7 +42,7 @@ def test_shared_first_name_gets_distinct_surrogates(vault):
 def test_surrogates_are_deterministic(tmp_path):
     from app.vault import Vault
 
-    got = [S.get_or_create_entity(Vault(str(tmp_path / f"{i}.db"), "k"), U, "PERSON", "Sanna Hyvönen")["surrogate"]
+    got = [S.get_or_create_entity(Vault(str(tmp_path / f"{i}.db"), KEY, b"s" * 32), U, "PERSON", "Sanna Hyvönen")["surrogate"]
            for i in range(2)]
     assert got[0] == got[1] and got[0].split()[1].endswith("nen")
 
@@ -123,3 +124,90 @@ def test_ner_filter():
 
     assert plausible("Mikko Virtanen") and plausible("Hulkkonen")
     assert not any(map(plausible, ["SKU-123", "B.", "ma 3.11", "Helsinki"]))
+
+
+def test_secret_seeds_surrogates(tmp_path):
+    from app.vault import Vault
+
+    a = Vault(str(tmp_path / "a.db"), KEY, b"a" * 32)
+    b = Vault(str(tmp_path / "b.db"), KEY, b"b" * 32)
+    names = ["Mikko Virtanen", "Sanna Hyvönen", "Pekka Lahti"]
+    assert [S.get_or_create_entity(a, U, "PERSON", n)["surrogate"] for n in names] != \
+        [S.get_or_create_entity(b, U, "PERSON", n)["surrogate"] for n in names]
+    assert Vault(str(tmp_path / "a.db"), KEY).secret == b"a" * 32  # stored in the vault, survives reopen
+
+
+def test_placeholder_numbers_survive_merge(vault):
+    a = S.get_or_create_entity(vault, U, "PERSON", "Mikko Virtanen")
+    b = S.get_or_create_entity(vault, U, "PERSON", "Mikko Wirtanen")
+    S.set_placeholder(vault, U, a)
+    S.set_placeholder(vault, U, b)
+    vault.merge(U, [b["id"]], a["id"])
+    c = S.get_or_create_entity(vault, U, "PERSON", "Sanna Hyvönen")
+    S.set_placeholder(vault, U, c)
+    assert vault.entity(U, c["id"])["surrogate"] == "[henkilö 3]"
+
+
+def test_surrogate_conflict_raises(vault):
+    import pytest
+    from app.vault import SurrogateConflict
+
+    a = S.get_or_create_entity(vault, U, "PERSON", "Mikko Virtanen")
+    b = S.get_or_create_entity(vault, U, "PERSON", "Sanna Hyvönen")
+    with pytest.raises(SurrogateConflict):
+        vault.add_forms(U, b["id"], "surrogate", [(a["surrogate"].split()[0], "NOM", "first")])
+    other = S.get_or_create_entity(vault, "u2", "PERSON", "Pekka Lahti")
+    vault.add_forms("u2", other["id"], "surrogate", [(a["surrogate"].split()[0], "NOM", "first")])  # per user
+
+
+def test_pool_exhausted_falls_back_to_placeholder(vault, monkeypatch):
+    monkeypatch.setattr(vault, "surrogate_taken", lambda user_id, forms: True)
+    e = S.get_or_create_entity(vault, U, "PERSON", "Mikko Virtanen")
+    assert e["surrogate_mode"] == "placeholder" and e["surrogate"] == "[henkilö 1]"
+
+
+def test_split_moves_only_own_spans(vault):
+    a = S.get_or_create_entity(vault, U, "PERSON", "Mikko Virtanen")
+    b = S.get_or_create_entity(vault, U, "PERSON", "Sanna Hyvönen")
+    mask(vault, "Mikko Virtanen ja Sanna Hyvönen.")
+    ids = [r[0] for r in vault.q("SELECT id FROM span WHERE user_id=?", (U,))]
+    new = S.split(vault, U, a["id"], ids)
+    owners = sorted(r[0] for r in vault.q("SELECT entity_id FROM span WHERE user_id=?", (U,)))
+    assert owners == sorted([new, b["id"]])
+
+
+def test_surrogates_are_not_masked_again(vault):
+    S.get_or_create_entity(vault, U, "PERSON", "Mikko Virtanen")
+    masked, _ = mask(vault, "Soitin Mikko Virtaselle, puh. 040 123 4567.")
+    again, spans = mask(vault, masked)
+    assert again == masked and spans == []
+    # another session never sent this name: it may be a real person with that name, so mask it.
+    # The phone surrogate (048 range) is skipped everywhere.
+    assert [s["kind"] for s in mask(vault, masked, session="s2")[1]] == ["PERSON"]
+
+
+def test_pending_dedupe_and_confirm(vault):
+    for _ in range(2):
+        mask(vault, "Sirpa soitti eilen.")
+    rows = vault.pending_list(U)
+    assert len(rows) == 1
+    vault.pending_set(U, rows[0]["id"], "dismissed")
+    mask(vault, "Sirpa soitti taas.")
+    assert vault.pending_list(U) == []  # a dismissed row also blocks re-queueing
+    eid = vault.q("SELECT entity_id FROM pending")[0][0]
+    vault.set_fields(U, eid, confirmed=1)
+    assert not mask(vault, "Sirpa soitti.")[1][0]["pending"]
+
+
+def test_never_detect_keeps_restoring_old_surrogates(vault):
+    a = S.get_or_create_entity(vault, U, "PERSON", "Mikko Virtanen")
+    masked, _ = mask(vault, "Mikko Virtanen tuli.")
+    vault.add_never_detect(U, a["kind"], a["canonical"])
+    assert mask(vault, "Mikko Virtanen tuli.")[0] == "Mikko Virtanen tuli."
+    assert unmask(vault, masked)[0] == "Mikko Virtanen tuli."
+
+
+def test_email_length_cap():
+    from app.detect.codes import detect
+
+    assert not [c for c in detect("a" * 64 + "@" + ("b" * 63 + ".") * 4 + "fi") if c.kind == "EMAIL"]
