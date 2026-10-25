@@ -15,6 +15,7 @@ export function Thread() {
   const running = useStore((s) => (chatId ? s.agentStatus[chatId] === 'running' : false));
   const related = useStore((s) => (chatId ? s.related[chatId] : undefined)) ?? EMPTY;
   const scrollTo = useStore((s) => s.scrollTo);
+  const memoryChip = useStore((s) => (chatId ? s.memoryChip[chatId] : undefined));
   const subagents = useStore((s) => (chatId ? s.subagents[chatId] : undefined)) ?? EMPTY;
   // Filtered here, not in the selector: a new array per call would re-render forever.
   const allApprovals = useStore((s) => s.approvals);
@@ -59,6 +60,19 @@ export function Thread() {
             />
           </div>
         ))}
+        {memoryChip && (
+          <p className="text-secondary text-fg-muted">
+            {memoryChip === 'pending' ? 'Muistikirjoitus odottaa hyväksyntää' : 'Muisti päivitetty'}
+            {' · '}
+            <button
+              type="button"
+              onClick={() => useStore.getState().setScreen('memory')}
+              className="underline underline-offset-2 hover:text-fg"
+            >
+              Avaa muisti
+            </button>
+          </p>
+        )}
         {!stream && !running && related.length > 0 && (
           <nav
             aria-label="Liittyvät keskustelut"

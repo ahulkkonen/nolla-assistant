@@ -1,6 +1,7 @@
 import { clsx } from 'clsx';
 import {
   Bot,
+  Brain,
   CalendarClock,
   KeyRound,
   LogOut,
@@ -115,6 +116,7 @@ export function SettingsDialog({ onNavigate }: { onNavigate?: () => void }) {
             {(
               [
                 ['vault', ShieldCheck, 'Nimisuoja'],
+                ['memory', Brain, 'Muisti'],
                 ['topics', Tags, 'Aiheet'],
                 ['agents', Bot, 'Agentit'],
                 ['automations', CalendarClock, 'Automaatiot'],

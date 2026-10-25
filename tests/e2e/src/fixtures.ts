@@ -51,6 +51,7 @@ export const test = base.extend<{
   pseudo: 'off' | 'full' | 'empty';
   automation: boolean;
   approvalTimeoutMs: number;
+  memoryUser: string;
 }>({
   // Starts the fake sidecar and sets PSEUDO_URL: `full` has DICT plus one pending item.
   pseudo: ['off', { option: true }],
@@ -58,7 +59,9 @@ export const test = base.extend<{
   automation: [false, { option: true }],
   // 0 keeps the server default (10 minutes).
   approvalTimeoutMs: [0, { option: true }],
-  app: async ({ pseudo, automation, approvalTimeoutMs }, use) => {
+  // Written to DATA_DIR/memory/aleksi/USER.md before start when non-empty.
+  memoryUser: ['', { option: true }],
+  app: async ({ pseudo, automation, approvalTimeoutMs, memoryUser }, use) => {
     const llm = await startFakeLlm([]);
     const sidecar =
       pseudo === 'off'
@@ -72,6 +75,10 @@ export const test = base.extend<{
     mkdirSync(join(dataDir, 'work/aleksi'), { recursive: true });
     mkdirSync(join(dataDir, 'automations'));
     if (automation) writeFileSync(join(dataDir, 'automations/aamu.yaml'), AUTOMATION);
+    if (memoryUser) {
+      mkdirSync(join(dataDir, 'memory/aleksi'), { recursive: true });
+      writeFileSync(join(dataDir, 'memory/aleksi/USER.md'), memoryUser);
+    }
     const port = await freePort();
     process.env.LITELLM_MASTER_KEY = KEY;
     const srv = await start(
@@ -111,7 +118,7 @@ export const test = base.extend<{
 /** Opens a settings entry; settings sits in the drawer under 768 px, in the sidebar above. */
 export const openSettings = async (
   page: Page,
-  entry: 'Nimisuoja' | 'Aiheet' | 'Agentit' | 'Automaatiot',
+  entry: 'Nimisuoja' | 'Aiheet' | 'Agentit' | 'Automaatiot' | 'Muisti',
 ) => {
   const menu = page.getByRole('button', { name: 'Valikko' });
   if (await menu.isVisible()) await menu.click();
@@ -179,6 +186,17 @@ export async function acceptProposal(page: Page) {
     await page.getByRole('menuitem', { name: 'Hyväksy', exact: true }).click();
   } else await inbox.getByRole('button', { name: 'Hyväksy', exact: true }).first().click();
   await expect(page.getByText('Ei ehdotuksia.')).toBeVisible();
+}
+
+export const USER_MD = 'Asun Tampereella.\nPidän lyhyistä vastauksista.\nKirjoita suomeksi.';
+
+/** One agent run: an untainted `memory add`, or (`tainted`) a `recall` first, which parks it. */
+export function memoryTurns(app: App, text: string, tainted = false) {
+  if (tainted) app.llm.push({ toolCalls: [{ name: 'recall', args: { query: 'väri' } }] });
+  app.llm.push({
+    toolCalls: [{ name: 'memory', args: { action: 'add', target: 'memory', text } }],
+  });
+  app.llm.push({ text: 'Selvä, muistan.' });
 }
 
 export { expect };

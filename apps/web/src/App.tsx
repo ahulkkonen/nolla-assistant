@@ -8,6 +8,7 @@ import { AUTOMATIONS_TITLE, AutomationsScreen } from './components/AutomationsSc
 import { Composer } from './components/Composer.tsx';
 import { IconButton } from './components/IconButton.tsx';
 import { Login } from './components/Login.tsx';
+import { MEMORY_TITLE, MemoryScreen } from './components/MemoryScreen.tsx';
 import { SEARCH_TITLE, SearchScreen } from './components/SearchScreen.tsx';
 import { Sidebar, UNTITLED } from './components/Sidebar.tsx';
 import { Thread } from './components/Thread.tsx';
@@ -33,6 +34,7 @@ const SCREEN_TITLE = {
   topics: TOPICS_TITLE,
   agents: AGENTS_TITLE,
   automations: AUTOMATIONS_TITLE,
+  memory: MEMORY_TITLE,
 };
 
 function Shell() {
@@ -93,6 +95,7 @@ function Shell() {
         {screen === 'topics' && <TopicsScreen />}
         {screen === 'agents' && <AgentsScreen />}
         {screen === 'automations' && <AutomationsScreen />}
+        {screen === 'memory' && <MemoryScreen />}
         {/* Hidden, not unmounted, on the vault screen: the composer owns the global shortcuts. */}
         <div
           className={clsx(

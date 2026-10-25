@@ -29,6 +29,7 @@ export type Approval = Of<'approval.request'> & { expired?: true };
 export type Agent = Of<'agents.state'>['agents'][number];
 export type SubagentChild = Of<'subagent.state'>['children'][number];
 export type Automation = Of<'automations.state'>['automations'][number];
+export type MemoryState = Omit<Of<'memory.state'>, 'type'>;
 
 type State = {
   auth: 'unknown' | 'out' | 'in';
@@ -45,7 +46,7 @@ type State = {
   /** Annotated spans show the surrogate the model saw instead of the real value. */
   showModelSaw: boolean;
   /** What `main` shows. Choosing a chat returns to `chat`. */
-  screen: 'chat' | 'vault' | 'search' | 'topics' | 'agents' | 'automations';
+  screen: 'chat' | 'vault' | 'search' | 'topics' | 'agents' | 'automations' | 'memory';
   agents: Agent[];
   /** Agent for the next `chat.create` (the empty chat's picker). */
   pendingAgentId: string;
@@ -55,6 +56,10 @@ type State = {
   subagents: Record<string, SubagentChild[]>;
   /** Last `automations.state`; null until the first one arrives. */
   automations: Automation[] | null;
+  /** Last `memory.state`; null until the first one arrives. */
+  memory: MemoryState | null;
+  /** Chip under a chat's last message after an agent memory write, until the next message. */
+  memoryChip: Record<string, 'applied' | 'pending'>;
   setPendingAgentId(id: string): void;
   dropApproval(requestId: string): void;
   expireApproval(requestId: string): void;
@@ -117,6 +122,8 @@ const ERROR_TEXT: Record<string, string> = {
   not_implemented: 'Ei vielä tuettu.',
   failed: 'Toiminto epäonnistui.',
   pseudo_down: 'Pseudonymisointipalvelu ei vastaa.',
+  memory_full: 'Muisti on täynnä.',
+  memory_conflict: 'Teksti on muuttunut, lataa uudelleen.',
 };
 
 /** Delta annotations are chunk-relative; `offset` is the chunk's start in the message. */
@@ -152,6 +159,8 @@ export const useStore = create<State>()((set, get) => {
     approvals: [],
     subagents: {},
     automations: null,
+    memory: null,
+    memoryChip: {},
     vault: null,
     topics: [],
     proposals: [],
@@ -260,6 +269,21 @@ export const useStore = create<State>()((set, get) => {
             : get().dropApproval(msg.requestId);
         case 'subagent.state':
           return set((st) => ({ subagents: { ...st.subagents, [msg.chatId]: msg.children } }));
+        case 'memory.state':
+          return set((st) => {
+            const { type: _, ...memory } = msg;
+            // Mid-turn means the agent wrote; the user's own edits arrive while no chat runs.
+            const chatId = st.activeChatId;
+            const agentWrite =
+              st.screen === 'chat' && chatId && st.agentStatus[chatId] === 'running';
+            const grew = memory.pending.length > (st.memory?.pending.length ?? 0);
+            return {
+              memory,
+              ...(agentWrite
+                ? { memoryChip: { ...st.memoryChip, [chatId]: grew ? 'pending' : 'applied' } }
+                : {}),
+            };
+          });
         case 'automations.state':
           return set({ automations: msg.automations });
         case 'topic.state':
@@ -296,6 +320,7 @@ export const useStore = create<State>()((set, get) => {
     addLocalMessage: (chatId, m) =>
       set((st) => ({
         approvals: st.approvals.filter((a) => a.chatId !== chatId || !a.expired),
+        memoryChip: omit(st.memoryChip, chatId),
         messages: { ...st.messages, [chatId]: [...(st.messages[chatId] ?? []), m] },
       })),
     pushError(message) {

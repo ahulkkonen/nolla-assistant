@@ -6,6 +6,7 @@ import type { Page } from '@playwright/test';
 import {
   acceptProposal,
   expect,
+  memoryTurns,
   openSettings,
   openVault,
   search,
@@ -15,6 +16,7 @@ import {
   taxChat,
   test,
   titleTurn,
+  USER_MD,
 } from './fixtures.ts';
 
 const DIR = join(import.meta.dirname, '../screenshots');
@@ -386,6 +388,49 @@ for (const scheme of ['light', 'dark'] as const) {
           await expect(page.getByText('Tutkija')).toBeVisible();
           await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
           await shot(page, 'settings-agents', vp.width, scheme);
+        });
+
+        test.describe('memory', () => {
+          test.use({ pseudo: 'full', memoryUser: USER_MD });
+          const blur = (page: import('@playwright/test').Page) =>
+            page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+
+          test('memory', async ({ app, page }) => {
+            await app.login(page);
+            await openSettings(page, 'Muisti');
+            await expect(page.getByLabel('Käyttäjä (USER.md)')).toHaveValue(USER_MD);
+            await blur(page);
+            await shot(page, 'memory', vp.width, scheme);
+          });
+
+          test('memory-pending', async ({ app, page }) => {
+            memoryTurns(app, 'Lempiväri on vihreä.', true);
+            await app.login(page);
+            await sendMessage(page, 'Muista lempivärini');
+            await expect(page.getByText('Muistikirjoitus odottaa hyväksyntää')).toBeVisible();
+            await page.getByRole('button', { name: 'Avaa muisti' }).click();
+            await expect(
+              page.getByRole('region', { name: 'Odottavat kirjoitukset' }),
+            ).toContainText('Lempiväri on vihreä.');
+            await blur(page);
+            await shot(page, 'memory-pending', vp.width, scheme);
+          });
+
+          test('memory-consolidation', async ({ app, page }) => {
+            app.llm.push({
+              text: JSON.stringify({
+                user: 'Asun Tampereella.\nVastaa lyhyesti ja suomeksi.',
+                memory: '',
+              }),
+            });
+            await app.login(page);
+            await openSettings(page, 'Muisti');
+            await page.getByRole('button', { name: 'Tiivistä nyt' }).click();
+            const section = page.getByRole('region', { name: 'Tiivistysehdotus' });
+            await expect(section).toContainText('Vastaa lyhyesti ja suomeksi.');
+            await blur(page);
+            await shot(page, 'memory-consolidation', vp.width, scheme);
+          });
         });
 
         test.describe('pseudo empty', () => {

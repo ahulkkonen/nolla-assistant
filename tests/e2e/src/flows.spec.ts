@@ -6,12 +6,14 @@ import type { Page } from '@playwright/test';
 import {
   acceptProposal,
   expect,
+  memoryTurns,
   openSettings,
   openVault,
   search,
   TAX,
   taxChat,
   test,
+  USER_MD,
 } from './fixtures.ts';
 
 const send = async (page: Page, text: string) => {
@@ -268,5 +270,53 @@ test.describe('automations', () => {
     await expect(row).toContainText('Avustaja');
     await row.getByRole('button', { name: 'Suorita nyt: aamu' }).click();
     await expect(row).toContainText(/käynnissä|onnistui/);
+  });
+});
+
+test.describe('memory', () => {
+  test.use({ pseudo: 'full', memoryUser: USER_MD });
+
+  test('edit USER.md, save, still there after reload', async ({ app, page }) => {
+    await app.login(page);
+    await openSettings(page, 'Muisti');
+    const user = page.getByLabel('Käyttäjä (USER.md)');
+    await expect(user).toHaveValue(USER_MD);
+    await expect(page.getByText(`${USER_MD.length} / 1500`)).toBeVisible();
+    const save = page.getByRole('button', { name: 'Tallenna' }).first();
+    await expect(save).toBeDisabled();
+    await user.fill(`${USER_MD}\nAamuisin juon kahvia.`);
+    await user.press('ControlOrMeta+s');
+    await expect(save).toBeDisabled();
+    await page.reload();
+    await openSettings(page, 'Muisti');
+    await expect(page.getByLabel('Käyttäjä (USER.md)')).toHaveValue(
+      `${USER_MD}\nAamuisin juon kahvia.`,
+    );
+  });
+
+  test('an untainted agent write applies and shows the chip', async ({ app, page }) => {
+    memoryTurns(app, 'Lempiväri on sininen.');
+    await app.login(page);
+    await page.getByLabel('Viesti').fill('Lempivärini on sininen');
+    await page.getByLabel('Viesti').press('ControlOrMeta+Enter');
+    await expect(page.locator('.md').last()).toHaveText('Selvä, muistan.');
+    await expect(page.getByText('Muisti päivitetty')).toBeVisible();
+    await page.getByRole('button', { name: 'Avaa muisti' }).click();
+    await expect(page.getByLabel('Muisti (MEMORY.md)')).toHaveValue(/Lempiväri on sininen\./);
+  });
+
+  test('a tainted agent write waits; approve applies it', async ({ app, page }) => {
+    memoryTurns(app, 'Lempiväri on vihreä.', true);
+    await app.login(page);
+    await page.getByLabel('Viesti').fill('Muista lempivärini');
+    await page.getByLabel('Viesti').press('ControlOrMeta+Enter');
+    await expect(page.locator('.md').last()).toHaveText('Selvä, muistan.');
+    await expect(page.getByText('Muistikirjoitus odottaa hyväksyntää')).toBeVisible();
+    await page.getByRole('button', { name: 'Avaa muisti' }).click();
+    const pending = page.getByRole('region', { name: 'Odottavat kirjoitukset' });
+    await expect(pending).toContainText('Lempiväri on vihreä.');
+    await pending.getByRole('button', { name: 'Hyväksy' }).click();
+    await expect(pending).toHaveCount(0);
+    await expect(page.getByLabel('Muisti (MEMORY.md)')).toHaveValue(/Lempiväri on vihreä\./);
   });
 });
