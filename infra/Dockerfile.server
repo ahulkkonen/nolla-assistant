@@ -77,7 +77,8 @@ COPY --from=prod --chown=app:app /app/packages/pi-ext-topics /app/packages/pi-ex
 COPY --from=prod --chown=app:app /app/packages/pi-ext-memory /app/packages/pi-ext-memory
 COPY --from=prod --chown=app:app /app/packages/pi-ext-sandbox /app/packages/pi-ext-sandbox
 COPY --from=prod --chown=app:app /app/packages/pi-ext-subagents /app/packages/pi-ext-subagents
-COPY --chown=app:app infra/models.json /app/infra/models.json
+COPY --chown=app:app infra/models.json infra/mcp.yaml /app/infra/
+COPY --chown=app:app skills /app/skills
 COPY --chown=app:app agents /app/agents
 COPY --chown=app:app automations /app/automations
 COPY --from=web --chown=app:app /app/apps/web/dist /app/apps/web/dist
