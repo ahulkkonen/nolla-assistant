@@ -175,3 +175,27 @@ docker run --rm --env-file restore.env \
 ```
 
 `restore.env` holds `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY` and `RESTIC_PASSWORD`. If you skip this step, connect your Google account again. The restore drill does not cover the token volume.
+
+## Local run with Docker
+
+This runs every service on your machine, with the real pseudonymization service and the real
+LiteLLM egress. Only the OpenRouter key is real; nothing leaves the machine except model calls.
+
+1. Copy `.env.example` to `.env`. Fill in `OPENROUTER_API_KEY`, `LITELLM_MASTER_KEY`,
+   `PSEUDO_VAULT_KEY`, `BROKER_TOKEN`, `COOKIE_SECRET` and `AUTH_PASSWORD_HASH`
+   (`node scripts/hash-password.mjs`). Keep `AUTH_ORIGIN=http://localhost:3000`.
+2. Google Workspace is optional. Without a client, set `GOOGLE_OAUTH_CLIENT_ID=unused`,
+   `GOOGLE_OAUTH_CLIENT_SECRET=unused` and `USER_GOOGLE_EMAIL=you@example.com`. The
+   Google tools then show "Ei yhdistetty".
+3. Start the stack. The first build downloads the models and takes several minutes.
+
+   ```
+   docker compose --env-file .env -f infra/compose.yaml -f infra/compose.local.yaml up --build
+   ```
+
+4. Open http://localhost:3000 and log in with the password. Passkeys, push and the Google
+   OAuth callback all accept `localhost`.
+
+The `backup` service does not start here because it needs an S3 bucket. Add `--profile backup`
+when `.env` has the S3 values. Stop everything with `docker compose ... down`; add `-v` to
+delete the data volume too.

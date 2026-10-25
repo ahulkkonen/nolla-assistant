@@ -1,5 +1,5 @@
 // Local demo of the PWA with fakes: fake LLM (echo), fake pseudonymization sidecar, no Docker.
-//   node tests/e2e/src/demo.ts        then open http://127.0.0.1:3000 (password: salasana)
+//   node tests/e2e/src/demo.ts        then open http://localhost:3000 (password: salasana)
 // Build the web app first if apps/web/dist is missing: pnpm --filter @pa/web build
 import { mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -59,7 +59,7 @@ await start(
     LITELLM_URL: llm.url,
     LITELLM_MASTER_KEY: KEY,
     PSEUDO_URL: sidecar.url,
-    AUTH_ORIGIN: `http://127.0.0.1:${port}`,
+    AUTH_ORIGIN: `http://localhost:${port}`,
     COOKIE_SECRET: 'd'.repeat(40),
     AUTH_PASSWORD_HASH: await hashPassword('salasana'),
     WEB_DIST: join(root, 'apps/web/dist'),

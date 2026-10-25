@@ -59,6 +59,8 @@ export default defineConfig({
   // The shadcn/ui import alias `@/` from tsconfig.json `paths`.
   resolve: { tsconfigPaths: true },
   build: {
+    // Fonts stay files: the server CSP allows font-src 'self' only, not data: URIs.
+    assetsInlineLimit: (file) => (/\.woff2?$/.test(file) ? false : undefined),
     rolldownOptions: {
       output: {
         // Chunks without app code are the lazily loaded libraries (Mermaid and its renderers).
