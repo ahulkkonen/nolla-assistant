@@ -1,0 +1,16 @@
+nlp_engine_name: spacy
+models:
+  - lang_code: fi
+    model_name: fi_core_news_lg
+ner_model_configuration:
+  model_to_presidio_entity_mapping:
+    PERSON: PERSON
+    GPE: LOCATION
+    LOC: LOCATION
+    FAC: LOCATION
+    ORG: ORGANIZATION
+    NORP: NRP
+    DATE: DATE_TIME
+    TIME: DATE_TIME
+  low_confidence_score_multiplier: 0.4
+  labels_to_ignore: [CARDINAL, EVENT, LANGUAGE, LAW, MONEY, ORDINAL, PERCENT, PRODUCT, QUANTITY, WORK_OF_ART]

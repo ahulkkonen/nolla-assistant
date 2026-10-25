@@ -105,3 +105,31 @@ so no Finnish spaCy model is needed. Presidio validates the hetu check character
 not a hetu (the correct check character is `M`) and passes; the gate test uses `010190-123M`.
 Known gap: hetu inside assistant `tool_calls` arguments is not scanned (the Pi leak scan covers it).
 No `logging_only` guardrail (no log sink exists; it would also hide leaks from the §14 log grep).
+
+## Status 2026-10-25
+
+Gate results (Docker, all layers on: Omorfi, Voikko, spaCy NER; `tests/pii/harness.py`):
+
+| Group | Recall | Threshold |
+|---|---|---|
+| codes (HETU, IBAN, PHONE, EMAIL) | 100 % | ≥ 99 % |
+| vault-known names | 100 % (98.5 % with an empty nickname table) | ≥ 95 % |
+| unseen names | 100 % (96.6 % with an empty nickname table) | ≥ 85 % |
+| PERSON precision | 98.2 % | ≥ 90 % |
+
+Hetu blocked at LiteLLM, non-ZDR alias refused, image parts intact, ZDR flags on every call:
+`tests/egress` (11 tests, Docker). Masked-only invariant: `tests/masked-only` (10 turns with tool
+calls; session JSONL, model requests, logs, app.db clean). Leak scan on the corpus: zero (`/scan`
+over corpus texts after masking; covered by `test_mask.py`).
+
+Open items carried forward:
+
+- `/mask` latency is 21 ms median for known people but 200–400 ms when a message brings 10+ new
+  people (Omorfi generation in pure-Python `pyhfst`). Measured on an M4 Pro, not the CX33. Fix
+  candidates: precompute the surrogate pool's forms at image build, or the `hfst` C bindings.
+- Remove `PSEUDO_VAULT_KEY` from `pa-server`'s environment in `infra/compose.yaml` (least privilege;
+  only `pseudo-svc` needs it).
+- Nickname table was written after seeing corpus misses; the numbers without it are the honest ones.
+- Lone place-like surnames (`Saari`, `Niemi`) remain possible false positives; they land in the vault
+  and can be marked never-detect.
+- Phase-4 and 8 follow-ups: titles and memory injection pass through `/mask`.

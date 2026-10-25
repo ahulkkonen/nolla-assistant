@@ -1,0 +1,39 @@
+# Build context: repo root. docker build -f infra/Dockerfile.pseudo -t pseudo-svc:dev .
+# Pins: docs/decisions/0003-finnish-pii-stack.md. GPL components (Omorfi, voikko-fi) stay in this image.
+
+# python:3.12.14-slim-trixie, pushed 2026-09-25 (newest 3.12 slim-trixie at least 7 days old on 2026-10-25).
+FROM python:3.12.14-slim-trixie@sha256:f77ac9e44ae96ef2c90b8053ea08c31f8be030f824196b0ae4db6d462c84e51f AS build
+RUN apt-get update && apt-get install -y --no-install-recommends curl xz-utils ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+RUN python -m venv /opt/venv
+ENV PATH=/opt/venv/bin:$PATH PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1
+COPY services/pseudo-svc/requirements.lock /tmp/requirements.lock
+RUN pip install --require-hashes -r /tmp/requirements.lock
+ARG SPACY_WHL=fi_core_news_lg-3.8.0-py3-none-any.whl
+ARG SPACY_SHA=203c224d2684788ec13e5540b59d6e56684e9a349d7181eb2f9898704b026deb
+RUN curl -fsSL -o /tmp/$SPACY_WHL https://github.com/explosion/spacy-models/releases/download/fi_core_news_lg-3.8.0/$SPACY_WHL \
+    && echo "$SPACY_SHA  /tmp/$SPACY_WHL" | sha256sum -c - \
+    && pip install --no-deps /tmp/$SPACY_WHL && rm /tmp/$SPACY_WHL
+ARG OMORFI_SHA=3125fbc1ba996a645ab64338aa935d400bc25acd5c1a926fd4fe5ee4ef0b1ecf
+RUN curl -fsSL -o /tmp/om.tar.xz https://github.com/flammie/omorfi/releases/download/v0.9.12/omorfi-hfst-models-0.9.12.tar.xz \
+    && echo "$OMORFI_SHA  /tmp/om.tar.xz" | sha256sum -c - \
+    && mkdir -p /opt/omorfi && tar -xJf /tmp/om.tar.xz -C /opt/omorfi omorfi.describe.hfst omorfi.generate.hfst \
+    && rm /tmp/om.tar.xz && ls /opt/omorfi/omorfi.generate.hfst
+
+FROM python:3.12.14-slim-trixie@sha256:f77ac9e44ae96ef2c90b8053ea08c31f8be030f824196b0ae4db6d462c84e51f
+RUN apt-get update && apt-get install -y --no-install-recommends libvoikko1 voikko-fi \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --uid 10001 --user-group --no-create-home app && mkdir /data && chown app:app /data
+COPY --from=build /opt/venv /opt/venv
+COPY --from=build /opt/omorfi /opt/omorfi
+COPY --chown=app:app services/pseudo-svc/app /srv/app
+COPY --chown=app:app services/pseudo-svc/data /srv/data
+COPY --chown=app:app services/pseudo-svc/presidio-fi.yaml /srv/presidio-fi.yaml
+ENV PATH=/opt/venv/bin:$PATH PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \
+    OMORFI_MODELS=/opt/omorfi VAULT_PATH=/data/vault.db
+WORKDIR /srv
+USER app
+EXPOSE 8000
+HEALTHCHECK --interval=30s --timeout=3s --start-period=120s --start-interval=2s \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=2)"
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]

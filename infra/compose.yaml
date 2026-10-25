@@ -1,4 +1,4 @@
-# Later phases add: pseudo-svc, mcp-workspace, sandbox-broker, backup.
+# Later phases add: mcp-workspace, sandbox-broker.
 services:
   pa-server:
     build: { context: .., dockerfile: infra/Dockerfile.server }
@@ -19,12 +19,33 @@ services:
       TRUST_PROXY: "1"
       USER_ID: ${USER_ID}
       MODEL: ${MODEL}
+      PSEUDO_URL: ${PSEUDO_URL:-http://pseudo-svc:8000}
+      PSEUDO_VAULT_KEY: ${PSEUDO_VAULT_KEY}
     # ports: no mapping. Coolify's proxy attaches to container port 3000.
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 30s
       timeout: 3s
     mem_limit: 400m
+    networks: [internal]
+
+  # Finnish PII pseudonymization sidecar (plan §6, decision 0003). Holds the encrypted vault in /data.
+  pseudo-svc:
+    build: { context: .., dockerfile: infra/Dockerfile.pseudo }
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    user: "10001:10001"
+    volumes: [pa-data:/data]
+    environment:
+      PSEUDO_VAULT_KEY: ${PSEUDO_VAULT_KEY}
+      VAULT_PATH: /data/vault.db
+      SELF_LABEL: ${SELF_LABEL:-[sinä]}
+      SELF_NAME: ${SELF_NAME:-}
+    # healthcheck: from the image (start period 120 s; spaCy and Omorfi load at startup)
+    mem_limit: 1536m  # measured ~1.1 GiB after the 300-line corpus run
     networks: [internal]
 
   # Model egress (plan §4, decision 0004). The only service holding OPENROUTER_API_KEY.
@@ -83,6 +104,31 @@ services:
     security_opt: ["no-new-privileges:true"]
     healthcheck: { interval: 30s, start_period: 60s, start_interval: 2s }  # test from the image
     mem_limit: 100m
+    networks: [internal]
+
+  # Litestream (app.db, vault.db) plus nightly restic of /data. /data is read-write on purpose:
+  # Litestream opens the live WAL database, which needs the -shm file and its own
+  # .<db>-litestream state directory next to the database. Same uid as pa-server.
+  backup:
+    build: { context: .., dockerfile: infra/Dockerfile.backup }
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    user: "10001:10001"
+    volumes: [pa-data:/data]
+    environment:
+      S3_ENDPOINT: ${S3_ENDPOINT}
+      S3_BUCKET: ${S3_BUCKET}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+      RESTIC_REPOSITORY: s3:${S3_ENDPOINT}/${S3_BUCKET}/restic
+      RESTIC_PASSWORD: ${RESTIC_PASSWORD}
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY}
+      BACKUP_RUN_NOW: ${BACKUP_RUN_NOW:-0}
+    mem_limit: 128m
     networks: [internal]
 
 volumes:

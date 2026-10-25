@@ -1,0 +1,13 @@
+Finnish first names and surnames (first_male.csv, first_female.csv, surnames.csv)
+
+Source: Digi- ja väestötietovirasto (DVV), "Väestötietojärjestelmän suomalaisten nimiaineistot"
+https://avoindata.suomi.fi/data/fi/dataset/none
+Release: 2026-08-04 (register state 2026-08-03).
+Licence: Creative Commons Attribution 4.0 International (CC BY 4.0).
+Converted from etunimitilasto-2026-08-04-dvv.xlsx (sheets "Miehet kaikki", "Naiset kaikki")
+and sukunimitilasto-2026-08-04-dvv.xlsx (sheet "Nimet") without other changes.
+
+../municipalities.txt
+Source: Tilastokeskus (Statistics Finland), classification "Kunnat 2026" (kunta_1_20260101),
+https://data.stat.fi/api/classifications/v2/classifications/kunta_1_20260101
+Licence: Creative Commons Attribution 4.0 International (CC BY 4.0).

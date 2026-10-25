@@ -1,0 +1,27 @@
+[project]
+name = "pseudo-svc"
+version = "0.1.0"
+description = "Finnish PII pseudonymization sidecar (plan section 6)"
+requires-python = ">=3.12,<3.13"
+# Pins from docs/decisions/0003-finnish-pii-stack.md (7-day rule, 0002). fi_core_news_lg and the
+# Omorfi models are installed by infra/Dockerfile.pseudo, not from PyPI.
+dependencies = [
+  "fastapi==0.143.3",
+  "uvicorn==0.54.0",
+  "pydantic==2.14.1",
+  "presidio-analyzer==2.2.364",
+  "presidio-anonymizer==2.2.364",
+  "spacy==3.8.16",
+  "libvoikko==4.3",
+  "omorfi==0.10.0",
+  "pyhfst==1.4.0",
+  "sqlcipher3==0.6.4",
+  "phonenumbers==9.0.41",
+]
+
+[dependency-groups]
+dev = ["pytest==9.1.1", "httpx==0.28.1"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

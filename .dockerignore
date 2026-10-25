@@ -8,3 +8,6 @@ tests/e2e/screenshots
 **/*.test.ts
 .serena
 docs
+**/.venv
+**/__pycache__
+**/.pytest_cache
