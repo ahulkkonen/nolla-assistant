@@ -31,7 +31,7 @@ Phase 2 ships only `pa-server`. Later phases add services to `infra/compose.yaml
    | `AUTH_ORIGIN` | `https://assistant.example.fi` (the exact origin, no trailing slash) |
    | `AUTH_PASSWORD_HASH` | the `scrypt$...` string from step 1 |
    | `COOKIE_SECRET` | the random string from step 1 |
-   | `LITELLM_URL` | `http://litellm:4000` (phase 3 adds the service; until then the chat replies with an error) |
+   | `LITELLM_URL` | `http://litellm:4000`, no `/v1`: Pi appends `/chat/completions` and LiteLLM serves it (compose default) |
    | `LITELLM_MASTER_KEY` | any random string for now; phase 3 uses it |
    | `TRUST_PROXY` | `1` |
    | `USER_ID` | your short user id, letters and digits only |

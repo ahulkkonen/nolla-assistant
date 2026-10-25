@@ -24,6 +24,7 @@ All bodies are JSON. `user_id` is required on every call (invariant 6). `session
 | `POST /vault/merge` | `{ user_id, from_ids: [], into_id }` | `{ ok: true }` |
 | `POST /vault/split` | `{ user_id, entity_id, span_ids: [] }` | `{ ok: true, new_entity_id }` |
 | `POST /vault/entity/{id}` | `{ user_id, pinned?, allowlisted?, mode?, regenerate?: true, never_detect?: true }` | `{ entity }` |
+| `POST /vault/seed` | `{ user_id, entities: [{ canonical, kind }] }` | `{ ok: true, ids: [] }`: creates entities (and surrogates) without a text; used by `tests/pii/harness.py` and the vault UI's manual add |
 | `POST /vault/pending/{id}` | `{ user_id, action: 'confirm' \| 'dismiss' \| 'allowlist' }` | `{ ok: true }` |
 | `GET /healthz` | | `{ ok: true }` |
 
