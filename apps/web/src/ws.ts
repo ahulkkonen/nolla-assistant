@@ -50,7 +50,8 @@ export function openChat(chatId: string, messageId?: string | null) {
 export function createChat(): Promise<string> {
   return new Promise((resolve) => {
     createWaiters.push(resolve);
-    send({ type: 'chat.create', agentId: useStore.getState().pendingAgentId });
+    const st = useStore.getState();
+    send({ type: 'chat.create', agentId: st.pendingAgentId, model: st.pendingModel });
   });
 }
 
@@ -117,6 +118,8 @@ function open() {
       send({ type: 'topic.list' });
       // Baseline for the chat's memory chip diff.
       send({ type: 'memory.list' });
+      // Auto, favourites and the catalog for the model chip (phase-10).
+      send({ type: 'models.list' });
       reportFocus();
       if (store.activeChatId) send({ type: 'chat.open', chatId: store.activeChatId });
     }

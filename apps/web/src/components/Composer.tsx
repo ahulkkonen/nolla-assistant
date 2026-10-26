@@ -17,6 +17,7 @@ import { send, sendUserMessage } from '../ws.ts';
 import { AgentPicker } from './AgentPicker.tsx';
 import { IconButton } from './IconButton.tsx';
 import { clock, MicButton, type MicState } from './MicButton.tsx';
+import { ModelPicker } from './ModelPicker.tsx';
 
 type Chip = { key: string; name: string; preview?: string; ref?: AttachmentRef };
 
@@ -322,7 +323,8 @@ export function Composer() {
             }}
           />
           <AgentPicker />
-          <div className="ml-auto flex items-center gap-2">
+          <ModelPicker />
+          <div className="ml-auto flex shrink-0 items-center gap-2">
             <MicButton onText={insertTranscript} onState={setMic} meter={meter} />
             {running && chatId ? (
               <IconButton

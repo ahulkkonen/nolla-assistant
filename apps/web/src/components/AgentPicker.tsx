@@ -1,4 +1,4 @@
-import { ChevronDown } from 'lucide-react';
+import { Bot, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -7,6 +7,7 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { useMobile } from '../media.ts';
 import { useStore } from '../store.ts';
 import { Tip } from './IconButton.tsx';
 
@@ -18,6 +19,7 @@ export function AgentPicker() {
   const chatAgent = useStore((s) => s.chats.find((c) => c.id === s.activeChatId)?.agentId);
   const pending = useStore((s) => s.pendingAgentId);
   const agents = useStore((s) => s.agents);
+  const mobile = useMobile();
   const current = chatId ? (chatAgent ?? 'assistant') : pending;
   const name = agents.find((a) => a.id === current)?.name ?? current;
   const label = (
@@ -33,9 +35,18 @@ export function AgentPicker() {
         <Button
           variant="ghost"
           aria-disabled="true"
-          className={`${chip} cursor-not-allowed hover:bg-transparent hover:text-muted-foreground`}
+          // Phones, started chat: a 44 px icon, the name stays for assistive technology (phase-10).
+          {...(mobile ? { size: 'icon' as const } : {})}
+          className={`${mobile ? 'rounded-full text-muted-foreground' : chip} cursor-not-allowed hover:bg-transparent hover:text-muted-foreground`}
         >
-          {label}
+          {mobile ? (
+            <>
+              <Bot size={16} />
+              <span className="sr-only">Agentti: {name}</span>
+            </>
+          ) : (
+            label
+          )}
         </Button>
       </Tip>
     );

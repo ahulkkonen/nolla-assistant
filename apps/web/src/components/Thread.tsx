@@ -1,14 +1,15 @@
 import { TOOL_STATUS_WORD } from '@pa/protocol';
-import { AlertCircle, ArrowDown, MessageSquare } from 'lucide-react';
+import { AlertCircle, ArrowDown, MessageSquare, ShieldAlert } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { type UiMessage, useStore } from '../store.ts';
-import { openChat, sendUserMessage } from '../ws.ts';
+import { openChat, send, sendUserMessage } from '../ws.ts';
 import { ApprovalCard } from './ApprovalCard.tsx';
 import { IconButton } from './IconButton.tsx';
 import { MemoryChipRow } from './MemoryChipRow.tsx';
 import { MessageView } from './MessageView.tsx';
+import { useModel } from './ModelPicker.tsx';
 import { UNTITLED } from './Sidebar.tsx';
 import { SubagentRow } from './SubagentRow.tsx';
 
@@ -65,6 +66,9 @@ export function Thread() {
   const memoryChip = useStore((s) => (chatId ? s.memoryChip[chatId] : undefined));
   const subagents = useStore((s) => (chatId ? s.subagents[chatId] : undefined)) ?? EMPTY;
   const failed = useStore((s) => (chatId ? s.failed[chatId] : undefined));
+  const refused = useStore((s) => (chatId ? !!s.zdrRefused[chatId] : false));
+  const retryOnOpen = useStore((s) => s.retryOnOpen);
+  const { name: modelName, policy } = useModel();
   // Filtered here, not in the selector: a new array per call would re-render forever.
   const allApprovals = useStore((s) => s.approvals);
   // Open requests only: a decided one is shown by its tool row.
@@ -146,6 +150,22 @@ export function Thread() {
       {cards}
     </>
   );
+
+  /** Consent for this chat; the last message runs again once `chat.updated` shows `open`. */
+  const allowOpen = () => {
+    if (!chatId) return;
+    useStore.setState({ retryOnOpen: chatId });
+    send({ type: 'chat.setDataPolicy', chatId, dataPolicy: 'open' });
+  };
+  useEffect(() => {
+    if (!chatId || retryOnOpen !== chatId || policy.dataPolicy !== 'open') return;
+    useStore.setState({ retryOnOpen: null });
+    const prev = previousUser(messages, messages.length);
+    if (prev) void sendUserMessage(prev.text, prev.attachments);
+  }, [chatId, retryOnOpen, policy.dataPolicy, messages]);
+  useEffect(() => {
+    if (refused) announce('Malli ei tue ZDR:ää', true);
+  }, [refused]);
 
   const retryLast = () => {
     const prev = previousUser(messages, messages.length);
@@ -249,6 +269,34 @@ export function Thread() {
               <Button variant="outline" size="sm" onClick={retryLast}>
                 Yritä uudelleen
               </Button>
+            </div>
+          )}
+          {refused && !stream && !running && (
+            // A ZDR refusal asks for a decision (phase-10 UI): warning tint, the risk before consent.
+            <div
+              role="alert"
+              className="flex flex-col gap-3 rounded-md bg-warning-subtle px-4 py-3 text-foreground"
+            >
+              <div className="flex gap-3">
+                <ShieldAlert size={16} className="mt-1 shrink-0 text-warning" />
+                <div className="flex min-w-0 flex-col gap-1">
+                  <p className="text-body">
+                    Mallilla {modelName} ei ole ZDR-reittiä, joten OpenRouter hylkäsi pyynnön.
+                  </p>
+                  <p className="text-meta text-pretty text-muted-foreground">
+                    Ilman ZDR:ää palveluntarjoaja voi säilyttää viestit omien ehtojensa mukaan.
+                    Nimet ja tunnisteet korvataan silti peitenimillä.
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2 pl-7 max-md:flex-col max-md:pl-0">
+                <Button variant="outline" onClick={allowOpen}>
+                  Salli ilman ZDR:ää tässä keskustelussa
+                </Button>
+                <Button variant="ghost" onClick={() => useStore.setState({ modelMenuOpen: true })}>
+                  Vaihda malli
+                </Button>
+              </div>
             </div>
           )}
           {!(stream || running) && cards}

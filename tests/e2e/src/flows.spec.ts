@@ -193,6 +193,7 @@ test('keyboard: [ toggles sidebar, Tab reaches send with focus ring', async ({ a
   await page.getByLabel('Viesti').fill('x');
   await page.keyboard.press('Tab'); // attach
   await page.keyboard.press('Tab'); // agent picker (a new chat can still choose)
+  await page.keyboard.press('Tab'); // model chip
   await page.keyboard.press('Tab'); // mic
   await page.keyboard.press('Tab'); // send
   const sendBtn = page.getByRole('button', { name: 'Lähetä', exact: true });
@@ -323,6 +324,53 @@ test.describe('export', () => {
     expect(file.text).toContain('Muistio Matti Virtanen');
     expect(file.text).not.toContain(DICT['Matti Virtanen']);
   });
+});
+
+test('model policy: a favourite without ZDR is refused, allowed for the chat, then restored', async ({
+  app,
+  page,
+}) => {
+  // Phase-10 gate item 3. The fake catalog has no ZDR endpoint for Fable.
+  app.llm.push({
+    match: /^Hei Fable/,
+    error: { status: 404, message: 'No endpoints found matching your data policy' },
+  });
+  app.llm.push({ match: /^Hei Fable/, text: 'Vastaus ilman ZDR:ää.' });
+  await app.login(page);
+  const chip = page.getByRole('button', { name: /^Malli: / });
+
+  // Favourite it in the catalog, then pick it from the menu.
+  await chip.click();
+  await page.getByRole('menuitem', { name: 'Kaikki mallit…' }).click();
+  const catalog = page.getByRole('dialog', { name: 'Kaikki mallit' });
+  await catalog.getByRole('button', { name: 'Lisää suosikkeihin: Claude Fable 5.1' }).click();
+  await expect(catalog.getByRole('heading', { name: 'Suosikit' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await chip.click();
+  await page.getByRole('menuitemradio', { name: /^Claude Fable 5\.1/ }).click();
+  await expect(chip).toHaveAccessibleName('Malli: Claude Fable 5.1');
+
+  // 1. The refusal asks for consent inline.
+  await send(page, 'Hei Fable');
+  const alert = page.getByRole('alert').filter({ hasText: 'ei ole ZDR-reittiä' });
+  await expect(alert).toBeVisible();
+  expect(app.llm.requests.at(-1)?.body.model).toBe('zdr/anthropic/claude-fable-5.1');
+
+  // 2. Consent: the message runs again on the open route; the chip shows the badge.
+  await alert.getByRole('button', { name: 'Salli ilman ZDR:ää tässä keskustelussa' }).click();
+  await expect(page.locator('.md').last()).toHaveText('Vastaus ilman ZDR:ää.');
+  await expect(alert).toHaveCount(0);
+  await expect(chip).toHaveAccessibleName('Malli: Claude Fable 5.1, Ei ZDR');
+  await expect(page.getByText('Ei ZDR', { exact: true })).toBeVisible();
+  expect(app.llm.requests.some((r) => r.body.model === 'open/anthropic/claude-fable-5.1')).toBe(
+    true,
+  );
+
+  // 3. "Palauta ZDR" ends the consent: the badge goes.
+  await chip.click();
+  await page.getByRole('menuitem', { name: 'Palauta ZDR' }).click();
+  await expect(chip).toHaveAccessibleName('Malli: Claude Fable 5.1');
+  await expect(page.getByText('Ei ZDR', { exact: true })).toHaveCount(0);
 });
 
 test('agent picker: a new chat is created with the picked agent', async ({ app, page }) => {

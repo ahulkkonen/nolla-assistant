@@ -105,6 +105,24 @@ const shot = async (page: Page, screen: string, w: number, scheme: string) => {
   await axe(page, `${screen}-${w}-${scheme}`);
 };
 
+/** Opens the composer's model menu (phase-10). */
+const modelMenu = (page: Page) => page.getByRole('button', { name: /^Malli: / }).click();
+
+/** Picks a model for the chat from "Kaikki mallit". */
+const pickModel = async (page: Page, name: string) => {
+  await modelMenu(page);
+  await page.getByRole('menuitem', { name: 'Kaikki mallit…' }).click();
+  const catalog = page.getByRole('dialog', { name: 'Kaikki mallit' });
+  await catalog.getByRole('button', { name: new RegExp(`^${name.replace(/\./g, '\\.')}`) }).click();
+  await expect(catalog).toHaveCount(0);
+};
+
+/** OpenRouter's refusal of a model without a ZDR endpoint, as LiteLLM passes it on. */
+const REFUSAL = {
+  match: /^Hei Fable/,
+  error: { status: 404, message: 'No endpoints found matching your data policy' },
+};
+
 const send = async (page: Page, text: string) => {
   await page.getByLabel('Viesti').fill(text);
   await page.getByLabel('Viesti').press('ControlOrMeta+Enter');
@@ -293,6 +311,57 @@ for (const scheme of ['light', 'dark'] as const) {
           .evaluate((el) => el.scrollIntoView({ block: 'start' }));
         await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
         await shot(page, 'settings-integrations', vp.width, scheme);
+      });
+
+      test('model-menu', async ({ app, page }) => {
+        await app.login(page);
+        await modelMenu(page);
+        await expect(page.getByRole('menuitem', { name: 'Kaikki mallit…' })).toBeVisible();
+        await shot(page, 'model-menu', vp.width, scheme);
+      });
+
+      test('model-thinking', async ({ app, page }) => {
+        await app.login(page);
+        await pickModel(page, 'Claude Opus 5.5');
+        await modelMenu(page);
+        await expect(page.getByRole('menuitemradio', { name: /^Maksimi/ })).toBeVisible();
+        await shot(page, 'model-thinking', vp.width, scheme);
+      });
+
+      test('model-catalog', async ({ app, page }) => {
+        await app.login(page);
+        await modelMenu(page);
+        await page.getByRole('menuitem', { name: 'Kaikki mallit…' }).click();
+        const catalog = page.getByRole('dialog', { name: 'Kaikki mallit' });
+        await catalog.getByRole('button', { name: 'Lisää suosikkeihin: Claude Fable 5.1' }).click();
+        await expect(catalog.getByRole('heading', { name: 'Suosikit' })).toBeVisible();
+        await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+        await shot(page, 'model-catalog', vp.width, scheme);
+      });
+
+      test('zdr-refusal', async ({ app, page }) => {
+        app.llm.push(REFUSAL);
+        await app.login(page);
+        await pickModel(page, 'Claude Fable 5.1');
+        await send(page, 'Hei Fable');
+        await expect(
+          page.getByRole('alert').filter({ hasText: 'ei ole ZDR-reittiä' }),
+        ).toBeVisible();
+        await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+        await shot(page, 'zdr-refusal', vp.width, scheme);
+      });
+
+      test('zdr-open-badge', async ({ app, page }) => {
+        app.llm.push(REFUSAL);
+        app.llm.push({ match: /^Hei Fable/, text: 'Vastaus ilman ZDR:ää.' });
+        await app.login(page);
+        await pickModel(page, 'Claude Fable 5.1');
+        await send(page, 'Hei Fable');
+        await page.getByRole('button', { name: 'Salli ilman ZDR:ää tässä keskustelussa' }).click();
+        await expect(page.locator('.md').last()).toHaveText('Vastaus ilman ZDR:ää.');
+        await expect(page.getByRole('button', { name: /, Ei ZDR$/ })).toBeVisible();
+        await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+        await shot(page, 'zdr-open-badge', vp.width, scheme);
       });
 
       test('empty-chat', async ({ app, page }) => {

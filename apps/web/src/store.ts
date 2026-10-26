@@ -3,6 +3,7 @@ import type {
   Artifact,
   ChatSummary,
   Message,
+  ModelChoice,
   ServerMessage,
   ToolRow,
   VaultEntity,
@@ -35,6 +36,10 @@ export type Agent = Of<'agents.state'>['agents'][number];
 export type SubagentChild = Of<'subagent.state'>['children'][number];
 export type Automation = Of<'automations.state'>['automations'][number];
 export type MemoryState = Omit<Of<'memory.state'>, 'type'>;
+/** The last `models.state` (phase-10): Auto's model, favourites and the catalog. */
+export type ModelsState = Omit<Of<'models.state'>, 'type'>;
+/** A new chat's model until `chat.create` (phase-10). */
+export const DEFAULT_MODEL: ModelChoice = { modelId: 'auto', reasoning: 'auto' };
 /** `lines`: "+ added" / "- removed" lines of the agent's write. */
 export type MemoryChip = { kind: 'applied' | 'pending'; lines: string[] };
 
@@ -86,6 +91,16 @@ type State = {
   agents: Agent[];
   /** Agent for the next `chat.create` (the empty chat's picker). */
   pendingAgentId: string;
+  /** Model and thinking level for the next `chat.create` (the empty chat's model chip). */
+  pendingModel: ModelChoice;
+  /** Null until the first `models.state`. */
+  models: ModelsState | null;
+  /** A ZDR refusal per chat (`zdr_unavailable`), shown inline until consent or a new message. */
+  zdrRefused: Record<string, true>;
+  /** The chat whose last message runs again once `chat.updated` shows `open`. */
+  retryOnOpen: string | null;
+  /** The composer's model menu (the refusal alert's "Vaihda malli" opens it). */
+  modelMenuOpen: boolean;
   /** Open approval requests of every chat, oldest first. */
   approvals: Approval[];
   /** Live subagent children per chat; cleared when the chat goes idle. */
@@ -213,6 +228,7 @@ const ERROR_TEXT: Record<string, string> = {
   pseudo_down: 'Pseudonymisointipalvelu ei vastaa.',
   memory_full: 'Muisti on täynnä.',
   memory_conflict: 'Teksti on muuttunut, lataa uudelleen.',
+  zdr_unavailable: 'Mallilla ei ole ZDR-reittiä. Avaa keskustelu ja valitse toinen malli.',
 };
 
 /** Inline failed-reply text; the alert's "Yritä uudelleen" button says what to do. */
@@ -250,6 +266,11 @@ export const useStore = create<State>()((set, get) => {
     screen: 'chat',
     agents: [],
     pendingAgentId: 'assistant',
+    pendingModel: DEFAULT_MODEL,
+    models: null,
+    zdrRefused: {},
+    retryOnOpen: null,
+    modelMenuOpen: false,
     approvals: [],
     subagents: {},
     automations: null,
@@ -293,12 +314,19 @@ export const useStore = create<State>()((set, get) => {
             activeChatId: msg.chat.id,
             messages: { ...st.messages, [msg.chat.id]: st.messages[msg.chat.id] ?? [] },
             pendingAgentId: 'assistant',
+            pendingModel: DEFAULT_MODEL,
           }));
         case 'chat.updated':
           return set((st) => {
             const rest = st.chats.filter((c) => c.id !== msg.chat.id);
+            const was = st.chats.find((c) => c.id === msg.chat.id)?.modelPolicy;
+            const now = msg.chat.modelPolicy;
+            // A new model or the consent ends the refusal alert.
+            const policyChanged =
+              !!was && (was.modelId !== now.modelId || was.dataPolicy !== now.dataPolicy);
             return {
               chats: sortChats(msg.chat.archived === st.archivedView ? [msg.chat, ...rest] : rest),
+              ...(policyChanged ? { zdrRefused: omit(st.zdrRefused, msg.chat.id) } : {}),
             };
           });
         case 'chat.titled':
@@ -334,6 +362,7 @@ export const useStore = create<State>()((set, get) => {
             agentStatus: omit(st.agentStatus, msg.chatId),
             memoryChip: omit(st.memoryChip, msg.chatId),
             failed: omit(st.failed, msg.chatId),
+            zdrRefused: omit(st.zdrRefused, msg.chatId),
             approvals: st.approvals.filter((a) => a.chatId !== msg.chatId),
             ...(st.activeChatId === msg.chatId
               ? { activeChatId: null, screen: 'chat', scrollTo: null }
@@ -448,6 +477,10 @@ export const useStore = create<State>()((set, get) => {
           return set((st) => ({ related: { ...st.related, [msg.chatId]: msg.related } }));
         case 'vault.state':
           return set({ vault: { entities: msg.entities, pending: msg.pending } });
+        case 'models.state': {
+          const { type: _, ...models } = msg;
+          return set({ models });
+        }
         case 'error':
           // `chat.open` of a chat deleted elsewhere (e.g. while offline) answers not_found.
           if (msg.code === 'not_found') {
@@ -455,6 +488,12 @@ export const useStore = create<State>()((set, get) => {
             if (st.activeChatId && !st.chats.some((c) => c.id === st.activeChatId))
               set({ activeChatId: null, scrollTo: null });
           }
+          // A ZDR refusal in the open chat asks for consent inline (phase-10 UI).
+          if (msg.code === 'zdr_unavailable' && msg.chatId && msg.chatId === get().activeChatId)
+            return set((st) => ({
+              zdrRefused: { ...st.zdrRefused, [msg.chatId as string]: true },
+              errorCount: st.errorCount + 1,
+            }));
           // A failed reply in the open chat is an inline alert with a retry (brief 7.5).
           if (
             (msg.code === 'llm_failed' || msg.code === 'prompt_failed') &&
@@ -514,6 +553,7 @@ export const useStore = create<State>()((set, get) => {
         approvals: st.approvals.filter((a) => a.chatId !== chatId || (!a.expired && !a.denied)),
         memoryChip: omit(st.memoryChip, chatId),
         failed: omit(st.failed, chatId),
+        zdrRefused: omit(st.zdrRefused, chatId),
         messages: { ...st.messages, [chatId]: [...(st.messages[chatId] ?? []), m] },
       })),
     // Toasts (brief 7.5): 4 s, errors 6 s with a close button.
