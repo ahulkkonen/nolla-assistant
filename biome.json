@@ -14,7 +14,8 @@
       "!**/playwright-report",
       "!**/test-results",
       "!tests/pii/last-run.json",
-      "!services/pseudo-svc/data"
+      "!services/pseudo-svc/data",
+      "!**/.claude/worktrees"
     ]
   },
   "formatter": {
