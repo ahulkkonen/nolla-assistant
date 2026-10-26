@@ -4,6 +4,8 @@ import type {
   AttachmentRef,
   ChatSummary,
   FileRoot,
+  ForkLink,
+  FxRate,
   Message,
   ModelChoice,
   ModelPolicy,
@@ -91,7 +93,42 @@ type State = {
   /** Annotated spans show the surrogate the model saw instead of the real value. */
   showModelSaw: boolean;
   /** What `main` shows. Choosing a chat returns to `chat`. */
-  screen: 'chat' | 'vault' | 'search' | 'topics' | 'agents' | 'automations' | 'memory' | 'files';
+  screen:
+    | 'chat'
+    | 'vault'
+    | 'search'
+    | 'topics'
+    | 'agents'
+    | 'automations'
+    | 'memory'
+    | 'files'
+    | 'usage';
+  /** The newest ECB rate (`fx.state`); null: prices show in dollars (phase-13 decision 16). */
+  fx: FxRate | null;
+  /** The source of each forked chat from its `chat.state` (phase 13); null: not a fork. */
+  forkedFrom: Record<string, ForkLink | null>;
+  /** A `chat.fork` sent from this client, until its `chat.state` (or an error) arrives. */
+  pendingFork: {
+    chatId: string;
+    messageId: string;
+    text: string;
+    attachments: AttachmentRef[];
+  } | null;
+  /** The streamed message that thinks now, per chat (`message.thinking`); `endedAt` once it stopped. */
+  thinkingLive: Record<string, { messageId: string; startedAt: number; endedAt?: number }>;
+  /** Thinking text per assistant message id, loaded on the first open of its row (`thinking.get`). */
+  thinkingText: Record<
+    string,
+    | { chatId: string; state: 'loading' | 'error' }
+    | { chatId: string; state: 'ok'; text: string; annotations: Annotation[] }
+  >;
+  /** "Näytä ajattelu" (localStorage, on by default): off hides every thinking row. */
+  showThinking: boolean;
+  setShowThinking(on: boolean): void;
+  /** The last `usage.state` (Käyttö); null until the first answer. */
+  usage: Omit<Of<'usage.state'>, 'type'> | null;
+  /** A query for the find bar to open with (a global search hit opens its chat with it). */
+  findQuery: string | null;
   /**
    * Where Tiedostot stands (phase-11): a root or the trash, the folder, and an entry to show
    * (opened in the preview) once the folder is listed.
@@ -187,6 +224,15 @@ function loadTheme(): Theme {
     return t === 'light' || t === 'dark' ? t : 'system';
   } catch {
     return 'system';
+  }
+}
+
+const THINKING_KEY = 'pa.thinking';
+function loadShowThinking() {
+  try {
+    return globalThis.localStorage?.getItem(THINKING_KEY) !== 'off';
+  } catch {
+    return true;
   }
 }
 
@@ -342,6 +388,14 @@ export const useStore = create<State>()((set, get) => {
     // Docked from 1024 px (brief 7.4); below, the rail or the drawer starts closed.
     sidebarOpen: globalThis.matchMedia?.('(min-width: 1024px)').matches ?? false,
     theme: loadTheme(),
+    fx: null,
+    forkedFrom: {},
+    pendingFork: null,
+    thinkingLive: {},
+    thinkingText: {},
+    showThinking: loadShowThinking(),
+    usage: null,
+    findQuery: null,
     showModelSaw: false,
 
     apply(msg) {
@@ -391,11 +445,72 @@ export const useStore = create<State>()((set, get) => {
             ),
           }));
         case 'chat.state':
+          return set((st) => {
+            // Phase 13: the fork this client asked for: the copied history, then the edited text
+            // as the optimistic user message (the server does not echo it).
+            const fork = st.pendingFork;
+            const mine =
+              fork &&
+              msg.forkedFrom?.chatId === fork.chatId &&
+              msg.forkedFrom.messageId === fork.messageId;
+            const local: UiMessage[] = mine
+              ? [
+                  {
+                    id: `local-${crypto.randomUUID()}`,
+                    role: 'user',
+                    text: fork.text,
+                    annotations: [],
+                    attachments: fork.attachments,
+                    tools: [],
+                    createdAt: new Date().toISOString(),
+                  },
+                ]
+              : [];
+            return {
+              messages: { ...st.messages, [msg.chat.id]: [...msg.messages, ...local] },
+              policies: { ...st.policies, [msg.chat.id]: msg.chat.modelPolicy },
+              forkedFrom: { ...st.forkedFrom, [msg.chat.id]: msg.forkedFrom ?? null },
+              ...(mine ? { pendingFork: null, activeChatId: msg.chat.id, screen: 'chat' } : {}),
+              ...(msg.artifacts ? mergeArtifacts(st, msg.chat.id, msg.artifacts) : {}),
+            };
+          });
+        case 'fx.state':
+          return set({ fx: msg.rate });
+        case 'message.thinking':
+          return set((st) => {
+            const now = st.thinkingLive[msg.chatId];
+            if (msg.active)
+              return {
+                thinkingLive: {
+                  ...st.thinkingLive,
+                  [msg.chatId]: { messageId: msg.messageId, startedAt: Date.now() },
+                },
+              };
+            return now?.messageId === msg.messageId
+              ? {
+                  thinkingLive: {
+                    ...st.thinkingLive,
+                    [msg.chatId]: { ...now, endedAt: Date.now() },
+                  },
+                }
+              : {};
+          });
+        case 'thinking.text':
           return set((st) => ({
-            messages: { ...st.messages, [msg.chat.id]: msg.messages },
-            policies: { ...st.policies, [msg.chat.id]: msg.chat.modelPolicy },
-            ...(msg.artifacts ? mergeArtifacts(st, msg.chat.id, msg.artifacts) : {}),
+            thinkingText: {
+              ...st.thinkingText,
+              [msg.messageId]: {
+                chatId: msg.chatId,
+                state: 'ok',
+                text: msg.text,
+                annotations: msg.annotations,
+              },
+            },
           }));
+        case 'usage.state': {
+          const { type: _, ...usage } = msg;
+          return set({ usage });
+        }
         case 'artifact.upsert':
           return set((st) => {
             const list = st.artifacts[msg.chatId] ?? [];
@@ -449,6 +564,7 @@ export const useStore = create<State>()((set, get) => {
             return {
               messages: { ...st.messages, [msg.chatId]: [...prev, { ...msg.message, tools }] },
               streaming: omit(st.streaming, msg.chatId),
+              thinkingLive: omit(st.thinkingLive, msg.chatId),
             };
           });
         case 'tool.start':
@@ -474,6 +590,8 @@ export const useStore = create<State>()((set, get) => {
             agentStatus: { ...st.agentStatus, [msg.chatId]: msg.state },
             // A turn that ended without a final (error, abort) must not leave a stale stream.
             streaming: msg.state === 'idle' ? omit(st.streaming, msg.chatId) : st.streaming,
+            thinkingLive:
+              msg.state === 'idle' ? omit(st.thinkingLive, msg.chatId) : st.thinkingLive,
             // An idle chat waits for nothing: a stop drops its approval without a message.
             ...(msg.state === 'idle'
               ? {
@@ -567,7 +685,33 @@ export const useStore = create<State>()((set, get) => {
           const { type: _, ...models } = msg;
           return set({ models });
         }
-        case 'error':
+        case 'error': {
+          // Phase 13: the answer to a pending `chat.fork`; the edit box stays open for a retry.
+          const st0 = get();
+          if (
+            st0.pendingFork &&
+            ['bad_message', 'failed', 'not_found', 'pseudo_down'].includes(msg.code)
+          ) {
+            set({ pendingFork: null });
+            return get().pushError(
+              msg.code === 'pseudo_down'
+                ? (ERROR_TEXT.pseudo_down ?? msg.message)
+                : 'Haarautus epäonnistui. Yritä uudelleen.',
+            );
+          }
+          // A thinking text that could not load: its row says so, no toast.
+          const loading = Object.entries(st0.thinkingText).filter(
+            ([, t]) => t.state === 'loading' && (!msg.chatId || t.chatId === msg.chatId),
+          );
+          if (loading.length && (msg.code === 'not_found' || msg.code === 'pseudo_down'))
+            return set((st) => ({
+              thinkingText: {
+                ...st.thinkingText,
+                ...Object.fromEntries(
+                  loading.map(([id, t]) => [id, { chatId: t.chatId, state: 'error' as const }]),
+                ),
+              },
+            }));
           // `chat.open` of a chat deleted elsewhere (e.g. while offline) answers not_found.
           if (msg.code === 'not_found') {
             const st = get();
@@ -599,6 +743,7 @@ export const useStore = create<State>()((set, get) => {
               errorCount: st.errorCount + 1,
             }));
           return get().pushError(ERROR_TEXT[msg.code] ?? msg.message);
+        }
         default:
           return;
       }
@@ -666,5 +811,11 @@ export const useStore = create<State>()((set, get) => {
       set({ theme });
     },
     setShowModelSaw: (showModelSaw) => set({ showModelSaw }),
+    setShowThinking(showThinking) {
+      try {
+        localStorage.setItem(THINKING_KEY, showThinking ? 'on' : 'off');
+      } catch {}
+      set({ showThinking });
+    },
   };
 });

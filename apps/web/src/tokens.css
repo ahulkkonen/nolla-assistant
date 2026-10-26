@@ -470,3 +470,12 @@
   padding: 4px 8px;
   overflow-wrap: anywhere;
 }
+
+/* Phase 13: the find bar's hits (CSS Custom Highlight API); the DOM does not change. */
+::highlight(find) {
+  background-color: var(--warning-subtle);
+}
+::highlight(find-current) {
+  background-color: var(--warning-subtle);
+  text-decoration: underline 2px var(--warning);
+}

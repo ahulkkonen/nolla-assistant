@@ -18,6 +18,7 @@ const KEYS: [string, string][] = [
   ['↑', 'Muokkaa viimeisintä viestiä, kun viestikenttä on tyhjä'],
   [keys('K'), 'Komennot'],
   [keys('O', true), 'Uusi keskustelu'],
+  [keys('F'), 'Etsi keskustelusta'],
   ['Shift+Esc', 'Siirry viestikenttään'],
   ['[', 'Avaa tai sulje sivupalkki'],
 ];

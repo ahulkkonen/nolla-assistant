@@ -1,4 +1,4 @@
-import type { ModelChoice, ModelPolicy, ReasoningEffort } from '@pa/protocol';
+import type { CatalogModel, ModelChoice, ModelPolicy, ReasoningEffort } from '@pa/protocol';
 import { useStore } from './store.ts';
 import { send } from './ws.ts';
 
@@ -19,6 +19,17 @@ export const aliasName = (alias: string) => {
   const base = alias.replace(/^zdr\//, '').replace(/-/g, ' ');
   return `${base.charAt(0).toUpperCase()}${base.slice(1)} (ZDR)`;
 };
+
+/**
+ * A model id as LiteLLM got it ('zdr/google/gemini-4-argon', 'zdr/strong'): the catalog name,
+ * else the alias name, else the id (phase-13 cost tooltip and Käyttö).
+ */
+export function modelLabel(catalog: CatalogModel[] | undefined, id: string) {
+  const bare = id.replace(/^(zdr|open)\//, '');
+  const hit = catalog?.find((m) => m.id === bare);
+  if (hit) return hit.name;
+  return bare.includes('/') ? id : aliasName(id);
+}
 
 /**
  * The phone chip's name: "Claude Opus 5.5" → "Opus 5.5". A name of two words, or one whose second

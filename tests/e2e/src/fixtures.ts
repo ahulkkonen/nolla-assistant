@@ -155,6 +155,18 @@ export const DICT = {
   '010190-123M': '010190-900B',
 };
 
+/**
+ * A reply of a thinking model with its usage (phase 13): the reasoning streams first and lasts
+ * `thinkMs`; the cost is OpenRouter's billed USD in the usage chunk (0,012 € at the fake's rate).
+ */
+export const THINKING_TURN = {
+  text: 'Kevät on hyvä aika aloittaa, kun maa on sula.',
+  reasoning:
+    'Käyttäjä kysyy aloitusajasta. Mietin ensin säätä ja maata. Sitten vertailen kevättä ja syksyä.',
+  thinkMs: 1500,
+  usage: { prompt_tokens: 3100, completion_tokens: 300, reasoning_tokens: 120, cost: 0.0134 },
+};
+
 /** The surrogate of Matti Virtanen, typed as a real person's name: a collision (phase 12). */
 export const COLLIDING = 'Pekka Laaksonen';
 
@@ -222,7 +234,7 @@ export const test = base.extend<{
         LITELLM_MASTER_KEY: KEY,
         // Model catalog from the fake (phase-10): Auto is a catalog model.
         OPENROUTER_CATALOG: llm.url,
-    ECB_RATES: llm.url,
+        ECB_RATES: llm.url,
         AUTH_ORIGIN: `http://127.0.0.1:${port}`,
         COOKIE_SECRET: 'e'.repeat(40),
         AUTH_PASSWORD_HASH: await hashPassword(PASSWORD),
@@ -268,7 +280,7 @@ export const openFiles = async (page: Page) => {
 /** Opens a settings entry; settings sits in the drawer under 768 px, in the sidebar above. */
 export const openSettings = async (
   page: Page,
-  entry: 'Nimisuoja' | 'Aiheet' | 'Agentit' | 'Automaatiot' | 'Muisti' | 'Asetukset',
+  entry: 'Nimisuoja' | 'Aiheet' | 'Agentit' | 'Automaatiot' | 'Muisti' | 'Käyttö' | 'Asetukset',
 ) => {
   const menu = page.getByRole('button', { name: 'Valikko' });
   if (await menu.isVisible()) await menu.click();

@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import AxeBuilder from '@axe-core/playwright';
 import type { Page } from '@playwright/test';
 import {
+  type App,
   acceptProposal,
   COLLIDING,
   expect,
@@ -19,6 +20,7 @@ import {
   sendMessage,
   showSidebar,
   TAX,
+  THINKING_TURN,
   taxChat,
   test,
   titleTurn,
@@ -351,6 +353,143 @@ for (const scheme of ['light', 'dark'] as const) {
         await expect(page.getByRole('button', { name: /, Ei ZDR$/ })).toBeVisible();
         await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
         await shot(page, 'zdr-open-badge', vp.width, scheme);
+      });
+
+      test.describe('thread depth', () => {
+        const phone = vp.width < 768;
+        const thread = (page: Page) => page.getByRole('region', { name: 'Keskustelu' });
+        const blur = (page: Page) =>
+          page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+        /** One reply of the thinking turn, with its cost (and the title job). */
+        const thinkingChat = async (app: App, page: Page) => {
+          app.llm.push(THINKING_TURN);
+          app.llm.push(titleTurn('Kasvimaa', 'Käyttäjä kysyi kasvimaasta.'));
+          await app.login(page);
+          await sendMessage(page, 'Milloin kasvimaa kannattaa aloittaa?');
+          // The thinking takes 1,5 s; the full parallel run is slower than one test.
+          await expect(page.locator('.md').last()).toHaveText(THINKING_TURN.text, {
+            timeout: 15_000,
+          });
+          await expect(page.getByText('Kasvimaa', { exact: true }).first()).toBeVisible({
+            timeout: 15_000,
+          });
+        };
+
+        test('thinking-live', async ({ app, page }) => {
+          app.llm.push({ ...THINKING_TURN, thinkMs: 20_000 });
+          const hold = await holdAfter(page, 'message.thinking');
+          await app.login(page);
+          await sendMessage(page, 'Milloin kasvimaa kannattaa aloittaa?');
+          await hold.reached;
+          await expect(thread(page).getByText(/^Ajattelee… \d+ s$/)).toBeVisible();
+          await page.waitForTimeout(1200);
+          await shot(page, 'thinking-live', vp.width, scheme);
+          hold.release();
+        });
+
+        test('thinking-closed', async ({ app, page }) => {
+          await thinkingChat(app, page);
+          await expect(
+            thread(page).getByRole('button', { name: /^Ajatteli \d+ s$/ }),
+          ).toBeVisible();
+          await blur(page);
+          await shot(page, 'thinking-closed', vp.width, scheme);
+        });
+
+        test('thinking-open', async ({ app, page }) => {
+          await thinkingChat(app, page);
+          await thread(page)
+            .getByRole('button', { name: /^Ajatteli \d+ s$/ })
+            .click();
+          await expect(thread(page).getByRole('region', { name: 'Mallin ajattelu' })).toBeVisible();
+          await blur(page);
+          await shot(page, 'thinking-open', vp.width, scheme);
+        });
+
+        test('message-meta', async ({ app, page }) => {
+          await thinkingChat(app, page);
+          const reply = thread(page).locator('[data-message-id]').last();
+          await expect(reply.getByText('0,012 €')).toBeVisible();
+          // Desktop: the cost's tooltip with the model and the token parts.
+          if (vp.width === 1440) {
+            await reply.getByText('0,012 €').hover();
+            await expect(page.getByRole('tooltip')).toContainText('Malli: Gemini 4 Argon');
+          } else await blur(page);
+          await shot(page, 'message-meta', vp.width, scheme);
+        });
+
+        test('fork-link', async ({ app, page }) => {
+          app.llm.push({ text: 'Kevät on hyvä aika.' });
+          app.llm.push(titleTurn('Kasvimaa', 'Käyttäjä kysyi kasvimaasta.'));
+          app.llm.push({ text: 'Syksyllä maa kannattaa kääntää.' });
+          app.llm.push({ text: 'Syksy sopii myös, jos maa on kuohkea.' });
+          await app.login(page);
+          await sendMessage(page, 'Milloin kasvimaa kannattaa aloittaa?');
+          await expect(page.locator('.md').last()).toHaveText('Kevät on hyvä aika.');
+          await expect(page.getByText('Kasvimaa', { exact: true }).first()).toBeVisible({
+            timeout: 15_000,
+          });
+          await sendMessage(page, 'Entä syksyllä?');
+          await expect(page.locator('.md').last()).toHaveText('Syksyllä maa kannattaa kääntää.');
+          const second = thread(page).locator('[data-message-id]').nth(2);
+          if (phone) await page.getByLabel('Viesti').press('ArrowUp');
+          else {
+            await second.hover();
+            await second.getByRole('button', { name: 'Muokkaa' }).click();
+          }
+          await page.getByLabel('Muokattava viesti').fill('Entä jos aloitan syksyllä?');
+          await page.getByRole('button', { name: 'Haarauta' }).click();
+          await expect(
+            page.getByRole('button', { name: 'Haarautettu keskustelusta ”Kasvimaa”' }),
+          ).toBeVisible();
+          await expect(page.locator('.md').last()).toHaveText(
+            'Syksy sopii myös, jos maa on kuohkea.',
+          );
+          if (!phone) await page.mouse.move(vp.width / 2, vp.height / 2);
+          await blur(page);
+          await shot(page, 'fork-link', vp.width, scheme);
+        });
+
+        test('find-bar', async ({ app, page }) => {
+          app.llm.push({ text: 'Omena on hedelmä, ja omenapuu kukkii keväällä.' });
+          await app.login(page);
+          await sendMessage(page, 'Kerro omenasta');
+          await expect(page.locator('.md').last()).toContainText('omenapuu');
+          await page.keyboard.press('ControlOrMeta+f');
+          await page.getByLabel('Etsi keskustelusta').fill('omena');
+          await expect(page.getByText('1/3', { exact: true })).toBeVisible();
+          await page.getByLabel('Etsi keskustelusta').press('Enter');
+          await expect(page.getByText('2/3', { exact: true })).toBeVisible();
+          await shot(page, 'find-bar', vp.width, scheme);
+        });
+
+        test('chat-menu-usage', async ({ app, page }) => {
+          await thinkingChat(app, page);
+          await showSidebar(page);
+          const row = page.locator('nav li', { hasText: 'Kasvimaa' });
+          if (!phone) await row.hover();
+          await row
+            .getByRole('button', { name: phone ? 'Toiminnot: Kasvimaa' : 'Lisää: Kasvimaa' })
+            .click();
+          await expect(page.getByRole('menu').getByText('0,01 € · 3,4 k tokenia')).toBeVisible();
+          await shot(page, 'chat-menu-usage', vp.width, scheme);
+        });
+
+        test('usage-month', async ({ app, page }) => {
+          await thinkingChat(app, page);
+          await openSettings(page, 'Käyttö');
+          await expect(page.getByText('3,4 k tokenia · 1 kutsu')).toBeVisible();
+          await blur(page);
+          await shot(page, 'usage-month', vp.width, scheme);
+        });
+
+        test('usage-empty', async ({ app, page }) => {
+          await app.login(page);
+          await openSettings(page, 'Käyttö');
+          await expect(page.getByText('Ei käyttöä tässä kuussa')).toBeVisible();
+          await blur(page);
+          await shot(page, 'usage-empty', vp.width, scheme);
+        });
       });
 
       test.describe('files', () => {

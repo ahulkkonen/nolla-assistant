@@ -21,6 +21,7 @@ import { ShortcutsDialog } from './components/ShortcutsDialog.tsx';
 import { Sidebar, UNTITLED } from './components/Sidebar.tsx';
 import { Thread } from './components/Thread.tsx';
 import { TOPICS_TITLE, TopicsScreen } from './components/TopicsScreen.tsx';
+import { USAGE_TITLE, UsageScreen } from './components/UsageScreen.tsx';
 import { VAULT_TITLE, VaultScreen } from './components/VaultScreen.tsx';
 import { useMedia, useMobile } from './media.ts';
 import { resyncPush } from './push.ts';
@@ -35,6 +36,7 @@ const SCREEN_TITLE = {
   automations: AUTOMATIONS_TITLE,
   memory: MEMORY_TITLE,
   files: FILES_TITLE,
+  usage: USAGE_TITLE,
 };
 
 /** `--background` of each scheme (tokens.css), for the browser chrome (brief 7.7). */
@@ -208,6 +210,7 @@ function Shell() {
         {screen === 'automations' && <AutomationsScreen />}
         {screen === 'memory' && <MemoryScreen />}
         {screen === 'files' && <FilesScreen />}
+        {screen === 'usage' && <UsageScreen />}
         {/* Hidden, not unmounted, on other screens: the composer owns the global shortcuts. */}
         <div className={cn('flex min-h-0 flex-1 flex-col', screen !== 'chat' && 'hidden')}>
           {empty ? (

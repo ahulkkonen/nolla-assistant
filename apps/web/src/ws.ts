@@ -5,7 +5,7 @@ import {
   type ModelPolicy,
   ServerMessage,
 } from '@pa/protocol';
-import { useStore } from './store.ts';
+import { type UiMessage, useStore } from './store.ts';
 
 let ws: WebSocket | null = null;
 let url = '';
@@ -15,6 +15,8 @@ let stopped = true;
 let pingTimer: ReturnType<typeof setInterval> | undefined;
 let retryTimer: ReturnType<typeof setTimeout> | undefined;
 let createWaiters: Array<(chatId: string) => void> = [];
+/** Callers waiting for a chat's next `chat.state` (its server message ids). */
+let stateWaiters: Array<{ chatId: string; resolve: (messages: UiMessage[]) => void }> = [];
 /**
  * A data-policy change sent from this client, until its `chat.updated` confirms it. For `open`,
  * `turnId` is the refused turn's user message: the consent retries that turn and no newer one.
@@ -119,6 +121,37 @@ export function retryTurn(chatId: string) {
   send({ type: 'user.message', chatId, text: last.text, attachments: last.attachments });
 }
 
+/**
+ * "Haarauta" (phase-13 decision 1): a new chat from the edited user message; this chat does not
+ * change. A message sent in this session still has its local id, so the server's ids come first
+ * (`chat.open`), matched by the message's place among the user messages.
+ */
+export async function forkChat(chatId: string, messageId: string, text: string) {
+  const list = useStore.getState().messages[chatId] ?? [];
+  const original = list.find((m) => m.id === messageId);
+  const attachments = original?.attachments ?? [];
+  useStore.setState({ pendingFork: { chatId, messageId, text, attachments } });
+  let id = messageId;
+  if (id.startsWith('local-')) {
+    const nth = list.filter((m) => m.role === 'user').findIndex((m) => m.id === messageId);
+    const fresh = await new Promise<UiMessage[]>((resolve) => {
+      stateWaiters.push({ chatId, resolve });
+      send({ type: 'chat.open', chatId });
+    });
+    id = fresh.filter((m) => m.role === 'user')[nth]?.id ?? id;
+    useStore.setState({ pendingFork: { chatId, messageId: id, text, attachments } });
+  }
+  send({ type: 'chat.fork', chatId, messageId: id, text });
+}
+
+/** Opens a thinking row: its text loads once (`thinking.get`); after an error, again. */
+export function loadThinking(chatId: string, messageId: string) {
+  useStore.setState((s) => ({
+    thinkingText: { ...s.thinkingText, [messageId]: { chatId, state: 'loading' } },
+  }));
+  send({ type: 'thinking.get', chatId, messageId });
+}
+
 /** Rewinds the thread on the rerun's first event; a refusal (an error for the chat) keeps it. */
 function settleRetry(msg: ServerMessage) {
   const intent = retryIntent;
@@ -206,6 +239,12 @@ function open() {
       const waiter = createWaiters.shift();
       waiter?.(msg.chat.id);
     }
+    if (msg.type === 'chat.state')
+      stateWaiters = stateWaiters.filter((w) => {
+        if (w.chatId !== msg.chat.id) return true;
+        w.resolve(msg.messages);
+        return false;
+      });
     if (msg.type === 'auth.state' && !msg.authenticated) disconnect();
     if (msg.type === 'auth.state' && msg.authenticated) {
       send({ type: 'chat.list', archived: store.archivedView });

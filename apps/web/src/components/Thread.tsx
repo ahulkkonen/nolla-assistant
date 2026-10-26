@@ -1,19 +1,46 @@
 import { TOOL_STATUS_WORD } from '@pa/protocol';
-import { AlertCircle, ArrowDown, MessageSquare, ShieldAlert } from 'lucide-react';
+import { AlertCircle, ArrowDown, GitBranch, MessageSquare, ShieldAlert } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { FAILED_TEXT, type UiMessage, useStore } from '../store.ts';
+import { sumUsage } from '../thread.ts';
 import { useModel } from '../useModel.ts';
-import { openChat, retryTurn, sendUserMessage, setDataPolicy } from '../ws.ts';
+import { forkChat, openChat, retryTurn, sendUserMessage, setDataPolicy } from '../ws.ts';
 import { ApprovalCard } from './ApprovalCard.tsx';
+import { FindBar } from './FindBar.tsx';
 import { IconButton } from './IconButton.tsx';
 import { MemoryChipRow } from './MemoryChipRow.tsx';
 import { MessageView } from './MessageView.tsx';
 import { UNTITLED } from './Sidebar.tsx';
 import { SubagentRow } from './SubagentRow.tsx';
+import { ThinkingLive, ThinkingRow } from './ThinkingRow.tsx';
 
 const EMPTY: never[] = [];
+
+/** At the top of a forked chat (phase-13 UI): where it came from, a link while the source exists. */
+function ForkRow({ chatId }: { chatId: string }) {
+  const from = useStore((s) => s.forkedFrom[chatId]);
+  if (!from) return null;
+  return (
+    <div className="flex min-h-8 items-center gap-2 text-meta text-muted-foreground [@media(pointer:coarse)]:min-h-11">
+      <GitBranch size={16} className="shrink-0" />
+      {from.deleted ? (
+        <span>Haarautettu keskustelusta, joka on poistettu.</span>
+      ) : (
+        <Button
+          variant="link"
+          onClick={() => openChat(from.chatId, from.messageId)}
+          className="min-w-0 justify-start text-meta font-normal whitespace-normal"
+        >
+          {from.title
+            ? `Haarautettu keskustelusta ”${from.title}”`
+            : 'Haarautettu toisesta keskustelusta'}
+        </Button>
+      )}
+    </div>
+  );
+}
 
 /** Screen-reader announcement in the app's live regions (App.tsx; brief 7.8). */
 export function announce(text: string, assertive = false) {
@@ -67,6 +94,9 @@ export function Thread() {
   const subagents = useStore((s) => (chatId ? s.subagents[chatId] : undefined)) ?? EMPTY;
   const failed = useStore((s) => (chatId ? s.failed[chatId] : undefined));
   const held = useStore((s) => (chatId ? s.held[chatId] !== undefined : false));
+  const showThinking = useStore((s) => s.showThinking);
+  const thinkingLive = useStore((s) => (chatId ? s.thinkingLive[chatId] : undefined));
+  const forking = useStore((s) => s.pendingFork?.messageId);
   const refusal = useStore((s) => (chatId ? s.zdrRefused[chatId] : undefined));
   const { name: modelName, policy } = useModel();
   // Only while the chat keeps the refused model: the name in the alert is that model's.
@@ -130,14 +160,23 @@ export function Thread() {
   const joinLive =
     !!(stream || running) && lastTurn?.role === 'assistant' && !lastTurn.items.at(-1)?.m.text;
   const cards = approvals.map((a) => <ApprovalCard key={a.requestId} a={a} />);
+  // The live thinking line belongs to the message it streams (or to the next one, before text).
+  const liveThinking =
+    showThinking && thinkingLive && (!stream || stream.messageId === thinkingLive.messageId) ? (
+      <ThinkingLive
+        startedAt={thinkingLive.startedAt}
+        {...(thinkingLive.endedAt ? { endedAt: thinkingLive.endedAt } : {})}
+      />
+    ) : undefined;
   const liveView = (stream || running) && (
     <>
-      {stream?.text || stream?.tools.length ? (
+      {stream?.text || stream?.tools.length || liveThinking ? (
         <MessageView
           role="assistant"
-          text={stream.text}
-          annotations={stream.annotations}
-          tools={stream.tools}
+          text={stream?.text ?? ''}
+          annotations={stream?.annotations ?? []}
+          tools={stream?.tools ?? []}
+          thinking={liveThinking}
           subagents={subagents}
           live
           // A pending approval card follows in the same turn; no reserved row in between.
@@ -186,6 +225,8 @@ export function Thread() {
         className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-4"
       >
         <div className="mx-auto flex w-full max-w-(--thread-max) flex-col gap-6 py-6">
+          <FindBar scroller={scroller} watch={messages} />
+          {chatId && <ForkRow chatId={chatId} />}
           {turns.map((t, n) => {
             const last = n === turns.length - 1;
             return (
@@ -200,8 +241,14 @@ export function Thread() {
                 )}
               >
                 <h2 className="sr-only">{t.role === 'user' ? 'Sinä sanoit' : 'Avustaja sanoi'}</h2>
-                {t.items.map(({ m, i }) => {
+                {t.items.map(({ m, i }, j) => {
                   const prev = m.role === 'assistant' ? previousUser(messages, i) : undefined;
+                  // A reply's cost: its own and the tool rounds before it in the turn (decision 15).
+                  const from = t.items.findLastIndex((x, k) => k < j && !!x.m.text) + 1;
+                  const usage =
+                    m.role === 'assistant' && m.text
+                      ? sumUsage(t.items.slice(from, j + 1).map((x) => x.m.usage))
+                      : undefined;
                   return (
                     <div key={m.id} data-message-id={m.id}>
                       <MessageView
@@ -212,10 +259,22 @@ export function Thread() {
                         attachments={m.attachments}
                         tools={m.tools}
                         latest={i === lastUser || i === lastAssistant}
+                        meta={{ createdAt: m.createdAt, usage }}
+                        {...(showThinking && m.thinking && chatId
+                          ? {
+                              thinking: (
+                                <ThinkingRow chatId={chatId} messageId={m.id} ms={m.thinking.ms} />
+                              ),
+                            }
+                          : {})}
                         {...(i === chipAt ? { footer: chip } : {})}
                         {...(held && i === lastUser ? { footer: heldNote } : {})}
-                        {...(m.role === 'user'
-                          ? { onEdit: (text: string) => void sendUserMessage(text) }
+                        // "Muokkaa" forks (phase 13); not while a reply streams.
+                        {...(m.role === 'user' && chatId && !stream && !running
+                          ? {
+                              onEdit: (text: string) => void forkChat(chatId, m.id, text),
+                              forking: forking === m.id,
+                            }
                           : {})}
                         {...(prev
                           ? {

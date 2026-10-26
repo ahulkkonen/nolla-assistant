@@ -1,4 +1,4 @@
-import type { Annotation, AttachmentRef } from '@pa/protocol';
+import type { Annotation, AttachmentRef, CallUsage } from '@pa/protocol';
 import { Check, Copy, Eye, EyeOff, FileText, PanelRight, Pencil, RotateCcw } from 'lucide-react';
 import { Popover } from 'radix-ui';
 import {
@@ -9,6 +9,7 @@ import {
   type ReactNode,
   useContext,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -22,6 +23,7 @@ import { cn } from '@/lib/utils';
 import { touch } from '../media.ts';
 import { type SubagentChild, type ToolView, useStore } from '../store.ts';
 import { IconButton, Tip } from './IconButton.tsx';
+import { MessageMeta, metaText } from './MessageMeta.tsx';
 import { SubagentRow } from './SubagentRow.tsx';
 import { ToolRow } from './ToolRow.tsx';
 
@@ -179,7 +181,7 @@ function Span({ node: _, ...props }: ComponentProps<'span'> & ExtraProps) {
 }
 
 /** Plain text with annotated ranges (offsets into `text`). */
-function annotate(text: string, annotations: Annotation[]): ReactNode[] {
+export function annotate(text: string, annotations: Annotation[]): ReactNode[] {
   const out: ReactNode[] = [];
   let at = 0;
   for (const a of [...annotations].sort((x, y) => x.start - y.start)) {
@@ -328,8 +330,14 @@ type Props = {
   latest?: boolean;
   /** Live children of a `subagent` call: that tool's row becomes the subagent row. */
   subagents?: SubagentChild[];
-  /** User message: sends the edited text as a new message. */
+  /** User message: "Haarauta" starts a new chat from the edited text (phase 13). */
   onEdit?: (text: string) => void;
+  /** A fork of this message is on its way: "Haarauta" waits. */
+  forking?: boolean;
+  /** The thinking row, above the tool rows and the text (phase 13). */
+  thinking?: ReactNode;
+  /** The action row meta: the time, and a reply's cost and tokens (phase 13). */
+  meta?: { createdAt: string; usage?: CallUsage | undefined };
   /**
    * Assistant message: sends the previous user message again as a new turn. A failed turn has no
    * message here; the thread's alert retries it in place (`user.retry`).
@@ -342,14 +350,18 @@ const small = 'size-8';
 
 function EditBox({
   text,
+  busy,
   onSend,
   onCancel,
 }: {
   text: string;
+  busy: boolean;
   onSend: (t: string) => void;
   onCancel: () => void;
 }) {
   const [value, setValue] = useState(text);
+  const ready = !!value.trim() && !busy;
+  const hint = useId();
   return (
     <div className="flex w-full max-w-[80%] flex-col gap-2 max-md:max-w-full">
       <Textarea
@@ -360,19 +372,23 @@ function EditBox({
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === 'Escape') onCancel();
-          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && value.trim()) {
+          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && ready) {
             e.stopPropagation();
             onSend(value.trim());
           }
         }}
+        aria-describedby={`${hint}`}
         className="field-sizing-fixed resize-y rounded-xl px-4"
       />
+      <p id={hint} className="text-meta text-muted-foreground">
+        Muokattu viesti aloittaa uuden keskustelun. Tämä keskustelu ei muutu.
+      </p>
       <div className="flex justify-end gap-2">
         <Button variant="outline" onClick={onCancel}>
           Peruuta
         </Button>
-        <Button disabled={!value.trim()} onClick={() => onSend(value.trim())}>
-          Lähetä muokattuna
+        <Button disabled={!ready} onClick={() => onSend(value.trim())}>
+          Haarauta
         </Button>
       </div>
     </div>
@@ -392,8 +408,12 @@ export function MessageView({
   latest,
   subagents = [],
   onEdit,
+  forking = false,
+  thinking,
+  meta,
   onRetry,
 }: Props) {
+  const fx = useStore((s) => s.fx);
   const user = role === 'user';
   const [saw, setSaw] = useState(false);
   const globalSaw = useStore((s) => s.showModelSaw);
@@ -423,6 +443,7 @@ export function MessageView({
         onPointerCancel={() => clearTimeout(press.current)}
         onPointerMove={() => clearTimeout(press.current)}
       >
+        {thinking}
         {attachments.length > 0 && (
           <div className="flex flex-wrap justify-end gap-2">
             {attachments.map((a) => (
@@ -442,17 +463,14 @@ export function MessageView({
           </div>
         )}
         {user && editing && onEdit ? (
-          <EditBox
-            text={text}
-            onCancel={() => setEditing(false)}
-            onSend={(t) => {
-              setEditing(false);
-              onEdit(t);
-            }}
-          />
+          // Stays open while the fork is on its way: a failure keeps the text for a retry.
+          <EditBox text={text} busy={forking} onCancel={() => setEditing(false)} onSend={onEdit} />
         ) : user ? (
           text && (
-            <div className="max-w-[80%] rounded-xl bg-secondary px-4 py-2.5 text-body text-pretty whitespace-pre-wrap text-secondary-foreground hyphens-auto [overflow-wrap:anywhere] max-md:max-w-[85%]">
+            <div
+              data-find
+              className="max-w-[80%] rounded-xl bg-secondary px-4 py-2.5 text-body text-pretty whitespace-pre-wrap text-secondary-foreground hyphens-auto [overflow-wrap:anywhere] max-md:max-w-[85%]"
+            >
               {annotate(text, annotations)}
             </div>
           )
@@ -478,6 +496,7 @@ export function MessageView({
           >
             {actions && (
               <>
+                {user && meta && <MessageMeta createdAt={meta.createdAt} />}
                 <CopyButton text={() => text} className={small} />
                 {user && onEdit && (
                   <IconButton label="Muokkaa" className={small} onClick={() => setEditing(true)}>
@@ -503,6 +522,7 @@ export function MessageView({
                     {pressed ? <EyeOff size={16} /> : <Eye size={16} />}
                   </IconButton>
                 )}
+                {!user && meta && <MessageMeta createdAt={meta.createdAt} usage={meta.usage} />}
               </>
             )}
           </div>
@@ -516,6 +536,11 @@ export function MessageView({
           >
             <SheetTitle className="sr-only">Viestin toiminnot</SheetTitle>
             <SheetDescription className="sr-only">{text.slice(0, 80)}</SheetDescription>
+            {meta && (
+              <p className="px-3 pb-1 text-meta text-muted-foreground tabular-nums">
+                {metaText(meta.createdAt, user ? undefined : meta.usage, fx)}
+              </p>
+            )}
             {[
               { label: 'Kopioi', Icon: Copy, run: copy },
               ...(user && onEdit

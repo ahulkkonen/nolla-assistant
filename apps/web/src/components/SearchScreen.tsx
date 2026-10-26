@@ -74,7 +74,11 @@ export function SearchScreen() {
                 <li key={`${r.chatId}:${r.messageId ?? ''}`}>
                   <button
                     type="button"
-                    onClick={() => openChat(r.chatId, r.messageId)}
+                    onClick={() => {
+                      openChat(r.chatId, r.messageId);
+                      // The find bar opens in the chat with the same query (phase-13 decision 19).
+                      useStore.setState({ findQuery: search.q });
+                    }}
                     className="flex min-h-14 w-full items-center gap-3 py-2 text-left transition-colors duration-100 hover:bg-accent/50"
                   >
                     <span className="flex min-w-0 flex-1 flex-col">

@@ -3,6 +3,8 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { IconButton } from './IconButton.tsx';
@@ -44,12 +46,15 @@ export function ActionMenu({
   small,
   open,
   onOpenChange,
+  note,
 }: {
   label: string;
   actions: Action[];
   small?: boolean;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  /** A non-interactive line at the end (the chat menu's cost, phase 13). */
+  note?: string | undefined;
 }) {
   return (
     <DropdownMenu
@@ -69,6 +74,14 @@ export function ActionMenu({
             {label}
           </DropdownMenuItem>
         ))}
+        {note && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel className="text-micro font-normal text-muted-foreground tabular-nums">
+              {note}
+            </DropdownMenuLabel>
+          </>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );

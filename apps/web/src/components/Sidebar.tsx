@@ -1,4 +1,4 @@
-import type { ChatSummary } from '@pa/protocol';
+import { type ChatSummary, formatCost, formatTokens } from '@pa/protocol';
 import {
   Archive,
   ArchiveRestore,
@@ -67,6 +67,7 @@ function ChatRow({
   const [editing, setEditing] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [menu, setMenu] = useState(false);
+  const fx = useStore((s) => s.fx);
   // Enter and the following blur must not both rename.
   const done = useRef(false);
   const press = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -123,6 +124,10 @@ function ChatRow({
     { label: 'Poista', Icon: Trash2, run: () => setConfirming(true) },
   ];
   const name = label ?? UNTITLED;
+  // The chat's cost at the end of its menu (phase 13); none before the first tokens.
+  const note = chat.usage?.tokens
+    ? `${formatCost(chat.usage.costUsd, fx)} · ${formatTokens(chat.usage.tokens)}`
+    : undefined;
 
   return (
     <li
@@ -172,6 +177,7 @@ function ChatRow({
             actions={actions}
             open={menu}
             onOpenChange={setMenu}
+            note={note}
           />
         </div>
       ) : (
@@ -189,6 +195,7 @@ function ChatRow({
             small
             open={menu}
             onOpenChange={setMenu}
+            note={note}
           />
         </div>
       )}

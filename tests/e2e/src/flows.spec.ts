@@ -17,8 +17,10 @@ import {
   png,
   search,
   TAX,
+  THINKING_TURN,
   taxChat,
   test,
+  titleTurn,
   USER_MD,
 } from './fixtures.ts';
 
@@ -509,6 +511,112 @@ test.describe('files', () => {
     const uploads = page.getByRole('region', { name: 'Liitteet' });
     await expect(uploads.getByText('muistiinpanot.md', { exact: true })).toBeVisible();
     await expect(uploads.getByRole('link')).toHaveCount(1);
+  });
+});
+
+test.describe('thread depth', () => {
+  // Phase-13 gate item 4.
+  const msgs = (page: Page) => thread(page).locator('[data-message-id]');
+
+  test('fork: Haarauta on the first message opens a new chat; the old chat keeps both turns', async ({
+    app,
+    page,
+  }) => {
+    app.llm.push({ text: 'Ensimmäinen vastaus.' });
+    app.llm.push(titleTurn('Kasvimaa', 'Käyttäjä kysyi kasvimaasta.'));
+    app.llm.push({ text: 'Toinen vastaus.' });
+    app.llm.push({ text: 'Haaran vastaus.' });
+    await app.login(page);
+    await send(page, 'Ensimmäinen kysymys');
+    await expect(page.locator('.md').last()).toHaveText('Ensimmäinen vastaus.');
+    await expect(page.locator('nav li > button', { hasText: 'Kasvimaa' })).toBeVisible();
+    await send(page, 'Toinen kysymys');
+    await expect(page.locator('.md').last()).toHaveText('Toinen vastaus.');
+
+    await msgs(page).first().hover();
+    await msgs(page).first().getByRole('button', { name: 'Muokkaa' }).click();
+    await page.getByLabel('Muokattava viesti').fill('Ensimmäinen kysymys, toisin');
+    await expect(
+      page.getByText('Muokattu viesti aloittaa uuden keskustelun. Tämä keskustelu ei muutu.'),
+    ).toBeVisible();
+    await page.getByRole('button', { name: 'Haarauta' }).click();
+
+    const link = page.getByRole('button', { name: 'Haarautettu keskustelusta ”Kasvimaa”' });
+    await expect(link).toBeVisible();
+    await expect(thread(page).getByText('Ensimmäinen kysymys, toisin')).toBeVisible();
+    await expect(page.locator('.md').last()).toHaveText('Haaran vastaus.');
+    await expect(page.locator('nav li > button', { hasText: 'Kasvimaa (haara)' })).toBeVisible();
+
+    // The source keeps both turns; the link opens it.
+    await link.click();
+    await expect(thread(page).getByText('Toinen vastaus.')).toBeVisible();
+    await expect(msgs(page)).toHaveCount(4);
+  });
+
+  test('thinking: live row, then "Ajatteli … s" opens to the text; the switch hides it', async ({
+    app,
+    page,
+  }) => {
+    app.llm.push(THINKING_TURN);
+    await app.login(page);
+    await send(page, 'Milloin kasvimaa kannattaa aloittaa?');
+    await expect(thread(page).getByText(/^Ajattelee… \d+ s$/)).toBeVisible();
+    await expect(page.locator('.md').last()).toHaveText(THINKING_TURN.text);
+    const row = thread(page).getByRole('button', { name: /^Ajatteli \d+ s$/ });
+    await row.click();
+    await expect(thread(page).getByRole('region', { name: 'Mallin ajattelu' })).toHaveText(
+      THINKING_TURN.reasoning,
+    );
+    await openSettings(page, 'Asetukset');
+    await page.getByLabel('Näytä ajattelu').click();
+    await page.keyboard.press('Escape');
+    await expect(row).toHaveCount(0);
+  });
+
+  test('cost: the reply shows its time and cost, the chat menu the chat total', async ({
+    app,
+    page,
+  }) => {
+    app.llm.push(THINKING_TURN);
+    app.llm.push(titleTurn('Kasvimaa', 'Käyttäjä kysyi kasvimaasta.'));
+    await app.login(page);
+    await send(page, 'Milloin kasvimaa kannattaa aloittaa?');
+    await expect(page.locator('.md').last()).toHaveText(THINKING_TURN.text);
+    const reply = msgs(page).last();
+    await expect(reply.getByText(/^klo \d{1,2}\.\d{2}$/)).toBeVisible();
+    await expect(reply.getByText('0,012 €')).toBeVisible();
+    await expect(reply.getByText('3,4 k tokenia')).toBeVisible();
+    const row = page.locator('nav li', { hasText: 'Kasvimaa' });
+    await row.hover();
+    await row.getByRole('button', { name: 'Lisää: Kasvimaa' }).click();
+    await expect(page.getByRole('menu').getByText('0,01 € · 3,4 k tokenia')).toBeVisible();
+  });
+
+  test('find: Ctrl+F, two hits 1/2, Enter 2/2, Esc closes', async ({ app, page }) => {
+    app.llm.push({ text: 'Omena on hedelmä.' });
+    await app.login(page);
+    await send(page, 'Kerro omena');
+    await expect(page.locator('.md').last()).toHaveText('Omena on hedelmä.');
+    await page.keyboard.press('ControlOrMeta+f');
+    const field = page.getByLabel('Etsi keskustelusta');
+    await field.fill('omena');
+    await expect(page.getByText('1/2', { exact: true })).toBeVisible();
+    await field.press('Enter');
+    await expect(page.getByText('2/2', { exact: true })).toBeVisible();
+    await field.press('Escape');
+    await expect(page.getByLabel('Etsi keskustelusta')).toHaveCount(0);
+  });
+
+  test('usage: Käyttö shows the model with its cost for this month', async ({ app, page }) => {
+    app.llm.push(THINKING_TURN);
+    await app.login(page);
+    await send(page, 'Milloin kasvimaa kannattaa aloittaa?');
+    await expect(page.locator('.md').last()).toHaveText(THINKING_TURN.text);
+    await openSettings(page, 'Käyttö');
+    const table = page.getByRole('region', { name: 'Mallit' });
+    await expect(table.getByText('Gemini 4 Argon')).toBeVisible();
+    await expect(table.getByText('0,01 €')).toBeVisible();
+    await expect(page.getByText('Kurssi: EKP 23.10.2026, 1 € = 1,1193 $.')).toBeVisible();
   });
 });
 

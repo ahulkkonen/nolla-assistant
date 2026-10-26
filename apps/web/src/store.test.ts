@@ -159,6 +159,38 @@ describe('store reducers', () => {
     expect(useStore.getState().zdrRefused.bg).toBeUndefined();
   });
 
+  it('a fork: its chat.state opens with the copied history plus the edited text; an error ends it', () => {
+    const { apply } = useStore.getState();
+    useStore.setState({
+      pendingFork: { chatId: 'src', messageId: 'u2', text: 'Muokattu', attachments: [] },
+    });
+    const m = (id: string, role: 'user' | 'assistant') =>
+      ({ id, role, text: id, annotations: [], attachments: [], tools: [], createdAt: '' }) as never;
+    apply({
+      type: 'chat.state',
+      chat: chat('fork', false, '2026-01-01T00:00:00.000Z'),
+      messages: [m('u1', 'user'), m('a1', 'assistant')],
+      forkedFrom: { chatId: 'src', messageId: 'u2', title: 'Lähde', deleted: false },
+    });
+    const st = useStore.getState();
+    expect(st.messages.fork?.map((x) => x.text)).toEqual(['u1', 'a1', 'Muokattu']);
+    expect(st.activeChatId).toBe('fork');
+    expect(st.pendingFork).toBeNull();
+    expect(st.forkedFrom.fork?.title).toBe('Lähde');
+
+    useStore.setState({
+      pendingFork: { chatId: 'src', messageId: 'u2', text: 'x', attachments: [] },
+    });
+    apply({ type: 'error', code: 'failed', message: 'Request failed' });
+    expect(useStore.getState().pendingFork).toBeNull();
+  });
+
+  it('a thinking text that fails to load turns the row to its error', () => {
+    useStore.setState({ thinkingText: { a1: { chatId: 'c', state: 'loading' } } });
+    useStore.getState().apply({ type: 'error', code: 'not_found', message: 'x', chatId: 'c' });
+    expect(useStore.getState().thinkingText.a1?.state).toBe('error');
+  });
+
   it('keeps approval cards until answered, resolved or the chat goes idle', () => {
     const { apply } = useStore.getState();
     const req = (requestId: string) =>

@@ -27,13 +27,15 @@ export function CollapsibleRow({
   icon,
   label,
   children,
+  onOpenChange,
 }: {
   icon: ReactNode;
   label: ReactNode;
   children: ReactNode;
+  onOpenChange?: (open: boolean) => void;
 }) {
   return (
-    <Collapsible.Root>
+    <Collapsible.Root {...(onOpenChange ? { onOpenChange } : {})}>
       <Collapsible.Trigger className={toolTrigger}>
         {icon}
         {label}

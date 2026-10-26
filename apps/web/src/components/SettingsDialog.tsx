@@ -2,6 +2,7 @@ import {
   Bot,
   Brain,
   CalendarClock,
+  ChartColumn,
   ChevronRight,
   FolderOpen,
   KeyRound,
@@ -49,6 +50,7 @@ export const SCREENS = [
   ['agents', Bot, 'Agentit'],
   ['automations', CalendarClock, 'Automaatiot'],
   ['files', FolderOpen, 'Tiedostot'],
+  ['usage', ChartColumn, 'Käyttö'],
 ] as const;
 
 /** Opens the one settings dialog (rendered by the app shell). */
@@ -236,6 +238,8 @@ export function SettingsDialog() {
   const setTheme = useStore((s) => s.setTheme);
   const showModelSaw = useStore((s) => s.showModelSaw);
   const setShowModelSaw = useStore((s) => s.setShowModelSaw);
+  const showThinking = useStore((s) => s.showThinking);
+  const setShowThinking = useStore((s) => s.setShowThinking);
   const sttAutoSend = useStore((s) => s.sttAutoSend);
   const sttLanguage = useStore((s) => s.sttLanguage);
   const setStt = useStore((s) => s.setStt);
@@ -309,6 +313,17 @@ export function SettingsDialog() {
                 helper="Tunnistetut nimet näkyvät viesteissä niinä, jotka malli sai."
               >
                 <Switch id="model-saw" checked={showModelSaw} onCheckedChange={setShowModelSaw} />
+              </Row>
+              <Row
+                label="Näytä ajattelu"
+                htmlFor="show-thinking"
+                helper="Näyttää mallin ajattelun vastauksen yläpuolella."
+              >
+                <Switch
+                  id="show-thinking"
+                  checked={showThinking}
+                  onCheckedChange={setShowThinking}
+                />
               </Row>
             </Section>
             <section className="flex flex-col gap-2 pt-6">
