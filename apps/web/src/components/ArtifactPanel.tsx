@@ -14,6 +14,7 @@ import { saveArtifact } from '../api.ts';
 import runtimeUrl from '../artifact-runtime.ts?worker&url';
 import { fileError, showInFiles } from '../files.ts';
 import kitCss from '../kit.css?raw';
+import plotUrl from '../plot-runtime.ts?worker&url';
 import { useStore } from '../store.ts';
 import {
   type Chart,
@@ -30,7 +31,7 @@ import {
 } from '../viz.ts';
 import vizUrl from '../viz-runtime.ts?worker&url';
 import { IconButton } from './IconButton.tsx';
-import { htmlDocument, postWhenReady, SANDBOX_URL, SandboxFrame, SCHEME_META } from './Sandbox.tsx';
+import { htmlDocument, postWhenReady, SANDBOX_URL, SandboxFrame } from './Sandbox.tsx';
 import { SidePanel } from './SidePanel.tsx';
 
 const EMPTY: Artifact[] = [];
@@ -43,12 +44,11 @@ const EXT: Record<string, string> = {
 
 /** `</script` would end an inline script early and `<!--` can change how the parser reads it. */
 const inline = (js: string) => js.replace(/<\/(script)/gi, '<\\/$1').replace(/<!--/g, '<\\!--');
-const page = (body: string, head = SCHEME_META) =>
+const page = (body: string, head: string) =>
   htmlDocument(
     `<html lang="fi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body>${body}</body></html>`,
     head,
   );
-const BASE_STYLE = '<style>body{margin:16px;font-family:system-ui,sans-serif}</style>';
 
 const scripts = new Map<string, Promise<string>>();
 /** A bundled runtime's source, to inline into the sandbox document. */
@@ -144,8 +144,21 @@ type Doc = {
   lifted?: Lifted;
   theme?: { t: Tokens; fonts: string };
 };
+/** Decisions 10 and 11: the kit, plus Plot and D3 when the source uses them. */
+async function kitHead(a: Artifact, scheme: Scheme) {
+  const plot = /\b(Plot|d3)\./.test(a.content);
+  const [{ t, fonts, head }, lib] = await Promise.all([
+    themeHead(scheme),
+    plot ? loadScript(plotUrl) : '',
+  ]);
+  return { head: lib ? `${head}<script>${inline(lib)}</script>` : head, theme: { t, fonts } };
+}
+
 async function documentFor(a: Artifact, scheme: Scheme): Promise<Doc> {
-  if (a.kind === 'html') return { html: htmlDocument(a.content) };
+  if (a.kind === 'html') {
+    const { head, theme } = await kitHead(a, scheme);
+    return { html: htmlDocument(a.content, head), theme };
+  }
   if (a.kind === 'vega-lite') {
     const [{ t, fonts, head }, rt] = await Promise.all([themeHead(scheme), loadScript(vizUrl)]);
     const chart = prepareChart(a.content, t);
@@ -158,14 +171,19 @@ async function documentFor(a: Artifact, scheme: Scheme): Promise<Doc> {
     };
   }
   if (a.kind === 'react') {
-    const [rt, code] = await Promise.all([loadScript(runtimeUrl), transpile(a.content)]);
+    const [rt, code, { head, theme }] = await Promise.all([
+      loadScript(runtimeUrl),
+      transpile(a.content),
+      kitHead(a, scheme),
+    ]);
     const boot = `(function(){var exports={},module={exports:exports};function require(n){if(n==='react')return React;if(n==='react-dom/client'||n==='react-dom')return ReactDOMClient;throw new Error('Moduulia ei ole saatavilla: '+n)}try{${code}
 ;var C=module.exports.default||exports.default;ReactDOMClient.createRoot(document.getElementById('root')).render(React.createElement(C))}catch(e){document.body.textContent='Virhe: '+e.message}})();`;
     return {
       html: page(
         `<div id="root"></div><script>${inline(rt)}</script><script>${inline(boot)}</script>`,
-        SCHEME_META + BASE_STYLE,
+        head,
       ),
+      theme,
     };
   }
   if (a.kind === 'mermaid') {
