@@ -113,8 +113,12 @@ in `apps/web/package.json` (decision 2).
    `vegaEmbed`.
 9. **Mermaid.** `theme: 'base'` with `themeVariables` from the tokens (`fontFamily`, `primaryColor`,
    `primaryTextColor`, `primaryBorderColor`, `secondaryColor`, `tertiaryColor`, `lineColor`,
-   `textColor`, `background`, `mainBkg`, `noteBkgColor`, `darkMode`). Mermaid still renders in the
-   parent page. The SVG goes into the sandbox page with the inlined fonts.
+   `textColor`, `background`, `mainBkg`, `noteBkgColor`, `darkMode`). `look: 'classic'`, because
+   the default `neo` look of Mermaid 12 adds tinted drop shadows. `htmlLabels: false`, so that the
+   labels are SVG text and the export is a plain SVG. Mermaid still renders in the parent page. The
+   SVG goes into the sandbox page with the inlined fonts. The `accTitle` becomes the title of the
+   export. Finding: quotes are label syntax in flowcharts only; in sequence and state diagrams the
+   quotes show. The prompt asks for quotes in flowchart labels only.
 10. **Design kit.** `apps/web/src/kit.css` styles the sandbox page: body type (Inter 15/24), `h1` and
     `h2` in Source Serif 4 on a 1.2 scale, mono code, `max-width: 68ch` for prose, tabular numerals
     in tables, `.card`, `.callout` (`.info`, `.warn`), `table`, `figure`, `figcaption`, `.stat`

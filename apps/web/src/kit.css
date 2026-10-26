@@ -79,3 +79,9 @@ strong {
 #vis {
   width: 100%;
 }
+/* A ```mermaid artifact: centred, never wider than the page. */
+.diagram svg {
+  display: block;
+  margin-inline: auto;
+  height: auto;
+}

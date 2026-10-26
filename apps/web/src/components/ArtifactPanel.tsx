@@ -20,6 +20,7 @@ import {
   fontFaces,
   inlineHtml,
   type Lifted,
+  mermaidTheme,
   prepareChart,
   type Refused,
   type Row,
@@ -168,14 +169,29 @@ async function documentFor(a: Artifact, scheme: Scheme): Promise<Doc> {
     };
   }
   if (a.kind === 'mermaid') {
-    const { default: mermaid } = await import('mermaid');
+    const [{ default: mermaid }, { t, fonts, head }] = await Promise.all([
+      import('mermaid'),
+      themeHead(scheme),
+    ]);
+    // Decision 9: the `base` theme from our tokens. SVG labels (no HTML labels) keep the export
+    // a plain SVG that a canvas can draw.
     mermaid.initialize({
       startOnLoad: false,
       securityLevel: 'strict',
-      theme: 'default',
+      theme: 'base',
+      // Flat shapes: Mermaid 12's `neo` look adds tinted drop shadows.
+      look: 'classic',
+      themeVariables: mermaidTheme(t, scheme === 'dark'),
+      htmlLabels: false,
     });
     const { svg } = await mermaid.render(`m${a.id.replace(/\W/g, '')}`, a.content);
-    return { html: page(svg, SCHEME_META + BASE_STYLE) };
+    const title = /^\s*accTitle\s*:\s*(.+)$/m.exec(a.content)?.[1]?.trim();
+    return {
+      html: page(`<figure class="diagram">${svg}</figure>`, head),
+      svg,
+      lifted: title ? { title } : {},
+      theme: { t, fonts },
+    };
   }
   return { html: null };
 }
@@ -328,7 +344,7 @@ export function ArtifactPanel() {
   ) : ready?.error ? (
     <p className="p-1 text-muted-foreground">Artefaktin näyttäminen epäonnistui: {ready.error}</p>
   ) : ready?.html ? (
-    <SandboxFrame ref={frame} title={a.title} html={ready.html} themed={a.kind === 'vega-lite'} />
+    <SandboxFrame ref={frame} title={a.title} html={ready.html} themed={!!ready.theme} />
   ) : (
     <p className="p-1 text-muted-foreground">Ladataan…</p>
   );
