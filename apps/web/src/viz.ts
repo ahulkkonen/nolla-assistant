@@ -146,31 +146,46 @@ const Spec = z
     'Kaaviosta puuttuu mark, layer, concat, facet tai repeat.',
   );
 const MAX_ROWS = 500;
+const MAX_SIZE = 2000;
+const SCHEMA = 'https://vega.github.io/schema/vega-lite/v6.json';
 
-/** Calls `fn` on every object of the spec except the data rows themselves. */
+/** Calls `fn` on every object of the spec except the data rows (`values`, `datasets`). */
 function visit(node: unknown, fn: (o: Obj) => void) {
   if (Array.isArray(node)) for (const n of node) visit(n, fn);
   else if (node && typeof node === 'object') {
     fn(node as Obj);
-    for (const [k, v] of Object.entries(node)) if (k !== 'values') visit(v, fn);
+    for (const [k, v] of Object.entries(node)) if (k !== 'values' && k !== 'datasets') visit(v, fn);
   }
 }
 
-const DROP = new Set(['config', 'background', 'padding', 'autosize', 'font', 'scheme']);
+const DROP = new Set(['config', 'background', 'padding', 'autosize', 'font', 'scheme', '$schema']);
 const COLOR_KEYS = new Set(['color', 'fill', 'stroke']);
 const LITERAL = /^(#[0-9a-f]{3,8}|(rgb|hsl)a?\(.*)$/i;
+type Ctx = 'color' | 'range' | undefined;
 
-/** R2 and R7: drops theme keys and colour literals, swaps colour roles; data stays as written. */
-export function clean(node: unknown, map: Record<string, string>, key?: string): unknown {
+/**
+ * R2 and R7: drops theme keys and colour literals, swaps colour roles; data stays as written.
+ * Colours go only where colours are: a `color`, `fill` or `stroke` value (also the `value` and
+ * `condition` of such a channel) loses every string that is not a role; a `range` loses colour
+ * literals but keeps other strings (shape names). Elsewhere "#2024" is text and stays.
+ */
+export function clean(node: unknown, map: Record<string, string>, ctx?: Ctx): unknown {
   if (Array.isArray(node)) {
-    const out = node.map((n) => clean(n, map)).filter((n) => n !== undefined);
+    const out = node.map((n) => clean(n, map, ctx)).filter((n) => n !== undefined);
     return out.length || !node.length ? out : undefined;
   }
   if (node && typeof node === 'object') {
     const out: Obj = {};
     for (const [k, v] of Object.entries(node)) {
       if (DROP.has(k)) continue;
-      const c = k === 'data' || k === 'datasets' ? v : clean(v, map, k);
+      const child: Ctx = COLOR_KEYS.has(k)
+        ? 'color'
+        : k === 'range'
+          ? 'range'
+          : ctx === 'color' && (k === 'value' || k === 'condition')
+            ? 'color'
+            : undefined;
+      const c = k === 'data' || k === 'datasets' ? v : clean(v, map, child);
       if (c !== undefined) out[k] = c;
     }
     return out;
@@ -178,10 +193,21 @@ export function clean(node: unknown, map: Record<string, string>, key?: string):
   if (typeof node === 'string') {
     const role = node.slice(1);
     if (node[0] === '@' && Object.hasOwn(map, role)) return map[role];
-    if (LITERAL.test(node) || (key && COLOR_KEYS.has(key))) return undefined;
+    if (ctx === 'color' || (ctx === 'range' && LITERAL.test(node))) return undefined;
   }
   return node;
 }
+
+/** Numeric `width` and `height` anywhere (concat, facet, repeat, layers) at most 2000 px. */
+function clampSizes(spec: unknown) {
+  visit(spec, (o) => {
+    for (const k of ['width', 'height'])
+      if (typeof o[k] === 'number') o[k] = Math.min(o[k] as number, MAX_SIZE);
+  });
+}
+
+/** Steps of a `data.sequence` generator. */
+const steps = (q: Obj) => Math.abs((Number(q.stop) - Number(q.start)) / (Number(q.step) || 1)) || 0;
 
 /** R1: a space between a number and a unit or a second number does not break. */
 export const nbsp = (s: string) => s.replace(/(\d) (?=\d|[%‰°€$]|[\p{L}µ]{1,5}(?!\p{L}))/gu, '$1 ');
@@ -218,27 +244,38 @@ export function prepareChart(source: string, t: Tokens): Chart | Refused {
   }
   const tables: Row[][] = [];
   let url = false;
+  let href = false;
+  let sequence = 0;
   let endLabels = false;
   visit(raw, (o) => {
     if (Array.isArray(o.values)) tables.push(o.values as Row[]);
+    if (o.datasets && typeof o.datasets === 'object')
+      for (const d of Object.values(o.datasets)) if (Array.isArray(d)) tables.push(d as Row[]);
+    if (o.sequence && typeof o.sequence === 'object') sequence += steps(o.sequence as Obj);
     if ('url' in o) url = true;
+    if ('href' in o) href = true;
     const mark = typeof o.mark === 'object' && o.mark ? (o.mark as Obj) : undefined;
     if ((mark?.type ?? o.mark) === 'text' && (mark?.align === 'left' || Number(mark?.dx) > 0))
       endLabels = true;
   });
   const rows = tables[0] ?? [];
   const parsed = Spec.safeParse(raw);
-  const total = tables.reduce((n, r) => n + r.length, 0);
+  const total = tables.reduce((n, r) => n + r.length, 0) + sequence;
   const error = !parsed.success
     ? z.prettifyError(parsed.error)
     : url
       ? 'Kaavio ei saa ladata dataa osoitteesta (url).'
-      : total > MAX_ROWS
-        ? `Kaaviossa on ${total} riviä; enintään ${MAX_ROWS}.`
-        : undefined;
+      : href
+        ? 'Kaaviossa ei saa olla linkkejä (href).'
+        : total > MAX_ROWS
+          ? `Kaaviossa on ${Math.ceil(total)} riviä; enintään ${MAX_ROWS}.`
+          : undefined;
   if (error) return { error, rows };
   const spec = clean(raw, roles(t)) as Obj;
+  clampSizes(spec);
   const lifted = liftTitle(spec);
+  // R6: always Vega-Lite; a raw Vega spec (its own $schema) cannot pass the guard as one.
+  spec.$schema = SCHEMA;
   if ('mark' in spec || 'layer' in spec) spec.width = 'container';
   spec.autosize = { type: 'fit-x', contains: 'padding' };
   spec.padding = { left: 0, top: 4, right: endLabels ? 44 : 8, bottom: 0 };
@@ -295,7 +332,14 @@ const xml = (s: string) =>
  * page colour and the inlined fonts, so the file looks the same outside the app.
  */
 export function framedSvg(inner: string, lifted: Lifted, t: Tokens, fonts: string) {
-  const el = new DOMParser().parseFromString(inner, 'image/svg+xml').documentElement;
+  const doc = new DOMParser().parseFromString(inner, 'image/svg+xml');
+  if (doc.querySelector('parsererror')) throw new Error('SVG ei ole kelvollinen');
+  const el = doc.documentElement;
+  // A Mermaid `themeCSS` directive is model-written: no external resource in the file.
+  for (const style of el.querySelectorAll('style'))
+    style.textContent = (style.textContent ?? '')
+      .replace(/@import[^;]*;?/gi, '')
+      .replace(/url\([^)]*\)/gi, 'none');
   const box = el
     .getAttribute('viewBox')
     ?.split(/[\s,]+/)
@@ -305,21 +349,19 @@ export function framedSvg(inner: string, lifted: Lifted, t: Tokens, fonts: strin
   const P = 16;
   const text = (y: number, size: number, fill: string, body: string, serif = false) =>
     `<text x="${P}" y="${y}" font-family="${xml(t[serif ? 'font-serif' : 'font-sans'])}" font-size="${size}"${serif ? ' font-weight="600"' : ''} fill="${fill}">${body}</text>`;
+  // `**bold**` becomes a semibold tspan, like the <strong> in the panel.
+  const rich = (s: string) =>
+    xml(s).replace(/\*\*(.+?)\*\*/g, `<tspan font-weight="600" fill="${t.foreground}">$1</tspan>`);
   const parts: string[] = [];
   let y = P;
   if (lifted.title) {
     y += 22;
-    parts.push(text(y, 20, t.foreground, xml(lifted.title), true));
+    parts.push(text(y, 20, t.foreground, rich(lifted.title), true));
     y += 8;
   }
   if (lifted.subtitle) {
     y += 16;
-    // `**bold**` becomes a semibold tspan, like the <strong> in the panel.
-    const body = xml(lifted.subtitle).replace(
-      /\*\*(.+?)\*\*/g,
-      `<tspan font-weight="600" fill="${t.foreground}">$1</tspan>`,
-    );
-    parts.push(text(y, 14, t['muted-foreground'], body));
+    parts.push(text(y, 14, t['muted-foreground'], rich(lifted.subtitle)));
     y += 8;
   }
   if (parts.length) y += 8;
@@ -331,16 +373,25 @@ export function framedSvg(inner: string, lifted: Lifted, t: Tokens, fonts: strin
   y += h;
   if (lifted.caption) {
     y += 20;
-    parts.push(text(y, 12, t['muted-foreground'], xml(lifted.caption)));
+    parts.push(text(y, 12, t['muted-foreground'], rich(lifted.caption)));
   }
   const width = Math.ceil(w + 2 * P);
   const height = Math.ceil(y + P);
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><style>${fonts}</style><rect width="100%" height="100%" fill="${t.card}"/>${parts.join('')}${new XMLSerializer().serializeToString(el)}</svg>`;
+  const body = `<rect width="100%" height="100%" fill="${t.card}"/>${parts.join('')}${new XMLSerializer().serializeToString(el)}`;
+  // Only the families the file uses.
+  const used = fonts
+    .split(/(?=@font-face)/)
+    .filter((rule) => body.includes(/font-family:'([^']+)'/.exec(rule)?.[1] ?? '\0'))
+    .join('');
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><style>${used}</style>${body}</svg>`;
   return { svg, width, height };
 }
 
+const MAX_CANVAS = 4096;
 /** PNG of an SVG at device pixel ratio 2, drawn in the parent page. */
 export async function pngBlob(svg: string, width: number, height: number): Promise<Blob> {
+  if (width * 2 > MAX_CANVAS || height * 2 > MAX_CANVAS)
+    throw new Error(`kuva on yli ${MAX_CANVAS} px`);
   const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
   try {
     const img = new Image();

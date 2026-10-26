@@ -211,6 +211,29 @@ A blind UI review scored the first screenshots as FAIL. Changes:
   centred like the Vega axis title. `kit.css` mutes the tick and axis labels, sets the grid to
   `--border` and gives bars radius 3.
 
+## Security review fixes (2026-10-26)
+
+- The guard also counts rows under `datasets` and the steps of a `data.sequence` (500 in all).
+  It refuses any `href` (encoding or mark). It drops the model's `$schema` and sets the Vega-Lite
+  v6 schema itself, and the runtime embeds with `mode: 'vega-lite'`, so a raw Vega spec cannot
+  pass the guard.
+- Numeric `width` and `height` are at most 2000 px at every level (concat, facet, repeat,
+  layers). PNG export refuses a canvas over 4096 px on a side.
+- A chart that does not report "drawn" (`viz-ready`) within 10 s shows the fallback table.
+- Colour literals go only under keys that take colours: a `color`, `fill` or `stroke` value (and
+  the `value` and `condition` of such a channel) keeps only colour roles; a `range` loses colour
+  literals and keeps other strings. Text such as "#2024" in a title or a domain stays.
+- Export: a `<parsererror>` fails the export with a toast. `**bold**` converts in the title, the
+  subtitle and the caption. The file inlines only the font families it uses. `url(` and
+  `@import` are removed from every `<style>` of the exported SVG (a Mermaid `themeCSS` directive
+  is model-written).
+- Mermaid: `suppressErrorRendering: true`; `htmlLabels: false` at the root and for `flowchart`
+  and `class`. Measured with one diagram of each type: `journey` still draws `foreignObject` (2
+  elements); flowchart, sequence, class, state, ER, gantt, mindmap, timeline, pie, kanban, block
+  and quadrant draw none.
+- Plot and D3 load when the source matches `\bPlot\b` or `\bd3\b`. A false positive only
+  costs bytes.
+
 ## Status (2026-10-26)
 
 - Tasks 1 to 6 are done. `pnpm typecheck` and `pnpm lint` pass.

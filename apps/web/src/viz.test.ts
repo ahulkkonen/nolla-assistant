@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   type Chart,
   clean,
+  framedSvg,
   inlineHtml,
   liftTitle,
   mermaidTheme,
@@ -84,6 +85,70 @@ describe('spec guard (R6)', () => {
       ],
     });
     expect(refused(prepareChart(layered, T))?.error).toBe('Kaaviossa on 501 riviä; enintään 500.');
+  });
+});
+
+describe('spec guard, security review', () => {
+  const rows = (n: number) => Array.from({ length: n }, (_, i) => ({ i }));
+  it('counts rows under datasets and the steps of a sequence', () => {
+    const named = { datasets: { a: rows(300), b: rows(201) }, data: { name: 'a' }, mark: 'bar' };
+    expect(refused(prepareChart(JSON.stringify(named), T))?.error).toBe(
+      'Kaaviossa on 501 riviä; enintään 500.',
+    );
+    const seq = (stop: number) =>
+      JSON.stringify({ data: { sequence: { start: 0, stop, step: 1 } }, mark: 'point' });
+    expect(refused(prepareChart(seq(500), T))).toBe(undefined);
+    expect(refused(prepareChart(seq(100000), T))?.error).toContain('enintään 500');
+  });
+
+  it('refuses href in an encoding or a mark', () => {
+    const enc = bar({ encoding: { href: { field: 'k' } } });
+    expect(refused(prepareChart(enc, T))?.error).toBe('Kaaviossa ei saa olla linkkejä (href).');
+    const mark = bar({ mark: { type: 'bar', href: 'https://x.test' } });
+    expect(refused(prepareChart(mark, T))?.error).toContain('href');
+  });
+
+  it('clamps width and height everywhere and sets the Vega-Lite schema itself', () => {
+    const spec = JSON.stringify({
+      $schema: 'https://vega.github.io/schema/vega/v6.json',
+      vconcat: [
+        { width: 99999, height: 5000, mark: 'bar' },
+        { layer: [{ mark: 'line', height: 300 }] },
+      ],
+    });
+    const { spec: out } = prepareChart(spec, T) as Chart;
+    expect(out.$schema).toBe('https://vega.github.io/schema/vega-lite/v6.json');
+    expect(out.vconcat).toEqual([
+      { width: 2000, height: 2000, mark: 'bar' },
+      { layer: [{ mark: 'line', height: 300 }] },
+    ]);
+  });
+
+  it('keeps colour-like text outside colour keys', () => {
+    const spec = bar({
+      title: '#2024 kasvoi',
+      encoding: { x: { field: 'k', scale: { domain: ['#1', '#2024'] } } },
+    });
+    const { spec: out, lifted } = prepareChart(spec, T) as Chart;
+    expect(lifted.title).toBe('#2024 kasvoi');
+    expect(out.encoding).toMatchObject({ x: { scale: { domain: ['#1', '#2024'] } } });
+    expect(clean({ shape: { scale: { range: ['circle', '#fff'] } } }, roles(T))).toEqual({
+      shape: { scale: { range: ['circle'] } },
+    });
+  });
+
+  it('fails the export when the SVG does not parse', () => {
+    const parser = globalThis.DOMParser;
+    globalThis.DOMParser = class {
+      parseFromString() {
+        return { querySelector: (s: string) => (s === 'parsererror' ? {} : null) };
+      }
+    } as unknown as typeof DOMParser;
+    try {
+      expect(() => framedSvg('<svg', {}, T, '')).toThrow('SVG ei ole kelvollinen');
+    } finally {
+      globalThis.DOMParser = parser;
+    }
   });
 });
 

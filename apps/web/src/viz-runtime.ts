@@ -77,6 +77,7 @@ if (el) {
       embed(el, spec as never, {
         renderer: 'svg',
         actions: false,
+        mode: 'vega-lite',
         ast: true,
         expr: expressionInterpreter,
         formatLocale: FI_NUMBER,
@@ -84,6 +85,7 @@ if (el) {
       }),
     )
     .then(({ view }) => {
+      parent.postMessage({ type: 'viz-ready' }, '*');
       // Export (decision 12): the parent asks, the SVG goes back to the parent only.
       addEventListener('message', (e) => {
         if (e.source !== parent || e.data?.type !== 'viz-svg') return;

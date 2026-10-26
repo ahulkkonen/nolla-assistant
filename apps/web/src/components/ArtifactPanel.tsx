@@ -48,6 +48,7 @@ import { htmlDocument, postWhenReady, SANDBOX_URL, SandboxFrame } from './Sandbo
 import { SidePanel } from './SidePanel.tsx';
 
 const EMPTY: Artifact[] = [];
+const RENDER_TIMEOUT = 10_000;
 const TAB = 'data-active:bg-card data-active:shadow-sm dark:data-active:bg-card';
 const EXT: Record<string, string> = {
   html: 'html',
@@ -163,7 +164,7 @@ type Doc = {
 };
 /** Decisions 10 and 11: the kit, plus Plot and D3 when the source uses them. */
 async function kitHead(a: Artifact, scheme: Scheme) {
-  const plot = /\b(Plot|d3)\./.test(a.content);
+  const plot = /\b(Plot|d3)\b/.test(a.content);
   const [{ t, fonts, head }, lib] = await Promise.all([
     themeHead(scheme),
     plot ? loadScript(plotUrl) : '',
@@ -218,7 +219,12 @@ async function documentFor(a: Artifact, scheme: Scheme): Promise<Doc> {
       look: 'classic',
       // Labels 14 px, 13 on phones.
       themeVariables: mermaidTheme(t, scheme === 'dark', phone?.matches ? 13 : 14),
+      // Every diagram type that has the option; the per-type keys are deprecated but still read.
       htmlLabels: false,
+      flowchart: { htmlLabels: false },
+      class: { htmlLabels: false },
+      // A parse error throws (the panel shows it) instead of drawing Mermaid's error SVG.
+      suppressErrorRendering: true,
     });
     const { svg } = await mermaid.render(`m${a.id.replace(/\W/g, '')}`, a.content);
     // R1 for diagrams: accTitle and accDescr as the heading and the caption.
@@ -389,16 +395,25 @@ export function ArtifactPanel() {
     };
   }, [a?.id, a?.content, a?.kind, scheme]);
 
-  // A chart that fails inside the sandbox (Vega's own errors) falls back like a refused spec.
+  // A chart that fails inside the sandbox (Vega's own errors), or is not drawn within 10 s,
+  // falls back like a refused spec.
+  const chartHtml = doc?.rows ? doc.html : null;
   useEffect(() => {
-    const onMessage = (e: MessageEvent<{ type?: string; message?: unknown }>) => {
-      if (e.source !== frame.current?.contentWindow || e.data?.type !== 'viz-error') return;
-      const error = String(e.data.message);
+    if (!chartHtml) return;
+    const fail = (error: string) =>
       setDoc((d) => d && { ...d, html: null, refused: { error, rows: d.rows ?? [] } });
+    const timer = setTimeout(() => fail('Kaavion piirto kesti yli 10 sekuntia.'), RENDER_TIMEOUT);
+    const onMessage = (e: MessageEvent<{ type?: string; message?: unknown }>) => {
+      if (e.source !== frame.current?.contentWindow) return;
+      if (e.data?.type === 'viz-ready') clearTimeout(timer);
+      if (e.data?.type === 'viz-error') fail(String(e.data.message));
     };
     addEventListener('message', onMessage);
-    return () => removeEventListener('message', onMessage);
-  }, []);
+    return () => {
+      clearTimeout(timer);
+      removeEventListener('message', onMessage);
+    };
+  }, [chartHtml]);
 
   if (!open || !a) return null;
   const close = () => useStore.setState({ openArtifact: null });
