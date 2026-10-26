@@ -126,7 +126,7 @@ services:
     environment:
       RECOGNIZER_REGISTRY_CONF_FILE: /app/conf/presidio-recognizers.yaml
     healthcheck: { interval: 30s, start_period: 120s, start_interval: 2s }  # test from the image
-    mem_limit: 700m
+    mem_limit: 1g  # 700m was OOM-killed at startup under host swap pressure (phase-10 egress runs)
     networks: [internal]
 
   presidio-anonymizer:
