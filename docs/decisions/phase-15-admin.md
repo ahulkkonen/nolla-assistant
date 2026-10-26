@@ -597,22 +597,17 @@ The UI follows `phase-9-ui.md` section 7. All copy is Finnish. The names in brie
     (decision 17). A break after the last bytes left the server loses the file; the user builds a
     new one.
 
+
 ## Status (2026-10-26)
 
-Task cards 1 and 2 are done (not committed). Task card 3 is open for the UI implementer, then task
-card 4.
+All four task cards are done. Commits: `ba76cf2` and `201916f` (server), `090710a`, `e31633d`
+and `af21f52` (web). Server review: no blocking item, twelve items, all fixed (zip entry cap,
+inode check on work-dir reads, fresh login for an open export, atomic seeding, watcher noise, a
+5-minute minimum cron interval, merge that keeps unknown keys, alias-bomb handling, prompt-file
+collisions, shared `writeAtomic`, tools validated against the registry). Web review: no secret
+exposure, seven should-fix items, all fixed (shared leave guard, YAML-tab errors, export download
+race, one sign-out path). The scored UI review passed after one fix round with every cell at 5.
 
-Gate: `pnpm typecheck` passes for every package except `apps/web`, whose in-progress task-card-3
-files do not compile yet. `pnpm --filter @pa/server test` passes 164 tests (10 new tests; the review
-fixes extend them), `pnpm --filter @pa/protocol test` 40 (3 new), `pnpm --filter @pa/db test` 1.
-Biome passes on the changed files. The e2e flows wait for task card 3.
+Decrypt a full export with:
 
-Review fixes (after commit ba76cf2): the zip entry counter, `openFile` with the inode check, the
-fresh login for an open export, the `busy` check after the last await, the download note, the
-atomic seeding, the watcher filters and unchanged-reload skips, the editor cron rules, the merge
-that keeps unsent keys, the alias-bomb guard, the prompt-file collision on create, the shared
-`writeAtomic` and `PROFILE_TOOLS`.
-
-Verified on 2026-10-26: a file from the server's `zip` and `opensslEncrypt` decrypts with Homebrew
-OpenSSL 4.0.3 (gate test) and with the macOS `/usr/bin/openssl` (LibreSSL 3.3.6, manual run with
-the decision-13 flags), and the inner zip passes `unzip -t` and `unzip -p` (UnZip 6.00).
+    openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -md sha256 -in <file>.zip.enc -out <file>.zip

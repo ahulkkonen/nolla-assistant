@@ -522,21 +522,14 @@ entity (plan "Out of scope"), searches in subagent children, and a search count 
   - `zdr/fast` with a `function` tool named `web_search` and a forced `tool_choice`: HTTP 200, the
     call came back to the client, no annotations, cost 0.00008 USD.
 
+
 ## Status (2026-10-26)
 
-Task cards 1, 2, 3 and 5 are done (commit `dbf34fb`). Task card 4 is open for the UI implementer.
+All five task cards are done. Commits: `dbf34fb` and `6574897` (server, guard, egress), `5859515`
+(web). Server review: no leak and no bypass, nine should-fix items, all fixed (untrusted block
+around results, URL checks, fee rows on failed calls, a 1 MB body cap, one card per call, and the
+LiteLLM guard changed to an allowlist of request keys). The scored UI review passed after one fix
+round (44 px result links on the phone). Egress: 25 probes. The live check is recorded above.
 
-Gate: `pnpm typecheck` and `pnpm lint` pass. `pnpm --filter @pa/protocol test` passes 37 tests (2
-new), `@pa/fake-llm` 6 (1 new). The live check is recorded above. The e2e flow waits for task
-card 4.
-
-Review of `dbf34fb`: no leak and no bypass, nine should-fix items, all fixed (not committed):
-untrusted marking of the results (decision 10), no whitespace in URLs (decision 4), usage rows for
-failed calls (decision 11), a status-only `warn` (decision 15), a 1 MB body cap (decision 4),
-pruned rate-limit keys (decision 12), the record cleared at `tool_execution_end` and one card per
-call (decision 7), and the guard's top-level key allowlist (decision 3). After the fixes,
-`pnpm --filter @pa/server test` passes 150 tests (13 for search) and `pnpm test:egress` passes 25
-probes (6 for search and the allowlist).
-
-The `pa-local` stack still runs the old LiteLLM config and server image. A restart of `litellm` and
-a rebuild of `pa-server` bring phase 14 to it.
+User step: keep the OpenRouter account plugin defaults off (docs/deploy.md step 3.9). Watched
+risks: the web plugin's deprecation, and Exa's retention outside ZDR.

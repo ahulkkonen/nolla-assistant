@@ -684,3 +684,14 @@ the user asks.
     user data. The reviewer checks that the request URL and headers stay fixed.
 13. **Locked fork titles.** A titled fork keeps "<old title> (haara)" after the topic changes. The
     user can rename it.
+
+## Status (2026-10-26)
+
+All seven task cards are done. Commits: `7158c13` and `f6f0a20` (server), `9fc9969`, `5859515`
+and `090710a` (web), `5517287` (`message.accepted`), `ea7abaf` (docs). Server review: no blocking
+item, 15 should-fix items, all fixed. Web review: two blocking items in the fork path (the client
+guessed the server id of a sent message by position), closed by the server message
+`message.accepted` built on a per-session prompt queue that follows Pi's preflight outcome; a
+second review of that path found two more blocking cases (overlapping and steered prompts),
+closed in `5517287` with four timing tests and a Pi contract check. The scored UI review passed
+after two rounds with every cell at 5. The gate run is recorded in the README status line.

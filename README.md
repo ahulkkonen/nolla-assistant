@@ -165,4 +165,6 @@ Status on 2026-10-25. The plan, section 13, defines each gate.
 | 10 | Model picker, thinking level, per-chat ZDR override (`docs/decisions/phase-10-models.md`) | done, open key is a user step |
 | 11 | Files screen, trash, quota, work-dir attachments (`docs/decisions/phase-11-files.md`) | done |
 | 12 | Pseudonymization hardening: rare surrogates, collisions, email and street (`docs/decisions/phase-12-pseudo.md`) | done |
-| 13 | Thread depth: fork, thinking, cost, find (`docs/decisions/phase-13-thread.md`) | in progress |
+| 13 | Thread depth: fork, thinking, cost, find (`docs/decisions/phase-13-thread.md`) | done |
+| 14 | Web search tool with entity guard (`docs/decisions/phase-14-search.md`) | done, plugin defaults are a user step |
+| 15 | Admin: agent and automation editors, devices, encrypted full export (`docs/decisions/phase-15-admin.md`) | done |
