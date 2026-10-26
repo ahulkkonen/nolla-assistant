@@ -217,6 +217,7 @@ export async function start(
       : {}),
     memory: {
       store: memory,
+      claims: claimsDb,
       onChange: (chatId) => broadcast(rooms, chatId, memory.state()),
       log: (chatId, level, msg, data) => app.log[level]({ chatId, ...data }, msg),
     },

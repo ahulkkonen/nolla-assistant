@@ -7,7 +7,7 @@ import { eq } from 'drizzle-orm';
 import { afterEach, expect, test } from 'vitest';
 import { type ChatMsg, claimStore } from './claims.ts';
 import { loadModel } from './embeddings.ts';
-import { cleanups, runCleanups, tempDir } from './test-utils.ts';
+import { bootPseudo, cleanups, runCleanups, tempDir } from './test-utils.ts';
 import { taskSmall } from './topics.ts';
 
 afterEach(runCleanups);
@@ -252,5 +252,89 @@ test.skipIf(!modelOk)(
       .where(eq(evidence.claimId, old as number))
       .all();
     expect(ev.map((e) => e.stance)).toEqual(['contradicts']);
+  },
+);
+
+// --- S3: retrieval -----------------------------------------------------------------------------
+
+test.skipIf(!modelOk)(
+  'retrieval: an inflected name finds its claim through the entity; profile and injected claims are skipped; recall shows the quote',
+  {
+    timeout: 60_000,
+  },
+  async () => {
+    // The real vault maps every inflected form to one entity (plan §6); the fake has one id per
+    // form, so the claim links to the id of "Virtaselle" (2).
+    const x = await extraction([], {});
+    const sc = await startFakeSidecar({
+      'Mikko Virtanen': 'Kalle Laaksonen',
+      Virtaselle: 'Laaksoselle',
+    });
+    cleanups.push(sc.close);
+    const s = claimStore({
+      db: x.db,
+      userId: 'aleksi',
+      warn: () => {},
+      pseudo: new PseudoClient(sc.url, 'aleksi'),
+    });
+    const active = (text: string, entityIds: number[] = [], quote?: string) => ({
+      claim: { kind: 'relationship' as const, text, confidence: 0.9, status: 'active' as const },
+      evidence: quote
+        ? [{ chatId: 'c7', messageId: 'm7', quote, stance: 'supports' as const }]
+        : [],
+      entityIds,
+    });
+    const [boss, inProfile, other] = await s.add([
+      active('Mikko Virtanen on käyttäjän esihenkilö.', [2], 'Mikko Virtanen on pomoni.'),
+      active('Mikko Virtanen pitää kahvista.', [2]),
+      active('Käyttäjän koira on labradori.'),
+    ]);
+    x.db
+      .update(claims)
+      .set({ inProfile: true })
+      .where(eq(claims.id, inProfile as number))
+      .run();
+
+    const r = await s.relevant('Soitin eilen Laaksoselle.', []);
+    expect(r.ids).toEqual([boss]);
+    expect(r.lines).toEqual([
+      `- (ihmissuhde, 0.9, ${new Date().toISOString().slice(0, 7)}) Mikko Virtanen on käyttäjän esihenkilö.`,
+    ]);
+    expect((await s.relevant('Soitin eilen Laaksoselle.', [boss as number])).ids).toEqual([]);
+    expect((await s.relevant('Mikä rotu koiramme on?', [])).ids).toEqual([other]);
+
+    const lines = await s.recallLines('esihenkilö');
+    expect(lines[0]).toContain(
+      'Mikko Virtanen on käyttäjän esihenkilö. Lainaus: "Mikko Virtanen on pomoni." (c7)',
+    );
+  },
+);
+
+test.skipIf(!modelOk)(
+  'server: a turn gets the masked claims block as its last message',
+  {
+    timeout: 60_000,
+  },
+  async () => {
+    const { llm, srv, c, chat } = await bootPseudo(DICT, [{ text: 'Selvä.' }]);
+    const s = claimStore({ db: srv.db, userId: 'aleksi', warn: () => {} });
+    await s.add([
+      {
+        claim: {
+          kind: 'relationship',
+          text: 'Mikko Virtanen on käyttäjän esihenkilö.',
+          confidence: 0.9,
+          status: 'active',
+        },
+        evidence: [],
+        entityIds: [1],
+      },
+    ]);
+    c.send({ type: 'user.message', chatId: chat.id, text: 'Mitä Mikko Virtanen halusi?' });
+    await c.idle();
+    const last = JSON.stringify(llm.requests[0]?.body.messages.at(-1));
+    expect(last).toContain('Muistista tähän viestiin');
+    expect(last).toContain('Kalle Laaksonen on käyttäjän esihenkilö.');
+    expect(JSON.stringify(llm.requests[0]?.body)).not.toContain('Mikko Virtanen');
   },
 );

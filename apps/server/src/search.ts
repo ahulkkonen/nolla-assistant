@@ -14,7 +14,7 @@ import { embed } from './embeddings.ts';
 const CHUNK_CHARS = 1600;
 const RRF_K = 60;
 // ponytail: e5-small summary cosines cluster in 0.80–0.88; 0.86 keeps real neighbours. Re-check in phase 8.
-const RELATED_MIN = 0.86;
+export const RELATED_MIN = 0.86;
 const SNIPPET_CHARS = 196;
 
 export type IndexMessage = { id: string; text: string };
@@ -129,6 +129,18 @@ async function indexNow(db: Db, userId: string, chatId: string, messages?: Index
   });
 }
 
+/** Reciprocal rank fusion (k = 60) of ranked lists; one entry per `key`, best score first. */
+export function rrf<T>(lists: T[][], key: (x: T) => string | number) {
+  const fused = new Map<string | number, { hit: T; score: number }>();
+  for (const list of lists)
+    list.forEach((hit, rank) => {
+      const f = fused.get(key(hit)) ?? { hit, score: 0 };
+      f.score += 1 / (RRF_K + rank + 1);
+      fused.set(key(hit), f);
+    });
+  return [...fused.values()].sort((a, b) => b.score - a.score);
+}
+
 export type SearchResult = {
   chatId: string;
   messageId: string | null;
@@ -138,7 +150,7 @@ export type SearchResult = {
 };
 
 /** Lowercased words of 3+ chars (trigram minimum), each followed by a stem that drops a Finnish case ending. */
-function terms(q: string) {
+export function terms(q: string) {
   const words = (q.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []).filter((w) => w.length >= 3);
   // ponytail: crude stem (cut up to 4 trailing chars, keep ≥ 4); swap for Voikko lemmas if recall suffers.
   const stems = words.map((w) => w.slice(0, Math.max(4, w.length - 4)));
@@ -230,14 +242,7 @@ export async function search(
         )
       : [];
 
-  const fused = new Map<string, { hit: Hit; score: number }>();
-  for (const list of [fts, vector])
-    list.forEach((hit, rank) => {
-      const f = fused.get(hit.chatId) ?? { hit, score: 0 };
-      f.score += 1 / (RRF_K + rank + 1);
-      fused.set(hit.chatId, f);
-    });
-  const top = [...fused.values()].sort((a, b) => b.score - a.score).slice(0, limit);
+  const top = rrf([fts, vector], (h) => h.chatId).slice(0, limit);
 
   const words = terms(q);
   const out: SearchResult[] = [];

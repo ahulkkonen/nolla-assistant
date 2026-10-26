@@ -21,6 +21,13 @@ export const FULL = 'Muisti on täynnä: tiivistä ensin (`replace`/`remove`)';
 export const NOT_FOUND = 'Tekstiä ei löytynyt muistista.';
 /** The bridge appends inlined documents after this marker (untrusted text). */
 export const ATTACHMENT_MARKER = '\n\n[Liite: ';
+/** Phase 17: the per-turn claims message (decision 1). */
+export const CLAIMS_TYPE = 'memory-claims';
+export const CLAIMS_HEADER =
+  '## Muistista tähän viestiin\nTaustatietoa käyttäjästä. Käytä vain, jos se liittyy viestiin. Suluissa laji, varmuus ja aika.';
+/** Claim ids per session; then no more blocks (decision 8). */
+export const CLAIMS_SESSION_CAP = 40;
+const CLAIMS_TIMEOUT_MS = 1000;
 const BAD_SINCE = 'since: anna ISO-päivämäärä (VVVV-KK-PP) tai -aika.';
 const ISO = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})?)?$/;
 
@@ -91,6 +98,16 @@ export function memoryExtension(opts: {
   /** Parks a tainted write unvalidated; resolves with the pending id, rejects with a message for the agent. */
   park: (write: MemoryWrite) => Promise<number>;
   applyNow: (write: MemoryWrite) => Promise<void>;
+  /**
+   * Phase 17: real block lines and their claim ids for a masked prompt; `exclude` = ids already in
+   * the session. The extension masks the block.
+   */
+  relevant?: (
+    maskedPrompt: string,
+    exclude: number[],
+  ) => Promise<{ ids: number[]; lines: string[] }>;
+  /** Phase 17: `recall` lines for claims (real; the pseudo extension masks the tool result). */
+  recallClaims?: (q: string) => Promise<string[]>;
   /** Phase 17: called once per session, the first time a turn is tainted (`chats.tainted`). */
   onTaint?: () => void;
   log: MemoryLog;
@@ -142,6 +159,44 @@ export function memoryExtension(opts: {
       return { message: { customType: 'memory', display: false, content } };
     });
 
+    // Phase 17 decision 1: relevant claims after the user message, masked, once per session.
+    let claimIds: Set<number> | undefined;
+    pi.on('before_agent_start', async (event, ctx) => {
+      if (event.messageType !== 'user' || !opts.relevant) return;
+      claimIds ??= new Set(
+        ctx.sessionManager
+          .getBranch()
+          .flatMap((e) =>
+            e.type === 'custom_message' && e.customType === CLAIMS_TYPE
+              ? ((e.details as { claimIds?: number[] } | undefined)?.claimIds ?? [])
+              : [],
+          ),
+      );
+      if (claimIds.size >= CLAIMS_SESSION_CAP) return;
+      let content: string;
+      let ids: number[];
+      try {
+        const r = await Promise.race([
+          opts.relevant(event.prompt, [...claimIds]),
+          new Promise<never>((_, j) =>
+            setTimeout(() => j(new Error('timeout')), CLAIMS_TIMEOUT_MS),
+          ),
+        ]);
+        ids = r.ids.slice(0, CLAIMS_SESSION_CAP - claimIds.size);
+        if (!ids.length) return;
+        content = await opts.mask(`${CLAIMS_HEADER}\n${r.lines.slice(0, ids.length).join('\n')}`);
+      } catch (err) {
+        opts.log('warn', 'memory claims not injected', {
+          error: err instanceof Error ? err.message : 'unknown',
+        });
+        return;
+      }
+      for (const id of ids) claimIds.add(id);
+      return {
+        message: { customType: CLAIMS_TYPE, display: false, content, details: { claimIds: ids } },
+      };
+    });
+
     pi.on('agent_start', () => {
       tainted = attached;
       attached = false;
@@ -159,7 +214,7 @@ export function memoryExtension(opts: {
       name: 'recall',
       label: 'recall',
       description:
-        'Search earlier chats (summaries and transcripts). Returns at most 5 snippets with dates and chat ids.',
+        'Search earlier chats (summaries and transcripts) and learned claims about the user. Returns at most 5 snippets with dates and chat ids, and up to 3 claims with a quote.',
       parameters: Type.Object({
         query: Type.String(),
         since: Type.Optional(
@@ -170,16 +225,22 @@ export function memoryExtension(opts: {
       async execute(_id, p) {
         if (p.since && (!ISO.test(p.since) || Number.isNaN(Date.parse(p.since))))
           return text(BAD_SINCE, true);
-        const hits = await opts.recall(p.query, {
-          ...(p.since ? { since: new Date(p.since).toISOString() } : {}),
-          ...(p.topic ? { topic: p.topic } : {}),
-        });
-        if (!hits.length) return text('Ei osumia.');
+        const [hits, claimLines] = await Promise.all([
+          opts.recall(p.query, {
+            ...(p.since ? { since: new Date(p.since).toISOString() } : {}),
+            ...(p.topic ? { topic: p.topic } : {}),
+          }),
+          opts.recallClaims?.(p.query) ?? [],
+        ]);
+        if (!hits.length && !claimLines.length) return text('Ei osumia.');
+        const chunks = hits
+          .slice(0, 5)
+          .map((h) => `- [${h.date.slice(0, 10)}] ${h.title} (${h.chatId}): ${h.snippet}`)
+          .join('\n');
         return text(
-          hits
-            .slice(0, 5)
-            .map((h) => `- [${h.date.slice(0, 10)}] ${h.title} (${h.chatId}): ${h.snippet}`)
-            .join('\n'),
+          [chunks, claimLines.length ? `Havainnot:\n${claimLines.join('\n')}` : '']
+            .filter(Boolean)
+            .join('\n\n'),
         );
       },
     });

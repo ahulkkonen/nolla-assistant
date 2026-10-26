@@ -6,6 +6,7 @@ import { and, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 import cron from 'node-cron';
 import { z } from 'zod';
 import { embed } from './embeddings.ts';
+import { RELATED_MIN, rrf, terms } from './search.ts';
 import type { taskSmall } from './topics.ts';
 
 /**
@@ -43,6 +44,31 @@ const SIMILAR = 40;
 /** `claims_vec` cosine distance under which a new claim is the same as an open one. */
 const SAME_DISTANCE = 0.05;
 const AUTO_KINDS = new Set<ClaimKind>(['preference', 'rhythm']);
+/** Decision 26: per-turn top k, the block's line budget (~300 tokens), candidates per list. */
+const TOP_K = 6;
+export const BLOCK_CHARS = 1000;
+const LIST = 20;
+export const KIND_FI: Record<ClaimKind, string> = {
+  preference: 'mieltymys',
+  rhythm: 'rytmi',
+  goal: 'tavoite',
+  fact: 'fakta',
+  relationship: 'ihmissuhde',
+  decision_pattern: 'päätöstapa',
+  quirk: 'tapa',
+};
+type ClaimRow = typeof claims.$inferSelect;
+/** Half weight after a year without confirmation, never below 0.5. */
+export const recency = (c: Pick<ClaimRow, 'lastConfirmedAt' | 'recordedAt'>, now = Date.now()) =>
+  Math.max(
+    0.5,
+    0.5 ** ((now - Date.parse(c.lastConfirmedAt ?? c.recordedAt)) / (365 * 86_400_000)),
+  );
+const month = (c: Pick<ClaimRow, 'validFrom' | 'recordedAt'>) =>
+  (c.validFrom ?? c.recordedAt).slice(0, 7);
+/** One block line: `- (mieltymys, 0.9, 2026-09) text`. */
+export const claimLine = (c: ClaimRow) =>
+  `- (${KIND_FI[c.kind]}, ${Math.round(c.confidence * 10) / 10}, ${month(c)}) ${c.text}`;
 
 export const EXTRACT_PROMPT = `Olet muistin poimija. Saat listan käyttäjästä jo tallennetuista havainnoista (id) ja keskustelun, jonka viestit on numeroitu (m1, m2, …). Nimet ja tunnisteet ovat peitenimiä: käytä niitä täsmälleen sellaisinaan. [sinä] tarkoittaa käyttäjää.
 
@@ -108,9 +134,9 @@ const pathIs = (p: JsonPath | undefined, ...head: (string | number)[]) =>
 export const vecOf = (v: Float32Array) => Buffer.from(v.buffer, v.byteOffset, v.byteLength);
 
 /** Passage vectors, or nulls when the model cannot load (the claim then has no vector row). */
-async function vectors(texts: string[], warn: Warn) {
+async function vectors(texts: string[], warn: Warn, mode: 'query' | 'passage' = 'passage') {
   try {
-    return await embed(texts);
+    return await embed(texts, mode);
   } catch (err) {
     warn('claim embedding failed', { error: err instanceof Error ? err.name : 'unknown' });
     return texts.map(() => null);
@@ -452,6 +478,132 @@ export function claimStore(deps: {
         .map((r) => r.id),
     );
 
+  /** Claim ids with evidence from at least two chats. */
+  const twoChats = (ids: number[]) =>
+    new Set(
+      ids.length
+        ? (
+            sqlite
+              .prepare(
+                `SELECT claimId FROM evidence WHERE claimId IN (${ids.map(() => '?').join(',')})
+                 GROUP BY claimId HAVING count(DISTINCT chatId) >= 2`,
+              )
+              .all(...ids) as { claimId: number }[]
+          ).map((r) => r.claimId)
+        : [],
+    );
+
+  /**
+   * Decision 26: FTS (trigram + crude stem), vector and entity lists over `statuses`, fused with
+   * RRF and weighted by confidence and recency. A claim needs an FTS or entity hit, or a vector
+   * cosine ≥ RELATED_MIN. `q` is real text.
+   */
+  const rank = async (
+    q: string,
+    entityIds: number[],
+    statuses: ClaimRow['status'][],
+    now = Date.now(),
+  ): Promise<ClaimRow[]> => {
+    const words = terms(q);
+    const fts = words.length
+      ? (
+          sqlite
+            .prepare(
+              'SELECT claim_id AS id FROM claims_fts WHERE claims_fts MATCH ? AND user_id = ? ORDER BY bm25(claims_fts) LIMIT ?',
+            )
+            .all(words.map((t) => `"${t}"`).join(' OR '), userId, LIST * 3) as { id: number }[]
+        ).map((r) => r.id)
+      : [];
+    const [v] = q.trim() ? await vectors([q], warn, 'query') : [null];
+    const near = v ? nearest(v, LIST * 3) : [];
+    const ent = entityIds.length
+      ? db
+          .selectDistinct({ id: claimEntities.claimId })
+          .from(claimEntities)
+          .where(and(eq(claimEntities.userId, userId), inArray(claimEntities.entityId, entityIds)))
+          .all()
+          .map((r) => r.id)
+      : [];
+    const all = [...new Set([...fts, ...near.map((r) => r.id), ...ent])];
+    if (!all.length) return [];
+    const day = new Date(now).toISOString().slice(0, 10);
+    const rows = new Map(
+      db
+        .select()
+        .from(claims)
+        .where(
+          and(eq(claims.userId, userId), inArray(claims.status, statuses), inArray(claims.id, all)),
+        )
+        .all()
+        // Superseded claims keep their closed validity (recall shows them); others must be open.
+        .filter((c) => c.status === 'superseded' || !c.validTo || c.validTo > day)
+        .map((c) => [c.id, c]),
+    );
+    const patterns = twoChats(
+      [...rows.values()].filter((c) => c.kind === 'decision_pattern').map((c) => c.id),
+    );
+    const ftsSet = new Set(fts);
+    const entSet = new Set(ent);
+    const cos = new Map(near.map((r) => [r.id, 1 - r.distance]));
+    const ok = (id: number) => {
+      const c = rows.get(id);
+      if (!c) return false;
+      if (c.kind === 'decision_pattern' && (c.confidence < 0.6 || !patterns.has(id))) return false;
+      return ftsSet.has(id) || entSet.has(id) || (cos.get(id) ?? 0) >= RELATED_MIN;
+    };
+    return rrf([fts.filter(ok), near.map((r) => r.id).filter(ok), ent.filter(ok)], (id) => id)
+      .map(({ hit, score }) => {
+        const c = rows.get(hit) as ClaimRow;
+        return { c, score: score * (0.6 + 0.4 * c.confidence) * recency(c, now) };
+      })
+      .sort((a, b) => b.score - a.score)
+      .map((r) => r.c);
+  };
+
+  /**
+   * Decision 26: the per-turn block. Unmasks the prompt, ranks open active claims that are not in
+   * MEMORY.md and not in `exclude`, keeps TOP_K lines within BLOCK_CHARS. Lines are real text.
+   */
+  const relevant = async (maskedPrompt: string, exclude: Iterable<number>) => {
+    if (!pseudo) return { ids: [], lines: [] };
+    const skip = new Set(exclude);
+    const un = await pseudo.unmask(maskedPrompt);
+    const ranked = (
+      await rank(un.restored, [...new Set(un.spans.map((s) => s.entity_id))], ['active'])
+    )
+      .filter((c) => !c.inProfile && !skip.has(c.id))
+      .slice(0, TOP_K);
+    const ids: number[] = [];
+    const lines: string[] = [];
+    let size = 0;
+    for (const c of ranked) {
+      const l = claimLine(c);
+      if (size + l.length > BLOCK_CHARS) break;
+      size += l.length + 1;
+      ids.push(c.id);
+      lines.push(l);
+    }
+    return { ids, lines };
+  };
+
+  /** Decision 27: `recall` lines for active and superseded claims, each with its newest quote. */
+  const recallLines = async (q: string): Promise<string[]> => {
+    const entityIds = pseudo
+      ? (await pseudo.mask(`search:${userId}`, q)).spans.map((s) => s.entity_id)
+      : [];
+    const top = (await rank(q, [...new Set(entityIds)], ['active', 'superseded'])).slice(0, 3);
+    return top.map((c) => {
+      const e = db
+        .select()
+        .from(evidence)
+        .where(eq(evidence.claimId, c.id))
+        .orderBy(sql`${evidence.id} DESC`)
+        .get();
+      const span = `${month(c)} → ${c.validTo?.slice(0, 7) ?? ''}${c.status === 'superseded' ? ', korvattu' : ''}`;
+      return `- [${span}] ${c.text}${e ? ` Lainaus: "${e.quote}" (${e.chatId ?? '-'})` : ''}`;
+    });
+  };
+
   /**
    * Decision 11: extracts the chats idle for IDLE_MS with turns after the last extraction, at
    * most SWEEP_MAX per run, one at a time. `messagesOf` gives the branch, or undefined when the
@@ -494,5 +646,16 @@ export function claimStore(deps: {
   const schedule = (run: () => Promise<void>) =>
     cron.schedule('*/5 * * * *', run, { timezone: 'Europe/Helsinki', noOverlap: true });
 
-  return { add, setText, importMemory, extract, sweep, schedule, open };
+  return {
+    add,
+    setText,
+    importMemory,
+    extract,
+    sweep,
+    schedule,
+    open,
+    rank,
+    relevant,
+    recallLines,
+  };
 }
