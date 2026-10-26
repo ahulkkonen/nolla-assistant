@@ -166,6 +166,8 @@ export async function start(
     warn: (msg, data) => app.log.warn(data ?? {}, msg),
     pseudo,
     ask: taskSmall(config.litellmUrl, config.litellmMasterKey, recordUsage),
+    // Defined below; runs only after startup.
+    onProfileChange: () => memory.consolidate(),
   });
   const memory = memoryStore({
     db,

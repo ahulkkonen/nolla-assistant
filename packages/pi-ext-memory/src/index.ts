@@ -159,11 +159,11 @@ export function memoryExtension(opts: {
       return { message: { customType: 'memory', display: false, content } };
     });
 
-    // Phase 17 decision 1: relevant claims after the user message, masked, once per session.
-    let claimIds: Set<number> | undefined;
+    // Phase 17 decision 1: relevant claims after the user message, masked, once per session. The
+    // injected ids come from the branch each turn, so a rebuilt session or a fork stays right.
     pi.on('before_agent_start', async (event, ctx) => {
       if (event.messageType !== 'user' || !opts.relevant) return;
-      claimIds ??= new Set(
+      const claimIds = new Set(
         ctx.sessionManager
           .getBranch()
           .flatMap((e) =>
@@ -191,7 +191,6 @@ export function memoryExtension(opts: {
         });
         return;
       }
-      for (const id of ids) claimIds.add(id);
       return {
         message: { customType: CLAIMS_TYPE, display: false, content, details: { claimIds: ids } },
       };

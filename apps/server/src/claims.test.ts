@@ -1,9 +1,10 @@
 import { join } from 'node:path';
 import { chats, claimEntities, claims, evidence, openDb } from '@pa/db';
 import { type FakeTurn, startFakeLlm } from '@pa/fake-llm';
-import { PseudoClient } from '@pa/pi-ext-pseudo';
+import { ATTACHMENT_MARKER } from '@pa/pi-ext-memory';
+import { type Json, PseudoClient } from '@pa/pi-ext-pseudo';
 import { startFakeSidecar } from '@pa/pi-ext-pseudo/fake-sidecar';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { afterEach, expect, test } from 'vitest';
 import { type ChatMsg, claimStore } from './claims.ts';
 import { loadModel } from './embeddings.ts';
@@ -46,7 +47,11 @@ type Turn = FakeTurn;
 const reply = (o: object): Turn => ({ text: JSON.stringify(o), match: 'Keskustelu:' });
 const q = (message: string, quote: string) => ({ message, quote });
 
-async function extraction(turns: Turn[], opts: Parameters<typeof startFakeSidecar>[1] = {}) {
+async function extraction(
+  turns: Turn[],
+  opts: Parameters<typeof startFakeSidecar>[1] = {},
+  wrap: (p: PseudoClient) => void = () => {},
+) {
   const llm = await startFakeLlm(turns);
   cleanups.push(llm.close);
   const sc = await startFakeSidecar(DICT, opts);
@@ -55,11 +60,14 @@ async function extraction(turns: Turn[], opts: Parameters<typeof startFakeSideca
   cleanups.push(() => {
     sqlite.close();
   });
+  const warnings: string[] = [];
+  const pseudo = new PseudoClient(sc.url, 'aleksi');
+  wrap(pseudo);
   const s = claimStore({
     db,
     userId: 'aleksi',
-    warn: () => {},
-    pseudo: new PseudoClient(sc.url, 'aleksi'),
+    warn: (msg) => void warnings.push(msg),
+    pseudo,
     ask: taskSmall(llm.url, 'k'),
   });
   const chat = (
@@ -81,17 +89,17 @@ async function extraction(turns: Turn[], opts: Parameters<typeof startFakeSideca
   };
   const activated: { chatId: string; ids: number[] }[] = [];
   const asked: string[] = [];
-  const sweep = (msgs: ChatMsg[], now = Date.now()) =>
+  const sweep = (msgs: ChatMsg[] | ((chatId: string) => Promise<ChatMsg[]>), now = Date.now()) =>
     s.sweep(
       async (chatId) => {
         asked.push(chatId);
-        return msgs;
+        return typeof msgs === 'function' ? msgs(chatId) : msgs;
       },
       (chatId, a) => activated.push({ chatId, ids: a.map((c) => c.id) }),
       now,
     );
   const all = () => db.select().from(claims).orderBy(claims.id).all();
-  return { llm, sc, db, s, chat, sweep, all, activated, asked };
+  return { llm, sc, db, s, chat, sweep, all, activated, asked, warnings };
 }
 
 const PREF = {
@@ -364,13 +372,22 @@ test('profile: same claims give the same bytes, capped, sections in order', {
     ),
   ).toBe(true);
   expect(s.profile(2500)).toEqual(a);
+  // inProfile only after the host wrote the file.
   expect(
     db
       .select()
       .from(claims)
       .all()
       .filter((c) => c.inProfile),
-  ).toHaveLength(a.count);
+  ).toHaveLength(0);
+  s.markProfile(a.ids);
+  expect(
+    db
+      .select()
+      .from(claims)
+      .all()
+      .filter((c) => c.inProfile),
+  ).toHaveLength(a.ids.length);
 });
 
 test('review: a supersede accept closes the old claim; edit, expiry, reject, chip undo; stale and precision', {
@@ -440,7 +457,7 @@ test('review: a supersede accept closes the old claim; edit, expiry, reject, chi
     { id: auto, kind: 'preference', text: 'Käyttäjä haluaa lyhyesti.' },
   ]);
 
-  expect(await s.review(sup as number, 'accept')).toBe(true);
+  expect(await s.review(sup as number, 'accept')).toBe('ok');
   const rows = () =>
     new Map(
       db
@@ -451,27 +468,28 @@ test('review: a supersede accept closes the old claim; edit, expiry, reject, chi
     );
   expect(rows().get(old as number)).toMatchObject({ status: 'superseded', validTo: '2026-10-01' });
   expect(rows().get(sup as number)).toMatchObject({ status: 'active', activatedBy: 'user' });
-  expect(await s.review(sup as number, 'accept')).toBe(false);
+  expect(await s.review(sup as number, 'accept')).toBe('not_found');
 
   expect(
     await s.review(plain as number, 'accept', {
       text: 'Käyttäjä asuu Tampereella.',
       validTo: '2027-01-01',
     }),
-  ).toBe(true);
+  ).toBe('ok');
   expect(rows().get(plain as number)).toMatchObject({
     text: 'Käyttäjä asuu Tampereella.',
     validTo: '2027-01-01',
   });
   expect((await s.relevant('', [])).ids).toEqual([]);
-  expect(await s.update(plain as number, { validTo: null })).toBe(true);
+  expect(await s.update(plain as number, { validTo: null })).toBe('ok');
+  expect(await s.update(plain as number, { validTo: '2020-01-01' })).toBe('invalid');
   expect(rows().get(plain as number)?.validTo).toBeNull();
 
-  expect(await s.review(auto as number, 'reject')).toBe(true);
+  expect(await s.review(auto as number, 'reject')).toBe('ok');
   expect(rows().get(auto as number)?.status).toBe('rejected');
-  expect(await s.review(old as number, 'reject')).toBe(false);
+  expect(await s.review(old as number, 'reject')).toBe('not_found');
 
-  expect(s.stale(staleId as number, 'lower')).toBe(true);
+  expect(s.stale(staleId as number, 'lower')).toBe('ok');
   expect(rows().get(staleId as number)?.confidence).toBe(0.7);
   st = s.state();
   if (st.type !== 'claims.state') throw new Error('claims.state expected');
@@ -501,3 +519,220 @@ test('repoint: a vault merge moves links and subjects', async () => {
   ]);
   expect(db.select().from(claims).get()?.subjectEntityId).toBe(5);
 });
+
+// --- Review fixes ------------------------------------------------------------------------------
+
+const ONE = (claims: object[], extra: object = {}) =>
+  reply({ claims, confirms: [], supersedes: [], ...extra });
+
+test.skipIf(!modelOk)(
+  'a rejected claim is never extracted again',
+  { timeout: 60_000 },
+  async () => {
+    const x = await extraction([ONE([PREF]), ONE([PREF])]);
+    x.chat('c1');
+    await x.sweep(MSGS);
+    const [first] = x.all();
+    expect(first).toMatchObject({ status: 'active', activatedBy: 'auto' });
+    expect(await x.s.review(first?.id as number, 'reject')).toBe('ok');
+    x.chat('c2');
+    await x.sweep(MSGS);
+    expect(x.llm.requests).toHaveLength(2);
+    expect(x.all()).toHaveLength(1);
+    expect(x.all()[0]?.timesSeen).toBe(1);
+  },
+);
+
+test('an unresolved surrogate without a path drops the whole reply', {
+  timeout: 60_000,
+}, async () => {
+  const x = await extraction([ONE([PREF])], {}, (p) => {
+    const unmask = p.unmask.bind(p);
+    p.unmask = (async (v: Json) => {
+      const r = await unmask(v);
+      return typeof v === 'string' ? r : { ...r, unresolved: [{ start: 0, end: 1, form: 'X' }] };
+    }) as typeof p.unmask;
+  });
+  x.chat('c1');
+  await x.sweep(MSGS);
+  expect(x.all()).toEqual([]);
+  expect(x.warnings).toContain('claims reply dropped: unresolved surrogate without path');
+  expect(x.db.select().from(chats).get()?.claimsThrough).toBe('e2');
+});
+
+test('one bad item drops only itself, without a repair call', { timeout: 60_000 }, async () => {
+  const x = await extraction([
+    ONE([PREF, { kind: 'nonsense', text: 'x' }, { ...PREF, valid_from: '2026-02-30' }]),
+  ]);
+  x.chat('c1');
+  await x.sweep(MSGS);
+  expect(x.llm.requests).toHaveLength(1);
+  expect(x.all().map((r) => r.text)).toEqual([PREF.text]);
+});
+
+test('sweep: a message during the call is picked up next time; a failure waits 30 min; oldest first', {
+  timeout: 60_000,
+}, async () => {
+  const x = await extraction([ONE([]), ONE([])]);
+  x.chat('old', { idleMin: 60 });
+  x.chat('newer', { idleMin: 30 });
+  const order: string[] = [];
+  await x.sweep(async (chatId) => {
+    order.push(chatId);
+    if (chatId === 'old') throw new Error('boom');
+    // A message lands while the call runs.
+    x.db
+      .update(chats)
+      .set({ updatedAt: new Date(Date.now() - 25 * MIN).toISOString() })
+      .where(eq(chats.id, chatId))
+      .run();
+    return MSGS;
+  });
+  expect(order).toEqual(['old', 'newer']);
+  expect(x.warnings).toContain('claims extraction failed');
+  const rows = new Map(
+    x.db
+      .select()
+      .from(chats)
+      .all()
+      .map((c) => [c.id, c]),
+  );
+  expect(rows.get('old')?.claimsRetryAt).toBeTruthy();
+  // `newer` read up to the updatedAt it saw: the later message makes it due again.
+  expect((rows.get('newer')?.claimsAt ?? '') < (rows.get('newer')?.updatedAt ?? '')).toBe(true);
+  order.length = 0;
+  await x.sweep(async (chatId) => {
+    order.push(chatId);
+    return [...MSGS, { id: 'e3', role: 'user', text: 'Lisäys.' }];
+  });
+  expect(order).toEqual(['newer']);
+  await x.sweep(
+    async (chatId) => {
+      order.push(chatId);
+      return MSGS;
+    },
+    Date.now() + 31 * MIN,
+  );
+  expect(order).toEqual(['newer', 'old']);
+});
+
+test('extract: a long tail goes in windows; a marker off the branch marks read', {
+  timeout: 60_000,
+}, async () => {
+  const x = await extraction([ONE([]), ONE([])]);
+  const long = (id: string): ChatMsg => ({ id, role: 'user', text: 'a'.repeat(15_000) });
+  x.chat('c1');
+  await x.s.extract('c1', [long('u1'), long('u2')], {
+    through: null,
+    tainted: false,
+    date: '2026-10-26',
+  });
+  expect(x.llm.requests).toHaveLength(2);
+  expect(x.db.select().from(chats).get()?.claimsThrough).toBe('u2');
+  await x.s.extract('c1', [long('v1')], { through: 'gone', tainted: false, date: '2026-10-26' });
+  expect(x.llm.requests).toHaveLength(2);
+  expect(x.warnings).toContain('claims marker not on branch: marked read');
+  expect(x.db.select().from(chats).get()?.claimsThrough).toBe('v1');
+});
+
+test.skipIf(!modelOk)(
+  'several supersedes per new claim keep their reason and valid_to; accept closes each',
+  {
+    timeout: 60_000,
+  },
+  async () => {
+    const x = await extraction([]);
+    const [a, b] = await x.s.add(
+      ['Käyttäjä juoksee maanantaisin.', 'Käyttäjä juoksee torstaisin.'].map((text) => ({
+        claim: { kind: 'rhythm' as const, text, confidence: 0.9, status: 'active' as const },
+        evidence: [],
+      })),
+    );
+    const quote = q('m1', 'Lopetin juoksemisen');
+    x.llm.push(
+      ONE(
+        [
+          {
+            kind: 'rhythm',
+            text: 'Käyttäjä ui kahdesti viikossa.',
+            confidence: 0.9,
+            valid_from: null,
+            evidence: [quote],
+          },
+        ],
+        {
+          supersedes: [
+            {
+              claim_id: a,
+              reason: 'Lopetti.',
+              valid_to: '2026-10-01',
+              new_claim: 0,
+              evidence: quote,
+            },
+            { claim_id: b, reason: 'Lopetti.', valid_to: null, new_claim: 0, evidence: quote },
+          ],
+        },
+      ),
+    );
+    x.chat('c3');
+    await x.sweep([{ id: 'u1', role: 'user', text: 'Lopetin juoksemisen, uin nyt.' }]);
+    const fresh = x.all().find((r) => r.status === 'proposed');
+    const props = x.db.select().from(evidence).where(eq(evidence.stance, 'contradicts')).all();
+    expect(props.map((p) => [p.claimId, p.supersededBy, p.reason, p.validTo])).toEqual([
+      [a, fresh?.id, 'Lopetti.', '2026-10-01'],
+      [b, fresh?.id, 'Lopetti.', null],
+    ]);
+    expect(await x.s.review(fresh?.id as number, 'accept', { validTo: '2020-01-01' })).toBe(
+      'invalid',
+    );
+    expect(await x.s.review(fresh?.id as number, 'accept')).toBe('ok');
+    const rows = new Map(x.all().map((r) => [r.id, r]));
+    expect(rows.get(a as number)).toMatchObject({ status: 'superseded', validTo: '2026-10-01' });
+    expect(rows.get(b as number)).toMatchObject({
+      status: 'superseded',
+      validTo: new Date().toISOString().slice(0, 10),
+    });
+    // recall shows the support first and labels the contradiction.
+    const lines = await x.s.recallLines('juoksee maanantaisin');
+    expect(lines.find((l) => l.includes('maanantaisin'))).toContain(
+      'Vastaan: "Lopetin juoksemisen" (c3)',
+    );
+  },
+);
+
+test.skipIf(!modelOk)(
+  'retrieval: closed claims never crowd out an open one; attachments are not the query',
+  {
+    timeout: 60_000,
+  },
+  async () => {
+    const x = await extraction([]);
+    const rejected = await x.s.add(
+      Array.from({ length: 30 }, (_, i) => ({
+        claim: {
+          kind: 'fact' as const,
+          text: `Käyttäjän auto on punainen ${i}.`,
+          confidence: 0.9,
+          status: 'proposed' as const,
+        },
+        evidence: [],
+      })),
+    );
+    x.db.update(claims).set({ status: 'rejected' }).where(inArray(claims.id, rejected)).run();
+    const [live] = await x.s.add([
+      {
+        claim: {
+          kind: 'fact',
+          text: 'Käyttäjän auto on punainen.',
+          confidence: 0.9,
+          status: 'active',
+        },
+        evidence: [],
+      },
+    ]);
+    expect((await x.s.relevant('Minkä värinen auto?', [])).ids).toEqual([live]);
+    expect((await x.s.relevant(`Hei!${ATTACHMENT_MARKER}a.txt]\nauto punainen`, [])).ids).toEqual(
+      [],
+    );
+  },
+);

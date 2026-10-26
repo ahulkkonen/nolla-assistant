@@ -1,6 +1,7 @@
-import { mkdtempSync } from 'node:fs';
+import { cpSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { expect, test } from 'vitest';
 import { chats, claims, evidence, fileOrigins, fileTrash, openDb, users } from './index.ts';
 
@@ -105,4 +106,34 @@ test('open, insert, read, fts, wal', () => {
   expect(db.select().from(fileTrash).all()).toHaveLength(1);
 
   expect(() => openDb(path)).not.toThrow();
+});
+
+test('migration 0010: old chats are not mined; automation chats are marked', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pa-db-'));
+  // The migrations up to 0009 only.
+  const old = join(dir, 'drizzle');
+  cpSync(fileURLToPath(new URL('../drizzle', import.meta.url)), old, { recursive: true });
+  const journal = join(old, 'meta', '_journal.json');
+  const j = JSON.parse(readFileSync(journal, 'utf8')) as { entries: { tag: string }[] };
+  j.entries = j.entries.filter((e) => e.tag < '0010');
+  writeFileSync(journal, JSON.stringify(j));
+  const path = join(dir, 't.db');
+  const before = openDb(path, old);
+  const at = '2026-10-01T10:00:00.000Z';
+  before.sqlite.exec(`
+    INSERT INTO topics (id, userId, name, createdAt) VALUES ('t-auto', 'u1', 'Automaatiot', '${at}');
+    INSERT INTO chats (id, userId, sessionPath, createdAt, updatedAt) VALUES ('plain', 'u1', 's', '${at}', '${at}');
+    INSERT INTO chats (id, userId, topicId, sessionPath, createdAt, updatedAt) VALUES ('topic', 'u1', 't-auto', 's', '${at}', '${at}');
+    INSERT INTO chats (id, userId, sessionPath, createdAt, updatedAt) VALUES ('run', 'u1', 's', '${at}', '${at}');
+    INSERT INTO automationRuns (id, userId, lastRunAt, lastStatus, lastChatId) VALUES ('a', 'u1', '${at}', 'ok', 'run');
+  `);
+  before.sqlite.close();
+  const { db, sqlite } = openDb(path);
+  const rows = db.select().from(chats).orderBy(chats.id).all();
+  expect(rows.map((r) => [r.id, r.claimsAt, r.fromAutomation])).toEqual([
+    ['plain', at, false],
+    ['run', at, true],
+    ['topic', at, true],
+  ]);
+  sqlite.close();
 });

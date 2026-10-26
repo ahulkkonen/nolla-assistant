@@ -2,7 +2,7 @@ import { chats, claimEntities, claims, type Db, evidence } from '@pa/db';
 import { ATTACHMENT_MARKER, NOT_FOUND } from '@pa/pi-ext-memory';
 import type { Json, JsonPath, PseudoClient } from '@pa/pi-ext-pseudo';
 import { type Claim, ClaimDay, ClaimKind, type ServerMessage } from '@pa/protocol';
-import { and, desc, eq, gt, inArray, isNotNull, isNull, lt, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lt, or, sql } from 'drizzle-orm';
 import cron from 'node-cron';
 import { z } from 'zod';
 import { embed } from './embeddings.ts';
@@ -32,13 +32,19 @@ export type NewEvidence = {
   quote: string;
   stance: 'supports' | 'contradicts';
 };
+export type Result = 'ok' | 'not_found' | 'invalid';
 
 export type ChatMsg = { id: string; role: 'user' | 'assistant'; text: string };
 
 /** Phase-17 decision 11: a chat with no new turn for this long is at its end. */
 export const IDLE_MS = 20 * 60_000;
 const SWEEP_MAX = 10;
+/** A failed chat waits this long before the sweep tries it again. */
+const RETRY_MS = 30 * 60_000;
 const NEW_CHARS = 24_000;
+/** Windows of NEW_CHARS per chat per run; older ones are skipped (logged). */
+const MAX_WINDOWS = 10;
+const QUERY_CHARS = 2000;
 const CONTEXT_CHARS = 4000;
 const SIMILAR = 40;
 /** `claims_vec` cosine distance under which a new claim is the same as an open one. */
@@ -105,41 +111,50 @@ const Quote = z.object({
   message: z.string().regex(/^m\d+$/),
   quote: z.string().trim().min(1).max(300),
 });
-export const Extraction = z.object({
-  claims: z
-    .array(
-      z.object({
-        kind: ClaimKind,
-        text: z.string().trim().min(3).max(240),
-        confidence: z.number().min(0).max(1),
-        valid_from: ClaimDay.nullable(),
-        evidence: z.array(Quote).min(1).max(3),
-      }),
-    )
-    .max(8),
-  confirms: z.array(z.object({ claim_id: z.int(), evidence: Quote })).max(10),
-  supersedes: z
-    .array(
-      z.object({
-        claim_id: z.int(),
-        reason: z.string().trim().max(200),
-        valid_to: ClaimDay.nullable(),
-        new_claim: z.int().min(0),
-        evidence: Quote,
-      }),
-    )
-    .max(5),
+const NewItem = z.object({
+  kind: ClaimKind,
+  text: z.string().trim().min(3).max(240),
+  confidence: z.number().min(0).max(1),
+  valid_from: ClaimDay.nullable(),
+  evidence: z.array(Quote).min(1).max(3),
 });
-type Extraction = z.infer<typeof Extraction>;
+const ConfirmItem = z.object({ claim_id: z.int(), evidence: Quote });
+const SupersedeItem = z.object({
+  claim_id: z.int(),
+  reason: z.string().trim().max(200),
+  valid_to: ClaimDay.nullable(),
+  new_claim: z.int().min(0),
+  evidence: Quote,
+});
+/**
+ * The reply envelope: only a reply that is not a JSON object of arrays fails here (and gets the
+ * repair retry). Items are checked one by one in `items`, so one bad item drops only itself.
+ */
+export const Extraction = z.object({
+  claims: z.array(z.unknown()).default([]),
+  confirms: z.array(z.unknown()).default([]),
+  supersedes: z.array(z.unknown()).default([]),
+});
+type Parsed = {
+  claims: z.infer<typeof NewItem>[];
+  confirms: z.infer<typeof ConfirmItem>[];
+  supersedes: z.infer<typeof SupersedeItem>[];
+};
+const items = <T>(schema: z.ZodType<T>, xs: unknown[], max: number) =>
+  xs
+    .flatMap((x) => {
+      const r = schema.safeParse(x);
+      return r.success ? [r.data] : [];
+    })
+    .slice(0, max);
 
 const squash = (t: string) => t.replace(/\s+/g, ' ').trim();
 const norm = (t: string) => squash(t).toLowerCase();
 const today = () => new Date().toISOString().slice(0, 10);
-/** A user message without the inlined attachments (untrusted text). */
-const own = (m: ChatMsg) =>
-  m.role === 'user' && m.text.includes(ATTACHMENT_MARKER)
-    ? m.text.slice(0, m.text.indexOf(ATTACHMENT_MARKER))
-    : m.text;
+/** Text without the inlined attachments (untrusted text). */
+const cut = (t: string) =>
+  t.includes(ATTACHMENT_MARKER) ? t.slice(0, t.indexOf(ATTACHMENT_MARKER)) : t;
+const own = (m: ChatMsg) => (m.role === 'user' ? cut(m.text) : m.text);
 const line = (label: string, m: ChatMsg) =>
   `[${label}] ${m.role === 'user' ? 'Käyttäjä' : 'Avustaja'}: ${own(m)}`;
 const pathIs = (p: JsonPath | undefined, ...head: (string | number)[]) =>
@@ -157,6 +172,12 @@ async function vectors(texts: string[], warn: Warn, mode: 'query' | 'passage' = 
   }
 }
 
+type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
+type Item = { claim: NewClaim; evidence: NewEvidence[]; entityIds?: number[] };
+/** A supersede proposal row: `claimId` is closed when `supersededBy` is accepted. */
+type Supersede = { claimId: number; reason: string; validTo: string | null; quote: NewEvidence };
+type Activated = { id: number; kind: ClaimKind; text: string };
+
 export type ClaimStore = ReturnType<typeof claimStore>;
 
 export function claimStore(deps: {
@@ -166,9 +187,16 @@ export function claimStore(deps: {
   pseudo?: PseudoClient | undefined;
   /** `taskSmall(...)`: the extraction call. */
   ask?: ReturnType<typeof taskSmall> | undefined;
+  /** Decision 28 amended: MEMORY.md is regenerated after every review change. */
+  onProfileChange?: (() => void | Promise<void>) | undefined;
 }) {
   const { db, userId, warn, pseudo } = deps;
   const sqlite = db.$client;
+  const now = () => new Date().toISOString();
+  const changed = () =>
+    Promise.resolve(deps.onProfileChange?.()).catch((err: unknown) =>
+      warn('memory regenerate failed', { error: err instanceof Error ? err.message : 'unknown' }),
+    );
   /** Open = active or proposed, validity not closed. */
   const open = () =>
     and(
@@ -176,6 +204,12 @@ export function claimStore(deps: {
       inArray(claims.status, ['active', 'proposed']),
       or(isNull(claims.validTo), sql`${claims.validTo} > ${today()}`),
     );
+  const row = (id: number) =>
+    db
+      .select()
+      .from(claims)
+      .where(and(eq(claims.id, id), eq(claims.userId, userId)))
+      .get();
 
   /** Replaces the FTS and vector rows of a claim (call inside the write transaction). */
   const reindex = (id: number, text: string, v: Float32Array | null) => {
@@ -190,42 +224,98 @@ export function claimStore(deps: {
         .run(BigInt(id), userId, vecOf(v));
   };
 
-  /** Inserts claims with their evidence and entity links; returns the new ids in order. */
-  const add = async (
-    items: { claim: NewClaim; evidence: NewEvidence[]; entityIds?: number[] }[],
-  ): Promise<number[]> => {
-    if (!items.length) return [];
-    const vs = await vectors(
-      items.map((i) => i.claim.text),
-      warn,
-    );
-    const now = new Date().toISOString();
-    return db.transaction((tx) =>
-      items.map(({ claim, evidence: ev, entityIds = [] }, i) => {
-        const id = tx
-          .insert(claims)
-          .values({ userId, recordedAt: now, ...claim })
-          .returning({ id: claims.id })
-          .get().id;
-        for (const e of ev)
-          tx.insert(evidence)
-            .values({ userId, claimId: id, createdAt: now, ...e, quote: e.quote.slice(0, 300) })
-            .run();
-        for (const entityId of new Set(entityIds))
-          tx.insert(claimEntities).values({ claimId: id, entityId, userId }).run();
-        reindex(id, claim.text, vs[i] ?? null);
-        return id;
-      }),
-    );
+  /** Inserts claims inside `tx` with precomputed vectors; returns the new ids in order. */
+  const insert = (tx: Tx, list: Item[], vs: (Float32Array | null)[]) => {
+    const at = now();
+    return list.map(({ claim, evidence: ev, entityIds = [] }, i) => {
+      const id = tx
+        .insert(claims)
+        .values({ userId, recordedAt: at, ...claim })
+        .returning({ id: claims.id })
+        .get().id;
+      for (const e of ev)
+        tx.insert(evidence)
+          .values({ userId, claimId: id, createdAt: at, ...e, quote: e.quote.slice(0, 300) })
+          .run();
+      for (const entityId of new Set(entityIds))
+        tx.insert(claimEntities).values({ claimId: id, entityId, userId }).run();
+      reindex(id, claim.text, vs[i] ?? null);
+      return id;
+    });
   };
 
-  /** New text for a claim: row, FTS and vector in one step. */
-  const setText = async (id: number, text: string) => {
-    const [v] = await vectors([text], warn);
-    db.transaction((tx) => {
-      tx.update(claims).set({ text }).where(eq(claims.id, id)).run();
-      reindex(id, text, v ?? null);
-    });
+  /** Inserts claims with their evidence and entity links; returns the new ids in order. */
+  const add = async (list: Item[]): Promise<number[]> => {
+    if (!list.length) return [];
+    const vs = await vectors(
+      list.map((i) => i.claim.text),
+      warn,
+    );
+    return db.transaction((tx) => insert(tx, list, vs));
+  };
+
+  /**
+   * Nearest claims by cosine distance, every status. Over-fetches the whole user's index (one
+   * user: a few thousand rows at most), so closed claims never crowd open ones out of `k`.
+   */
+  // ponytail: brute-force kNN over all of the user's claims; add a status metadata column to
+  // claims_vec if the table grows past ~50k rows.
+  const nearest = (v: Float32Array, statuses?: ClaimRow['status'][], k = LIST * 3) => {
+    const all = sqlite
+      .prepare(
+        `SELECT v.claim_id AS id, v.distance AS distance, c.status AS status FROM claims_vec v
+         JOIN claims c ON c.id = v.claim_id
+         WHERE v.embedding MATCH ? AND v.k = ? AND v.user_id = ? ORDER BY v.distance`,
+      )
+      .all(vecOf(v), indexSize(), userId) as {
+      id: number;
+      distance: number;
+      status: ClaimRow['status'];
+    }[];
+    return (statuses ? all.filter((r) => statuses.includes(r.status)) : all).slice(0, k);
+  };
+  const indexSize = () =>
+    Math.min(
+      4096,
+      Math.max(
+        1,
+        (
+          sqlite.prepare('SELECT count(*) AS n FROM claims_vec WHERE user_id = ?').get(userId) as {
+            n: number;
+          }
+        ).n,
+      ),
+    );
+
+  /**
+   * Decision 19, amended: the claim this text repeats, over every status (normalised text, then a
+   * vector within SAME_DISTANCE). An open match is confirmed; a rejected or superseded match
+   * means the text is skipped.
+   */
+  const duplicateOf = (text: string, v: Float32Array | null) => {
+    const exact = db
+      .select({ id: claims.id, status: claims.status, validTo: claims.validTo, text: claims.text })
+      .from(claims)
+      .where(eq(claims.userId, userId))
+      .all()
+      .find((c) => norm(c.text) === norm(text));
+    const hit =
+      exact ??
+      (() => {
+        const n = v ? nearest(v, undefined, 1)[0] : undefined;
+        return n && n.distance <= SAME_DISTANCE ? row(n.id) : undefined;
+      })();
+    if (!hit) return undefined;
+    const isOpen =
+      (hit.status === 'active' || hit.status === 'proposed') &&
+      (!hit.validTo || hit.validTo > today());
+    return { id: hit.id, open: isOpen };
+  };
+
+  /** New text for a claim inside `tx`: row, FTS and vector. */
+  const setTextTx = (tx: Tx, id: number, text: string, v: Float32Array | null) => {
+    tx.update(claims).set({ text }).where(eq(claims.id, id)).run();
+    reindex(id, text, v);
   };
 
   /**
@@ -251,16 +341,9 @@ export function claimStore(deps: {
         evidence: [],
       })),
     );
+    if (lines.length) await changed();
     return lines.length;
   };
-
-  /** Open claims nearest to `v` by cosine distance (kNN over `claims_vec`). */
-  const nearest = (v: Float32Array, k: number) =>
-    sqlite
-      .prepare(
-        'SELECT claim_id AS id, distance FROM claims_vec WHERE embedding MATCH ? AND k = ? AND user_id = ? ORDER BY distance',
-      )
-      .all(vecOf(v), k, userId) as { id: number; distance: number }[];
 
   /** Up to SIMILAR open claims: those that name `entityIds`, then the nearest to `query`. */
   const similar = async (entityIds: number[], query: string) => {
@@ -273,7 +356,7 @@ export function claimStore(deps: {
           .map((r) => r.id)
       : [];
     const [v] = query ? await vectors([query], warn) : [null];
-    if (v) ids.push(...nearest(v, SIMILAR * 2).map((r) => r.id));
+    if (v) ids.push(...nearest(v, ['active', 'proposed'], SIMILAR * 2).map((r) => r.id));
     const rows = ids.length
       ? db
           .select({
@@ -291,49 +374,18 @@ export function claimStore(deps: {
   };
 
   /**
-   * Phase-17 decisions 10 to 21: one masked `zdr/task-small` call over the messages after
-   * `through` (the branch in order, masked). Writes claims, confirms and supersede proposals;
-   * returns the ids of the claims activated at once (the chip).
+   * One extraction call over `fresh` (with `context` before it). Returns the claims to write,
+   * the confirms and the supersede proposals; writes nothing.
    */
-  const extract = async (
-    chatId: string,
-    messages: ChatMsg[],
-    opts: { through: string | null; tainted: boolean; date: string },
-  ): Promise<{ activated: { id: number; kind: ClaimKind; text: string }[]; written: number }> => {
-    const done = { activated: [], written: 0 };
-    if (!pseudo || !deps.ask) return done;
-    const at = opts.through ? messages.findIndex((m) => m.id === opts.through) : -1;
-    const fresh: ChatMsg[] = [];
-    let size = 0;
-    for (const m of messages.slice(at + 1).reverse()) {
-      size += own(m).length;
-      if (size > NEW_CHARS && fresh.length) break;
-      fresh.unshift(m);
-    }
-    const last = messages.at(-1)?.id ?? null;
-    const markRead = () =>
-      db
-        .update(chats)
-        .set({ claimsThrough: last, claimsAt: new Date().toISOString() })
-        .where(eq(chats.id, chatId))
-        .run();
-    if (!fresh.some((m) => m.role === 'user')) {
-      markRead();
-      return done;
-    }
+  const window = async (chatId: string, fresh: ChatMsg[], context: string, date: string) => {
+    if (!pseudo || !deps.ask) return undefined;
     const label = new Map(fresh.map((m, i) => [`m${i + 1}`, m]));
-    let context = '';
-    for (const m of messages.slice(0, at + 1).reverse()) {
-      const l = `${line('-', m)}\n\n`;
-      if (context.length + l.length > CONTEXT_CHARS) break;
-      context = l + context;
-    }
     const transcript = fresh.map((m, i) => line(`m${i + 1}`, m)).join('\n\n');
     // Entities and a real-text query for the similar claims; the real text stays here.
     const seen = await pseudo.unmask(transcript);
     const list = await similar(
       [...new Set(seen.spans.map((s) => s.entity_id))],
-      seen.restored.slice(0, 2000),
+      seen.restored.slice(0, QUERY_CHARS),
     );
     const maskedList = list.length
       ? (await pseudo.mask(chatId, list as unknown as Json)).masked
@@ -344,7 +396,7 @@ export function claimStore(deps: {
         { role: 'system', content: EXTRACT_PROMPT },
         {
           role: 'user',
-          content: `Havainnot:\n${JSON.stringify(maskedList)}\n\nPäivämäärä: ${opts.date}\n\n${
+          content: `Havainnot:\n${JSON.stringify(maskedList)}\n\nPäivämäärä: ${date}\n\n${
             context ? `Aiempaa (vain taustaksi):\n${context}` : ''
           }Keskustelu:\n${transcript}`,
         },
@@ -353,8 +405,7 @@ export function claimStore(deps: {
     );
     if (!reply) {
       warn('claims extraction reply invalid', { chatId });
-      markRead();
-      return done;
+      return undefined;
     }
 
     // Decision 16: evidence must quote a user message of the sent part, verbatim.
@@ -363,134 +414,219 @@ export function claimStore(deps: {
       const m = label.get(q.message);
       return !!m && m.role === 'user' && squash(own(m)).includes(squash(q.quote));
     };
-    const kept: Extraction = {
-      claims: reply.claims.map((c) => ({ ...c, evidence: c.evidence.filter(quoteOk) })),
-      confirms: reply.confirms.filter((c) => known.has(c.claim_id) && quoteOk(c.evidence)),
-      supersedes: reply.supersedes.filter((s) => known.has(s.claim_id) && quoteOk(s.evidence)),
+    const kept: Parsed = {
+      claims: items(NewItem, reply.claims, 8).map((c) => ({
+        ...c,
+        evidence: c.evidence.filter(quoteOk),
+      })),
+      confirms: items(ConfirmItem, reply.confirms, 10).filter(
+        (c) => known.has(c.claim_id) && quoteOk(c.evidence),
+      ),
+      supersedes: items(SupersedeItem, reply.supersedes, 5).filter(
+        (s) => known.has(s.claim_id) && quoteOk(s.evidence),
+      ),
     };
     // Decision 17: one /unmask over the whole reply; `path` places spans and unresolved forms.
     const un = await pseudo.unmask(kept as unknown as Json);
-    const real = un.restored as unknown as Extraction;
+    // An unresolved form we cannot place: nothing of this reply is trusted.
+    if (un.unresolved.some((u) => !u.path)) {
+      warn('claims reply dropped: unresolved surrogate without path', { chatId });
+      return { items: [], confirms: [], supersedes: new Map<number, Supersede[]>() };
+    }
+    const real = un.restored as unknown as Parsed;
     const bad = (head: (string | number)[]) => un.unresolved.some((u) => pathIs(u.path, ...head));
     const okClaim = kept.claims.map(
       (c, i) => c.confidence >= 0.6 && c.evidence.length > 0 && !bad(['claims', i]),
     );
-    const dropped = okClaim.filter((ok) => !ok).length;
     const evidenceOf = (
       q: { message: string; quote: string },
       stance: 'supports' | 'contradicts',
-    ) => ({
+    ): NewEvidence => ({
       chatId,
       messageId: label.get(q.message)?.id ?? null,
       quote: q.quote,
       stance,
     });
 
-    // Decision 19: a claim equal to an open one is a confirm of it.
     const newIdx = real.claims.flatMap((_, i) => (okClaim[i] ? [i] : []));
     const vs = await vectors(
       newIdx.map((i) => real.claims[i]?.text ?? ''),
       warn,
     );
-    const openTexts = new Map(
-      db
-        .select({ id: claims.id, text: claims.text })
-        .from(claims)
-        .where(open())
-        .all()
-        .map((r) => [norm(r.text), r.id]),
-    );
-    const sameAs = new Map<number, number>();
+    const confirms: { id: number; q: NewEvidence | undefined }[] = real.confirms
+      .filter((_, k) => !bad(['confirms', k]))
+      .map((c) => ({ id: c.claim_id, q: evidenceOf(c.evidence, 'supports') }));
+    const fresh2: number[] = [];
     newIdx.forEach((i, k) => {
       const c = real.claims[i];
       if (!c) return;
-      const v = vs[k];
-      const near = v ? nearest(v, 1)[0] : undefined;
-      const same =
-        openTexts.get(norm(c.text)) ??
-        (near && near.distance <= SAME_DISTANCE && openRowIds().has(near.id) ? near.id : undefined);
-      if (same !== undefined) sameAs.set(i, same);
+      const dup = duplicateOf(c.text, vs[k] ?? null);
+      if (!dup) fresh2.push(i);
+      else if (dup.open)
+        confirms.push({ id: dup.id, q: c.evidence[0] && evidenceOf(c.evidence[0], 'supports') });
+      // A rejected or superseded match: the user already said no; nothing is written.
     });
-    const supersedeOf = new Map(
-      real.supersedes
-        .map((s, k) => ({ s, k }))
-        .filter(
-          ({ s, k }) => !bad(['supersedes', k]) && okClaim[s.new_claim] && !sameAs.has(s.new_claim),
-        )
-        .map(({ s }) => [s.new_claim, s]),
-    );
-    const items = newIdx
-      .filter((i) => !sameAs.has(i))
-      .map((i) => {
-        const c = real.claims[i] as Extraction['claims'][number];
-        const sup = supersedeOf.get(i);
-        const auto = !sup && !opts.tainted && AUTO_KINDS.has(c.kind) && c.confidence >= 0.8;
-        const ids = un.spans
-          .filter((s) => pathIs(s.path, 'claims', i, 'text'))
-          .map((s) => s.entity_id);
-        return {
+    // Decision 7 (review): several supersedes per new claim, each with its reason and valid_to.
+    const supersedes = new Map<number, Supersede[]>();
+    real.supersedes.forEach((s, k) => {
+      if (bad(['supersedes', k]) || !fresh2.includes(s.new_claim)) return;
+      const list = supersedes.get(s.new_claim) ?? [];
+      if (!list.some((x) => x.claimId === s.claim_id))
+        list.push({
+          claimId: s.claim_id,
+          reason: s.reason,
+          validTo: s.valid_to,
+          quote: evidenceOf(s.evidence, 'contradicts'),
+        });
+      supersedes.set(s.new_claim, list);
+    });
+    const out = fresh2.map((i) => {
+      const c = real.claims[i] as Parsed['claims'][number];
+      const ids = un.spans
+        .filter((s) => pathIs(s.path, 'claims', i, 'text'))
+        .map((s) => s.entity_id);
+      return {
+        index: i,
+        v: vs[newIdx.indexOf(i)] ?? null,
+        item: {
           claim: {
             kind: c.kind,
             text: c.text,
             confidence: c.confidence,
-            status: auto ? ('active' as const) : ('proposed' as const),
-            activatedBy: auto ? ('auto' as const) : null,
             validFrom: c.valid_from,
-            supersedesId: sup?.claim_id ?? null,
             sourceChatId: chatId,
             subjectEntityId: /^käyttäjä/i.test(c.text) ? null : (ids[0] ?? null),
           },
           evidence: c.evidence.map((q) => evidenceOf(q, 'supports')),
           entityIds: ids,
+        },
+      };
+    });
+    return { items: out, confirms, supersedes };
+  };
+
+  /**
+   * Phase-17 decisions 10 to 21: masked `zdr/task-small` calls over the messages after `through`
+   * (the branch in order, masked), in windows of NEW_CHARS from the tail back to `through`. Each
+   * window writes its claims, confirms, supersede proposals and the read marker in one
+   * transaction. Returns the claims activated at once (the chip).
+   */
+  const extract = async (
+    chatId: string,
+    messages: ChatMsg[],
+    opts: { through: string | null; tainted: boolean; date: string; seenAt?: string },
+  ): Promise<{ activated: Activated[]; written: number }> => {
+    const done: { activated: Activated[]; written: number } = { activated: [], written: 0 };
+    if (!pseudo || !deps.ask) return done;
+    const seenAt = opts.seenAt ?? now();
+    const markRead = (tx: Tx | Db, through: string | null) =>
+      tx
+        .update(chats)
+        .set({ claimsThrough: through, claimsAt: seenAt, claimsRetryAt: null })
+        .where(eq(chats.id, chatId))
+        .run();
+    const last = messages.at(-1)?.id ?? null;
+    let at = opts.through ? messages.findIndex((m) => m.id === opts.through) : -1;
+    if (opts.through && at < 0) {
+      // The branch changed (an edit or a retry): the old marker is gone, so read up to the end.
+      warn('claims marker not on branch: marked read', { chatId });
+      markRead(db, last);
+      return done;
+    }
+    // Windows of NEW_CHARS from the tail back to the marker; the oldest ones past MAX_WINDOWS go.
+    const windows: ChatMsg[][] = [];
+    let cur: ChatMsg[] = [];
+    let size = 0;
+    for (const m of messages.slice(at + 1).reverse()) {
+      if (size + own(m).length > NEW_CHARS && cur.length) {
+        windows.unshift(cur);
+        cur = [];
+        size = 0;
+      }
+      cur.unshift(m);
+      size += own(m).length;
+    }
+    if (cur.length) windows.unshift(cur);
+    if (windows.length > MAX_WINDOWS)
+      warn('claims windows skipped', { chatId, skipped: windows.length - MAX_WINDOWS });
+    const todo = windows.slice(-MAX_WINDOWS);
+    if (!todo.some((w) => w.some((m) => m.role === 'user'))) {
+      markRead(db, last);
+      return done;
+    }
+    at = messages.indexOf(todo[0]?.[0] as ChatMsg) - 1;
+    for (const fresh of todo) {
+      let context = '';
+      for (const m of messages.slice(0, at + 1).reverse()) {
+        const l = `${line('-', m)}\n\n`;
+        if (context.length + l.length > CONTEXT_CHARS) break;
+        context = l + context;
+      }
+      at += fresh.length;
+      const through = fresh.at(-1)?.id ?? last;
+      const r = fresh.some((m) => m.role === 'user')
+        ? await window(chatId, fresh, context, opts.date)
+        : { items: [], confirms: [], supersedes: new Map<number, Supersede[]>() };
+      if (!r) throw new Error('extraction reply invalid');
+      const list = r.items.map(({ index, item }) => {
+        const sup = r.supersedes.get(index) ?? [];
+        const auto =
+          !sup.length &&
+          !opts.tainted &&
+          AUTO_KINDS.has(item.claim.kind) &&
+          item.claim.confidence >= 0.8;
+        return {
+          ...item,
+          claim: {
+            ...item.claim,
+            status: auto ? ('active' as const) : ('proposed' as const),
+            activatedBy: auto ? ('auto' as const) : null,
+            supersedesId: sup[0]?.claimId ?? null,
+          },
         };
       });
-    const added = await add(items);
-    const now = new Date().toISOString();
-    const confirms = [
-      ...real.confirms
-        .filter((_, k) => !bad(['confirms', k]))
-        .map((c) => ({ id: c.claim_id, q: c.evidence })),
-      ...[...sameAs].map(([i, id]) => ({ id, q: real.claims[i]?.evidence[0] })),
-    ];
-    db.transaction((tx) => {
-      for (const { id, q } of confirms) {
-        tx.update(claims)
-          .set({ timesSeen: sql`${claims.timesSeen} + 1`, lastConfirmedAt: now })
-          .where(eq(claims.id, id))
-          .run();
-        if (q)
-          tx.insert(evidence)
-            .values({ userId, claimId: id, createdAt: now, ...evidenceOf(q, 'supports') })
+      const at2 = now();
+      const added = db.transaction((tx) => {
+        const ids = insert(
+          tx,
+          list,
+          r.items.map((x) => x.v),
+        );
+        for (const { id, q } of r.confirms) {
+          tx.update(claims)
+            .set({ timesSeen: sql`${claims.timesSeen} + 1`, lastConfirmedAt: at2 })
+            .where(eq(claims.id, id))
             .run();
-      }
-      for (const s of supersedeOf.values())
-        tx.insert(evidence)
-          .values({
-            userId,
-            claimId: s.claim_id,
-            createdAt: now,
-            ...evidenceOf(s.evidence, 'contradicts'),
-          })
-          .run();
-    });
-    markRead();
-    return {
-      written: added.length,
-      activated: added.flatMap((id, k) => {
-        const c = items[k]?.claim;
-        return c?.status === 'active' ? [{ id, kind: c.kind, text: c.text }] : [];
-      }),
-    };
+          if (q)
+            tx.insert(evidence)
+              .values({ userId, claimId: id, createdAt: at2, ...q })
+              .run();
+        }
+        r.items.forEach(({ index }, k) => {
+          for (const s of r.supersedes.get(index) ?? [])
+            tx.insert(evidence)
+              .values({
+                userId,
+                claimId: s.claimId,
+                createdAt: at2,
+                ...s.quote,
+                supersededBy: ids[k],
+                reason: s.reason,
+                validTo: s.validTo,
+              })
+              .run();
+        });
+        markRead(tx, through);
+        return ids;
+      });
+      done.written += added.length;
+      added.forEach((id, k) => {
+        const c = list[k]?.claim;
+        if (c?.status === 'active') done.activated.push({ id, kind: c.kind, text: c.text });
+      });
+    }
+    return done;
   };
-  const openRowIds = () =>
-    new Set(
-      db
-        .select({ id: claims.id })
-        .from(claims)
-        .where(open())
-        .all()
-        .map((r) => r.id),
-    );
 
   /** Claim ids with evidence from at least two chats. */
   const twoChats = (ids: number[]) =>
@@ -510,37 +646,51 @@ export function claimStore(deps: {
   /**
    * Decision 26: FTS (trigram + crude stem), vector and entity lists over `statuses`, fused with
    * RRF and weighted by confidence and recency. A claim needs an FTS or entity hit, or a vector
-   * cosine ≥ RELATED_MIN. `q` is real text.
+   * cosine ≥ RELATED_MIN. `q` is real text. Every list filters by status before its cut.
    */
   const rank = async (
     q: string,
     entityIds: number[],
     statuses: ClaimRow['status'][],
-    now = Date.now(),
+    at = Date.now(),
   ): Promise<ClaimRow[]> => {
     const words = terms(q);
+    const marks = statuses.map(() => '?').join(',');
     const fts = words.length
       ? (
           sqlite
             .prepare(
-              'SELECT claim_id AS id FROM claims_fts WHERE claims_fts MATCH ? AND user_id = ? ORDER BY bm25(claims_fts) LIMIT ?',
+              `SELECT f.claim_id AS id FROM claims_fts f JOIN claims c ON c.id = f.claim_id
+               WHERE claims_fts MATCH ? AND f.user_id = ? AND c.status IN (${marks})
+               ORDER BY bm25(claims_fts) LIMIT ?`,
             )
-            .all(words.map((t) => `"${t}"`).join(' OR '), userId, LIST * 3) as { id: number }[]
+            .all(words.map((t) => `"${t}"`).join(' OR '), userId, ...statuses, LIST) as {
+            id: number;
+          }[]
         ).map((r) => r.id)
       : [];
     const [v] = q.trim() ? await vectors([q], warn, 'query') : [null];
-    const near = v ? nearest(v, LIST * 3) : [];
+    const near = v ? nearest(v, statuses, LIST) : [];
     const ent = entityIds.length
       ? db
           .selectDistinct({ id: claimEntities.claimId })
           .from(claimEntities)
-          .where(and(eq(claimEntities.userId, userId), inArray(claimEntities.entityId, entityIds)))
+          .innerJoin(claims, eq(claims.id, claimEntities.claimId))
+          .where(
+            and(
+              eq(claimEntities.userId, userId),
+              inArray(claimEntities.entityId, entityIds),
+              inArray(claims.status, statuses),
+            ),
+          )
+          .orderBy(desc(claimEntities.claimId))
+          .limit(LIST)
           .all()
           .map((r) => r.id)
       : [];
     const all = [...new Set([...fts, ...near.map((r) => r.id), ...ent])];
     if (!all.length) return [];
-    const day = new Date(now).toISOString().slice(0, 10);
+    const day = new Date(at).toISOString().slice(0, 10);
     const rows = new Map(
       db
         .select()
@@ -568,20 +718,21 @@ export function claimStore(deps: {
     return rrf([fts.filter(ok), near.map((r) => r.id).filter(ok), ent.filter(ok)], (id) => id)
       .map(({ hit, score }) => {
         const c = rows.get(hit) as ClaimRow;
-        return { c, score: score * (0.6 + 0.4 * c.confidence) * recency(c, now) };
+        return { c, score: score * (0.6 + 0.4 * c.confidence) * recency(c, at) };
       })
       .sort((a, b) => b.score - a.score)
       .map((r) => r.c);
   };
 
   /**
-   * Decision 26: the per-turn block. Unmasks the prompt, ranks open active claims that are not in
-   * MEMORY.md and not in `exclude`, keeps TOP_K lines within BLOCK_CHARS. Lines are real text.
+   * Decision 26: the per-turn block. Unmasks the prompt (without attachments, at most
+   * QUERY_CHARS), ranks open active claims that are not in MEMORY.md and not in `exclude`, keeps
+   * TOP_K lines within BLOCK_CHARS. Lines are real text.
    */
   const relevant = async (maskedPrompt: string, exclude: Iterable<number>) => {
     if (!pseudo) return { ids: [], lines: [] };
     const skip = new Set(exclude);
-    const un = await pseudo.unmask(maskedPrompt);
+    const un = await pseudo.unmask(cut(maskedPrompt).slice(0, QUERY_CHARS));
     const ranked = (
       await rank(un.restored, [...new Set(un.spans.map((s) => s.entity_id))], ['active'])
     )
@@ -600,37 +751,42 @@ export function claimStore(deps: {
     return { ids, lines };
   };
 
-  /** Decision 27: `recall` lines for active and superseded claims, each with its newest quote. */
-  const recallLines = async (q: string): Promise<string[]> => {
+  /** Decision 27: the claims `recall` shows for a real query: top 3 active or superseded. */
+  const recallRanked = async (q: string) => {
     const entityIds = pseudo
       ? (await pseudo.mask(`search:${userId}`, q)).spans.map((s) => s.entity_id)
       : [];
-    const top = (await rank(q, [...new Set(entityIds)], ['active', 'superseded'])).slice(0, 3);
-    return top.map((c) => {
-      const e = db
+    return (await rank(q, [...new Set(entityIds)], ['active', 'superseded'])).slice(0, 3);
+  };
+  /** `recall` lines: the newest supporting quote first, a contradicting one labelled. */
+  const recallLines = async (q: string): Promise<string[]> =>
+    (await recallRanked(q)).map((c) => {
+      const ev = db
         .select()
         .from(evidence)
         .where(eq(evidence.claimId, c.id))
-        .orderBy(sql`${evidence.id} DESC`)
-        .get();
+        .orderBy(desc(evidence.id))
+        .all();
+      const pro = ev.find((e) => e.stance === 'supports');
+      const con = ev.find((e) => e.stance === 'contradicts');
       const span = `${month(c)} → ${c.validTo?.slice(0, 7) ?? ''}${c.status === 'superseded' ? ', korvattu' : ''}`;
-      return `- [${span}] ${c.text}${e ? ` Lainaus: "${e.quote}" (${e.chatId ?? '-'})` : ''}`;
+      return `- [${span}] ${c.text}${pro ? ` Lainaus: "${pro.quote}" (${pro.chatId ?? '-'})` : ''}${
+        con ? ` Vastaan: "${con.quote}" (${con.chatId ?? '-'})` : ''
+      }`;
     });
-  };
 
   /**
-   * Decision 11: extracts the chats idle for IDLE_MS with turns after the last extraction, at
-   * most SWEEP_MAX per run, one at a time. `messagesOf` gives the branch, or undefined when the
-   * chat is busy.
+   * Decision 11: extracts the chats idle for IDLE_MS with turns after the last extraction, oldest
+   * first, at most SWEEP_MAX per run, one at a time. `messagesOf` gives the branch, or undefined
+   * when the chat is busy. A failed chat waits RETRY_MS.
    */
   const sweep = async (
     messagesOf: (chatId: string) => Promise<ChatMsg[] | undefined>,
-    onActivated: (
-      chatId: string,
-      activated: { id: number; kind: ClaimKind; text: string }[],
-    ) => void,
-    now = Date.now(),
+    onActivated: (chatId: string, activated: Activated[]) => void,
+    at = Date.now(),
   ) => {
+    if (!pseudo || !deps.ask) return;
+    const nowIso = new Date(at).toISOString();
     const due = db
       .select()
       .from(chats)
@@ -638,35 +794,43 @@ export function claimStore(deps: {
         and(
           eq(chats.userId, userId),
           eq(chats.fromAutomation, false),
-          lt(chats.updatedAt, new Date(now - IDLE_MS).toISOString()),
+          lt(chats.updatedAt, new Date(at - IDLE_MS).toISOString()),
           or(isNull(chats.claimsAt), lt(chats.claimsAt, chats.updatedAt)),
+          or(isNull(chats.claimsRetryAt), lt(chats.claimsRetryAt, nowIso)),
         ),
       )
+      .orderBy(asc(chats.updatedAt))
       .limit(SWEEP_MAX)
       .all();
     for (const chat of due) {
-      const messages = await messagesOf(chat.id);
-      if (!messages) continue;
-      const r = await extract(chat.id, messages, {
-        through: chat.claimsThrough,
-        tainted: chat.tainted,
-        date: chat.updatedAt.slice(0, 10),
-      });
-      if (r.activated.length) onActivated(chat.id, r.activated);
+      try {
+        const messages = await messagesOf(chat.id);
+        if (!messages) continue;
+        // The chat's `updatedAt` now: a message sent during the call makes it due again.
+        const r = await extract(chat.id, messages, {
+          through: chat.claimsThrough,
+          tainted: chat.tainted,
+          date: chat.updatedAt.slice(0, 10),
+          seenAt: chat.updatedAt,
+        });
+        if (r.activated.length) onActivated(chat.id, r.activated);
+      } catch (err) {
+        warn('claims extraction failed', {
+          chatId: chat.id,
+          error: err instanceof Error ? err.name : 'unknown',
+        });
+        db.update(chats)
+          .set({ claimsRetryAt: new Date(at + RETRY_MS).toISOString() })
+          .where(eq(chats.id, chat.id))
+          .run();
+      }
     }
   };
 
-  const now = () => new Date().toISOString();
-  const row = (id: number) =>
-    db
-      .select()
-      .from(claims)
-      .where(and(eq(claims.id, id), eq(claims.userId, userId)))
-      .get();
-
   /**
    * Decision 28: MEMORY.md from the active open claims. Score order fills the cap; sections and
-   * ids order the output, so the same claims give the same bytes. Marks `inProfile`.
+   * ids order the output, so the same claims give the same bytes. `markProfile` sets `inProfile`
+   * after the file write succeeded.
    */
   const profile = (cap: number) => {
     const rows = db
@@ -689,35 +853,60 @@ export function claimStore(deps: {
         return lines.length ? [`## ${title}`, ...lines] : [];
       }).join('\n');
     for (const { c } of ranked) if (render([...chosen, c]).length <= cap) chosen.push(c);
-    const ids = chosen.map((c) => c.id);
+    return { text: render(chosen), ids: chosen.map((c) => c.id) };
+  };
+  const markProfile = (ids: number[]) =>
     db.transaction((tx) => {
       tx.update(claims).set({ inProfile: false }).where(eq(claims.userId, userId)).run();
       if (ids.length)
         tx.update(claims).set({ inProfile: true }).where(inArray(claims.id, ids)).run();
     });
-    return { text: render(chosen), count: ids.length };
-  };
 
-  /** Decision 30: the `memory` tool on target `memory` writes claims. Throws NOT_FOUND. */
+  /** Never a delete: the validity closes. */
+  const close = (tx: Tx | Db, id: number, validTo: string) =>
+    tx
+      .update(claims)
+      .set({ status: 'superseded', validTo })
+      .where(and(eq(claims.id, id), inArray(claims.status, ['active', 'proposed'])))
+      .run();
+
+  /**
+   * Decision 30: the `memory` tool on target `memory` writes claims (real text: `tool_call`
+   * restored the arguments). `add` dedupes like extraction; `replace` closes and adds in one
+   * transaction; an untainted `remove` closes. A tainted `remove` never comes here (the host parks
+   * it). Throws NOT_FOUND.
+   */
   const toolWrite = async (
     w: { action: 'add' | 'replace' | 'remove'; text: string; replace?: string | undefined },
     chatId: string,
     tainted: boolean,
   ): Promise<number> => {
-    const status = tainted ? ('proposed' as const) : ('active' as const);
-    const fresh = (text: string, supersedesId: number | null = null) => ({
+    const text = w.text.slice(0, 240);
+    const [v] = w.action === 'remove' ? [null] : await vectors([text], warn);
+    const entityIds =
+      pseudo && w.action !== 'remove'
+        ? [...new Set((await pseudo.mask(`memory:${userId}`, text)).spans.map((s) => s.entity_id))]
+        : [];
+    const fresh = (supersedesId: number | null = null): Item => ({
       claim: {
-        kind: 'fact' as const,
-        text: text.slice(0, 240),
+        kind: 'fact',
+        text,
         confidence: 0.9,
-        status,
-        activatedBy: tainted ? null : ('user' as const),
+        status: tainted ? 'proposed' : 'active',
+        activatedBy: tainted ? null : 'user',
         sourceChatId: chatId,
         supersedesId,
       },
       evidence: [],
+      entityIds,
     });
-    if (w.action === 'add') return (await add([fresh(w.text)]))[0] as number;
+    if (w.action === 'add') {
+      const dup = duplicateOf(text, v ?? null);
+      if (dup) return dup.id;
+      const [id] = db.transaction((tx) => insert(tx, [fresh()], [v ?? null]));
+      if (!tainted) await changed();
+      return id as number;
+    }
     const needle = w.action === 'replace' ? w.replace : w.text;
     const hits = needle
       ? db
@@ -729,38 +918,67 @@ export function claimStore(deps: {
       : [];
     const old = hits.length === 1 ? hits[0] : undefined;
     if (!old) throw new Error(NOT_FOUND);
-    if (!tainted) close(old.id, today());
-    const text = w.action === 'replace' ? w.text : `Käyttäjä pyysi unohtamaan: ${old.text}`;
-    if (!tainted && w.action === 'remove') return old.id;
-    return (await add([fresh(text, old.id)]))[0] as number;
+    if (w.action === 'remove') {
+      close(db, old.id, today());
+      await changed();
+      return old.id;
+    }
+    const [id] = db.transaction((tx) => {
+      if (!tainted) close(tx, old.id, today());
+      const ids = insert(tx, [fresh(old.id)], [v ?? null]);
+      if (tainted)
+        tx.insert(evidence)
+          .values({
+            userId,
+            claimId: old.id,
+            chatId,
+            messageId: null,
+            quote: text,
+            stance: 'contradicts',
+            supersededBy: ids[0],
+            createdAt: now(),
+          })
+          .run();
+      return ids;
+    });
+    if (!tainted) await changed();
+    return id as number;
   };
-  /** Never a delete: the validity closes. */
-  const close = (id: number, validTo: string) =>
-    db
-      .update(claims)
-      .set({ status: 'superseded', validTo })
-      .where(and(eq(claims.id, id), inArray(claims.status, ['active', 'proposed'])))
-      .run();
 
-  /** `claims.review`: accept (with an edit or expiry) or reject. False when not allowed. */
+  /** Closes every claim that `newId` supersedes (its proposal rows), inside `tx`. */
+  const closeSuperseded = (tx: Tx, c: ClaimRow) => {
+    const props = tx.select().from(evidence).where(eq(evidence.supersededBy, c.id)).all();
+    const old = new Map(props.map((p) => [p.claimId, p.validTo]));
+    if (c.supersedesId && !old.has(c.supersedesId)) old.set(c.supersedesId, null);
+    for (const [id, validTo] of old) close(tx, id, validTo ?? c.validFrom ?? today());
+  };
+
+  /**
+   * `claims.review`: accept (with an edit or expiry) or reject. `not_found` when the claim is not
+   * proposed (or, for reject, an `auto` active claim); `invalid` for an expiry in the past.
+   */
   const review = async (
     id: number,
     action: 'accept' | 'reject',
     edit: { text?: string | undefined; validTo?: string | undefined } = {},
-  ) => {
+  ): Promise<Result> => {
     const c = row(id);
     const undo = c?.status === 'active' && c.activatedBy === 'auto' && action === 'reject';
-    if (!c || (c.status !== 'proposed' && !undo)) return false;
+    if (!c || (c.status !== 'proposed' && !undo)) return 'not_found';
     if (action === 'reject') {
       db.update(claims)
         .set({ status: 'rejected', reviewedAt: now() })
         .where(eq(claims.id, id))
         .run();
-      return true;
+      if (undo) await changed();
+      return 'ok';
     }
-    if (edit.text && edit.text !== c.text) await setText(id, edit.text);
-    db.transaction(() => {
-      db.update(claims)
+    if (edit.validTo && edit.validTo <= today()) return 'invalid';
+    const text = edit.text && edit.text !== c.text ? edit.text : undefined;
+    const [v] = text ? await vectors([text], warn) : [null];
+    db.transaction((tx) => {
+      if (text) setTextTx(tx, id, text, v ?? null);
+      tx.update(claims)
         .set({
           status: 'active',
           activatedBy: 'user',
@@ -769,22 +987,29 @@ export function claimStore(deps: {
         })
         .where(eq(claims.id, id))
         .run();
-      if (c.supersedesId) close(c.supersedesId, c.validFrom ?? today());
+      closeSuperseded(tx, c);
     });
-    return true;
+    await changed();
+    return 'ok';
   };
 
-  /** `claims.update` on an active claim. */
+  /** `claims.update` on an active claim: text and expiry (a past expiry is `invalid`). */
   const update = async (
     id: number,
     edit: { text?: string | undefined; validTo?: string | null | undefined },
-  ) => {
+  ): Promise<Result> => {
     const c = row(id);
-    if (c?.status !== 'active') return false;
-    if (edit.text && edit.text !== c.text) await setText(id, edit.text);
-    if (edit.validTo !== undefined)
-      db.update(claims).set({ validTo: edit.validTo }).where(eq(claims.id, id)).run();
-    return true;
+    if (c?.status !== 'active') return 'not_found';
+    if (edit.validTo && edit.validTo <= today()) return 'invalid';
+    const text = edit.text && edit.text !== c.text ? edit.text : undefined;
+    const [v] = text ? await vectors([text], warn) : [null];
+    db.transaction((tx) => {
+      if (text) setTextTx(tx, id, text, v ?? null);
+      if (edit.validTo !== undefined)
+        tx.update(claims).set({ validTo: edit.validTo }).where(eq(claims.id, id)).run();
+    });
+    await changed();
+    return 'ok';
   };
 
   const staleWhere = () => {
@@ -803,9 +1028,9 @@ export function claimStore(deps: {
     );
   };
   /** `claims.stale`: keep confirms now; lower takes 0.2 off (never below 0.1). */
-  const stale = (id: number, action: 'keep' | 'lower') => {
+  const stale = (id: number, action: 'keep' | 'lower'): Result => {
     const c = row(id);
-    if (c?.status !== 'active') return false;
+    if (c?.status !== 'active') return 'not_found';
     const at = now();
     db.update(claims)
       .set(
@@ -818,7 +1043,7 @@ export function claimStore(deps: {
       )
       .where(eq(claims.id, id))
       .run();
-    return true;
+    return 'ok';
   };
 
   /** Rows to protocol claims with up to 3 newest quotes and the superseded claim's text. */
@@ -963,7 +1188,6 @@ export function claimStore(deps: {
 
   return {
     add,
-    setText,
     importMemory,
     extract,
     sweep,
@@ -971,8 +1195,10 @@ export function claimStore(deps: {
     open,
     rank,
     relevant,
+    recallRanked,
     recallLines,
     profile,
+    markProfile,
     toolWrite,
     review,
     update,

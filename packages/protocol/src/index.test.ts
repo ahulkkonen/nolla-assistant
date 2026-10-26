@@ -372,5 +372,13 @@ describe('phase 17 claims messages', () => {
     expect(() =>
       ClientMessage.parse({ type: 'claims.update', id: 3, text: 'x'.repeat(241) }),
     ).toThrow();
+    // A real calendar date only.
+    for (const bad of ['2026-02-30', '2026-13', '2026-00-10'])
+      expect(() => ClientMessage.parse({ type: 'claims.update', id: 3, validTo: bad })).toThrow();
+    expect(
+      ClientMessage.parse({ type: 'claims.update', id: 3, validTo: '2028-02-29' }),
+    ).toMatchObject({
+      validTo: '2028-02-29',
+    });
   });
 });

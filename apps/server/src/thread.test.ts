@@ -87,6 +87,8 @@ test('chat.fork copies the path to the fork point, runs the edited text, leaves 
     forkedFromChatId: chat.id,
     forkedFromMessageId: user2?.id,
     costUsd: 0.03,
+    // Phase 17: the copied history is not mined again.
+    claimsThrough: reply1?.id,
   });
   // The source keeps both turns; the fork's own reply has its cost.
   expect((await open(c, chat.id)).messages.map((m) => m.text)).toEqual([

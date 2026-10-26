@@ -442,8 +442,17 @@ export const ClaimKind = z.enum([
   'quirk',
 ]);
 export type ClaimKind = z.infer<typeof ClaimKind>;
-/** A day as `VVVV-KK-PP` or a month as `VVVV-KK`. */
-export const ClaimDay = z.string().regex(/^\d{4}-\d{2}(-\d{2})?$/);
+/** True for a real calendar month `VVVV-KK` or day `VVVV-KK-PP`. */
+export const isClaimDay = (s: string) => {
+  if (!/^\d{4}-\d{2}(-\d{2})?$/.test(s)) return false;
+  const [y, m, d] = s.split('-').map(Number) as [number, number, number | undefined];
+  if (m < 1 || m > 12) return false;
+  if (d === undefined) return true;
+  const t = new Date(Date.UTC(y, m - 1, d));
+  return t.getUTCMonth() === m - 1 && t.getUTCDate() === d;
+};
+/** A day as `VVVV-KK-PP` or a month as `VVVV-KK`, a real calendar date. */
+export const ClaimDay = z.string().refine(isClaimDay, 'not a calendar date');
 export const CLAIM_TEXT_MAX = 240;
 
 /** One claim with up to 3 evidence quotes (newest first). Texts are real values. */

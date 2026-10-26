@@ -37,7 +37,7 @@ import type { Automations } from './automations.ts';
 import type { CollisionWaits } from './collisions.ts';
 import { AttachmentNotFound, chatFiles, ingestAttachments, splitBlocks } from './files.ts';
 import type { Fx } from './fx.ts';
-import { MemoryError, type MemoryStore, PSEUDO_REQUIRED } from './memory.ts';
+import { GENERATED, MemoryError, type MemoryStore } from './memory.ts';
 import { GUARD_REASON } from './pi/guard.ts';
 import { AUTO_MODEL, type Catalog, isZdrRefusal, policyOf, resolveModelId } from './pi/models.ts';
 import { ChatNotFound, type SessionRegistry } from './pi/registry.ts';
@@ -101,6 +101,8 @@ const ERRORS = {
   held: 'The previous message waits for an answer in the vault',
   memory_full: 'Memory is full',
   memory_conflict: 'Memory changed; the write no longer applies',
+  memory_generated: 'MEMORY.md is generated from claims; edit the claims in Muisti › Havainnot',
+  invalid: 'Invalid value',
   zdr_unavailable: 'No zero-data-retention endpoint for this model',
 } as const;
 
@@ -869,6 +871,10 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
           forkedFromChatId: src.id,
           forkedFromMessageId: edited.id,
           forkedAt: editedAt,
+          // Phase 17: the copied history is not mined again, and its taint goes with it.
+          tainted: src.tainted,
+          claimsThrough: point ? (branch.slice(0, pointAt + 1).findLast(talk)?.id ?? null) : null,
+          claimsAt: now,
           createdAt: now,
           updatedAt: now,
         })
@@ -1207,13 +1213,16 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
       case 'claims.stale': {
         const c = memory.claims;
         if (!c) return send(socket, errorMsg('not_implemented'));
-        const ok =
+        const r =
           msg.type === 'claims.review'
             ? await c.review(msg.id, msg.action, { text: msg.text, validTo: msg.validTo })
             : msg.type === 'claims.update'
               ? await c.update(msg.id, { text: msg.text, validTo: msg.validTo })
               : c.stale(msg.id, msg.action);
-        if (!ok) throw new NotFound();
+        if (r === 'not_found') throw new NotFound();
+        if (r === 'invalid') return send(socket, errorMsg('invalid'));
+        // MEMORY.md may have changed (decision 28 amended).
+        memoryToAll();
         return toAll(c.state());
       }
       case 'memory.edit':
@@ -1229,15 +1238,9 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
       case 'memory.consolidate':
         await memory.consolidate();
         return memoryToAll();
+      // Phase 17 decision 29: no proposals any more; the message goes when W1 drops it.
       case 'memory.consolidation.resolve':
-        if (
-          !memory.resolveConsolidation(msg.id, msg.accept, {
-            ...(msg.user !== undefined ? { user: msg.user } : {}),
-            ...(msg.memory !== undefined ? { memory: msg.memory } : {}),
-          })
-        )
-          throw new NotFound();
-        return memoryToAll();
+        return send(socket, errorMsg('not_implemented'));
       case 'vault.list':
       case 'vault.merge':
       case 'vault.split':
@@ -1279,8 +1282,8 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
           errorMsg(
             err.message === FULL
               ? 'memory_full'
-              : err.message === PSEUDO_REQUIRED
-                ? 'pseudo_down'
+              : err.message === GENERATED
+                ? 'memory_generated'
                 : 'memory_conflict',
           ),
         );

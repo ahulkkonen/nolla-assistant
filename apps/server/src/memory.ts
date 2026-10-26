@@ -1,7 +1,6 @@
-import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { chats, type Db, memoryConsolidations, memoryPending } from '@pa/db';
+import { chats, type Db, memoryPending } from '@pa/db';
 import {
   applyOp,
   CAPS,
@@ -16,45 +15,19 @@ import type { PseudoClient } from '@pa/pi-ext-pseudo';
 import type { ServerMessage } from '@pa/protocol';
 import { and, desc, eq, inArray, isNotNull, ne } from 'drizzle-orm';
 import cron from 'node-cron';
-import { z } from 'zod';
 import type { ClaimStore } from './claims.ts';
 import { gitCommitter, writeAtomic } from './git.ts';
 import { search } from './search.ts';
 
 /**
  * A memory operation that cannot run. `message` is `FULL` (over cap), `CONFLICT` (files or text
- * changed) or `PSEUDO_REQUIRED` (no sidecar: masked-only consolidation is impossible).
+ * changed) or `GENERATED` (MEMORY.md is generated from claims, phase 17).
  */
 export class MemoryError extends Error {}
 export const CONFLICT = 'conflict';
-export const PSEUDO_REQUIRED = 'pseudo_required';
+export const GENERATED = 'generated';
 const MAX_PENDING = 5;
 const TOO_MANY = 'liikaa odottavia kirjoituksia';
-
-/** Whole-file unified diff from an LCS line table; '' when the texts are equal. */
-export function lineDiff(name: string, a: string, b: string): string {
-  if (a === b) return '';
-  const x = a ? a.split('\n') : [];
-  const y = b ? b.split('\n') : [];
-  const w = y.length + 1;
-  const L = new Uint32Array((x.length + 1) * w);
-  const at = (i: number, j: number) => L[i * w + j] ?? 0;
-  for (let i = x.length - 1; i >= 0; i--)
-    for (let j = y.length - 1; j >= 0; j--)
-      L[i * w + j] = x[i] === y[j] ? at(i + 1, j + 1) + 1 : Math.max(at(i + 1, j), at(i, j + 1));
-  const out = [`--- a/${name}`, `+++ b/${name}`, `@@ -1,${x.length} +1,${y.length} @@`];
-  let i = 0;
-  let j = 0;
-  while (i < x.length || j < y.length) {
-    if (i < x.length && j < y.length && x[i] === y[j]) {
-      out.push(` ${x[i++]}`);
-      j++;
-    } else if (i < x.length && (j >= y.length || at(i + 1, j) >= at(i, j + 1)))
-      out.push(`-${x[i++]}`);
-    else out.push(`+${y[j++]}`);
-  }
-  return out.join('\n');
-}
 
 export type MemoryStore = ReturnType<typeof memoryStore>;
 
@@ -80,10 +53,6 @@ export function memoryStore(deps: {
   const path = (t: Target) => join(dir, FILES[t]);
   for (const t of ['user', 'memory'] as const) if (!existsSync(path(t))) writeFileSync(path(t), '');
   const read = (t: Target) => readFileSync(path(t), 'utf8');
-  const baseHash = () =>
-    createHash('sha256')
-      .update(`${read('user')}\0${read('memory')}`)
-      .digest('hex');
 
   const commit = gitCommitter(dir, warn, 'memory files');
 
@@ -118,13 +87,6 @@ export function memoryStore(deps: {
       eq(memoryPending.status, 'pending'),
       ...(id === undefined ? [] : [eq(memoryPending.id, id)]),
     );
-  const consolidationWhere = (id?: number) =>
-    and(
-      eq(memoryConsolidations.userId, userId),
-      eq(memoryConsolidations.status, 'pending'),
-      ...(id === undefined ? [] : [eq(memoryConsolidations.id, id)]),
-    );
-
   const state = (): ServerMessage => ({
     type: 'memory.state',
     user: read('user'),
@@ -145,13 +107,8 @@ export function memoryStore(deps: {
         const old = p.action === 'remove' ? p.text : replace;
         return old == null ? p : { ...p, replace: old };
       }),
-    consolidation:
-      db
-        .select({ id: memoryConsolidations.id, diff: memoryConsolidations.diff })
-        .from(memoryConsolidations)
-        .where(consolidationWhere())
-        .orderBy(desc(memoryConsolidations.id))
-        .get() ?? null,
+    // Phase 17: no consolidation proposals (MEMORY.md is generated from claims).
+    consolidation: null,
   });
 
   /**
@@ -160,8 +117,10 @@ export function memoryStore(deps: {
    */
   const consolidate = async () => {
     if (!deps.claims) return;
-    const { text, count } = deps.claims.profile(CAPS.memory);
-    if (text !== read('memory')) put({ memory: text }, `memory regenerate (${count} claims)`);
+    const { text, ids } = deps.claims.profile(CAPS.memory);
+    if (text !== read('memory')) put({ memory: text }, `memory regenerate (${ids.length} claims)`);
+    // Only after the write: a failed write leaves the old marks with the old file.
+    deps.claims.markProfile(ids);
   };
 
   const task = cron.schedule(
@@ -182,12 +141,19 @@ export function memoryStore(deps: {
     state,
     applyWrite,
     consolidate,
-    /** Writes the user's own text (cap-checked). */
-    edit: (t: Target, text: string) => put({ [t]: text }, `edit ${t}`),
+    /** Writes the user's own text (cap-checked). MEMORY.md is generated when claims are on. */
+    edit: (t: Target, text: string) => {
+      if (t === 'memory' && deps.claims) throw new MemoryError(GENERATED);
+      put({ [t]: text }, `edit ${t}`);
+    },
     /** Queues a write unvalidated; an identical pending write returns its id. Throws past MAX_PENDING per chat. */
-    /** Phase 17: a tainted write to target `memory` becomes a proposed claim (its id). */
+    /**
+     * Phase 17: a tainted `add` or `replace` on target `memory` becomes a proposed claim (its id);
+     * a tainted `remove` waits here, so no claim ever holds the fact to forget.
+     */
     async park(chatId: string, w: MemoryWrite): Promise<number> {
-      if (w.target === 'memory' && deps.claims) return deps.claims.toolWrite(w, chatId, true);
+      if (w.target === 'memory' && w.action !== 'remove' && deps.claims)
+        return deps.claims.toolWrite(w, chatId, true);
       const queued = db
         .select()
         .from(memoryPending)
@@ -234,23 +200,6 @@ export function memoryStore(deps: {
         }
       db.update(memoryPending).set({ status }).where(eq(memoryPending.id, id)).run();
       return status;
-    },
-    /** Accepts (with optional edited texts) or rejects a proposal; false when it is not pending. */
-    resolveConsolidation(id: number, accept: boolean, edited: { user?: string; memory?: string }) {
-      const c = db.select().from(memoryConsolidations).where(consolidationWhere(id)).get();
-      if (!c) return false;
-      if (accept) {
-        if (baseHash() !== c.baseHash) throw new MemoryError(CONFLICT);
-        put(
-          { user: edited.user ?? c.proposedUser, memory: edited.memory ?? c.proposedMemory },
-          `consolidation ${id}`,
-        );
-      }
-      db.update(memoryConsolidations)
-        .set({ status: accept ? 'accepted' : 'rejected' })
-        .where(eq(memoryConsolidations.id, id))
-        .run();
-      return true;
     },
     /** Restored titles of the last three other chats; the injection masks them again. */
     recentTitles: (exceptChatId: string) =>

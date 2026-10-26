@@ -63,6 +63,8 @@ export const chats = sqliteTable(
     fromAutomation: integer({ mode: 'boolean' }).notNull().default(false),
     claimsThrough: text(),
     claimsAt: text(),
+    // A failed extraction waits until this time (the sweep's retry delay).
+    claimsRetryAt: text(),
     createdAt: text().notNull(),
     updatedAt: text().notNull(),
   },
@@ -320,9 +322,17 @@ export const evidence = sqliteTable(
     messageId: text(),
     quote: text().notNull(),
     stance: text({ enum: ['supports', 'contradicts'] }).notNull(),
+    // A supersede proposal: the proposed claim that replaces `claimId`, the model's reason and the
+    // end of `claimId`'s validity (null: the new claim's `validFrom`, else the accept day).
+    supersededBy: integer(),
+    reason: text(),
+    validTo: text(),
     createdAt: text().notNull(),
   },
-  (t) => [index('evidence_claim_idx').on(t.claimId)],
+  (t) => [
+    index('evidence_claim_idx').on(t.claimId),
+    index('evidence_superseded_by_idx').on(t.supersededBy),
+  ],
 );
 
 /** Vault entities a claim names (`entityId` lives in vault.db: no foreign key). */
