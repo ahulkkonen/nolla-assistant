@@ -185,12 +185,18 @@ test('thinking: live state, Message.thinking with ms, thinking.get restores the 
 });
 
 test('usage.get, the summary totals and fx.state at attach', async () => {
-  const { c, chat } = await bootChat([{ text: 'Vastaus.', usage: cost(0.0123) }]);
+  // 60 of the 100 prompt tokens come from the prompt cache (phase-16 decision 12).
+  const cached = { ...cost(0.0123), cached_tokens: 60 };
+  const { c, chat } = await bootChat([{ text: 'Vastaus.', usage: cached }]);
   await turn(c, chat.id, 'Kysymys');
   const updated = c.inbox.findLast((m) => m.type === 'chat.updated');
   expect(updated?.type === 'chat.updated' && updated.chat.usage).toEqual({
     costUsd: 0.0123,
     tokens: 120,
+    input: 40,
+    output: 20,
+    cacheRead: 60,
+    cacheWrite: 0,
   });
   c.send({ type: 'usage.get', month: monthOf(new Date()) });
   const usage = await c.next('usage.state');
@@ -201,6 +207,10 @@ test('usage.get, the summary totals and fx.state at attach', async () => {
       calls: 1,
       tokens: 120,
       reasoning: 0,
+      input: 40,
+      output: 20,
+      cacheRead: 60,
+      cacheWrite: 0,
       costUsd: 0.0123,
       estimated: false,
     },
@@ -228,7 +238,14 @@ test('the export carries the chat total, the cost per reply and the rate', async
   expect(md).toContain(nb('Kustannus: 0,011 € · 120 tokenia'));
   const json = (await (await get('json')).json()) as ChatExport;
   expect(json.fx).toEqual({ usdPerEur: 1.1193, date: '2026-10-23' });
-  expect(json.chat.usage).toEqual({ costUsd: 0.0123, tokens: 120 });
+  expect(json.chat.usage).toEqual({
+    costUsd: 0.0123,
+    tokens: 120,
+    input: 100,
+    output: 20,
+    cacheRead: 0,
+    cacheWrite: 0,
+  });
   expect(json.messages[1]?.usage).toMatchObject({ costUsd: 0.0123, estimated: false });
 });
 

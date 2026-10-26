@@ -89,8 +89,23 @@ export const CallUsage = z.object({
 });
 export type CallUsage = z.infer<typeof CallUsage>;
 
+const tokenCount = z.int().min(0).optional();
+/**
+ * The token split of a total (phase-16 decision 12): the client computes the prompt cache hit rate
+ * as `cacheRead / (input + cacheRead + cacheWrite)`. Optional for older fixtures.
+ */
+const TokenSplit = {
+  input: tokenCount,
+  output: tokenCount,
+  cacheRead: tokenCount,
+  cacheWrite: tokenCount,
+};
 /** A chat's running totals (phase-13 decision 13). */
-export const ChatUsage = z.object({ costUsd: z.number().min(0), tokens: z.int().min(0) });
+export const ChatUsage = z.object({
+  costUsd: z.number().min(0),
+  tokens: z.int().min(0),
+  ...TokenSplit,
+});
 export type ChatUsage = z.infer<typeof ChatUsage>;
 
 /** ECB reference rate: USD per 1 EUR on `date` (phase-13 decision 16). */
@@ -786,6 +801,7 @@ export const ServerMessage = z.discriminatedUnion('type', [
         calls: z.int().min(0),
         tokens: z.int().min(0),
         reasoning: z.int().min(0),
+        ...TokenSplit,
         costUsd: z.number().min(0),
         /** True when any call of the group is an estimate. */
         estimated: z.boolean(),

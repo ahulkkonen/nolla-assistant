@@ -21,6 +21,7 @@ import {
   transcript,
 } from './bridge.ts';
 import { ChatNotFound } from './pi/registry.ts';
+import { chatUsage } from './usage.ts';
 
 /** One chat to a file (docs/decisions/phase-9-ui.md 7.11). */
 
@@ -85,7 +86,7 @@ export async function chatExport(
       createdAt: r.createdAt,
       agent: { id: r.agentId, name: agents().get(r.agentId)?.name ?? r.agentId },
       topic: topic ?? null,
-      usage: { costUsd: r.costUsd, tokens: r.tokens },
+      usage: chatUsage(r),
     },
     fx: fx.get(),
     messages: messages.map((m) => {

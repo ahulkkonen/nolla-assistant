@@ -39,6 +39,11 @@ export const chats = sqliteTable(
     // Phase-13 running totals of this chat's `usage` rows (decision 13).
     costUsd: real().notNull().default(0),
     tokens: integer().notNull().default(0),
+    // Phase-16 token split of the same totals, for the prompt cache hit rate (decision 12).
+    input: integer().notNull().default(0),
+    output: integer().notNull().default(0),
+    cacheRead: integer().notNull().default(0),
+    cacheWrite: integer().notNull().default(0),
     // Phase-13 fork link (decision 4). No foreign key: the link stays after the source is deleted.
     forkedFromChatId: text(),
     forkedFromMessageId: text(),

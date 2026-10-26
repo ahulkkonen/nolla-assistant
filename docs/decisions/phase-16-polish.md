@@ -175,7 +175,7 @@ export const ChatUsage = z.object({
 // usage.state rows: + input, output, cacheRead, cacheWrite (z.int().min(0).optional())
 ```
 
-### Database (`packages/db/src/schema.ts`, migration 0008)
+### Database (`packages/db/src/schema.ts`, migration `0008_fuzzy_hydra`)
 
 ```ts
 // in `chats`, after `tokens`

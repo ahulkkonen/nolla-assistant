@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import type { ExtensionFactory, MessageEndEvent } from '@earendil-works/pi-coding-agent';
 import { chats, type Db, usage } from '@pa/db';
-import type { CallUsage, ServerMessage } from '@pa/protocol';
+import type { CallUsage, ChatUsage, ServerMessage } from '@pa/protocol';
 import { and, count, desc, eq, gte, lt, sql } from 'drizzle-orm';
 import type { Catalog } from './pi/models.ts';
 
@@ -187,6 +187,10 @@ export function usageRecorder(
               .set({
                 costUsd: sql`${chats.costUsd} + ${u.costUsd}`,
                 tokens: sql`${chats.tokens} + ${tokensOf(u)}`,
+                input: sql`${chats.input} + ${u.input}`,
+                output: sql`${chats.output} + ${u.output}`,
+                cacheRead: sql`${chats.cacheRead} + ${u.cacheRead}`,
+                cacheWrite: sql`${chats.cacheWrite} + ${u.cacheWrite}`,
               })
               .where(and(eq(chats.id, at.chatId), eq(chats.userId, userId)))
               .returning({ agentId: chats.agentId })
@@ -212,6 +216,21 @@ export function usageRecorder(
   };
   return Object.assign(record, { warn });
 }
+
+/** A chat row's running totals as `ChatUsage` (phase-13 decision 13, phase-16 decision 12). */
+export const chatUsage = (
+  r: Pick<
+    typeof chats.$inferSelect,
+    'costUsd' | 'tokens' | 'input' | 'output' | 'cacheRead' | 'cacheWrite'
+  >,
+): ChatUsage => ({
+  costUsd: r.costUsd,
+  tokens: r.tokens,
+  input: r.input,
+  output: r.output,
+  cacheRead: r.cacheRead,
+  cacheWrite: r.cacheWrite,
+});
 
 const TZ = 'Europe/Helsinki';
 const ym = new Intl.DateTimeFormat('sv-SE', { timeZone: TZ, year: 'numeric', month: '2-digit' });
@@ -268,6 +287,11 @@ export function usageMonth(
       model: usage.model,
       ...totals,
       reasoning: sql<number>`sum(${usage.reasoning})`.mapWith(Number),
+      // Phase-16 decision 13: the split for the cache hit rate.
+      input: sql<number>`sum(${usage.input})`.mapWith(Number),
+      output: sql<number>`sum(${usage.output})`.mapWith(Number),
+      cacheRead: sql<number>`sum(${usage.cacheRead})`.mapWith(Number),
+      cacheWrite: sql<number>`sum(${usage.cacheWrite})`.mapWith(Number),
     })
     .from(usage)
     .where(inMonth)

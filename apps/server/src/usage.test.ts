@@ -6,6 +6,7 @@ import { eq } from 'drizzle-orm';
 import { afterEach, expect, test } from 'vitest';
 import { bootBroker, bootChat, runCleanups, tempDir } from './test-utils.ts';
 import {
+  chatUsage,
   messageUsage,
   monthOf,
   type RecordUsage,
@@ -111,6 +112,15 @@ test('usageRecorder: one row, the chat totals in the same transaction, the chat 
   const chat = db.select().from(chats).where(eq(chats.id, 'c1')).get();
   expect(chat?.costUsd).toBeCloseTo(0.02, 12);
   expect(chat?.tokens).toBe(320);
+  // Phase-16: the token split adds up with the totals (two rows of 100/20/40/0).
+  expect(chat && chatUsage(chat)).toEqual({
+    costUsd: chat?.costUsd,
+    tokens: 320,
+    input: 200,
+    output: 40,
+    cacheRead: 80,
+    cacheWrite: 0,
+  });
   close();
 });
 
@@ -142,7 +152,7 @@ test('usageMonth: Helsinki month limits, grouped by model, highest cost first', 
   );
   at('2026-10-15T11:00:00.000Z')(
     { kind: 'subagent', chatId: 'c1' },
-    call('zdr/google/gemini-4-argon', 1, true),
+    { ...call('zdr/google/gemini-4-argon', 1, true), cacheRead: 30, cacheWrite: 6 },
   );
   // Another user's row never counts.
   usageRecorder(
@@ -161,8 +171,12 @@ test('usageMonth: Helsinki month limits, grouped by model, highest cost first', 
       model: 'zdr/google/gemini-4-argon',
       name: 'Gemini 4 Argon',
       calls: 2,
-      tokens: 30,
+      tokens: 66,
       reasoning: 2,
+      input: 20,
+      output: 10,
+      cacheRead: 30,
+      cacheWrite: 6,
       costUsd: 3,
       estimated: true,
     },
@@ -172,6 +186,10 @@ test('usageMonth: Helsinki month limits, grouped by model, highest cost first', 
       calls: 1,
       tokens: 15,
       reasoning: 1,
+      input: 10,
+      output: 5,
+      cacheRead: 0,
+      cacheWrite: 0,
       costUsd: 0.5,
       estimated: false,
     },

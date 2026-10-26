@@ -45,7 +45,7 @@ import { BadSubscription, type Push } from './push.ts';
 import { indexChat, related, search } from './search.ts';
 import { SEARCH_DENIED, SEARCH_UNATTENDED } from './search-tool.ts';
 import { topicState } from './topics.ts';
-import { messageUsage, type PaMeta, usageMonth } from './usage.ts';
+import { chatUsage, messageUsage, type PaMeta, usageMonth } from './usage.ts';
 
 export type Socket = {
   send(data: string): void;
@@ -145,7 +145,7 @@ export const summary = (r: ChatRow): ChatSummary => ({
   archived: r.archived,
   titleLocked: r.titleLocked,
   modelPolicy: policyOf(r),
-  usage: { costUsd: r.costUsd, tokens: r.tokens },
+  usage: chatUsage(r),
   updatedAt: r.updatedAt,
 });
 
