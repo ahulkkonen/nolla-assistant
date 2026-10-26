@@ -162,3 +162,4 @@ Status on 2026-10-25. The plan, section 13, defines each gate.
 | 7 | Artifacts, voice, push, palette | done, user steps open |
 | 8 | Memory | done |
 | 9 | Production UI on shadcn/ui (`docs/decisions/phase-9-ui.md`) | done, on-device checks open |
+| 10 | Model picker, thinking level, per-chat ZDR override (`docs/decisions/phase-10-models.md`) | done, open key is a user step |

@@ -586,3 +586,22 @@ phase-10 routes, the user's real ZDR key, no open key):
 - `zdr/google/gemini-4-argon` with `reasoning.effort: low`: HTTP 200, `reasoning_tokens` 0,
   cost 0.0021 USD. With `high`: HTTP 200, `reasoning_tokens` 397, cost 0.0041 USD. The effort
   reaches the provider.
+
+## Status (2026-10-26)
+
+All five task cards are done. Commits: `d16c61c` (egress), `5fb43bf` and `21e6e4f` (server),
+`9f906b3`, `5eafba1` and `56fdd99` (web and `user.retry`), `084385b` and `fc31e9a` (docs).
+
+Gate: `pnpm typecheck`, `pnpm lint` and `pnpm test` pass (server 90, web 15, e2e 252 plus the
+new flows); `pnpm test:egress` passes 19 probes; the UI review passed with every cell at 5; the
+live check of gate item 4 is recorded above, except the `open/` call, which needs the second
+OpenRouter key. The `push` and `title` server tests time out when a Docker image build runs on
+the same machine; they pass in three runs without that load.
+
+Reviews: the server commit got 7 should-fix items (classifier rules, catalog retry, Auto
+fallback, policy race), the web commit 11, and the `user.retry` path 1 blocking (a policy change
+between the unmask await and the hold) and 9 should-fix. All are fixed and tested.
+
+User steps left: create the open key and set `OPENROUTER_OPEN_API_KEY`; turn off the account
+ZDR toggles and move ZDR into the key guardrail (docs/deploy.md, "Prepare secrets" step 3).
+Until then every `open/` call is refused with HTTP 400 and the chat stays on ZDR.
