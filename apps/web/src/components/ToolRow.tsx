@@ -1,15 +1,9 @@
+import { TOOL_STATUS_WORD } from '@pa/protocol';
 import { Ban, Check, ChevronRight, Clock, Loader2, TimerOff, X } from 'lucide-react';
 import { Collapsible } from 'radix-ui';
 import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 import { type ToolView, useStore } from '../store.ts';
-
-export const STATUS_WORD = {
-  running: 'käynnissä',
-  ok: 'valmis',
-  error: 'virhe',
-  denied: 'estetty',
-} as const;
 
 /** Status icons (brief 7.5): spinner muted, done success, error destructive, waiting warning. */
 const ICON = {
@@ -84,7 +78,7 @@ export function ToolRow({ tool }: { tool: ToolView }) {
         ? 'vanhentunut'
         : gate === 'rejected'
           ? 'hylätty'
-          : STATUS_WORD[tool.status];
+          : TOOL_STATUS_WORD[tool.status];
   // Live output while running; the final summary replaces it.
   const result = tool.summary || tool.output;
   const part = (label: string, text: string) => (

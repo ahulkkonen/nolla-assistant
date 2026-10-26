@@ -103,6 +103,8 @@ type State = {
   paletteOpen: boolean;
   settingsOpen: boolean;
   shortcutsOpen: boolean;
+  /** The chat the export dialog is open for ("Vie…"); closed when null. */
+  exportChatId: string | null;
   integrations: Of<'integrations.state'>['google'] | null;
   showArtifact(chatId: string, a: Artifact): void;
   /** Voice: send the transcript at once, and the language hint (both kept in localStorage). */
@@ -258,6 +260,7 @@ export const useStore = create<State>()((set, get) => {
     paletteOpen: false,
     settingsOpen: false,
     shortcutsOpen: false,
+    exportChatId: null,
     integrations: null,
     ...loadStt(),
     vault: null,

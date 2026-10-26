@@ -10,6 +10,7 @@ import { ArtifactPanel } from './components/ArtifactPanel.tsx';
 import { AUTOMATIONS_TITLE, AutomationsScreen } from './components/AutomationsScreen.tsx';
 import { CommandPalette } from './components/CommandPalette.tsx';
 import { Composer } from './components/Composer.tsx';
+import { ExportDialog } from './components/ExportDialog.tsx';
 import { IconButton } from './components/IconButton.tsx';
 import { Login } from './components/Login.tsx';
 import { MEMORY_TITLE, MemoryScreen } from './components/MemoryScreen.tsx';
@@ -224,6 +225,7 @@ function Shell() {
       <SettingsDialog />
       <ShortcutsDialog />
       <CommandPalette />
+      <ExportDialog />
     </div>
   );
 }

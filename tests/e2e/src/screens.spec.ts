@@ -422,6 +422,25 @@ for (const scheme of ['light', 'dark'] as const) {
           await shot(page, 'confirm-delete', vp.width, scheme);
         });
 
+        test('export-dialog', async ({ app, page }) => {
+          app.llm.push({ text: 'Tässä yhteenveto veroista.' });
+          await app.login(page);
+          await sendMessage(page, 'Verot 2026');
+          await expect(page.locator('.md').last()).toHaveText('Tässä yhteenveto veroista.');
+          await showSidebar(page);
+          const row = page.locator('nav li', {
+            has: page.getByRole('button', { name: 'Verot 2026', exact: true }),
+          });
+          await row.hover();
+          await row.getByRole('button', { name: /^(Lisää|Toiminnot): / }).click();
+          await page.getByRole('menuitem', { name: 'Vie…' }).click();
+          const dialog = page.getByRole('dialog', { name: 'Vie keskustelu' });
+          // On: the meta line says that the file holds personal data (brief 7.11).
+          await dialog.getByRole('switch', { name: 'Näytä oikeat nimet' }).click();
+          await expect(dialog.getByText('Tiedostossa on henkilötietoja.')).toBeVisible();
+          await shot(page, 'export-dialog', vp.width, scheme);
+        });
+
         test('settings-top', async ({ app, page }) => {
           await app.login(page);
           await openSettings(page, 'Asetukset');

@@ -3,7 +3,7 @@ import { rmSync } from 'node:fs';
 import { join as joinPath, resolve, sep } from 'node:path';
 import type { AgentSession, AgentSessionEvent } from '@earendil-works/pi-coding-agent';
 import { chats, type Db, files, topicProposals, topics } from '@pa/db';
-import { FULL } from '@pa/pi-ext-memory';
+import { ATTACHMENT_MARKER, FULL } from '@pa/pi-ext-memory';
 import {
   type PseudoClient,
   PseudoDownError,
@@ -153,13 +153,13 @@ const argsPreview = (args: unknown) =>
     .join(', ');
 
 type Restored = { text: string; annotations: Annotation[]; hold: number };
-type Restore = ((text: string) => Promise<Restored>) & { reset(): void };
+export type Restore = ((text: string) => Promise<Restored>) & { reset(): void };
 
 /**
  * Surrogates back to real values for display. After the first sidecar failure it calls `onDown`
  * once and returns masked text without annotations, skipping the sidecar until `reset()`.
  */
-function restorer(pseudo: PseudoClient | undefined, onDown: () => void): Restore {
+export function restorer(pseudo: PseudoClient | undefined, onDown: () => void): Restore {
   let failed = false;
   const restore = async (text: string): Promise<Restored> => {
     if (!pseudo || failed || !text) return { text, annotations: [], hold: 0 };
@@ -827,10 +827,10 @@ function toMessage(id: string, m: AgentMessage, tools: ToolRow[]): Message {
 /**
  * Rebuilds messages from the Pi branch. A user message gets the chat's files uploaded after the
  * previous user message and up to its own timestamp; the appended `[Liite: ...]` blocks are cut
- * from its text.
+ * from its text. `restore` also serves the export (export.ts).
  */
 // ponytail: timestamp window, not a stored message link; a file uploaded but sent with a later message shows on the earlier one. Add files.messageId if that happens.
-async function history(
+export async function history(
   session: AgentSession,
   files: ReturnType<typeof chatFiles>,
   restore: Restore,
@@ -857,15 +857,12 @@ async function history(
   });
   // ponytail: one /unmask per message; batch in phase 7.
   for (const m of messages) {
-    // Restore first: the marker carries the real file name.
     const { text, annotations } = await restore(m.text);
-    const cut = Math.min(
-      text.length,
-      ...m.attachments
-        .filter((a) => a.kind === 'document')
-        .map((a) => text.indexOf(`\n\n[Liite: ${a.name}]\n`))
-        .filter((i) => i >= 0),
-    );
+    // By the marker, not the name: a masked text (sidecar down, masked export) masks the name too.
+    const at = m.attachments.some((a) => a.kind === 'document')
+      ? text.indexOf(ATTACHMENT_MARKER)
+      : -1;
+    const cut = at < 0 ? text.length : at;
     m.text = text.slice(0, cut);
     m.annotations = annotations.filter((a) => a.end <= cut);
   }

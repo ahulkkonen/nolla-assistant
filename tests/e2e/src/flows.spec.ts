@@ -1,10 +1,11 @@
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { deflateSync } from 'node:zlib';
 import type { Page } from '@playwright/test';
 import {
   acceptProposal,
+  DICT,
   expect,
   HTML_REPLY,
   memoryTurns,
@@ -275,6 +276,52 @@ test.describe('approval', () => {
     await expect(card).toHaveCount(0);
     await expect(page.locator('.md').last()).toHaveText('Kirjoitettu.');
     await expect(page.getByRole('button', { name: /^write valmis/ })).toBeVisible();
+  });
+});
+
+test.describe('export', () => {
+  test.use({ pseudo: 'full' });
+
+  test('chat export: surrogates by default, real names with the switch', async ({ app, page }) => {
+    app.llm.push({ text: 'Selvä, Pekka Laaksonen.' });
+    await app.login(page);
+    await send(page, 'Muistio Matti Virtanen');
+    await expect(page.locator('.md').last()).toHaveText('Selvä, Matti Virtanen.');
+    const dialog = page.getByRole('dialog', { name: 'Vie keskustelu' });
+    const unmask = dialog.getByRole('switch', { name: 'Näytä oikeat nimet' });
+    const download = async () => {
+      const [file] = await Promise.all([
+        page.waitForEvent('download'),
+        dialog.getByRole('button', { name: 'Lataa' }).click(),
+      ]);
+      await expect(dialog).toHaveCount(0);
+      return { name: file.suggestedFilename(), text: readFileSync(await file.path(), 'utf8') };
+    };
+
+    // The chat row menu: the switch is off, so the file has what the model saw.
+    const row = page.locator('nav li', {
+      has: page.getByRole('button', { name: 'Muistio Matti Virtanen' }),
+    });
+    await row.hover();
+    await row.getByRole('button', { name: 'Lisää: Muistio Matti Virtanen' }).click();
+    await page.getByRole('menuitem', { name: 'Vie…' }).click();
+    await expect(unmask).not.toBeChecked();
+    await expect(unmask).toHaveAccessibleDescription(/Tiedoston voi jakaa\./);
+    let file = await download();
+    expect(file.name).toMatch(/^muistio-pekka-laaksonen-\d{4}-\d{2}-\d{2}-masked\.md$/);
+    expect(file.text).toContain(`Muistio ${DICT['Matti Virtanen']}`);
+    expect(file.text).not.toContain('Matti Virtanen');
+
+    // The palette: the switch on restores the real names, and the meta line says so.
+    await page.keyboard.press('ControlOrMeta+k');
+    await page.getByRole('option', { name: 'Vie keskustelu…' }).click();
+    await expect(unmask).not.toBeChecked();
+    await unmask.click();
+    await expect(unmask).toHaveAccessibleDescription('Tiedostossa on henkilötietoja.');
+    file = await download();
+    expect(file.name).toMatch(/^muistio-matti-virtanen-\d{4}-\d{2}-\d{2}-avoin\.md$/);
+    expect(file.text).toContain('Muistio Matti Virtanen');
+    expect(file.text).not.toContain(DICT['Matti Virtanen']);
   });
 });
 

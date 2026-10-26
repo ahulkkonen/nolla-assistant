@@ -8,6 +8,7 @@ import Fastify from 'fastify';
 import { authRoutes, requireUser } from './auth/routes.ts';
 import { attachBridge, type BridgeDeps } from './bridge.ts';
 import type { Config } from './config.ts';
+import { exportRoutes } from './export.ts';
 import { fileRoutes, MAX_FILE_BYTES, MAX_FILES } from './files.ts';
 import type { Integrations } from './integrations.ts';
 import { pushRoutes } from './push.ts';
@@ -79,6 +80,7 @@ export async function buildServer({
   app.get('/healthz', async () => ({ ok: true }));
   authRoutes(app, db, config);
   fileRoutes(app, db, config.dataDir, auth);
+  exportRoutes(app, auth, bridge);
   integrations.routes(app, auth);
   sttRoutes(app, auth, config);
   pushRoutes(app, auth, bridge.push);

@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { saveFile } from '@/lib/utils';
 import runtimeUrl from '../artifact-runtime.ts?worker&url';
 import { useMedia } from '../media.ts';
 import { useStore } from '../store.ts';
@@ -115,13 +116,10 @@ async function documentFor(a: Artifact): Promise<string | null> {
 
 function download(a: Artifact) {
   const ext = EXT[a.kind] ?? a.language ?? 'txt';
-  const url = URL.createObjectURL(new Blob([a.content], { type: a.mime ?? 'text/plain' }));
-  const link = Object.assign(document.createElement('a'), {
-    href: url,
-    download: `${a.title.replace(/[^\p{L}\p{N}_-]+/gu, '-').slice(0, 60) || 'artefakti'}.${ext}`,
-  });
-  link.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  saveFile(
+    new Blob([a.content], { type: a.mime ?? 'text/plain' }),
+    `${a.title.replace(/[^\p{L}\p{N}_-]+/gu, '-').slice(0, 60) || 'artefakti'}.${ext}`,
+  );
 }
 
 /**

@@ -1,3 +1,4 @@
+import { TOOL_STATUS_WORD } from '@pa/protocol';
 import { AlertCircle, ArrowDown, MessageSquare } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -10,7 +11,6 @@ import { MemoryChipRow } from './MemoryChipRow.tsx';
 import { MessageView } from './MessageView.tsx';
 import { UNTITLED } from './Sidebar.tsx';
 import { SubagentRow } from './SubagentRow.tsx';
-import { STATUS_WORD } from './ToolRow.tsx';
 
 const EMPTY: never[] = [];
 
@@ -41,7 +41,8 @@ function useAnnouncements(chatId: string | null) {
   useEffect(() => {
     for (const t of tools) {
       const before = was.current.tools.get(t.callId);
-      if (before && before !== t.status) announce(`Työkalu ${t.name} ${STATUS_WORD[t.status]}`);
+      if (before && before !== t.status)
+        announce(`Työkalu ${t.name} ${TOOL_STATUS_WORD[t.status]}`);
       was.current.tools.set(t.callId, t.status);
     }
   }, [tools]);

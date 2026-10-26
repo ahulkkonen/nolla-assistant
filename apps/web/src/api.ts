@@ -1,4 +1,4 @@
-import type { AttachmentRef } from '@pa/protocol';
+import type { AttachmentRef, ExportFormat } from '@pa/protocol';
 import { startAuthentication, startRegistration } from '@simplewebauthn/browser';
 
 export class HttpError extends Error {
@@ -64,6 +64,17 @@ export async function transcribe(
   form.append('language', language);
   return (await req<{ text: string }>('/api/transcribe', { method: 'POST', body: form, signal }))
     .text;
+}
+
+/** One chat as a file (`GET /api/chats/:id/export`); the server names it. */
+export async function exportChat(chatId: string, format: ExportFormat, unmask: boolean) {
+  const r = await fetch(
+    `/api/chats/${encodeURIComponent(chatId)}/export?format=${format}&unmask=${unmask ? 1 : 0}`,
+    { credentials: 'same-origin' },
+  );
+  if (!r.ok) throw new HttpError(r.status);
+  const name = /filename="([^"]+)"/.exec(r.headers.get('content-disposition') ?? '')?.[1];
+  return { blob: await r.blob(), name: name ?? `keskustelu.${format}` };
 }
 
 export const pushVapid = () => req<{ publicKey: string }>('/api/push/vapid');

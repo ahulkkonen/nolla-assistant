@@ -37,6 +37,13 @@ export type ChatSummary = z.infer<typeof ChatSummary>;
 
 export const ToolStatus = z.enum(['running', 'ok', 'error', 'denied']);
 export type ToolStatus = z.infer<typeof ToolStatus>;
+/** A tool status as a Finnish word: tool rows, announcements and the Markdown export. */
+export const TOOL_STATUS_WORD: Record<ToolStatus, string> = {
+  running: 'käynnissä',
+  ok: 'valmis',
+  error: 'virhe',
+  denied: 'estetty',
+};
 
 export const ToolRow = z.object({
   callId: id64,
@@ -97,6 +104,48 @@ export const PushSubscription = z.object({
   keys: z.object({ p256dh: z.string().max(512), auth: z.string().max(512) }),
 });
 export type PushSubscription = z.infer<typeof PushSubscription>;
+
+export const ExportFormat = z.enum(['md', 'json']);
+export type ExportFormat = z.infer<typeof ExportFormat>;
+
+/** Query of `GET /api/chats/:id/export` (docs/decisions/phase-9-ui.md 7.11). */
+export const ExportQuery = z.object({
+  format: ExportFormat,
+  unmask: z.enum(['0', '1']).default('0'),
+});
+
+/**
+ * Body of `GET /api/chats/:id/export?format=json`, version 1. `masked`: the texts the model saw
+ * (surrogates); else the real values restored from the vault. Times are ISO 8601 UTC.
+ */
+export const ChatExport = z.object({
+  version: z.literal(1),
+  masked: z.boolean(),
+  chat: z.object({
+    id: z.string(),
+    /** Null for an untitled chat. */
+    title: z.string().nullable(),
+    createdAt: z.iso.datetime(),
+    agent: z.object({ id: id64, name: z.string() }),
+    /** The topic name. */
+    topic: z.string().nullable(),
+  }),
+  messages: z.array(
+    z.object({
+      role: Message.shape.role,
+      createdAt: z.iso.datetime(),
+      text: z.string(),
+      /** Listed, never embedded. `name` is null for an image in a masked export: the model never saw it. */
+      attachments: z.array(
+        AttachmentRef.omit({ id: true }).extend({ name: z.string().nullable() }),
+      ),
+      tools: z.array(ToolRow.pick({ name: true, status: true })),
+      /** The artifacts in `text`; they also stay in it as fenced code blocks. */
+      artifacts: z.array(Artifact.omit({ id: true })),
+    }),
+  ),
+});
+export type ChatExport = z.infer<typeof ChatExport>;
 
 /** Client to server messages. `auth.login` is itself a union on `method`. */
 const authLogin = z.literal('auth.login');

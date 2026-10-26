@@ -3,6 +3,7 @@ import {
   Archive,
   ArchiveRestore,
   ChevronRight,
+  FileDown,
   Keyboard,
   Lightbulb,
   Lock,
@@ -112,6 +113,7 @@ function ChatRow({
   const actions: Action[] = [
     pin,
     { label: 'Nimeä uudelleen', Icon: Pencil, run: startEdit },
+    { label: 'Vie…', Icon: FileDown, run: () => useStore.setState({ exportChatId: chat.id }) },
     {
       label: chat.archived ? 'Palauta' : 'Arkistoi',
       Icon: chat.archived ? ArchiveRestore : Archive,

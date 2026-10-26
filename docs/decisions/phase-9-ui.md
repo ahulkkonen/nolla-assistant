@@ -343,6 +343,22 @@ Source: safe-area, theme-color pair, status-bar style, `dvh`, overscroll, long-p
 5. **Parity.** (a) Light and dark have the same layout; dark surfaces step sidebar #1f1e1d < canvas #262624 < card #30302e, with no pure black. (b) The primary button is ink in light and cream in dark (never light blue); semantic tints switch to their dark values; text pairs meet the ratios in 7.3. (c) Dark text does not look heavier than light.
 6. **Finish.** (a) Radii come only from 4 / 8 / 12 / 16 / 24 / full; cards 12, buttons 8, bubble 16, composer 24. (b) Icons are lucide, 16 or 20 px, stroke 1.75; every icon-only button has a label and a desktop tooltip; no row with more than two visible icon actions. (c) Copy is Finnish, sentence case, short, with Finnish number and time formats; no English UI words except identifiers.
 
+### 7.11 Export
+
+The user exports one chat to a file. The export has two forms. The masked form has the text that the model saw, with surrogates, so the user can share it. The open form has the real values from the vault, as the thread shows them.
+
+- **Menu.** The chat row menu has the item "Vie…" (`FileDown` 16) after "Nimeä uudelleen". On desktop it is in "Lisää: …", in the drawer it is in "Toiminnot: …". While a chat is open, the palette has "Vie keskustelu…" in the group "Komennot". Each item opens the same dialog for its chat.
+- **Dialog.** `Dialog` 420 wide, radius 16, padding 24, gap 24, no close icon (Peruuta and Esc close it). Title "Vie keskustelu" in `--text-title`. Under the title, the chat name in ”…” in `--text-ui` muted, one line with ellipsis.
+- **Body.** Two setting rows as in Settings (7.5): min 48 h, label left in `--text-body`, control right, 1 px divider.
+  1. "Muoto": `Select` 160 wide with the items "Markdown" and "JSON". Markdown is the default.
+  2. "Näytä oikeat nimet": `Switch`, off each time the dialog opens. A meta line under the label tells what the file holds. Off: "Nimet niin kuin malli näki ne. Tiedoston voi jakaa." On: "Tiedostossa on henkilötietoja." The line is always there, so the layout does not move. The switch refers to the line with `aria-describedby`.
+- **Footer.** `outline` Peruuta and `default` (ink) Lataa at the right, 36 h. Phone: the dialog has a 16 px inset, the buttons are full width and 44 h, and Lataa is on top.
+- **States.** The dialog disables Lataa while the file loads. After the download the dialog closes. An error shows a toast, and the dialog stays open. Vault down: "Pseudonymisointipalvelu ei vastaa. Vie ilman oikeita nimiä." Other errors: "Vienti epäonnistui. Yritä uudelleen."
+- **File name.** `<title-slug>-<yyyy-mm-dd>-<masked|avoin>.md|json`. The slug is lower case ASCII: ä, ö and å become a, o and a, and each run of other characters becomes `-`. The slug has at most 60 characters, and an empty slug becomes `keskustelu`. The masked file uses the masked title, the open file uses the real title, and an untitled chat uses its first user line. The date is the day the chat started, in Europe/Helsinki.
+- **Route.** `GET /api/chats/:id/export?format=md|json&unmask=0|1`. The auth cookie is necessary (`requireUser`, as `/api/files/:id`). The chat of another user gives 404, a bad query gives 400. The response has `Content-Disposition: attachment; filename="…"`, `Cache-Control: no-store` and `text/markdown` or `application/json` with `charset=utf-8`.
+- **Unmasking.** `unmask=1` uses the restorer of `history()`, the path that `chat.open` uses for the thread. If the sidecar fails, the route gives 503 `pseudo_down`. `unmask=0` does not call the sidecar, so the masked export works while the sidecar is down.
+- **Content.** The file starts with the title, the date, the agent and the topic. Then each message follows with its role, time and text. The file lists its attachments by name and does not embed them. It lists its tool calls with name and status word. Artifacts stay in the message text as fenced code blocks. The JSON form also lists them per message. The masked form has the masked title and the document names that the model saw. It has no image names, because the model never saw them. The JSON shape is `ChatExport` in `packages/protocol` with `version: 1`.
+
 ## 8. Status (2026-10-25)
 
 Slices 0 to 4 passed the UI review. A fresh reviewer then scored all 196 screenshots. The round after that review fixed its findings and added 12 screenshots (`toast`, `settings-top` and `skeleton`). The `screens` project now has 192 tests and 208 screenshots.

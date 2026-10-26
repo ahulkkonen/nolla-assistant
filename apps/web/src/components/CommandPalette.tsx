@@ -2,6 +2,7 @@ import { Command } from 'cmdk';
 import {
   Bot,
   ChevronRight,
+  FileDown,
   FolderOpen,
   MessageSquare,
   Palette,
@@ -86,6 +87,7 @@ export function CommandPalette() {
   const messages = useStore((s) => s.messages);
   const topics = useStore((s) => s.topics);
   const agents = useStore((s) => s.agents);
+  const openChatId = useStore((s) => (s.screen === 'chat' ? s.activeChatId : null));
   const [page, setPage] = useState<Page>('root');
   const [search, setSearch] = useState('');
   const mobile = useMobile();
@@ -183,6 +185,15 @@ export function CommandPalette() {
                   >
                     Uusi keskustelu
                   </Item>
+                  {openChatId && (
+                    <Item
+                      icon={<FileDown size={16} />}
+                      keywords={['vienti', 'markdown', 'json']}
+                      onSelect={run(() => useStore.setState({ exportChatId: openChatId }))}
+                    >
+                      Vie keskustelu…
+                    </Item>
+                  )}
                   <Item
                     icon={<Search size={16} />}
                     onSelect={run(() => {

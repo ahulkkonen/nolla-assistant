@@ -80,8 +80,8 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-/** A setting row: label (and helper) left, control right; min 48 h. */
-function Row({
+/** A setting row: label (and helper) left, control right; min 48 h. The helper's id is `${htmlFor}-help`. */
+export function Row({
   label,
   htmlFor,
   helper,
@@ -102,7 +102,14 @@ function Row({
         ) : (
           <div className="text-body">{label}</div>
         )}
-        {helper && <p className="text-meta text-muted-foreground">{helper}</p>}
+        {helper && (
+          <p
+            {...(htmlFor ? { id: `${htmlFor}-help` } : {})}
+            className="text-meta text-muted-foreground"
+          >
+            {helper}
+          </p>
+        )}
       </div>
       {children}
     </div>
