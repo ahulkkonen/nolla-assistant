@@ -1,6 +1,6 @@
 import { decryptCommand } from '@pa/protocol';
 import { Download } from 'lucide-react';
-import { type MouseEvent, useEffect, useRef, useState } from 'react';
+import { Fragment, type MouseEvent, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -30,6 +30,19 @@ const FAILED: Record<string, string> = {
 };
 const failText = (code: string | null | undefined) =>
   FAILED[code ?? ''] ?? 'Vienti epäonnistui. Yritä uudelleen.';
+
+/**
+ * `text` that wraps only between its space-separated tokens (a file name, a command); copying
+ * the rendered text gives `text` back. ponytail: a token wider than the box overflows it.
+ */
+function Tokens({ text }: { text: string }) {
+  return text.split(' ').map((t, i) => (
+    <Fragment key={i}>
+      {i > 0 && ' '}
+      <span className="whitespace-nowrap">{t}</span>
+    </Fragment>
+  ));
+}
 
 /** The passphrase and the job form; mounted afresh on each open, so no passphrase stays. */
 function StartForm({ failed }: { failed: string | null }) {
@@ -224,8 +237,8 @@ export function ExportAllDialog() {
           <>
             <div className="flex min-w-0 flex-col gap-3">
               <div className="flex min-w-0 flex-col gap-0.5">
-                <p className="font-mono text-[13px] whitespace-pre-wrap [overflow-wrap:anywhere]">
-                  {job.fileName}
+                <p className="font-mono text-[13px]">
+                  <Tokens text={job.fileName} />
                 </p>
                 <p className="text-meta text-muted-foreground tabular-nums">
                   {[
@@ -240,16 +253,17 @@ export function ExportAllDialog() {
                 Tiedosto poistuu latauksen jälkeen tai tunnin kuluttua.
               </p>
               <div className="flex flex-col gap-1.5">
-                <p className="text-ui font-medium">Avaa tiedosto komennolla</p>
-                <div className="flex items-start gap-1 rounded-lg bg-muted py-2 pr-1 pl-3">
-                  <code className="min-w-0 flex-1 py-1.5 font-mono text-[13px] leading-5 whitespace-pre-wrap [overflow-wrap:anywhere]">
-                    {decryptCommand(job.fileName)}
-                  </code>
+                {/* The copy button sits by the label: the box keeps its full width for the file name. */}
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-ui font-medium">Avaa tiedosto komennolla</p>
                   <CopyButton
                     text={() => decryptCommand(job.fileName ?? '')}
-                    className="shrink-0"
+                    className="size-8 shrink-0"
                   />
                 </div>
+                <code className="block rounded-lg bg-muted px-3 py-2 font-mono text-[13px] leading-5">
+                  <Tokens text={decryptCommand(job.fileName)} />
+                </code>
               </div>
             </div>
             <DialogFooter className="grid grid-cols-2 sm:flex">
