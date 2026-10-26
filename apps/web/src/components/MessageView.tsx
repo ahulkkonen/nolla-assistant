@@ -14,7 +14,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import Markdown, { type ExtraProps } from 'react-markdown';
+import Markdown, { type ExtraProps, type Options } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet';
@@ -22,6 +22,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import { touch } from '../media.ts';
 import { type SubagentChild, type ToolView, useStore } from '../store.ts';
+import { mdBlocks, settleTail } from '../thread.ts';
 import { IconButton, Tip } from './IconButton.tsx';
 import { MessageMeta, metaText } from './MessageMeta.tsx';
 import { SubagentRow } from './SubagentRow.tsx';
@@ -263,6 +264,21 @@ const components = { pre: Pre, span: Span };
 const plugins = [remarkGfm];
 const NONE: Annotation[] = [];
 
+/** One Markdown block; a finished block keeps its text and plugins, so it never re-renders. */
+const Block = memo(function Block({
+  text,
+  rehype,
+}: {
+  text: string;
+  rehype: Options['rehypePlugins'];
+}) {
+  return (
+    <Markdown remarkPlugins={plugins} rehypePlugins={rehype} components={components}>
+      {text}
+    </Markdown>
+  );
+});
+
 export const MarkdownText = memo(function MarkdownText({
   text,
   annotations = NONE,
@@ -278,15 +294,19 @@ export const MarkdownText = memo(function MarkdownText({
       .filter(([real]) => real)
       .sort((x, y) => y[0].length - x[0].length),
   );
-  const rehype = useMemo(() => {
+  const [rehype, rehypeLast] = useMemo(() => {
     const pairs = JSON.parse(key) as [string, string][];
-    return [...(pairs.length ? [rehypeAnnotate(pairs)] : []), ...(live ? [rehypeCaret] : [])];
+    const base = pairs.length ? [rehypeAnnotate(pairs)] : [];
+    return [base, live ? [...base, rehypeCaret] : base];
   }, [key, live]);
+  // Blocks render as siblings in one `.md`, so the DOM is the same as one parse would give.
+  const blocks = mdBlocks(text);
+  if (live) blocks[blocks.length - 1] = settleTail(blocks.at(-1) ?? '');
   return (
     <div className="md break-words">
-      <Markdown remarkPlugins={plugins} rehypePlugins={rehype} components={components}>
-        {text}
-      </Markdown>
+      {blocks.map((b, i) => (
+        <Block key={i} text={b} rehype={i === blocks.length - 1 ? rehypeLast : rehype} />
+      ))}
     </div>
   );
 });

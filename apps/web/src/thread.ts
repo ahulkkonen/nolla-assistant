@@ -122,3 +122,85 @@ export function findOffsets(text: string, q: string): number[] {
   for (let i = hay.indexOf(needle); i >= 0; i = hay.indexOf(needle, i + needle.length)) out.push(i);
   return out;
 }
+
+const FENCE = /^\s*(`{3,}|~{3,})/;
+/** A fence line that closes `open` (same char, at least as long, nothing after it). */
+const closes = (line: string, open: string) => {
+  const m = FENCE.exec(line);
+  return (
+    !!m && m[1]![0] === open[0] && m[1]!.length >= open.length && !line.slice(m[0].length).trim()
+  );
+};
+
+/**
+ * Splits Markdown at blank lines outside code fences, so a streamed reply re-renders only its
+ * last block. A blank line before an indented line or a list item does not split (loose lists,
+ * nested content), and text with link reference or footnote definitions stays whole, because
+ * those resolve across blocks.
+ */
+export function mdBlocks(text: string): string[] {
+  if (/^ {0,3}\[[^\]\n]+\]:/m.test(text)) return [text];
+  const lines = text.split('\n');
+  const blocks: string[] = [];
+  let start = 0;
+  let fence = '';
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    if (fence) {
+      if (closes(line, fence)) fence = '';
+    } else if (FENCE.test(line)) fence = FENCE.exec(line)![1]!;
+    else if (
+      !line.trim() &&
+      i > start &&
+      i + 1 < lines.length &&
+      !/^(\s|[-*+](\s|$)|\d+[.)](\s|$)|$)/.test(lines[i + 1]!)
+    ) {
+      blocks.push(lines.slice(start, i).join('\n'));
+      start = i + 1;
+    }
+  }
+  blocks.push(lines.slice(start).join('\n'));
+  return blocks;
+}
+
+/**
+ * The streamed last block as it will read once its closing markers arrive, so nothing flips
+ * between raw and rendered text: an unclosed inline code span or link is closed, a table's
+ * delimiter row gets its missing cells, and a half-typed fence or a lone list marker (which
+ * would read as a setext heading underline) waits for the next delta. An unclosed fence already
+ * renders as a code block (CommonMark).
+ */
+export function settleTail(block: string): string {
+  const lines = block.split('\n');
+  let fence = '';
+  let after = 0;
+  lines.forEach((line, i) => {
+    if (fence) {
+      if (closes(line, fence)) [fence, after] = ['', i + 1];
+    } else if (FENCE.test(line)) fence = FENCE.exec(line)![1]!;
+  });
+  const last = lines.at(-1)!;
+  if (/^\s*(`{1,2}|~{1,2})$/.test(last) || (!fence && /^\s*([-*+]|\d+[.)])\s*$/.test(last)))
+    lines.pop();
+  if (fence) return lines.join('\n');
+  const cells = (row: string) => row.trim().replace(/^\|/, '').replace(/\|$/, '').split('|');
+  const head = lines.at(-2);
+  const tail = lines.at(-1);
+  if (head?.includes('|') && tail && /^\s*\|?\s*:?-[-:|\s]*$/.test(tail)) {
+    const want = cells(head).length;
+    const typed = cells(tail).filter((c) => c.includes('-'));
+    if (typed.length < want)
+      lines[lines.length - 1] =
+        `|${[...typed, ...Array<string>(want - typed.length).fill(' --- ')].join('|')}|`;
+  }
+  let out = lines.join('\n');
+  // Code spans: a run of backticks opens one, the next run of the same length closes it.
+  let open = 0;
+  for (const run of lines.slice(after).join('\n').match(/`+/g) ?? [])
+    open = open === run.length ? 0 : open || run.length;
+  if (open) out = out.endsWith('`'.repeat(open)) ? out.slice(0, -open) : out + '`'.repeat(open);
+  // A link whose URL is still coming: closed; an image waits whole (no request to half a URL).
+  const link = /(!?)\[[^\]\n]*\]\([^)\s]*$/.exec(out);
+  if (link) out = link[1] ? out.slice(0, link.index) : `${out})`;
+  return out;
+}

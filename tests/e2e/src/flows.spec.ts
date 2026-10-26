@@ -84,6 +84,95 @@ test('stop: Escape ends a running turn', async ({ app, page }) => {
   await expect(page.getByRole('status', { name: 'Vastaus tulossa' })).toHaveCount(0);
 });
 
+/** About 2,000 lines of mixed Markdown: headings, paragraphs, lists, tables and code fences. */
+const LONG_MD = Array.from({ length: 125 }, (_, i) =>
+  [
+    `## Osa ${i + 1}`,
+    '',
+    `Kappale ${i + 1}: vastaus jatkuu, ja siinä on \`koodia\` ja [linkki](https://example.com/${i}).`,
+    '',
+    '- ensimmäinen kohta',
+    '- toinen kohta',
+    '',
+    '| Nimi | Arvo |',
+    '| --- | --- |',
+    `| a${i} | ${i} |`,
+    '',
+    '```ts',
+    `const x${i} = ${i};`,
+    'console.log(x);',
+    '```',
+    '',
+  ].join('\n'),
+).join('\n');
+
+/**
+ * fake-llm sends a turn at once. This delivers its text in frames of about 200 characters, one
+ * every 4 ms, as a live model does; other frames keep their order. Call before the page opens
+ * the WebSocket.
+ */
+const paceDeltas = async (page: Page) => {
+  await page.routeWebSocket(/\/ws$/, (ws) => {
+    const server = ws.connectToServer();
+    let chain = Promise.resolve();
+    let buf: { msg: Record<string, unknown>; text: string } | undefined;
+    const flush = () => {
+      if (!buf) return;
+      const m = JSON.stringify({ ...buf.msg, text: buf.text, annotations: [] });
+      buf = undefined;
+      chain = chain.then(() => new Promise((r) => setTimeout(r, 4))).then(() => ws.send(m));
+    };
+    server.onMessage((m) => {
+      const msg = typeof m === 'string' ? JSON.parse(m) : undefined;
+      if (msg?.type === 'message.delta' && (!buf || buf.msg.messageId === msg.messageId)) {
+        buf ??= { msg, text: '' };
+        buf.text += msg.text;
+        if (buf.text.length >= 200) flush();
+        return;
+      }
+      flush();
+      chain = chain.then(() => ws.send(m));
+    });
+  });
+};
+
+/** Counts React commits through the DevTools hook, which production React also calls. */
+const countCommits = (page: Page) =>
+  page.addInitScript(() => {
+    const w = window as unknown as { __commits: number; __REACT_DEVTOOLS_GLOBAL_HOOK__: unknown };
+    w.__commits = 0;
+    w.__REACT_DEVTOOLS_GLOBAL_HOOK__ = {
+      supportsFiber: true,
+      isDisabled: false,
+      renderers: new Map(),
+      inject: () => 1,
+      checkDCE: () => {},
+      onCommitFiberRoot: () => void w.__commits++,
+      onCommitFiberUnmount: () => {},
+    };
+  });
+
+test('long stream: render cost, then the jump-to-latest pill', async ({ app, page }) => {
+  test.setTimeout(120_000);
+  app.llm.push({ text: LONG_MD });
+  await countCommits(page);
+  await paceDeltas(page);
+  await app.login(page);
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Performance.enable');
+  const script = async () =>
+    (await cdp.send('Performance.getMetrics')).metrics.find((m) => m.name === 'ScriptDuration')!
+      .value;
+  const commits = () => page.evaluate(() => (window as unknown as { __commits: number }).__commits);
+  const [c0, s0] = [await commits(), await script()];
+  await send(page, 'Kirjoita pitkä vastaus');
+  await expect(page.locator('.md').last().locator('table')).toHaveCount(125, { timeout: 60_000 });
+  await expect(page.getByRole('button', { name: 'Pysäytä' })).toHaveCount(0);
+  const cost = `${(await commits()) - c0} commits, ${Math.round(((await script()) - s0) * 1000)} ms script`;
+  console.log(`long stream: ${cost}`);
+  test.info().annotations.push({ type: 'long stream', description: cost });
+});
+
 test('attach image reaches the LLM as image_url', async ({ app, page }) => {
   app.llm.push({ text: 'Näen kuvan.' });
   await app.login(page);

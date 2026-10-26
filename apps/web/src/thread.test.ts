@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   duration,
   findOffsets,
+  mdBlocks,
   messageTime,
   replyUsage,
   sameLengthLower,
+  settleTail,
   sumUsage,
   thoughtFor,
 } from './thread.ts';
@@ -81,5 +83,48 @@ describe('thread helpers', () => {
     expect(thoughtFor(200)).toBe('Ajatteli 1 s');
     expect(thoughtFor(null)).toBe('Ajatteli');
     expect(duration(8_400)).toBe('8 s');
+  });
+});
+
+describe('mdBlocks', () => {
+  it('splits at blank lines outside fences', () => {
+    expect(mdBlocks('# A\n\npara\n\n```\nx\n\ny\n```\n\nend')).toEqual([
+      '# A',
+      'para',
+      '```\nx\n\ny\n```',
+      'end',
+    ]);
+  });
+  it('keeps loose lists, indented content and reference definitions together', () => {
+    expect(mdBlocks('- a\n\n- b\n\n  more')).toEqual(['- a\n\n- b\n\n  more']);
+    expect(mdBlocks('1. a\n\n2. b')).toEqual(['1. a\n\n2. b']);
+    expect(mdBlocks('see [x]\n\n[x]: https://e.fi')).toEqual(['see [x]\n\n[x]: https://e.fi']);
+  });
+  it('does not split before the next line exists', () => {
+    expect(mdBlocks('para\n\n')).toEqual(['para\n\n']);
+  });
+});
+
+describe('settleTail', () => {
+  it('closes inline code and links', () => {
+    expect(settleTail('see `cod')).toBe('see `cod`');
+    expect(settleTail('see `')).toBe('see ');
+    expect(settleTail('`a` and ``b')).toBe('`a` and ``b``');
+    expect(settleTail('a [link](https://ex')).toBe('a [link](https://ex)');
+    expect(settleTail('a ![kuva](https://ex')).toBe('a ');
+    expect(settleTail('`a` [b](c)')).toBe('`a` [b](c)');
+  });
+  it('completes a table delimiter row', () => {
+    expect(settleTail('| a | b |\n| -')).toBe('| a | b |\n| -| --- |');
+    expect(settleTail('| a | b |\n| :-- | --: |')).toBe('| a | b |\n| :-- | --: |');
+  });
+  it('drops a half-typed fence and a lone list marker', () => {
+    expect(settleTail('```py\nfoo\n``')).toBe('```py\nfoo');
+    expect(settleTail('Text\n-')).toBe('Text');
+    expect(settleTail('```\n- ')).toBe('```\n- ');
+  });
+  it('leaves code inside an open fence alone', () => {
+    expect(settleTail('```js\nconst a = `x')).toBe('```js\nconst a = `x');
+    expect(settleTail('```\nx\n```\nsee `y')).toBe('```\nx\n```\nsee `y`');
   });
 });
