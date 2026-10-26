@@ -116,12 +116,13 @@ def pick_name(r: random.Random, kind: str, real: str, level: int = 0, below: flo
     raise LookupError("no surrogate pool")
 
 
-def pick_person(r: random.Random, parts: list[tuple[str, str]], level: int) -> list[tuple[str, str]]:
-    """Surrogate names per part. The surname is drawn under the pair limit of the first given name."""
+def pick_person(r: random.Random, parts: list[tuple[str, str]], level: int, keep: str | None = None) -> list[tuple[str, str]]:
+    """Surrogate names per part. The surname is drawn under the pair limit of the first given name. `keep` is
+    the surrogate first name to keep (an entity upgraded from a lone first name to a full name)."""
     out: list[tuple[str, str]] = []
     for part, lemma in parts:
         below = LONE_MAX if len(parts) == 1 else pair_limit(out[0][1]) if part == "last" else float("inf")
-        out.append((part, pick_name(r, part_kind(part), lemma, level, below)))
+        out.append((part, keep if keep and part == "first" else pick_name(r, part_kind(part), lemma, level, below)))
     return out
 
 
@@ -213,16 +214,17 @@ def email_surrogate(vault, user_id: str, r: random.Random, canonical: str) -> st
     return f"{local}@{domain if domain in PUBLIC_MAIL else f'example-{vault.domain_number(user_id, domain)}.invalid'}"
 
 
-def make_surrogate(vault, user_id: str, kind: str, canonical: str, gen: int):
+def make_surrogate(vault, user_id: str, kind: str, canonical: str, gen: int, keep: str | None = None):
     """(surrogate, infl_class, surrogate_rows, mode) with forms unused by the user's other entities.
-    Widens the name pool step by step; placeholder mode when nothing free is left."""
+    Widens the name pool step by step; placeholder mode when nothing free is left. `keep`: see pick_person;
+    the kept name's forms already belong to the entity, so only the new names must be free."""
     per_level = 15
     for attempt in range(per_level * WIDEN):
         r = rng(vault, user_id, canonical, gen, attempt)
         if kind == "PERSON":
             parts = person_parts(canonical)
             try:
-                surr = pick_person(r, parts, attempt // per_level)
+                surr = pick_person(r, parts, attempt // per_level, keep)
             except LookupError:
                 continue
             if any(s == lemma for (_, s), (_, lemma) in zip(surr, parts)):
@@ -242,7 +244,7 @@ def make_surrogate(vault, user_id: str, kind: str, canonical: str, gen: int):
             text, infl = code_surrogate(r, kind, canonical), None
             rows = [(f, c, "") for f, c in street_forms(text)] if kind == "ADDRESS" else [(text, "NOM", "")]
         if len({f for f, _, _ in rows}) == len({(f, c, p) for f, c, p in rows}) or kind == "PERSON":
-            if not vault.surrogate_taken(user_id, [f for f, _, _ in rows]):
+            if not vault.surrogate_taken(user_id, [f for f, _, p in rows if not (keep and p == "first")]):
                 return text, infl, rows, "realistic"
     ph = placeholder(vault, user_id, kind)
     return ph, None, [(ph, "NOM", "all")], "placeholder"
@@ -295,6 +297,32 @@ def get_or_create_entity(vault, user_id: str, kind: str, canonical: str, surface
         except SurrogateConflict:  # another request took a form meanwhile: retry under the lock
             surr, infl, rows, mode = make_surrogate(vault, user_id, kind, canonical, 0)
             return vault.create(user_id, kind, canonical, surr, infl, real, rows, mode)
+
+
+def upgrade_first(vault, user_id: str, session_id: str | None, canonical: str):
+    """A full name whose first name alone is already a PERSON entity is that person (phase-12 decision 19): the
+    entity seen last in this session, else the only one in the vault. The entity takes the full name as its
+    canonical, keeps its surrogate first name and gets a surrogate surname under the pair rule. Its old forms stay,
+    so earlier transcripts still restore. None when no entity fits; the caller then creates a new one."""
+    parts = person_parts(canonical)
+    if len(parts) != 2 or vault.find(user_id, ("PERSON", "SELF"), canonical):
+        return None
+    first = parts[0][1]
+    lone = [e for e in vault.q("SELECT * FROM entity WHERE user_id=? AND kind='PERSON' AND canonical=?"
+                               " AND surrogate_mode='realistic' AND allowlisted=0", (user_id, first))
+            if person_parts(first)[0][0] == "first"]
+    seen = vault.last_seen(session_id, [e["id"] for e in lone]) if lone and session_id else {}
+    e = max(lone, key=lambda e: seen[e["id"]]) if seen else lone[0] if len(lone) == 1 else None
+    if e is None:
+        return None
+    with vault.lock:
+        surr, infl, rows, mode = make_surrogate(vault, user_id, "PERSON", canonical, e["gen"], keep=e["surrogate"])
+        if mode != "realistic":
+            return None
+        vault.add_forms(user_id, e["id"], "real", real_rows("PERSON", canonical, canonical))
+        vault.add_forms(user_id, e["id"], "surrogate", rows)
+        vault.set_fields(user_id, e["id"], canonical=canonical, surrogate=surr, infl_class=infl)
+        return vault.entity(user_id, e["id"])
 
 
 def ensure_self(vault, user_id: str):

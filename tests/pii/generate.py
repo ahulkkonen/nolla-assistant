@@ -558,6 +558,42 @@ plural,adessive,allative :: Vietimme juhannuksen {{Virtasilla|P|Virtanen|Mikko V
 lowercase,phone-typed,address-decoy,no-pii :: mennään {{uimaranta 2|!A|uimaranta, ei osoite}} kertaa viikossa jos sää sallii
 lowercase,phone-typed,address-decoy,no-pii :: {{kuntotie 5|!A|kuntoilureitti, ei osoite}} km on sopiva lenkki aamulla
 lowercase,phone-typed,address-decoy,no-pii :: tilasin {{lasiportti 3|!A|lasiovi, ei osoite}} metriä leveänä
+# --- capitalised first name + lower-case surname, as typed on a phone (c517-c544)
+mixed-case,phone-typed :: hei, nimeni on {{Kalle laine|P|Kalle Laine||nominatiivi, sukunimi pienellä}}, pidän sienestyksestä
+mixed-case,phone-typed :: olen {{Mervi mäki|P|Mervi Mäki||nominatiivi, sukunimi pienellä}} ja haen kesätöitä teiltä
+mixed-case,phone-typed,accusative :: tapasin eilen {{Ilkka niemen|P|Ilkka Niemi||akkusatiivi, sukunimi pienellä}} kirjastossa
+mixed-case,phone-typed,allative :: soitin {{Anu rannalle|P|Anu Ranta||allatiivi, sukunimi pienellä}} mutta hän ei vastannut
+mixed-case,phone-typed :: kiitos avusta, terveisin {{Tero aalto|P|Tero Aalto||nominatiivi, sukunimi pienellä}}
+mixed-case,phone-typed :: {{Hanna virta|P|Hanna Virta||nominatiivi, sukunimi pienellä}} tulee huomenna kahdeksalta
+mixed-case,phone-typed,ablative :: kysyin {{Raimo kiveltä|P|Raimo Kivi||ablatiivi, sukunimi pienellä}} neuvoa autoon
+mixed-case,phone-typed :: nimeni on {{Satu virtanen|P|Satu Virtanen||nominatiivi, sukunimi pienellä}} ja tilasin teiltä kengät
+mixed-case,phone-typed :: olen {{Jouni korhonen|P|Jouni Korhonen||nominatiivi, sukunimi pienellä}} taloyhtiön hallituksesta
+mixed-case,phone-typed,accusative :: tapasin {{Eila heikkisen|P|Eila Heikkinen||akkusatiivi, sukunimi pienellä}} torilla aamulla
+mixed-case,phone-typed,allative :: soitin {{Marko laaksoselle|P|Marko Laaksonen||allatiivi, sukunimi pienellä}} eilen illalla
+mixed-case,phone-typed :: hyvää viikonloppua, terveisin {{Sirpa hämäläinen|P|Sirpa Hämäläinen||nominatiivi, sukunimi pienellä}}
+mixed-case,phone-typed,swedish-finnish :: hei olen {{Kristian lindqvist|P|Kristian Lindqvist||nominatiivi, sukunimi pienellä}} ja soitan tilauksesta
+mixed-case,phone-typed,swedish-finnish,accusative :: tapasin {{Camilla nyströmin|P|Camilla Nyström||akkusatiivi, sukunimi pienellä}} junassa
+mixed-case,phone-typed,swedish-finnish,allative :: soitin {{Henrik sjöbergille|P|Henrik Sjöberg||allatiivi, sukunimi pienellä}} aamulla
+mixed-case,phone-typed,swedish-finnish :: kiitos, terveisin {{Annika holmström|P|Annika Holmström||nominatiivi, sukunimi pienellä}}
+mixed-case,phone-typed,swedish-finnish :: nimeni on {{Johanna ekström|P|Johanna Ekström||nominatiivi, sukunimi pienellä}} ja asun espoossa
+mixed-case,phone-typed :: eilen illalla {{Petri mäkelä|P|Petri Mäkelä||nominatiivi, sukunimi pienellä}} kävi meillä kylässä
+mixed-case,phone-typed,allative :: kerro {{Tuula niemiselle|P|Tuula Nieminen||allatiivi, sukunimi pienellä}} että kokous siirtyy
+mixed-case,phone-typed,genitive :: {{Arto laineen|P|Arto Laine||genetiivi, sukunimi pienellä}} poika tulee huomenna kylään
+mixed-case,phone-typed,genitive :: olen {{Leena aallon|P|Leena Aalto||genetiivi, sukunimi pienellä}} sisko ja soitan hänen puolestaan
+mixed-case,phone-typed,accusative :: tapasin {{Kari ojalan|P|Kari Ojala||akkusatiivi, sukunimi pienellä}} salilla
+mixed-case,phone-typed :: nimeni on {{Maarit pouta|P|Maarit Pouta||nominatiivi, sukunimi pienellä}}, kiitos viestistä
+mixed-case,phone-typed :: {{Jussi koskinen|P|Jussi Koskinen||nominatiivi, sukunimi pienellä}} lupasi tuoda grillin
+mixed-case,phone-typed :: terveisin {{Elina rantanen|P|Elina Rantanen||nominatiivi, sukunimi pienellä}}, puheenjohtaja
+mixed-case,phone-typed,allative :: ilmoitin {{Pasi mäkiselle|P|Pasi Mäkinen||allatiivi, sukunimi pienellä}} että myöhästyn
+mixed-case,phone-typed,genitive :: kävin {{Oskari kiven|P|Oskari Kivi||genetiivi, sukunimi pienellä}} luona viime viikolla
+mixed-case,phone-typed,multi-entity,allative :: soitin {{Nina lehtiselle|P|Nina Lehtinen||allatiivi, sukunimi pienellä}} ja {{Mika salmelle|P|Mika Salmi||allatiivi, sukunimi pienellä}}
+# --- capitalised first name + a lower-case ordinary word that is no surname (c545-c550)
+mixed-case,phone-typed,first-name-only :: eilen {{Jari|P|Jari||etunimi}} {{soitti|!P|verbi, ei sukunimi}} ja kertoi uutiset
+mixed-case,phone-typed,first-name-only :: muista että {{Marko|P|Marko||etunimi}} {{lupasi|!P|verbi, ei sukunimi}} tuoda kakun
+mixed-case,phone-typed,first-name-only :: tänään {{Sari|P|Sari||etunimi}} {{osti|!P|verbi, ei sukunimi}} uuden pyörän
+mixed-case,phone-typed,first-name-only :: kuulin että {{Tuomas|P|Tuomas||etunimi}} {{unohti|!P|verbi, ei sukunimi}} avaimet
+mixed-case,phone-typed,first-name-only :: onko {{Riikka|P|Riikka||etunimi}} {{kotona|!P|adverbi, ei sukunimi}} jo
+mixed-case,phone-typed,first-name-only :: luulin että {{Ville|P|Ville||etunimi}} {{nukkuu|!P|verbi, ei sukunimi}} vielä
 """
 
 MARK = re.compile(r"\{\{(.+?)\}\}")
@@ -637,7 +673,7 @@ def text_slice(text: str, span: dict) -> str:
 def main() -> None:
     lines = [ln for ln in SRC.splitlines() if ln.strip() and not ln.startswith("#")]
     recs = [parse(i + 1, ln) for i, ln in enumerate(lines)]
-    assert len(recs) == 516, len(recs)
+    assert len(recs) == 550, len(recs)
     out = Path(__file__).with_name("corpus.jsonl")
     out.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in recs), encoding="utf-8")
     print(f"wrote {len(recs)} lines to {out}")

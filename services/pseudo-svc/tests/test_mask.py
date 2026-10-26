@@ -452,3 +452,65 @@ def test_full_name_wins_over_a_newer_lone_first_name(vault):
     masked, spans = mask(vault, "tiina kokko lähti jo")
     assert masked == spans[0]["surrogate"] + " lähti jo" and len(spans[0]["surrogate"].split()) == 2
     assert vault.entity(U, spans[0]["entity_id"])["canonical"] == "Tiina Kokko"
+
+
+# -- phase-12 decision 19: a lower-case surname after a first name; a lone first name grows into a full name
+
+def _people(vault):
+    return [(r["id"], r["canonical"]) for r in vault.q("SELECT * FROM entity WHERE user_id=? AND kind='PERSON'", (U,))]
+
+
+def test_first_name_and_lower_case_surname_are_one_person(vault):
+    masked, spans = mask(vault, "hei, nimeni on Jari pouta, pidän säästä")
+    assert len(spans) == 1 and spans[0]["kind"] == "PERSON" and spans[0]["real_form"] == "Jari pouta"
+    assert "Jari" not in masked and "pouta" not in masked
+    assert vault.entity(U, spans[0]["entity_id"])["canonical"] == "Jari Pouta"
+    # an ordinary word after a first name stays; the first name alone is masked
+    masked, spans = mask(vault, "eilen Ville soitti ja kertoi uutiset")
+    assert [s["real_form"] for s in spans] == ["Ville"] and " soitti ja" in masked
+
+
+def _upgrade(vault, session):
+    """A lone "Jari" in session s1, then the full name in `session`: returns (entity, old first-name surrogate)."""
+    _, spans = mask(vault, "Tänään Jari soitti.")
+    lone = vault.entity(U, spans[0]["entity_id"])
+    assert lone["canonical"] == "Jari"
+    masked, spans = mask(vault, "Tapasin Jari Pouta eilen.", session)
+    assert len(spans) == 1 and spans[0]["entity_id"] == lone["id"] and "Pouta" not in masked
+    e = vault.entity(U, lone["id"])
+    assert e["canonical"] == "Jari Pouta" and _people(vault) == [(lone["id"], "Jari Pouta")]
+    first, last = e["surrogate"].split()
+    assert first == lone["surrogate"]
+    db = gazetteer.names()
+    assert db["first"][first][0] * db["last"][last] / S.population() < S.PAIR_MAX
+    return e, lone["surrogate"]
+
+
+def test_lone_first_name_upgrades_in_the_same_session(vault):
+    _upgrade(vault, "s1")
+
+
+def test_lone_first_name_upgrades_without_a_session(vault):
+    # the memory injection masks with a session that never saw the person (or none): the only "Jari" fits
+    _upgrade(vault, None)
+
+
+def test_upgraded_person_keeps_resolving(vault):
+    e, old = _upgrade(vault, "s1")
+    allative = forms.generate_forms("Pouta", "last")["ALL"]  # Poudalle with Omorfi, Poutalle by the rules
+    for text in ["huomenna Jari pouta tulee", f"Soitin {allative} eilen.", "jari pouta soitti"]:
+        _, spans = mask(vault, text, "s2")
+        assert [s["entity_id"] for s in spans] == [e["id"]], text
+    first, last = e["surrogate"].split()
+    assert unmask(vault, f"Soita {first} {last}.")[0] == "Soita Jari Pouta."
+    assert unmask(vault, f"Terveisiä {first} {S.surrogate_form(e, 'last', 'ALL')}.")[0] == f"Terveisiä Jari {allative}."
+    assert unmask(vault, f"Moi {old}!")[0] == "Moi Jari!"  # earlier chats keep the first-name surrogate
+
+
+def test_two_lone_first_names_without_a_session_make_a_new_person(vault):
+    a = S.get_or_create_entity(vault, U, "PERSON", "Jari")
+    b = S.split(vault, U, a["id"], [])
+    _, spans = mask(vault, "Tapasin Jari Pouta eilen.", None)
+    e = vault.entity(U, spans[0]["entity_id"])
+    assert e["canonical"] == "Jari Pouta" and e["id"] not in (a["id"], b)
+    assert sorted(c for _, c in _people(vault)) == ["Jari", "Jari", "Jari Pouta"]

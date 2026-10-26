@@ -145,6 +145,29 @@ lines and the harness enforces the plan's thresholds.
     (spaces do not count). A partly masked value is a miss, so the particle-surname class of leak
     cannot hide again. For `POSTCODE_CITY` only the five digits count, because the city stays by
     design.
+19. **Mixed-case names and the upgrade of a lone first name.** A live chat leaked a surname: in
+    `nimeni on Pekka pouta` only `Pekka` was masked. The model then wrote `Pekka Pouta` to memory, and
+    the next mask of the memory file made a second entity for the same person.
+    - Plain text (user input, titles, memory) now has a third pair shape: a capitalised first name with
+      at least 50 holders, one space, and a lower-case word. The pair is one person when the word is a
+      DVV surname with at least 40 holders, or an inflected form of one, and no place. The score is
+      0.9. When the surname is also an ordinary word (`pouta`, `laine`, `koski`, `mäki`), the score is
+      0.75. This is above the pending limit 0.6 on purpose: a leaked surname costs more than a masked
+      word. The cost is that `Pekka koski minua` is masked. JSON (tool results) does not use the rule.
+      `mutta`, `from`, `said`, `and`, `can` and `with` are DVV surnames, but the rule never reads them
+      as surnames.
+    - A full name whose first name alone is already a PERSON entity upgrades that entity. The sidecar
+      does not create a second one. The match order is: the entity that this session saw last, else
+      the only such entity of the user, else no match (a new entity). The memory injection masks with
+      the chat session. In a new chat that session saw nobody, and memory consolidation uses the session
+      `memory:<user>`, which also saw nobody. The second rule covers both. The entity takes
+      the full name as its canonical form. It keeps its surrogate first name and gets a surrogate
+      surname under the pair rule (decision 3). The real and surrogate case forms are stored as for a
+      new entity. The old forms stay, so earlier chats still restore the old surrogate to the same
+      person.
+    - Not covered: a lower-case surname that Omorfi also knows as a place (`Anu rannalle`, `Mika
+      salmelle`) stays unmasked after a first name. A lone lower-case surname that is also an ordinary
+      word (`pouta`) stays unmasked after the upgrade too (decision 15).
 
 ## Data model
 

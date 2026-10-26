@@ -9,7 +9,7 @@ from .detect import codes, gazetteer, ner, trie_pattern, vault_rec
 from .detect.codes import SUFFIX_CASE, STREET_RE, email_case
 from .detect.gazetteer import cap
 from .detect.resolve import PENDING_BELOW, resolve
-from .surrogate import ensure_self, get_or_create_entity, part_kind, person_parts, surrogate_form
+from .surrogate import ensure_self, get_or_create_entity, part_kind, person_parts, surrogate_form, upgrade_first
 
 log = logging.getLogger("pseudo")
 FULL = (codes, vault_rec, gazetteer, ner)
@@ -208,9 +208,10 @@ def _collisions(vault, user_id: str, session_id: str, cands: list) -> tuple[list
     return found, keep
 
 
-def _entities(vault, user_id: str, cands: list) -> list:
+def _entities(vault, user_id: str, session_id: str | None, cands: list) -> list:
     """Vault rows for the candidates. A lone first name or surname of a full name found in the same text
-    is that person (Liisa Kallion ... Liisalle), not a new one."""
+    is that person (Liisa Kallion ... Liisalle), not a new one. A full name whose first name alone is an
+    entity upgrades that entity (upgrade_first)."""
     ents, by_part = {}, {}
     for c in sorted(cands, key=lambda c: -len(c.parts)):
         if c.entity_id:
@@ -218,7 +219,8 @@ def _entities(vault, user_id: str, cands: list) -> list:
         elif c.kind == "PERSON" and len(c.parts) == 1 and (c.parts[0]["part"], c.parts[0].get("lemma")) in by_part:
             e = by_part[(c.parts[0]["part"], c.parts[0].get("lemma"))]
         else:
-            e = get_or_create_entity(vault, user_id, c.kind, c.canonical, c.surface)
+            e = (c.kind == "PERSON" and len(c.parts) == 2 and upgrade_first(vault, user_id, session_id, c.canonical)) \
+                or get_or_create_entity(vault, user_id, c.kind, c.canonical, c.surface)
         if c.kind == "PERSON" and len(c.parts) > 1 and not c.entity_id:
             by_part.update({(p["part"], p.get("lemma")): e for p in c.parts})
         ents[id(c)] = e
@@ -245,7 +247,7 @@ def mask_text(vault, user_id: str, session_id: str, text: str, path=None, layers
         if found:
             collisions.extend(found)
             return "", []
-    ents = _entities(vault, user_id, cands)
+    ents = _entities(vault, user_id, session_id, cands)
     new = tuple(dict.fromkeys(e["id"] for c, e in zip(cands, ents) if not c.entity_id))
     if new and vault_rec in layers:
         # new people: let the vault find their later mentions (Marja Saari ... Marjan); first-pass spans stay.

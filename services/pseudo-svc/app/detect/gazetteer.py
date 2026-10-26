@@ -159,8 +159,8 @@ def readings(word: str) -> frozenset[str]:
 
 
 LOWER_RE = re.compile(r"(?<![\w-])[a-zåäö][a-zåäöéü]{2,}(?:-[a-zåäö][a-zåäöéü]+)?(?![\w-])")
-# lower-case chat words that are also DVV first names: English words and abbreviations
-LOWER_STOP = frozenset("max min jan may mark will eli dan ron rose hope grace faith tom kim kai".split())
+# lower-case chat words that are also DVV names: English words, abbreviations and a conjunction
+LOWER_STOP = frozenset("max min jan may mark will eli dan ron rose hope grace faith tom kim kai mutta from said and can with".split())
 
 
 def cap(word: str) -> str:
@@ -277,6 +277,23 @@ def _particle_name(text: str, m) -> tuple[int, int, str] | None:
     return (m.end() + pm.start(2), m.end() + pm.end(2), lemma) if lemma else None
 
 
+def _lower_surname(text: str, m) -> tuple[int, int, str, float] | None:
+    """'Pekka pouta' after the first name m: (start, end, lemma, score) of the lower-case word after one space when
+    it is a DVV surname with at least MIN_SURNAME_COUNT holders, or an inflected form of one, and no place."""
+    lm = LOWER_RE.match(text, m.end() + 1) if text[m.end():m.end() + 1] == " " else None
+    if not lm or lm.group(0) in LOWER_STOP or not plain_word(text, lm.start(), lm.end()) or place(cap(lm.group(0))):
+        return None
+    w = cap(lm.group(0))
+    last = next((l for l, k in lemmas(w) if k == "last" and _count(l, "last") >= MIN_SURNAME_COUNT), None) \
+        or surname_shaped(w)
+    if not last:
+        return None
+    # ponytail: a surname that is also an ordinary word (pouta, laine, koski, mäki) still scores 0.75, above
+    # PENDING_BELOW, because a leaked surname costs more than a masked word. Ceiling: "Pekka koski minua" is masked.
+    # Upgrade: lower the score when Voikko reads the word as a verb in this position.
+    return lm.start(), lm.end(), last, 0.75 if common_word(lm.group(0)) else 0.9
+
+
 def detect(text: str, ctx=None) -> list[Candidate]:
     toks = [m for m in TOKEN_RE.finditer(text) if m.group(0) not in STOP]
     info = []
@@ -315,6 +332,15 @@ def detect(text: str, ctx=None) -> list[Candidate]:
                                  text[m.start():n2.end()], parts))
             full_firsts.add(first)
             i += 2
+            continue
+        mixed = _lower_surname(text, m) if first and ctx is not None and ctx.lower else None
+        if mixed:  # Pekka pouta: a capitalised first name and a lower-case surname (phase-12 decision 19)
+            start, end, lemma, score = mixed
+            parts = [dict(start=m.start(), end=m.end(), part="first", lemma=first),
+                     dict(start=start, end=end, part="last", lemma=lemma)]
+            out.append(Candidate(m.start(), end, "PERSON", f"{first} {lemma}", "gazetteer", score, text[m.start():end], parts))
+            full_firsts.add(first)
+            i += 1
             continue
         singles.append(info[i])
         i += 1
