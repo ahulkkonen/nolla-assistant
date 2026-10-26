@@ -22,19 +22,21 @@ export const htmlDocument = (html: string, head = SCHEME_META) =>
   `<!doctype html>${CSP_META}${head}${html.replace(/^\s*<!doctype[^>]*>/i, '')}`;
 
 /**
- * Posts `html` once to the sandbox page in `win` when it says it is ready. Once only: a page that
- * navigated away and says "ready" again gets nothing.
+ * Posts `html` once to the sandbox page in `win` when it says it is ready, then stops listening:
+ * a page that navigated away and says "ready" again gets nothing.
  */
 export function postWhenReady(win: () => Window | null | undefined, html: string) {
-  let sent = false;
+  const stop = () => removeEventListener('message', onMessage);
   const onMessage = (e: MessageEvent) => {
     const w = win();
-    if (sent || !w || e.source !== w || e.data !== 'sandbox-ready') return;
-    sent = true;
+    // The page is CSP-sandboxed: its messages come from the opaque origin "null", and a message
+    // to it can only name '*' (a measured fact; our own origin never matches an opaque one).
+    if (!w || e.source !== w || e.origin !== 'null' || e.data !== 'sandbox-ready') return;
+    stop();
     w.postMessage(html, '*');
   };
   addEventListener('message', onMessage);
-  return () => removeEventListener('message', onMessage);
+  return stop;
 }
 
 /**

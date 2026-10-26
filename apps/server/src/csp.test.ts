@@ -21,7 +21,9 @@ test('sandbox page: its own CSP with sandbox, framed by the app only', async () 
     "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:; form-action 'none'; base-uri 'none'; frame-ancestors 'self'",
   );
   expect(res.headers.get('x-frame-options')).toBe('SAMEORIGIN');
-  expect(await res.text()).toContain("host.postMessage('sandbox-ready', '*')");
+  const page = await res.text();
+  expect(page).toContain("host.postMessage('sandbox-ready', location.origin)");
+  expect(page).toContain('e.origin !== location.origin');
 });
 
 test('csp report: logged and 204; a flood gets 429', { timeout: 30_000 }, async () => {

@@ -38,20 +38,24 @@ const HTML_CSP = [
 /**
  * The artifact sandbox page (phase-19 decision 2). A `srcdoc` frame inherits HTML_CSP, which
  * blocks every inline script, so artifacts load this page with its own policy instead. It writes
- * the one document its opener or parent posts; `sandbox` keeps it on an opaque origin even when
- * it is opened in a tab of its own.
+ * the one document its opener or parent posts, and only from our own origin (`location.origin`
+ * is the URL's origin even under `sandbox`); `sandbox` keeps it on an opaque origin even when it
+ * is opened in a tab of its own. Opened directly (no opener, no parent), it does nothing.
  */
 const SANDBOX_HEADER = `sandbox allow-scripts; ${SANDBOX_CSP}; frame-ancestors 'self'`;
 const SANDBOX_PAGE = `<!doctype html><meta charset="utf-8"><title>Artefakti</title><script>
 var host = opener || parent, done = false;
-addEventListener('message', function (e) {
-  if (done || e.source !== host || typeof e.data !== 'string') return;
-  done = true;
-  document.open();
-  document.write(e.data);
-  document.close();
-});
-host.postMessage('sandbox-ready', '*');
+if (host !== window) {
+  addEventListener('message', function (e) {
+    if (done || e.source !== host || e.origin !== location.origin || typeof e.data !== 'string')
+      return;
+    done = true;
+    document.open();
+    document.write(e.data);
+    document.close();
+  });
+  host.postMessage('sandbox-ready', location.origin);
+}
 </script>`;
 
 const under = (path: string, prefix: string) => path === prefix || path.startsWith(`${prefix}/`);

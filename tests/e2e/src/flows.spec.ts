@@ -1185,6 +1185,57 @@ test('artifact CSP is the first element even when the HTML starts with a script'
   expect(await doc.locator('html').evaluate(() => document.title)).toBe('x');
 });
 
+/** An artifact that tries to leave the sandbox and writes what it got. */
+const ESCAPE_REPLY = `Sivu:
+
+\`\`\`html
+<h1>Pakotesti</h1><pre id="r"></pre>
+<script>
+var out = [];
+try { out.push('cookie:' + document.cookie); } catch (e) { out.push('cookie:estetty'); }
+try { (opener || top).location.href = 'https://example.com/'; } catch (e) {}
+fetch('/api/chats').then(function () { return 'fetch:ok'; }, function () { return 'fetch:estetty'; })
+  .then(function (f) { out.push(f); document.getElementById('r').textContent = out.join(' '); });
+</script>
+\`\`\``;
+
+test('sandbox: an artifact cannot read cookies, call the API or navigate its opener', async ({
+  app,
+  page,
+  context,
+}) => {
+  app.llm.push({ text: ESCAPE_REPLY });
+  await app.login(page);
+  const url = page.url();
+  await send(page, 'Tee sivu');
+  const panel = page.getByRole('complementary', { name: 'Artefaktit' });
+  await expect(panel.locator('iframe').contentFrame().locator('#r')).toHaveText(
+    'cookie:estetty fetch:estetty',
+  );
+  // "Avaa uudessa ikkunassa": the tab is sandboxed too, and its opener stays where it was.
+  const [tab] = await Promise.all([
+    context.waitForEvent('page'),
+    panel.getByRole('button', { name: 'Avaa uudessa ikkunassa' }).click(),
+  ]);
+  await expect(tab.locator('#r')).toHaveText('cookie:estetty fetch:estetty');
+  await page.waitForTimeout(500);
+  expect(page.url()).toBe(url);
+  await tab.close();
+
+  // Another origin that opens the sandbox page cannot have it render anything.
+  const other = await context.newPage();
+  await other.goto(`${app.url.replace('127.0.0.1', 'localhost')}/healthz`);
+  const [foreign] = await Promise.all([
+    context.waitForEvent('page'),
+    other.evaluate((u) => {
+      const w = window.open(`${u}/api/sandbox`);
+      setTimeout(() => w?.postMessage('<h1 id="vieras">x</h1>', '*'), 1000);
+    }, app.url),
+  ]);
+  await other.waitForTimeout(1500);
+  await expect(foreign.locator('#vieras')).toHaveCount(0);
+});
+
 test('vega-lite: the chart renders in the sandbox with the lifted title (phase 19)', async ({
   app,
   page,

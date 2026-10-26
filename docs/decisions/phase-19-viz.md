@@ -167,6 +167,22 @@ in `apps/web/package.json` (decision 2).
 
 ## Risks
 
+- An artifact can navigate its own frame or tab to an external URL with data in the query. No CSP
+  directive stops a document from navigating itself. The chat that the artifact can see is
+  pseudonymized, so the exposure is surrogate text. This risk is older than the sandbox page: the
+  `srcdoc` frame had it too.
+- "Avaa uudessa ikkunassa" keeps the opener reference, because the app posts the document to the
+  tab. The `sandbox` directive (without `allow-top-navigation` and `allow-popups`) stops the
+  artifact from navigating its opener. An e2e flow checks that an artifact cannot navigate the
+  opener, read `document.cookie` or `fetch('/api/chats')`.
+- The sandbox page accepts a document only from `location.origin`. Measured in Chromium:
+  `location.origin` in the CSP-sandboxed page is the real origin, not "null". The page posts
+  "sandbox-ready" to `location.origin`. In the other direction the app sees the page's messages
+  from the origin "null" and can only post to it with the target `'*'`: an opaque origin never
+  matches a named origin. The app checks `event.source` and `event.origin === 'null'` and stops
+  listening after the first "sandbox-ready". Another origin that opens `/api/sandbox` cannot make
+  it render (e2e). Opened directly, with no opener and no parent, the page does nothing.
+
 - The token sheet and the Vega config are frozen. An artifact opened in a new tab keeps the theme
   of the moment it was opened.
 - R4 runs once, when the chart renders. A panel resize across 480 px does not thin or un-thin the
