@@ -56,3 +56,6 @@ dated 8 days ago; a write in a tainted turn parks in `memoryPending` and applies
 Web: the memory screen shows two editors with counters, pending writes with a diff, the
 consolidation proposal, and a chat chip for each memory change. Unsaved drafts block
 navigation until confirmed. The UI review verdict is recorded in `phase-7.md`.
+
+Phase 17 changes decisions 2 and 4: MEMORY.md is generated from claims, the weekly job makes no
+model call, and the `memory` tool on target `memory` writes claims. See `phase-17-memory.md`.

@@ -561,4 +561,55 @@ Rules:
 
 ## Status (2026-10-26)
 
-Record written. No task card started.
+Server and eval cards are done. W1 (web) is open.
+
+| Card | Commit | Notes |
+| --- | --- | --- |
+| Record | `c49d200` | |
+| S1 | `47bd09c` | Migration `0009_unusual_wendigo`; `claims_fts` and `claims_vec` in `openDb` |
+| E1 | `e4b5999` | Baseline `results/2026-10-26-no-claims.json` |
+| S2 | `db295e6` | `claims.ts` `extract` and `sweep`; the fake sidecar reports `path` and `unresolved` |
+| S3 | `17d5edb` | Second `before_agent_start` handler; `rrf` and `terms` exported from `search.ts` |
+| S4 | `d1c7ace` | Regeneration, `claims.*` handlers, vault merge repoint, `muisti/havainnot.json` |
+| E2 | `55417aa` | `--claims-from gold` run `results/2026-10-26-gold-claims.json` |
+
+Gate results:
+
+- `pnpm typecheck` and `pnpm lint` pass. The lint warning is the old 16 MB tokenizer file in
+  `tests/masked-only/models`.
+- Unit suites: server 183 passed and 1 skipped (29 files), db 1, protocol 41, pi-ext-memory 12,
+  pi-ext-pseudo 18.
+- e2e `-g "muisti|memory|Muisti"`: 24 passed, 12 skipped. The skipped tests are the three
+  consolidation screens at four viewports (decision 29 retired the proposal; W1 replaces them).
+  The agent-write flows now write to USER.md, because target `memory` writes claims.
+- Restore drill: not run in this phase (no MinIO session). Gate item 4 is open.
+
+Eval (100 questions, real `pseudo-svc` in a throwaway container with a fresh vault, local e5):
+
+| Metric | Baseline (`--no-claims`) | Gold claims (`--claims-from gold`) |
+| --- | --- | --- |
+| Evidence Recall@5, total | 0.765 | 0.847 |
+| single-session user | 0.900 | 0.900 |
+| multi-session | 0.650 | 0.750 |
+| knowledge update | 0.667 | 0.733 |
+| temporal | 0.867 | 0.933 |
+| preference | 0.733 | 0.933 |
+| Block tokens, mean and p95 (3 chars per token) | 0 / 0 | 83 / 189 |
+| QA accuracy, claim precision, extraction cost | not measured | not measured |
+
+The LiteLLM key for OpenRouter has expired (`401 API key expired` from the local stack), so no
+model call ran. The real-extraction run (`node src/run.ts` without flags) and the QA accuracy stay
+open until the key is renewed. The gold-claims run is a retrieval upper bound. It has no
+extraction and no supersession. Gate item 3 (QA accuracy on knowledge update and preference) is
+therefore open.
+
+Deviations from the decisions:
+
+1. Decision 30: a claim from the `memory` tool has no evidence row. The extension does not see the
+   user message, and the source chat id is on the claim.
+2. Decision 28: the weekly job and `memory.consolidate` write MEMORY.md at once. No diff is
+   stored. `memoryStore` no longer takes the LiteLLM settings.
+3. Decision 11: the sweep compares `claimsAt` with `updatedAt` instead of the last message id. A
+   chat with no new user message after `claimsThrough` costs no model call.
+4. The eval estimates tokens at 3 chars per token. The `usage.input` difference needs a working
+   model.

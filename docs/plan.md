@@ -197,17 +197,17 @@ Merge repoints `span` and `entity_form` rows and writes `merge_log`; split creat
 
 ## 7. Memory
 
-A bounded, user-reviewable profile injected every session, plus on-demand hybrid recall. No per-turn extraction service, no graph database: Mem0, Graphiti/Zep and Letta are skipped for a single user.
+A bounded, user-reviewable profile injected every session, plus on-demand hybrid recall. No per-turn extraction service, no graph database: Mem0, Graphiti/Zep and Letta are skipped for a single user. (amended 2026-10-26, phase 17: claims and evidence in SQLite, one masked extraction call per chat, a per-turn claims block; see `docs/decisions/phase-17-memory.md`)
 
 **Always injected** (`before_agent_start`, through `mask()`):
 
 - `USER.md` ≤ 1,500 characters: who you are, preferences, standing instructions.
-- `MEMORY.md` ≤ 2,500 characters: durable facts the agent has learned and you have kept.
+- `MEMORY.md` ≤ 2,500 characters: durable facts. Since phase 17 the server generates it from the top active claims at consolidation; hand edits are overwritten.
 - One line of recent context: titles of the last three chats.
 
 Total about 1.3K tokens, byte-stable between turns so prompt caching holds.
 
-**On demand:** a `recall(query, since?, topic?)` tool. Hybrid search = FTS5 BM25 + sqlite-vec cosine, fused with reciprocal rank fusion, over per-session summaries (written at `agent_settled`) and transcript chunks of about 400 tokens. Returns ≤ 5 snippets with chat ids and dates. The query arrives with surrogates; `tool_call` unmasks it before hitting the real-text index; results are masked again at `tool_result`. Embeddings are computed locally on CPU with a multilingual model that handles Finnish (multilingual-e5-small class; verify on your data in phase 8). Nothing from recall is auto-injected per turn.
+**On demand:** a `recall(query, since?, topic?)` tool. Hybrid search = FTS5 BM25 + sqlite-vec cosine, fused with reciprocal rank fusion, over per-session summaries (written at `agent_settled`) and transcript chunks of about 400 tokens. Returns ≤ 5 snippets with chat ids and dates. The query arrives with surrogates; `tool_call` unmasks it before hitting the real-text index; results are masked again at `tool_result`. Embeddings are computed locally on CPU with a multilingual model that handles Finnish (multilingual-e5-small class; verify on your data in phase 8). Since phase 17, `recall` also returns up to 3 claims with a quote, and each turn gets at most ~300 tokens of relevant active claims as a masked message after the user message (after the cached prefix).
 
 **Writes:** a `memory(action: add|replace|remove, target: user|memory, text)` tool with hard caps; an over-cap write returns an error that tells the agent to consolidate first. Rules:
 
@@ -215,7 +215,9 @@ Total about 1.3K tokens, byte-stable between turns so prompt caching holds.
 - If the current turn contains untrusted tool output (web fetch, email, files from others, MCP results), the turn is marked tainted and any `memory` call is parked in a pending queue. `tool_call` blocks `memory` during a tainted turn unless the user has approved that specific write.
 - Memory files are git-tracked under `/data/memory/<user>/` with real values; they are local and you edit them by hand. Masking happens at injection, so vault merges never corrupt memory.
 
-**Review:** a weekly `consolidate` job (cheap ZDR model over the masked files) proposes a diff to USER.md/MEMORY.md; you accept, edit or reject it in the memory screen. Session summaries are also written here: 3–5 sentences per chat at `agent_settled`, masked, embedded, indexed.
+**Claims (phase 17):** tables `claims`, `evidence` and `claimEntities` (vault entity ids) in `app.db`, real values. One masked `zdr/task-small` call per chat, 20 minutes after its last turn, adds claims and supersede proposals; nothing is deleted, supersession closes validity. Preference and rhythm claims with confidence ≥ 0.8 from a chat without untrusted input activate at once; every other claim waits for review in the memory screen. The `memory` tool on target `memory` writes claims.
+
+**Review:** the weekly `consolidate` job regenerates MEMORY.md from the active claims without a model call. USER.md is hand-edited only. Session summaries are also written here: 3–5 sentences per chat at `agent_settled`, masked, embedded, indexed.
 
 **Reuse from the Pi catalog (vendored, not installed at runtime):** `@josephakern/pi-memory` for the capped injection pattern, `pi-memory-stone` for the FTS5-over-JSONL indexer. Do not use `@vtstech/pi-long-term-memory` as-is: it injects in `before_provider_request`, which bypasses ingest masking.
 
