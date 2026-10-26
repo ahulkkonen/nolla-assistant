@@ -236,18 +236,18 @@ def _entities(v) -> int:
 
 def test_lowercase_inflected_name_is_masked(vault):
     # the incident sentence: a lower-case genitive typed on a phone reached the model unmasked
-    masked, spans = mask(vault, "tiina ekolan kanssa")
+    masked, spans = mask(vault, "tiina heinon kanssa")
     e = vault.entity(U, spans[0]["entity_id"])
-    assert e["canonical"] == "Tiina Ekola" and masked == f"{spans[0]['surrogate']} kanssa"
+    assert e["canonical"] == "Tiina Heino" and masked == f"{spans[0]['surrogate']} kanssa"
     assert spans[0]["surrogate"] == f"{e['surrogate'].split()[0]} {S.surrogate_form(e, 'last', 'GEN')}"
-    for text in ["en ole nähnyt tiina ekolaa", "menen huomenna tiina ekolaan", "Tiina Ekolan kanssa"]:
+    for text in ["en ole nähnyt tiina heinoa", "menen huomenna tiina heinoon", "Tiina Heinon kanssa"]:
         got, sp = mask(vault, text)
-        assert "ekola" not in got.lower() and [s["entity_id"] for s in sp] == [e["id"]]
-    assert unmask(vault, masked)[0] == "Tiina Ekolan kanssa"
+        assert "heino" not in got.lower() and [s["entity_id"] for s in sp] == [e["id"]]
+    assert unmask(vault, masked)[0] == "Tiina Heinon kanssa"
 
 
 def test_masked_surrogate_keeps_its_surrogate(vault):
-    masked, spans = mask(vault, "Tiina Ekolan kanssa")
+    masked, spans = mask(vault, "Tiina Heinon kanssa")
     e = vault.entity(U, spans[0]["entity_id"])
     first, last = e["surrogate"].split()
     n = _entities(vault)
@@ -257,7 +257,7 @@ def test_masked_surrogate_keeps_its_surrogate(vault):
         assert mask(vault, text) == (text, [])
         assert M.scan(vault, U, "s1", [{"role": "assistant", "content": text}])[1] == []
     assert _entities(vault) == n
-    assert mask(vault, "tiina ekolan kanssa")[0] == masked  # the real name keeps the same surrogate
+    assert mask(vault, "tiina heinon kanssa")[0] == masked  # the real name keeps the same surrogate
     assert mask(vault, masked, session="s1/sub/1") == (masked, [])  # a subagent of the chat
 
 
@@ -270,22 +270,22 @@ def test_scan_takes_json_messages_and_leaves_numbers_alone(vault):
     from app.detect.codes import detect
 
     assert not [c for c in detect('"total":0.0107338, summa 1.0401234567') if c.kind == "PHONE"]
-    S.get_or_create_entity(vault, U, "PERSON", "Tiina Ekola")
-    msg = {"role": "assistant", "content": [{"type": "text", "text": "Tiina Ekola"}],
+    S.get_or_create_entity(vault, U, "PERSON", "Tiina Heino")
+    msg = {"role": "assistant", "content": [{"type": "text", "text": "Tiina Heino"}],
            "usage": {"cost": {"total": 0.0107338}}, "timestamp": 1792959932652}
     out, leaked = M.scan(vault, U, "s1", [{"role": "assistant", "content": msg},
-                                          {"role": "user", "content": {"role": "user", "content": "tiina ekolan kanssa"}},
-                                          {"role": "assistant", "content": "tiina ekolan kanssa"}])
+                                          {"role": "user", "content": {"role": "user", "content": "tiina heinon kanssa"}},
+                                          {"role": "assistant", "content": "tiina heinon kanssa"}])
     assert out[0]["content"]["usage"] == msg["usage"] and out[0]["content"]["timestamp"] == msg["timestamp"]
-    assert "Ekola" not in out[0]["content"]["content"][0]["text"]
-    assert "ekola" not in out[1]["content"]["content"]  # user text: lower-case names too
-    assert out[2]["content"] == "tiina ekolan kanssa"  # model text: capitalised names only
+    assert "Heino" not in out[0]["content"]["content"][0]["text"]
+    assert "heino" not in out[1]["content"]["content"]  # user text: lower-case names too
+    assert out[2]["content"] == "tiina heinon kanssa"  # model text: capitalised names only
     assert [x["message_index"] for x in leaked] == [0, 1]
 
 
 def test_lowercase_names_skip_json_and_paths(vault):
-    S.get_or_create_entity(vault, U, "PERSON", "Tiina Ekola")
-    value = {"path": "/data/work/tiina", "text": "tiina ekolan kanssa"}
+    S.get_or_create_entity(vault, U, "PERSON", "Tiina Heino")
+    value = {"path": "/data/work/tiina", "text": "tiina heinon kanssa"}
     assert M.mask(vault, U, "s1", json=value) == (value, [])  # tool results: capitalised names only
     assert mask(vault, "katso /data/work/tiina/ja tiina.txt")[1] == []
 

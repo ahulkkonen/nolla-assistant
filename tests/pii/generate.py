@@ -333,10 +333,10 @@ code-snippet,email :: INSERT INTO asiakas (nimi, email) VALUES ('{{Ville Heikkin
 code-snippet,allative :: expect(allative("{{Virtanen|P|Virtanen|Mikko Virtanen|testisyöte}}")).toBe("{{Virtaselle|P|Virtanen|Mikko Virtanen|allatiivi}}");
 code-snippet,allative,swedish-finnish :: log.info("Lähetetään muistutus: %s", "{{Katja Lindqvistille|P|Katja Lindqvist||allatiivi}}")
 # --- lower-case names, as typed on a phone (the first line is the 2026-10-25 incident sentence)
-lowercase,genitive,inflected :: {{tiina ekolan|P|Tiina Ekola||genetiivi, pienet kirjaimet}} kanssa
-lowercase,partitive,inflected :: en ole nähnyt {{tiina ekolaa|P|Tiina Ekola||partitiivi, pienet kirjaimet}} koko viikkona
-lowercase,illative,inflected :: luotan {{tiina ekolaan|P|Tiina Ekola||illatiivi, pienet kirjaimet}} tässä asiassa
-lowercase,allative,inflected,first-name-only :: soitin eilen {{tiinalle|P|Tiina|Tiina Ekola|allatiivi, pelkkä etunimi}} ja sovittiin palaveri
+lowercase,genitive,inflected :: {{tiina heinon|P|Tiina Heino||genetiivi, pienet kirjaimet}} kanssa
+lowercase,partitive,inflected :: en ole nähnyt {{tiina heinoa|P|Tiina Heino||partitiivi, pienet kirjaimet}} koko viikkona
+lowercase,illative,inflected :: luotan {{tiina heinoon|P|Tiina Heino||illatiivi, pienet kirjaimet}} tässä asiassa
+lowercase,allative,inflected,first-name-only :: soitin eilen {{tiinalle|P|Tiina|Tiina Heino|allatiivi, pelkkä etunimi}} ja sovittiin palaveri
 lowercase,genitive,inflected,first-name-only :: {{juhanin|P|Juhani|Juhani Korhonen|genetiivi, pelkkä etunimi}} auto on taas korjaamolla
 lowercase,genitive,inflected :: {{mikko virtasen|P|Mikko Virtanen||genetiivi, pienet kirjaimet}} kanssa sovittiin huomisesta
 lowercase,allative,inflected :: laita viesti {{virtaselle|P|Virtanen|Mikko Virtanen|allatiivi, pelkkä sukunimi}} vielä tänään

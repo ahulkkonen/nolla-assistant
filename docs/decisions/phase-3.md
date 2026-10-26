@@ -67,7 +67,7 @@ The user's own name: the vault holds a `self` entity whose surrogate is the conf
   surrogate. A subagent session `<chat>/sub/<id>` shares the spans of its chat, because its task
   comes from the chat. A lone first name or surname of a full name in the same text maps to that
   person (`Liisa Kallion … Liisalle`).
-- Lower-case names (2026-10-26). Users type names in lower case on phones; "tiina ekolan kanssa"
+- Lower-case names (2026-10-26). Users type names in lower case on phones; "tiina heinon kanssa"
   reached the model unmasked because every name layer required a capital letter. Plain-text
   requests (`text`: user input, titles, memory, search queries) and `user` messages in `/scan` now
   also find lower-case names: a DVV first name followed by a surname that Voikko or Omorfi knows,
