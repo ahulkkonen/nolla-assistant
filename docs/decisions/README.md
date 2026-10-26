@@ -22,3 +22,4 @@ The build plan is `docs/plan.md`. Section numbers in records refer to it.
 - `phase-14-search.md`: the `web_search` tool through the `zdr/search` alias (OpenRouter web plugin, Exa), the entity approval card, guard rules, search rows and usage.
 - `phase-15-admin.md`: agent and automation editors, signed-in devices, the encrypted full export (OpenSSL `enc` AES-256 over a stdlib zip), usage per agent and search count.
 - `phase-16-polish.md`: one deep agent (Tutkija merged into Avustaja), the CSP report endpoint, prompt cache counts, local OCR for scanned PDFs.
+- `phase-17-memory.md`: memory 2: claims and evidence in SQLite, one masked extraction call per chat, per-turn claims block after the cached prefix, MEMORY.md from claims, review tab, Finnish memory eval.
