@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { startFakeLlm } from './index.ts';
+import { FAKE_CITATIONS, startFakeLlm } from './index.ts';
 
 const events = (t: string) =>
   t
@@ -157,6 +157,31 @@ test('GET the ECB path serves the rate CSV and is not a recorded request', async
       'EXR.D.USD.EUR.SP00.A,D,USD,EUR,SP00,A,2026-10-23,1.1193',
     );
     expect(fake.requests).toHaveLength(0);
+  } finally {
+    await fake.close();
+  }
+});
+
+test('zdr/search takes only citations turns and answers with url_citation annotations', async () => {
+  const cite = { url: 'https://example.com/a', title: 'A', content: 'ote' };
+  const fake = await startFakeLlm([{ text: 'chat' }, { citations: [cite] }]);
+  const call = async (model: string) =>
+    (await (
+      await fetch(`${fake.url}/chat/completions`, {
+        method: 'POST',
+        body: JSON.stringify({ model, messages: [{ role: 'user', content: 'sää' }] }),
+      })
+    ).json()) as { choices: { message: { content: string; annotations?: unknown[] } }[] };
+  try {
+    const first = (await call('zdr/search')).choices[0]?.message;
+    expect(first?.annotations).toEqual([
+      { type: 'url_citation', url_citation: { ...cite, start_index: 0, end_index: 0 } },
+    ]);
+    expect(first?.content).toBe('[A](https://example.com/a)');
+    // The chat turn stayed queued; an empty queue gives the default citations.
+    expect((await call('zdr/strong')).choices[0]?.message.content).toBe('chat');
+    const fallback = (await call('zdr/search')).choices[0]?.message.annotations;
+    expect(fallback).toHaveLength(FAKE_CITATIONS.length);
   } finally {
     await fake.close();
   }

@@ -225,7 +225,8 @@ export const usage = sqliteTable(
     chatId: text(),
     agentId: text(),
     // chat: a reply in a chat. task: title job or consolidation. subagent: a child's reply.
-    kind: text({ enum: ['chat', 'task', 'subagent'] }).notNull(),
+    // search: one web_search call (phase-14). No SQL CHECK, so no migration.
+    kind: text({ enum: ['chat', 'task', 'subagent', 'search'] }).notNull(),
     // The model id LiteLLM got, e.g. 'zdr/strong' or 'open/anthropic/claude-fable-5.1'.
     model: text().notNull(),
     input: integer().notNull(),

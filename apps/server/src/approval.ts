@@ -6,6 +6,8 @@ import type { AgentProfile } from './agents.ts';
 export const DENIED_REASON = 'käyttäjä esti työkalun';
 export const TIMEOUT_REASON = 'hyväksyntä aikakatkaistiin';
 export const UNATTENDED_REASON = 'ajastettu ajo: työkalu vaatii hyväksynnän';
+/** The plan fixes 10 minutes; `APPROVAL_TIMEOUT_MS` shortens it in tests. */
+const TIMEOUT_MS = 10 * 60_000;
 
 type ApprovalRequest = Extract<ServerMessage, { type: 'approval.request' }>;
 export type AskInput = Pick<
@@ -24,7 +26,7 @@ export const approvalGate =
     chatId,
     policy,
     ask,
-    timeoutMs = 10 * 60_000,
+    timeoutMs,
   }: {
     chatId: string;
     policy: AgentProfile['approval'];
@@ -38,16 +40,40 @@ export const approvalGate =
       if (policy.never.includes(tool) || !policy.always.includes(tool)) return;
       const auto = ask.unattended?.get(chatId);
       if (auto) return auto.includes(tool) ? undefined : { block: true, reason: UNATTENDED_REASON };
-      if (ctx.signal?.aborted) return { block: true, reason: DENIED_REASON };
-      const timeout = AbortSignal.timeout(timeoutMs);
-      const signal = ctx.signal ? AbortSignal.any([timeout, ctx.signal]) : timeout;
-      const expiresAt = new Date(Date.now() + timeoutMs).toISOString();
-      const reason = `Työkalu ${tool} vaatii hyväksynnän.`;
-      const req = { chatId, callId: event.toolCallId, tool, args: event.input, reason, expiresAt };
-      if (await ask(req, signal)) return;
-      return { block: true, reason: timeout.aborted ? TIMEOUT_REASON : DENIED_REASON };
+      return confirm(ask, {
+        chatId,
+        callId: event.toolCallId,
+        tool,
+        args: event.input,
+        reason: `Työkalu ${tool} vaatii hyväksynnän.`,
+        denied: DENIED_REASON,
+        timeoutMs,
+        signal: ctx.signal,
+      });
     });
   };
+
+/**
+ * One approval card for a tool call: undefined when the user approves, else a block whose reason
+ * is `denied` (or `TIMEOUT_REASON`). An aborted `signal` blocks at once.
+ */
+export async function confirm(
+  ask: Ask,
+  o: Omit<AskInput, 'expiresAt'> & {
+    denied: string;
+    timeoutMs?: number | undefined;
+    signal?: AbortSignal | undefined;
+  },
+): Promise<{ block: true; reason: string } | undefined> {
+  if (o.signal?.aborted) return { block: true, reason: o.denied };
+  const ms = o.timeoutMs ?? TIMEOUT_MS;
+  const timeout = AbortSignal.timeout(ms);
+  const signal = o.signal ? AbortSignal.any([timeout, o.signal]) : timeout;
+  const expiresAt = new Date(Date.now() + ms).toISOString();
+  const { chatId, callId, tool, args, reason } = o;
+  if (await ask({ chatId, callId, tool, args, reason, expiresAt }, signal)) return;
+  return { block: true, reason: timeout.aborted ? TIMEOUT_REASON : o.denied };
+}
 
 type Outcome = Extract<ServerMessage, { type: 'approval.resolved' }>['outcome'];
 type Pending = { request: ApprovalRequest; finish: (outcome: Outcome) => void };

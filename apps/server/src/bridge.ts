@@ -23,7 +23,9 @@ import {
   type ModelChoice,
   type ServerMessage,
   type ToolRow,
+  ToolSearch,
   type ToolStatus,
+  WEB_SEARCH_TOOL,
 } from '@pa/protocol';
 import { and, asc, desc, eq } from 'drizzle-orm';
 import type { FastifyBaseLogger } from 'fastify';
@@ -40,6 +42,7 @@ import { AUTO_MODEL, type Catalog, isZdrRefusal, policyOf, resolveModelId } from
 import { ChatNotFound, type SessionRegistry } from './pi/registry.ts';
 import { BadSubscription, type Push } from './push.ts';
 import { indexChat, related, search } from './search.ts';
+import { SEARCH_DENIED, SEARCH_UNATTENDED } from './search-tool.ts';
 import { topicState } from './topics.ts';
 import { messageUsage, type PaMeta, usageMonth } from './usage.ts';
 
@@ -236,7 +239,13 @@ function resultText(result: unknown): string {
     .join('\n');
 }
 
-const DENY_REASONS = [GUARD_REASON, DENIED_REASON, TIMEOUT_REASON];
+const DENY_REASONS = [
+  GUARD_REASON,
+  DENIED_REASON,
+  TIMEOUT_REASON,
+  SEARCH_DENIED,
+  SEARCH_UNATTENDED,
+];
 const toolStatus = (isError: boolean, text: string): ToolStatus =>
   !isError ? 'ok' : DENY_REASONS.some((r) => text.includes(r)) ? 'denied' : 'error';
 
@@ -247,6 +256,27 @@ const argsPreview = (args: unknown) =>
 
 type Restored = { text: string; annotations: Annotation[]; hold: number };
 export type Restore = ((text: string) => Promise<Restored>) & { reset(): void };
+
+/**
+ * A `web_search` result's `details` (masked in the session) for its tool row, through `restore`:
+ * real values, or masked ones when `restore` does not restore (a masked export).
+ */
+async function searchView(details: unknown, restore: Restore): Promise<ToolSearch | undefined> {
+  const d = ToolSearch.safeParse(details);
+  if (!d.success) return undefined;
+  const { query, results } = d.data;
+  // One sidecar call: no part holds a newline (search-tool.ts collapses whitespace).
+  const parts = [query, ...results.flatMap((r) => [r.title, r.url])];
+  const lines = (await restore(parts.join('\n'))).text.split('\n');
+  if (lines.length !== parts.length) return d.data;
+  return {
+    query: lines[0] ?? query,
+    results: results.map((r, i) => ({
+      title: lines[1 + 2 * i] ?? r.title,
+      url: lines[2 + 2 * i] ?? r.url,
+    })),
+  };
+}
 
 /**
  * Surrogates back to real values for display. After the first sidecar failure it calls `onDown`
@@ -1112,6 +1142,7 @@ function forward(
     emit({ type: 'message.thinking', chatId, messageId: streamId, active });
   };
   const statuses = new Map<string, ToolStatus>();
+  const searches = new Map<string, ToolSearch>();
   // Once per turn: the restorer reports the first failure and is reset at `agent_start`.
   const restore = restorer(pseudo, () => emit(errorMsg('pseudo_down', chatId)));
 
@@ -1141,7 +1172,7 @@ function forward(
           e.message.timestamp === m.timestamp,
       );
     log.debug({ chatId, length: textOf(m).length }, 'message.final');
-    const message = toMessage(entry?.id ?? streamId, m, toolRows(m, statuses));
+    const message = toMessage(entry?.id ?? streamId, m, toolRows(m, statuses, searches));
     ({ text: message.text, annotations: message.annotations } = await restore(message.text));
     emit({ type: 'message.final', chatId, message });
     // Ids must match `chat.state`; without the entry id the next `chat.state` carries them.
@@ -1212,12 +1243,18 @@ function forward(
         const text = resultText(e.result);
         const status = toolStatus(e.isError, text);
         statuses.set(e.toolCallId, status);
+        const found =
+          e.toolName === WEB_SEARCH_TOOL && !e.isError
+            ? await searchView(e.result?.details, restore)
+            : undefined;
+        if (found) searches.set(e.toolCallId, found);
         return emit({
           type: 'tool.end',
           chatId,
           callId: e.toolCallId,
           status,
           summary: (await restore(text.slice(0, 200))).text,
+          ...(found ? { search: found } : {}),
         });
       }
       case 'agent_start':
@@ -1226,6 +1263,7 @@ function forward(
       case 'agent_settled': {
         await flush();
         statuses.clear();
+        searches.clear();
         const r = db
           .update(chats)
           .set({ updatedAt: new Date().toISOString() })
@@ -1312,13 +1350,23 @@ export async function vaultState(pseudo: PseudoClient): Promise<ServerMessage> {
   };
 }
 
-function toolRows(m: AgentMessage, statuses: Map<string, ToolStatus>): ToolRow[] {
+function toolRows(
+  m: AgentMessage,
+  statuses: Map<string, ToolStatus>,
+  searches: Map<string, ToolSearch>,
+): ToolRow[] {
   if (m.role !== 'assistant') return [];
-  return m.content.flatMap((b) =>
-    b.type === 'toolCall'
-      ? [{ callId: b.id, name: b.name, status: statuses.get(b.id) ?? 'running', summary: '' }]
-      : [],
-  );
+  return m.content.flatMap((b) => {
+    if (b.type !== 'toolCall') return [];
+    const search = searches.get(b.id);
+    const row = {
+      callId: b.id,
+      name: b.name,
+      status: statuses.get(b.id) ?? 'running',
+      summary: '',
+    };
+    return [search ? { ...row, search } : row];
+  });
 }
 
 function toMessage(id: string, m: AgentMessage, tools: ToolRow[]): Message {
@@ -1363,16 +1411,21 @@ export async function history(
 ): Promise<Message[]> {
   const entries = session.sessionManager.getBranch();
   const statuses = new Map<string, ToolStatus>();
+  const searches = new Map<string, ToolSearch>();
   for (const e of entries) {
     if (e.type === 'message' && e.message.role === 'toolResult') {
-      statuses.set(e.message.toolCallId, toolStatus(e.message.isError, textOf(e.message)));
+      const r = e.message;
+      statuses.set(r.toolCallId, toolStatus(r.isError, textOf(r)));
+      const found =
+        r.toolName === WEB_SEARCH_TOOL && !r.isError && (await searchView(r.details, restore));
+      if (found) searches.set(r.toolCallId, found);
     }
   }
   let prev = '';
   const messages = entries.flatMap((e) => {
     if (e.type !== 'message' || (e.message.role !== 'user' && e.message.role !== 'assistant'))
       return [];
-    const m = toMessage(e.id, e.message, toolRows(e.message, statuses));
+    const m = toMessage(e.id, e.message, toolRows(e.message, statuses, searches));
     if (m.role === 'user') {
       m.attachments = filesOf(files, prev, m.createdAt);
       prev = m.createdAt;

@@ -10,11 +10,17 @@ runs for chat completions, embeddings and audio transcriptions. It allows:
 - `open/<vendor>/<model>` on chat completions, when OPENROUTER_OPEN_API_KEY is set and every
   `open/*` deployment carries {data_collection: "deny"} without `zdr: true`.
 
-Everything else gets HTTP 400, and so does any client-sent `extra_body` or routing field. A client
-`extra_body` replaces the configured one in LiteLLM 1.105.1 and would drop the provider block
-(decision 0004, finding 2).
+Only the `zdr/search` alias may carry a plugin, and only OpenRouter's web plugin in its
+`extra_body` (phase-14); it serves chat completions only. Any other deployment with `plugins` is not
+allowlisted.
 
-Decision records: docs/decisions/0004-litellm-openrouter-zdr.md, docs/decisions/phase-10-models.md.
+Everything else gets HTTP 400, and so does any client-sent `extra_body`, routing field, `plugins`
+or `web_search_options`, and any tool that is not a `function` tool (an `openrouter:*` server tool
+or a `web_search` type would let OpenRouter search). A client `extra_body` replaces the configured
+one in LiteLLM 1.105.1 and would drop the provider block (decision 0004, finding 2).
+
+Decision records: docs/decisions/0004-litellm-openrouter-zdr.md, docs/decisions/phase-10-models.md,
+docs/decisions/phase-14-search.md.
 """
 
 import os
@@ -23,7 +29,17 @@ import re
 from fastapi import HTTPException
 from litellm.integrations.custom_guardrail import CustomGuardrail
 
-CLIENT_ROUTING_FIELDS = ("extra_body", "provider", "models", "route", "transforms")
+CLIENT_ROUTING_FIELDS = (
+    "extra_body",
+    "provider",
+    "models",
+    "route",
+    "transforms",
+    "plugins",
+    "web_search_options",
+)
+# The one alias with a plugin: OpenRouter's web plugin, fixed in its extra_body (phase-14).
+SEARCH_ALIAS = "zdr/search"
 ZDR_PREFIX = "zdr/"
 OPEN_PREFIX = "open/"
 WILDCARD_PREFIXES = (ZDR_PREFIX, OPEN_PREFIX)
@@ -37,6 +53,21 @@ def provider_block(litellm_params: dict) -> dict:
     return (litellm_params.get("extra_body") or {}).get("provider") or {}
 
 
+def plugins_ok(name: str, litellm_params: dict) -> bool:
+    """No plugin anywhere, except exactly the web plugin in the extra_body of zdr/search."""
+    if "plugins" in litellm_params:
+        return False
+    plugins = (litellm_params.get("extra_body") or {}).get("plugins")
+    if name != SEARCH_ALIAS:
+        return plugins is None
+    return (
+        isinstance(plugins, list)
+        and len(plugins) == 1
+        and isinstance(plugins[0], dict)
+        and plugins[0].get("id") == "web"
+    )
+
+
 def is_zdr_pinned(litellm_params: dict) -> bool:
     provider = provider_block(litellm_params)
     return (
@@ -47,20 +78,24 @@ def is_zdr_pinned(litellm_params: dict) -> bool:
 
 
 def zdr_allowlist(model_list: list) -> set:
-    """Aliases with the zdr/ prefix whose every deployment is ZDR-pinned."""
+    """Aliases with the zdr/ prefix whose every deployment is ZDR-pinned and has no stray plugin."""
     names = {d["model_name"] for d in model_list}
     return {
         name
         for name in names
         if name.startswith(ZDR_PREFIX)
-        and all(is_zdr_pinned(d["litellm_params"]) for d in model_list if d["model_name"] == name)
+        and all(
+            is_zdr_pinned(d["litellm_params"]) and plugins_ok(name, d["litellm_params"])
+            for d in model_list
+            if d["model_name"] == name
+        )
     }
 
 
 def route_ok(prefix: str, litellm_params: dict) -> bool:
-    """A wildcard route denies data collection; zdr/* also requires ZDR, open/* must not claim it."""
+    """A wildcard route denies data collection and has no plugin; zdr/* also requires ZDR, open/* must not claim it."""
     provider = provider_block(litellm_params)
-    if provider.get("data_collection") != "deny":
+    if provider.get("data_collection") != "deny" or not plugins_ok(prefix + "*", litellm_params):
         return False
     return (provider.get("zdr") is True) == (prefix == ZDR_PREFIX)
 
@@ -76,11 +111,23 @@ class ZdrGuard(CustomGuardrail):
         sent = [f for f in CLIENT_ROUTING_FIELDS if f in data]
         if sent:
             refuse(f"client routing fields not allowed: {sent}")
+        tools = data.get("tools") or []
+        if not isinstance(tools, list):
+            tools = [tools]
+        odd = [
+            t.get("type") if isinstance(t, dict) else t
+            for t in tools
+            if not (isinstance(t, dict) and t.get("type") == "function")
+        ]
+        if odd:
+            refuse(f"only function tools are allowed, got {odd}")
         model = data.get("model")
         if not isinstance(model, str):
             refuse(f"model must be a string, got {model!r}")
         model_list = llm_router.model_list if llm_router else []
         if model in zdr_allowlist(model_list):
+            if model == SEARCH_ALIAS and call_type not in CHAT_CALL_TYPES:
+                refuse(f"{SEARCH_ALIAS} is allowed on chat completions only, got {call_type!r}")
             return data
         # The router sends an exact model_name to its own deployment, never to a pattern route.
         if model in {d["model_name"] for d in model_list}:

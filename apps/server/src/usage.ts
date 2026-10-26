@@ -13,7 +13,8 @@ import type { Catalog } from './pi/models.ts';
 
 /** pa-server's key on a Pi assistant message. Pi stores it with the message. */
 export type PaMeta = { costUsd?: number; thinkingMs?: number };
-export type UsageKind = 'chat' | 'task' | 'subagent';
+/** `search`: one `web_search` call to `zdr/search` (phase-14 decision 11). */
+export type UsageKind = 'chat' | 'task' | 'subagent' | 'search';
 export type UsageAt = { kind: UsageKind; chatId: string | null; agentId?: string | null };
 type Warn = (msg: string, data?: object) => void;
 /** Writes one call. `warn` reports a cost that could not be used. */

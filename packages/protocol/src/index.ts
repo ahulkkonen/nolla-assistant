@@ -134,11 +134,37 @@ export const TOOL_STATUS_WORD: Record<ToolStatus, string> = {
   denied: 'estetty',
 };
 
+/** The server-executed web search tool (docs/decisions/phase-14-search.md). */
+export const WEB_SEARCH_TOOL = 'web_search';
+/** `approval.request.reason` when a search query names a vault entity (phase-14 decision 7). */
+export const SEARCH_ENTITY_REASON = 'Haku sisältää henkilötiedon';
+/** Results per search: the `zdr/search` alias fixes `max_results` (phase-14 decision 4). */
+export const SEARCH_MAX_RESULTS = 5;
+
+/** One citation of a search as the tool row shows it; real values, http(s) links only. */
+export const SearchCitation = z.object({
+  title: z.string().max(1000),
+  url: z
+    .string()
+    .max(2048)
+    .regex(/^https?:\/\//i),
+});
+export type SearchCitation = z.infer<typeof SearchCitation>;
+
+/** A `web_search` row: the query that ran and its citations, in result order. */
+export const ToolSearch = z.object({
+  query: z.string().max(2000),
+  results: z.array(SearchCitation).max(SEARCH_MAX_RESULTS),
+});
+export type ToolSearch = z.infer<typeof ToolSearch>;
+
 export const ToolRow = z.object({
   callId: id64,
   name: z.string(),
   status: ToolStatus,
   summary: z.string(),
+  /** Set on a finished `web_search` row (phase-14). */
+  search: ToolSearch.optional(),
 });
 export type ToolRow = z.infer<typeof ToolRow>;
 
@@ -621,6 +647,8 @@ export const ServerMessage = z.discriminatedUnion('type', [
     callId: id64,
     status: ToolStatus,
     summary: z.string(),
+    /** Set when a `web_search` call ran (phase-14). */
+    search: ToolSearch.optional(),
   }),
   z.object({
     type: z.literal('subagent.state'),

@@ -5,10 +5,15 @@ import {
   type CatalogModel,
   ClientMessage,
   ModelId,
+  SEARCH_ENTITY_REASON,
+  SEARCH_MAX_RESULTS,
   ServerMessage,
+  ToolRow,
+  ToolSearch,
   TreeMove,
   TreeQuery,
   TreeSaveArtifact,
+  WEB_SEARCH_TOOL,
 } from './index.ts';
 
 describe('ClientMessage', () => {
@@ -250,5 +255,32 @@ describe('thread depth (phase-13)', () => {
         rows: [row],
       }).success,
     ).toBe(true);
+  });
+});
+
+describe('web search (phase-14)', () => {
+  const search = {
+    query: 'Helsingin sää',
+    results: [{ title: 'Sää', url: 'https://example.com/saa' }],
+  };
+  const end = { type: 'tool.end', chatId: 'c1', callId: 't1', status: 'ok', summary: '' };
+  it('tool.end and ToolRow take an optional search with http(s) links only', () => {
+    expect(ServerMessage.safeParse(end).success).toBe(true);
+    expect(ServerMessage.safeParse({ ...end, search }).success).toBe(true);
+    expect(
+      ToolRow.safeParse({ callId: 't1', name: 'web_search', status: 'ok', summary: '', search })
+        .success,
+    ).toBe(true);
+    for (const url of ['javascript:alert(1)', 'data:text/html,x', '//example.com'])
+      expect(
+        ServerMessage.safeParse({ ...end, search: { ...search, results: [{ title: 'x', url }] } })
+          .success,
+      ).toBe(false);
+  });
+  it('a search row holds at most SEARCH_MAX_RESULTS citations', () => {
+    const results = Array.from({ length: SEARCH_MAX_RESULTS + 1 }, () => search.results[0]);
+    expect(ToolSearch.safeParse({ ...search, results }).success).toBe(false);
+    expect(WEB_SEARCH_TOOL).toBe('web_search');
+    expect(SEARCH_ENTITY_REASON).toBe('Haku sisältää henkilötiedon');
   });
 });

@@ -3,6 +3,7 @@
 # Invariant 2: every exact alias is zdr/ and carries extra_body.provider {zdr: true,
 # data_collection: deny, allow_fallbacks: false}. The zdr/* route carries {zdr: true,
 # data_collection: deny}. Only open/* uses OPENROUTER_OPEN_API_KEY and has no zdr flag.
+# Only zdr/search carries a plugin (the web plugin, docs/decisions/phase-14-search.md).
 # zdr_guard.ZdrGuard refuses anything else.
 # OPENROUTER_API_BASE defaults to https://openrouter.ai/api/v1 in infra/compose.yaml.
 model_list:
@@ -38,6 +39,24 @@ model_list:
       api_base: os.environ/OPENROUTER_API_BASE
       extra_body:
         reasoning: { effort: none }
+        provider:
+          zdr: true
+          data_collection: deny
+          order: [google-vertex/europe, amazon-bedrock/eu-west-1]
+          allow_fallbacks: false
+
+  # Web search (phase-14): the zdr/fast model with OpenRouter's web plugin fixed here. pa-server
+  # sends the query as the user message and reads the url_citation annotations. Exa is pinned: the
+  # EU endpoints have no native search, and Exa takes the query as written. ZDR covers the model
+  # call, not Exa (risk 1 in the record).
+  - model_name: zdr/search
+    litellm_params:
+      model: openrouter/anthropic/claude-haiku-5.5
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: os.environ/OPENROUTER_API_BASE
+      extra_body:
+        reasoning: { effort: none }
+        plugins: [{ id: web, engine: exa, max_results: 5 }]
         provider:
           zdr: true
           data_collection: deny

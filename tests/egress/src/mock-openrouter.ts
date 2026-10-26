@@ -14,6 +14,20 @@ export const NO_ENDPOINT_ERROR = {
   error: { code: 404, message: 'No endpoints found matching your data policy' },
 };
 
+/** What the web plugin adds to a non-streamed answer: OpenRouter's `url_citation` shape (phase-14). */
+export const SEARCH_ANNOTATIONS = [
+  {
+    type: 'url_citation',
+    url_citation: {
+      url: 'https://example.com/saa',
+      title: 'Sää tänään',
+      content: 'Pilvistä ja 7 astetta.\n[...]\nIllalla sadetta.',
+      start_index: 0,
+      end_index: 36,
+    },
+  },
+];
+
 /**
  * Mock OpenRouter: records every request and answers chat (plain and SSE), embeddings and
  * transcriptions. Docker Desktop reaches 127.0.0.1 through host.docker.internal; on Linux the
@@ -51,7 +65,15 @@ export async function startMockOpenRouter() {
           ...base,
           object: 'chat.completion',
           choices: [
-            { index: 0, message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' },
+            {
+              index: 0,
+              message: {
+                role: 'assistant',
+                content: 'ok',
+                ...(body.plugins ? { annotations: SEARCH_ANNOTATIONS } : {}),
+              },
+              finish_reason: 'stop',
+            },
           ],
           usage,
         });

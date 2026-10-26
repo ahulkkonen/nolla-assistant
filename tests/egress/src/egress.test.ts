@@ -1,10 +1,16 @@
-// Phase-3 egress gate (plan §13) and phase-10 gate item 2: LiteLLM + Presidio from
-// infra/compose.yaml against a mock OpenRouter. Decision records:
-// docs/decisions/0004-litellm-openrouter-zdr.md, docs/decisions/phase-10-models.md.
+// Phase-3 egress gate (plan §13), phase-10 gate item 2 and phase-14 gate item 1: LiteLLM +
+// Presidio from infra/compose.yaml against a mock OpenRouter. Decision records:
+// docs/decisions/0004-litellm-openrouter-zdr.md, docs/decisions/phase-10-models.md,
+// docs/decisions/phase-14-search.md.
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { NO_ENDPOINT_ERROR, NO_ENDPOINT_MODEL, startMockOpenRouter } from './mock-openrouter.ts';
+import {
+  NO_ENDPOINT_ERROR,
+  NO_ENDPOINT_MODEL,
+  SEARCH_ANNOTATIONS,
+  startMockOpenRouter,
+} from './mock-openrouter.ts';
 
 const root = fileURLToPath(new URL('../../../', import.meta.url));
 const MASTER_KEY = 'sk-egress-test';
@@ -230,6 +236,80 @@ describe.skipIf(!hasDocker)(
         .map((l) => JSON.parse(l.slice(6)));
       expect(events.at(-1)?.usage).toMatchObject({ prompt_tokens: 3, completion_tokens: 1 });
       expect(last()?.body.stream_options).toEqual({ include_usage: true });
+    });
+
+    describe('phase-14 web search', () => {
+      const fnTool = {
+        type: 'function',
+        function: { name: 'web_search', parameters: { type: 'object', properties: {} } },
+      };
+
+      it('zdr/search carries the fixed web plugin and the EU ZDR block; annotations come back', async () => {
+        const r = await post('/v1/chat/completions', {
+          model: 'zdr/search',
+          stream: false,
+          max_tokens: 600,
+          messages: [
+            { role: 'system', content: 'Listaa tulokset.' },
+            { role: 'user', content: 'Helsingin sää' },
+          ],
+        });
+        expect(r.status).toBe(200);
+        const res = (await r.json()) as any;
+        expect(res.choices[0].message.annotations).toEqual(SEARCH_ANNOTATIONS);
+        expect(res.usage.cost).toBe(0.00001);
+        const up = last();
+        expect(up?.path).toBe('/chat/completions');
+        expect(up?.body.model).toBe('anthropic/claude-haiku-5.5');
+        expect(up?.body.plugins).toEqual([{ id: 'web', engine: 'exa', max_results: 5 }]);
+        expect(up?.body.reasoning).toEqual({ effort: 'none' });
+        expect(up?.body.provider).toEqual({
+          zdr: true,
+          data_collection: 'deny',
+          order: ['google-vertex/europe', 'amazon-bedrock/eu-west-1'],
+          allow_fallbacks: false,
+        });
+        expect(up?.body.messages.at(-1)).toEqual({ role: 'user', content: 'Helsingin sää' });
+        expect(up?.headers.authorization).toBe(`Bearer ${ZDR_KEY}`);
+      });
+
+      it('refuses client plugins and web_search_options on every model', async () => {
+        for (const model of ['zdr/strong', 'zdr/search', 'zdr/acme/model-1']) {
+          await expectRefused(
+            chat(model, 'x', { plugins: [{ id: 'web' }] }),
+            /client routing fields not allowed: \['plugins'\]/,
+          );
+          await expectRefused(
+            chat(model, 'x', { web_search_options: { search_context_size: 'high' } }),
+            /client routing fields not allowed: \['web_search_options'\]/,
+          );
+        }
+      });
+
+      it('refuses server tools; a function tool named web_search passes without a plugin', async () => {
+        for (const type of ['openrouter:web_search', 'web_search', 'web_search_preview'])
+          await expectRefused(
+            chat('zdr/strong', 'x', { tools: [fnTool, { type }] }),
+            /zdr_guard: only function tools are allowed/,
+          );
+        expect((await chat('zdr/strong', 'hei', { tools: [fnTool] })).status).toBe(200);
+        expect(last()?.body.tools).toEqual([fnTool]);
+        expect(last()?.body).not.toHaveProperty('plugins');
+      });
+
+      it('refuses zdr/search outside chat completions', async () => {
+        await expectRefused(
+          post('/v1/embeddings', { model: 'zdr/search', input: 'x' }),
+          /zdr_guard: zdr\/search is allowed on chat completions only/,
+        );
+      });
+
+      it('the presidio backstop also covers search queries', async () => {
+        await expectRefused(
+          chat('zdr/search', 'hetu 010190-123M'),
+          /Blocked entity detected: FI_PERSONAL_IDENTITY_CODE/,
+        );
+      });
     });
 
     describe('phase-10 wildcard routes', () => {

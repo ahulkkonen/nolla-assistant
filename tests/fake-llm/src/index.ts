@@ -15,7 +15,24 @@ export type FakeTurn = (
     } & FakeReply)
   /** An HTTP error before the stream, as LiteLLM passes an upstream refusal or outage on. */
   | { error: { status: number; message: string } }
+  /** Phase 14: a `zdr/search` answer; only `zdr/search` calls take it (see `FAKE_CITATIONS`). */
+  | ({ citations: FakeCitation[]; text?: string } & FakeReply)
 ) & { match?: string | RegExp };
+/** One OpenRouter `url_citation` annotation of the web plugin. */
+export type FakeCitation = { url: string; title: string; content?: string };
+/** The `zdr/search` answer when no `citations` turn is queued (e2e and demo use). */
+export const FAKE_CITATIONS: FakeCitation[] = [
+  {
+    url: 'https://www.ilmatieteenlaitos.fi/saa/helsinki',
+    title: 'Helsinki – sääennuste – Ilmatieteen laitos',
+    content: 'Helsingin sää tänään: pilvistä, 7 astetta, heikkoa tuulta.',
+  },
+  {
+    url: 'https://yle.fi/saa',
+    title: 'Sää | Yle',
+    content: 'Viikon sää: sateinen alku, viikonloppuna poutaa.',
+  },
+];
 /**
  * Phase 13: `reasoning` streams as `reasoning_content` deltas before the text (LiteLLM's field);
  * `thinkMs` waits after the first of them. `usage.cost` is OpenRouter's billed USD, which LiteLLM
@@ -109,12 +126,18 @@ const matches = (t: FakeTurn, text: string) =>
   t.match !== undefined &&
   (typeof t.match === 'string' ? text.includes(t.match) : t.match.test(text));
 
-/** Takes the first turn whose `match` matches, else the first turn without `match`. */
+/**
+ * Takes the first turn whose `match` matches, else the first turn without `match`. A `zdr/search`
+ * call takes only `citations` turns, and other calls never take one.
+ */
 const take = (queue: FakeTurn[], body: any) => {
   const text = lastUserText(body);
-  const i = queue.findIndex((t) => matches(t, text));
-  const j = i >= 0 ? i : queue.findIndex((t) => t.match === undefined);
-  return j >= 0 ? queue.splice(j, 1)[0] : undefined;
+  const search = body?.model === 'zdr/search';
+  const kind = (t: FakeTurn) => 'citations' in t === search;
+  const i = queue.findIndex((t) => kind(t) && matches(t, text));
+  const j = i >= 0 ? i : queue.findIndex((t) => kind(t) && t.match === undefined);
+  if (j >= 0) return queue.splice(j, 1)[0];
+  return search ? { citations: FAKE_CITATIONS } : undefined;
 };
 
 /**
@@ -197,7 +220,17 @@ export async function startFakeLlm(
         'toolCalls' in turn
           ? turn.toolCalls.map((c) => ({ ...c, id: c.id ?? `call_${++callN}` }))
           : [];
-      const text = turn.text ?? '';
+      // The web plugin's results: one annotation per citation, the model lists them as links.
+      const annotations =
+        'citations' in turn
+          ? turn.citations.map((c) => ({
+              type: 'url_citation',
+              url_citation: { ...c, start_index: 0, end_index: 0 },
+            }))
+          : undefined;
+      const text =
+        turn.text ??
+        ('citations' in turn ? turn.citations.map((c) => `[${c.title}](${c.url})`).join('\n') : '');
       const finish = calls.length ? 'tool_calls' : 'stop';
       const u = turn.usage;
       const usage = u
@@ -218,6 +251,7 @@ export async function startFakeLlm(
       if (body.stream !== true) {
         const message: Record<string, unknown> = { role: 'assistant', content: text || null };
         if (turn.reasoning) message.reasoning_content = turn.reasoning;
+        if (annotations) message.annotations = annotations;
         if (calls.length) {
           message.tool_calls = calls.map((c) => ({
             id: c.id,

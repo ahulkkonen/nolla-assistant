@@ -3,9 +3,10 @@ name: Avustaja
 model: zdr/strong
 prompt: prompts/assistant.md
 tools:
-  allow: [read, write, edit, recall, memory]
+  allow: [read, write, edit, recall, memory, web_search]
   mcp: [workspace]
 approval:
   always: [write, edit]
-  never: [read, recall, memory]
+  # web_search asks only when the query names a vault entity (phase-14 decision 7).
+  never: [read, recall, memory, web_search]
 subagents: false

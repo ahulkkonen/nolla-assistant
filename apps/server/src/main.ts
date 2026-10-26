@@ -32,6 +32,7 @@ import { modelCatalog, writeModelsJson } from './pi/models.ts';
 import { SessionRegistry } from './pi/registry.ts';
 import { pushService } from './push.ts';
 import { indexIdle } from './search.ts';
+import { searcher } from './search-tool.ts';
 import { titleJobs } from './topics.ts';
 import { purgeTrash, workStore } from './tree.ts';
 import { usageRecorder } from './usage.ts';
@@ -191,6 +192,11 @@ export async function start(
     mcpWarn: (chatId, missing) => app.log.warn({ chatId, missing }, 'mcp tools missing'),
     onSettled: ({ sessionId }) => titles.scheduleTitleJob(sessionId),
     onUsage: recordUsage,
+    search: searcher({
+      litellmUrl: config.litellmUrl,
+      litellmKey: config.litellmMasterKey,
+      onUsage: recordUsage,
+    }),
     ...(pseudo
       ? { pseudo: { client: pseudo, log: pseudoLog, awaitCollision: collisions.wait } }
       : {}),

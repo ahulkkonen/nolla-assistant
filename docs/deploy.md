@@ -37,6 +37,9 @@ Phase 2 ships only `pa-server`. Later phases add services to `infra/compose.yaml
       `OPENROUTER_OPEN_API_KEY`. Only the `open/*` route uses it.
    8. Add both keys as Coolify environment variables in section 2, step 4. Only the `litellm`
       service gets them.
+   9. Open https://openrouter.ai/settings/plugins. Keep every plugin off by default, the web
+      plugin too. A default plugin applies to every request of every key. Only the `zdr/search`
+      alias searches (decision `phase-14-search`, decision 3).
 
    `OPENROUTER_OPEN_API_KEY` is optional. When it is empty, LiteLLM refuses every `open/` model
    with HTTP 400. Then no model call leaves without ZDR.

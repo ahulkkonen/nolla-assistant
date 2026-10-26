@@ -19,6 +19,7 @@ import {
 import { sandboxExtension } from '@pa/pi-ext-sandbox';
 import { type Child, subagentsExtension } from '@pa/pi-ext-subagents';
 import { topicsExtension } from '@pa/pi-ext-topics';
+import { WEB_SEARCH_TOOL } from '@pa/protocol';
 import type { Agents } from '../agents.ts';
 import { type Ask, approvalGate } from '../approval.ts';
 import {
@@ -29,6 +30,7 @@ import {
   writeTools,
 } from '../mcp.ts';
 import type { MemoryStore } from '../memory.ts';
+import { type Searcher, webSearchExtensions } from '../search-tool.ts';
 import { messageUsage, type RecordUsage, usageExtension } from '../usage.ts';
 import { pathGuard, type WorkHooks } from './guard.ts';
 import { type Catalog, piModelId, policyOf, resolveModelId, thinkingLevel } from './models.ts';
@@ -65,6 +67,8 @@ type RegistryOptions = {
   onSettled?: Parameters<typeof topicsExtension>[0]['onSettled'];
   /** Each model call of a chat and of its subagent children (phase-13 decision 11). */
   onUsage?: RecordUsage;
+  /** Runs `web_search` for profiles that allow it (phase-14); unset: no such tool. */
+  search?: Searcher;
   /** Loads `pi-ext-pseudo` per chat when set; `log` receives its logs with the chat id. */
   pseudo?: {
     client: PseudoClient;
@@ -333,6 +337,17 @@ export class SessionRegistry {
       always: [...profile.approval.always, ...mcpWrites],
       never: profile.approval.never.filter((t) => !mcpWrites.includes(t)),
     };
+    const { search } = this.opts;
+    const [searchTool, searchGuard] =
+      search && tools.includes(WEB_SEARCH_TOOL)
+        ? webSearchExtensions({
+            chatId,
+            agentId,
+            search,
+            ask: this.opts.approval.ask,
+            timeoutMs: this.opts.approval.timeoutMs,
+          })
+        : [];
     const resourceLoader = new DefaultResourceLoader({
       cwd: this.cwd,
       agentDir: this.agentDir,
@@ -352,6 +367,8 @@ export class SessionRegistry {
       noPromptTemplates: true,
       noThemes: true,
       extensionFactories: [
+        // Before pseudo: records the search query as the model wrote it (phase-14 decision 7).
+        ...(searchTool ? [searchTool] : []),
         // Pseudo first: the guard must check the restored (real) path.
         ...(pseudo
           ? [
@@ -368,6 +385,8 @@ export class SessionRegistry {
               }),
             ]
           : []),
+        // After pseudo: a restored query that differs names a vault entity and asks.
+        ...(searchGuard ? [searchGuard] : []),
         // After pseudo (the user approves real values), before the guard.
         approvalGate({
           chatId,
@@ -397,8 +416,10 @@ export class SessionRegistry {
                 pseudoUrl: withSubagents.pseudoUrl,
                 provider,
                 model: modelId,
-                // Children never touch memory.
-                tools: tools.filter((t) => t !== 'memory' && t !== 'recall'),
+                // Children never touch memory and never search (the entity guard lives here).
+                tools: tools.filter(
+                  (t) => t !== 'memory' && t !== 'recall' && t !== WEB_SEARCH_TOOL,
+                ),
                 broker,
                 approvalAlways: profile.approval.always.filter(
                   (t) => !profile.approval.never.includes(t),
