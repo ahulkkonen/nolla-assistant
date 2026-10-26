@@ -13,7 +13,7 @@ import { buildServer } from './http.ts';
 import { integrations as integrationStore } from './integrations.ts';
 import { loadMcp } from './mcp.ts';
 import { memoryStore } from './memory.ts';
-import { writeModelsJson } from './pi/models.ts';
+import { modelCatalog, writeModelsJson } from './pi/models.ts';
 import { SessionRegistry } from './pi/registry.ts';
 import { pushService } from './push.ts';
 import { indexIdle } from './search.ts';
@@ -105,11 +105,22 @@ export async function start(
     warn: (msg, data) => app.log.warn(data ?? {}, msg),
     sendAll,
   });
+  // Pi entries per catalog model (phase-10 decision 8); `start` below runs once `app` exists.
+  const catalog = modelCatalog({
+    dataDir: config.dataDir,
+    source: config.openrouterCatalog,
+    onChange: (models) => {
+      writeModelsJson(registry.agentDir, config.litellmUrl, models);
+      registry.resetModels();
+    },
+    warn: (msg, data) => app.log.warn(data ?? {}, msg),
+  });
   const registry = new SessionRegistry({
     dataDir: config.dataDir,
     userId: config.userId,
     agents,
-    getAgentId: (chatId) => chatRow(db, config.userId, chatId)?.agentId,
+    getChat: (chatId) => chatRow(db, config.userId, chatId),
+    catalog,
     approval: { ask: approvals.ask, timeoutMs: config.approvalTimeoutMs },
     skillsDir: config.skillsDir,
     broker: config.broker,
@@ -130,7 +141,6 @@ export async function start(
       log: (chatId, level, msg, data) => app.log[level]({ chatId, ...data }, msg),
     },
   });
-  writeModelsJson(registry.agentDir, config.litellmUrl);
   const app = await buildServer({
     registry,
     db,
@@ -143,9 +153,12 @@ export async function start(
     push,
     automations: () => automations,
     integrations,
+    catalog,
+    refusals: new Map(),
     ...(logStream ? { logStream } : {}),
     ...(pseudo ? { pseudo } : {}),
   });
+  await catalog.start();
   const titles = titleJobs({
     db,
     registry,
@@ -187,6 +200,7 @@ export async function start(
     selfSeed.abort();
     stopWatch();
     automations?.close();
+    catalog.close();
     memory.close();
     clearInterval(timer);
     clearInterval(purge);

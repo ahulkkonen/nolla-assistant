@@ -21,6 +21,8 @@ test('open, insert, read, fts, wal', () => {
   const chat = db.select().from(chats).get();
   expect(chat?.agentId).toBe('assistant');
   expect(chat?.archived).toBe(false);
+  // Phase-10: a row without a policy is the agent alias under ZDR.
+  expect(chat).toMatchObject({ modelId: null, reasoning: 'auto', dataPolicy: 'zdr' });
 
   expect(sqlite.pragma('foreign_keys', { simple: true })).toBe(1);
   expect(() =>

@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { Annotation, AuthLogin, ClientMessage, ServerMessage } from './index.ts';
+import {
+  Annotation,
+  AuthLogin,
+  type CatalogModel,
+  ClientMessage,
+  ModelId,
+  ServerMessage,
+} from './index.ts';
 
 describe('ClientMessage', () => {
   it('parses a valid message and applies defaults', () => {
@@ -25,6 +32,89 @@ describe('ClientMessage', () => {
         subscription: { endpoint: 'nope', keys: { p256dh: 'a', auth: 'b' } },
       }).success,
     ).toBe(false);
+  });
+});
+
+describe('model messages (phase-10)', () => {
+  it('ModelId takes vendor/model only', () => {
+    for (const ok of ['google/gemini-4-argon', 'anthropic/claude-opus-5.5', 'x-ai/grok_4'])
+      expect(ModelId.safeParse(ok).success).toBe(true);
+    for (const bad of [
+      '~openai/gpt-sol-latest',
+      'acme/model-1:free',
+      'Acme/Model',
+      'strong',
+      'a/b/c',
+      `a/${'b'.repeat(100)}`,
+    ])
+      expect(ModelId.safeParse(bad).success).toBe(false);
+  });
+  it('chat.create strips a client dataPolicy and takes an optional model', () => {
+    const r = ClientMessage.parse({ type: 'chat.create', dataPolicy: 'open' });
+    expect(r).toEqual({ type: 'chat.create', agentId: 'assistant' });
+    const m = ClientMessage.parse({
+      type: 'chat.create',
+      model: { modelId: 'anthropic/claude-opus-5.5', reasoning: 'high' },
+    });
+    expect(m).toMatchObject({ model: { modelId: 'anthropic/claude-opus-5.5', reasoning: 'high' } });
+    expect(
+      ClientMessage.safeParse({
+        type: 'chat.create',
+        model: { modelId: 'auto', reasoning: 'max+' },
+      }).success,
+    ).toBe(false);
+  });
+  it('parses chat.setModel, chat.setDataPolicy, models.list and models.favorite', () => {
+    for (const m of [
+      { type: 'chat.setModel', chatId: 'c1', modelId: 'auto', reasoning: 'auto' },
+      { type: 'chat.setModel', chatId: 'c1', modelId: 'openai/gpt-5.5', reasoning: 'none' },
+      { type: 'chat.setDataPolicy', chatId: 'c1', dataPolicy: 'open' },
+      { type: 'models.list' },
+      { type: 'models.favorite', modelId: 'openai/gpt-5.5', favorite: true },
+    ])
+      expect(ClientMessage.safeParse(m).success).toBe(true);
+    expect(
+      ClientMessage.safeParse({ type: 'chat.setDataPolicy', chatId: 'c1', dataPolicy: 'any' })
+        .success,
+    ).toBe(false);
+    expect(
+      ClientMessage.safeParse({ type: 'models.favorite', modelId: 'auto', favorite: true }).success,
+    ).toBe(false);
+  });
+  it('parses models.state and a chat summary with its policy', () => {
+    const model: CatalogModel = {
+      id: 'google/gemini-4-argon',
+      name: 'Gemini 4 Argon',
+      zdr: true,
+      vision: true,
+      contextLength: 1_048_576,
+      price: { input: 2, output: 10 },
+      reasoning: { efforts: ['high', 'medium', 'low'], recommended: 'medium', mandatory: true },
+    };
+    expect(
+      ServerMessage.safeParse({
+        type: 'models.state',
+        auto: 'google/gemini-4-argon',
+        favorites: [],
+        catalog: [model, { ...model, id: 'acme/plain', reasoning: null }],
+        fetchedAt: null,
+      }).success,
+    ).toBe(true);
+    const chat = {
+      id: 'c1',
+      title: null,
+      topicId: null,
+      agentId: 'assistant',
+      pinned: false,
+      archived: false,
+      updatedAt: new Date().toISOString(),
+    };
+    const policy = { modelId: null, reasoning: 'auto', dataPolicy: 'zdr' };
+    expect(ServerMessage.safeParse({ type: 'chat.updated', chat }).success).toBe(false);
+    expect(
+      ServerMessage.safeParse({ type: 'chat.updated', chat: { ...chat, modelPolicy: policy } })
+        .success,
+    ).toBe(true);
   });
 });
 

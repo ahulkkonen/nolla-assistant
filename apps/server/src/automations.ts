@@ -134,7 +134,9 @@ export function startAutomations({
       const at = now.toLocaleString('sv-SE', { timeZone: a.timezone }).slice(0, 16);
       const title = `${a.id} ${at}`;
       chatId = randomUUID();
-      db.insert(chats)
+      // No model or policy columns: the profile's alias under ZDR (phase-10 decision 12).
+      const row = db
+        .insert(chats)
         .values({
           id: chatId,
           userId,
@@ -148,9 +150,18 @@ export function startAutomations({
           createdAt: now.toISOString(),
           updatedAt: now.toISOString(),
         })
-        .run();
+        .returning()
+        .get();
       unattended.set(chatId, a.autoApprove);
-      const session = await registry.create(chatId, a.agentId);
+      const session = await registry.create(chatId, row);
+      // Nobody is there to consent: an automation never runs without ZDR (phase-10 proof 5).
+      const policy = db
+        .select({ dataPolicy: chats.dataPolicy })
+        .from(chats)
+        .where(eq(chats.id, chatId))
+        .get();
+      if (policy?.dataPolicy !== 'zdr' || session.model?.provider !== 'zdr')
+        throw new Error('automation chat is not zdr');
       await prompt(chatId, a.prompt);
       const last = session.messages.findLast((m) => m.role === 'assistant');
       if (last && 'stopReason' in last && last.stopReason === 'error')

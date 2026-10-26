@@ -63,3 +63,30 @@ test('a turn with `match` answers only a call whose last user message matches', 
     await fake.close();
   }
 });
+
+test('an error turn answers with its status; GET /models serves the catalog', async () => {
+  const fake = await startFakeLlm([
+    { error: { status: 404, message: 'No endpoints found matching your data policy' } },
+  ]);
+  try {
+    const res = await fetch(`${fake.url}/chat/completions`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ model: 'm', messages: [] }),
+    });
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({
+      error: { code: 404, message: 'No endpoints found matching your data policy' },
+    });
+    const ids = async (q: string) =>
+      ((await (await fetch(`${fake.url}/models${q}`)).json()) as { data: { id: string }[] }).data
+        .map((m) => m.id)
+        .sort();
+    expect(await ids('?supported_parameters=tools')).toEqual(fake.catalog.map((m) => m.id).sort());
+    expect(await ids('?supported_parameters=tools&zdr=true')).not.toContain(
+      'anthropic/claude-fable-5.1',
+    );
+  } finally {
+    await fake.close();
+  }
+});

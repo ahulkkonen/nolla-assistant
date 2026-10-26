@@ -1,4 +1,4 @@
-import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { bootPi, lastUserText, toolMessageContent } from '@pa/contract-tests/src/harness.ts';
@@ -37,6 +37,7 @@ async function boot(
         cwd: join(dataDir, 'work'),
         litellm: { url: llm.url, key: 'test-key' },
         pseudoUrl: sc.url,
+        provider: 'zdr',
         model: 'zdr/strong',
         tools: ['read'],
         onState: (c) => void states.push(c),
@@ -147,4 +148,32 @@ test('a child approval reaches the parent ask with real values', async () => {
   ]);
   expect(readdirSync(join(dataDir, 'work'))).not.toContain('x.txt');
   expect(JSON.stringify(llm.requests[2]?.body)).toContain('käyttäjä esti työkalun');
+}, 60_000);
+
+test('proof 7: in a zdr chat an open/ task model fails and no child process starts', async () => {
+  const { llm, session, states, dataDir } = await boot([
+    {
+      toolCalls: [
+        {
+          name: 'subagent',
+          args: {
+            mode: 'parallel',
+            tasks: [
+              { label: 'ok', task: 'first task' },
+              { label: 'leak', task: 'second task', model: 'open/x/y' },
+            ],
+          },
+        },
+      ],
+    },
+    { text: 'done' },
+  ]);
+  await session.prompt('go');
+  // The parent's two calls only: no child ever asked the model.
+  expect(llm.requests).toHaveLength(2);
+  expect(states).toEqual([]);
+  expect(existsSync(join(dataDir, 'sessions', 'u1', 'chat-1', 'sub'))).toBe(false);
+  expect(JSON.stringify(toolMessageContent(llm.requests[1]?.body))).toContain(
+    'subagent models must start with zdr/',
+  );
 }, 60_000);

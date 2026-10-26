@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { rmSync } from 'node:fs';
 import { join as joinPath, resolve, sep } from 'node:path';
 import type { AgentSession, AgentSessionEvent } from '@earendil-works/pi-coding-agent';
-import { chats, type Db, files, topicProposals, topics } from '@pa/db';
+import { chats, type Db, files, modelFavorites, topicProposals, topics } from '@pa/db';
 import { FULL } from '@pa/pi-ext-memory';
 import {
   type PseudoClient,
@@ -15,11 +15,12 @@ import {
   type ChatSummary,
   ClientMessage,
   type Message,
+  type ModelChoice,
   type ServerMessage,
   type ToolRow,
   type ToolStatus,
 } from '@pa/protocol';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq } from 'drizzle-orm';
 import type { FastifyBaseLogger } from 'fastify';
 import type { Agents } from './agents.ts';
 import { type Approvals, DENIED_REASON, TIMEOUT_REASON } from './approval.ts';
@@ -28,6 +29,7 @@ import type { Automations } from './automations.ts';
 import { AttachmentNotFound, chatFiles, ingestAttachments, splitBlocks } from './files.ts';
 import { MemoryError, type MemoryStore, PSEUDO_REQUIRED } from './memory.ts';
 import { GUARD_REASON } from './pi/guard.ts';
+import { AUTO_MODEL, type Catalog, isZdrRefusal, policyOf, resolveModelId } from './pi/models.ts';
 import { ChatNotFound, type SessionRegistry } from './pi/registry.ts';
 import { BadSubscription, type Push } from './push.ts';
 import { indexChat, related, search } from './search.ts';
@@ -57,6 +59,13 @@ export type BridgeDeps = {
   push: Push;
   /** Restores surrogates for display. Unset in dev (no masking, see config `pseudoUrl`). */
   pseudo?: PseudoClient;
+  /** OpenRouter model catalog (phase-10 decision 8). */
+  catalog: Catalog;
+  /**
+   * chatId → the stored `modelId` of its last classified ZDR refusal (phase-10 decision 9). In
+   * memory: a restart clears it. Shared by all connections of one server.
+   */
+  refusals: Map<string, string>;
 };
 
 type AgentMessage = AgentSession['messages'][number];
@@ -73,9 +82,12 @@ const ERRORS = {
   pseudo_down: 'Pseudonymization service unavailable',
   memory_full: 'Memory is full',
   memory_conflict: 'Memory changed; the write no longer applies',
+  zdr_unavailable: 'No zero-data-retention endpoint for this model',
 } as const;
 
 class NotFound extends Error {}
+/** A model or policy change while the chat runs (phase-10 decision 14); answers `failed`. */
+class RunActive extends Error {}
 
 const send = (socket: Socket, msg: ServerMessage) => socket.send(JSON.stringify(msg));
 export const errorMsg = (code: keyof typeof ERRORS, chatId?: string): ServerMessage => ({
@@ -113,6 +125,7 @@ export const summary = (r: ChatRow): ChatSummary => ({
   pinned: r.pinned,
   archived: r.archived,
   titleLocked: r.titleLocked,
+  modelPolicy: policyOf(r),
   updatedAt: r.updatedAt,
 });
 
@@ -236,16 +249,44 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
     sockets,
     memory,
     push,
+    catalog,
+    refusals,
   } = deps;
   const open = new Set<string>();
   sockets.add(socket);
-  /** Memory is per user: every open screen gets the new state. */
-  const memoryToAll = () => {
-    const msg = memory.state();
+  /** Per-user state goes to every open screen. */
+  const toAll = (msg: ServerMessage) => {
     for (const s of sockets)
       try {
         send(s, msg);
       } catch {}
+  };
+  const memoryToAll = () => toAll(memory.state());
+
+  const modelsState = (): ServerMessage => ({
+    type: 'models.state',
+    auto: AUTO_MODEL,
+    favorites: db
+      .select({ modelId: modelFavorites.modelId })
+      .from(modelFavorites)
+      .where(eq(modelFavorites.userId, userId))
+      .orderBy(asc(modelFavorites.createdAt))
+      .all()
+      .map((f) => f.modelId),
+    catalog: catalog.list().map(({ maxTokens: _, cacheRead: __, cacheWrite: ___, ...m }) => m),
+    fetchedAt: catalog.fetchedAt(),
+  });
+
+  /** Phase-10 server validation: a catalog model, and an effort that the model offers. */
+  const validChoice = ({ modelId, reasoning }: ModelChoice) => {
+    const m = catalog.get(resolveModelId(modelId));
+    if (modelId !== 'auto' && !m) return false;
+    return reasoning === 'auto' || !!m?.reasoning?.efforts.includes(reasoning);
+  };
+
+  /** Drops the idle session so the next message rebuilds it; a running chat refuses the change. */
+  const evict = async (chatId: string) => {
+    if (!(await registry.evict(chatId))) throw new RunActive();
   };
   send(socket, agentsState(agents()));
   // A reload must not lose open approvals.
@@ -353,16 +394,20 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
       case 'chat.create': {
         if (!agents().has(msg.agentId)) throw new NotFound();
         if (msg.topicId) ownTopic(msg.topicId);
+        const model = msg.model ?? { modelId: 'auto', reasoning: 'auto' };
+        if (!validChoice(model)) return send(socket, errorMsg('bad_message'));
         const id = randomUUID();
+        // Never from the client: every new chat starts ZDR-only (phase-10 proof 1).
+        const chat = { agentId: msg.agentId, ...model, dataPolicy: 'zdr' } as const;
         // Session first: a failed build leaves no chat row behind.
-        const session = await registry.create(id, msg.agentId);
+        const session = await registry.create(id, chat);
         const now = new Date().toISOString();
         const r = db
           .insert(chats)
           .values({
             id,
             userId,
-            agentId: msg.agentId,
+            ...chat,
             topicId: msg.topicId ?? null,
             // Directory key only: Pi names the JSONL file and the registry resolves it by chat id.
             sessionPath: `sessions/${userId}/`,
@@ -426,6 +471,44 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
       }
       case 'chat.pin':
         return update(msg.chatId, { pinned: msg.pinned });
+      case 'chat.setModel': {
+        owned(msg.chatId);
+        if (!validChoice(msg)) return send(socket, errorMsg('bad_message'));
+        await evict(msg.chatId);
+        // Consent was for one model: a change ends it (phase-10 decision 9).
+        refusals.delete(msg.chatId);
+        return update(msg.chatId, {
+          modelId: msg.modelId,
+          reasoning: msg.reasoning,
+          dataPolicy: 'zdr',
+        });
+      }
+      case 'chat.setDataPolicy': {
+        owned(msg.chatId);
+        await evict(msg.chatId);
+        // Checked after the await: a model change in between ends the consent.
+        const r = owned(msg.chatId);
+        if (
+          msg.dataPolicy === 'open' &&
+          (r.modelId === null || refusals.get(msg.chatId) !== r.modelId)
+        )
+          return send(socket, errorMsg('bad_message'));
+        return update(msg.chatId, { dataPolicy: msg.dataPolicy });
+      }
+      case 'models.list':
+        return send(socket, modelsState());
+      case 'models.favorite':
+        if (msg.favorite) {
+          if (!catalog.get(msg.modelId)) return send(socket, errorMsg('bad_message'));
+          db.insert(modelFavorites)
+            .values({ userId, modelId: msg.modelId, createdAt: new Date().toISOString() })
+            .onConflictDoNothing()
+            .run();
+        } else
+          db.delete(modelFavorites)
+            .where(and(eq(modelFavorites.userId, userId), eq(modelFavorites.modelId, msg.modelId)))
+            .run();
+        return toAll(modelsState());
       case 'chat.delete': {
         const { chatId } = msg;
         owned(chatId);
@@ -467,12 +550,8 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
           }
         }
         rooms.delete(chatId);
-        const deleted: ServerMessage = { type: 'chat.deleted', chatId };
-        for (const s of sockets)
-          try {
-            send(s, deleted);
-          } catch {}
-        return;
+        refusals.delete(chatId);
+        return toAll({ type: 'chat.deleted', chatId });
       }
       case 'chat.focus':
         return push.setFocus(socket, msg.chatId);
@@ -614,6 +693,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
       )
         return send(socket, errorMsg('not_found'));
       if (err instanceof PseudoDownError) return send(socket, errorMsg('pseudo_down'));
+      if (err instanceof RunActive) return send(socket, errorMsg('failed'));
       if (err instanceof MemoryError)
         return send(
           socket,
@@ -650,7 +730,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
 function forward(
   chatId: string,
   session: AgentSession,
-  { db, rooms, log, userId, pseudo, push }: BridgeDeps,
+  { db, rooms, log, userId, pseudo, push, catalog, refusals }: BridgeDeps,
 ) {
   const emit = (msg: ServerMessage) => broadcast(rooms, chatId, msg);
   let streamId = randomUUID();
@@ -713,6 +793,11 @@ function forward(
         await stream(true);
         if (e.message.stopReason === 'error') {
           log.warn({ chatId, error: e.message.errorMessage }, 'model call failed');
+          const r = chatRow(db, userId, chatId);
+          if (r?.modelId && isZdrRefusal(policyOf(r), e.message.errorMessage, catalog)) {
+            refusals.set(chatId, r.modelId);
+            return emit(errorMsg('zdr_unavailable', chatId));
+          }
           return emit(errorMsg('llm_failed', chatId));
         }
         pending = e.message;

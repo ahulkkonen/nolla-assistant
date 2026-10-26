@@ -10,7 +10,58 @@ import type { AddressInfo } from 'node:net';
 export type FakeTurn = (
   | { text: string; usage?: { prompt_tokens: number; completion_tokens: number } }
   | { toolCalls: { id?: string; name: string; args: Record<string, unknown> }[]; text?: string }
+  /** An HTTP error before the stream, as LiteLLM passes an upstream refusal or outage on. */
+  | { error: { status: number; message: string } }
 ) & { match?: string | RegExp };
+/** An OpenRouter `/api/v1/models` entry; `zdr` marks the ids that `?zdr=true` returns. */
+export type FakeCatalogModel = { id: string; zdr: boolean } & Record<string, unknown>;
+
+const catalogModel = (
+  id: string,
+  name: string,
+  zdr: boolean,
+  efforts: string[],
+  defaultEffort: string,
+): FakeCatalogModel => ({
+  id,
+  name,
+  zdr,
+  context_length: 1_048_576,
+  pricing: { prompt: '0.000002', completion: '0.00001' },
+  architecture: { input_modalities: ['text', 'image'], output_modalities: ['text'] },
+  supported_parameters: ['tools', 'reasoning'],
+  top_provider: { max_completion_tokens: 65_536 },
+  reasoning: {
+    default_effort: defaultEffort,
+    mandatory: !efforts.includes('none'),
+    supported_efforts: efforts,
+  },
+});
+
+/** The public catalog the server reads at start (phase-10 decision 8); Fable has no ZDR endpoint. */
+export const FAKE_CATALOG: FakeCatalogModel[] = [
+  catalogModel(
+    'google/gemini-4-argon',
+    'Google: Gemini 4 Argon',
+    true,
+    ['high', 'medium', 'low'],
+    'medium',
+  ),
+  catalogModel(
+    'anthropic/claude-opus-5.5',
+    'Anthropic: Claude Opus 5.5',
+    true,
+    ['max', 'xhigh', 'high', 'medium', 'low'],
+    'high',
+  ),
+  catalogModel(
+    'anthropic/claude-fable-5.1',
+    'Anthropic: Claude Fable 5.1',
+    false,
+    ['high', 'medium', 'low', 'none'],
+    'medium',
+  ),
+];
 export type FakeRequest = {
   path: string;
   headers: Record<string, string | string[] | undefined>;
@@ -53,6 +104,7 @@ export async function startFakeLlm(
 ) {
   const queue = [...turns];
   const requests: FakeRequest[] = [];
+  const catalog = structuredClone(FAKE_CATALOG);
   let callN = 0;
   let transcript = 'fake transcript';
 
@@ -62,6 +114,12 @@ export async function startFakeLlm(
       res.end(JSON.stringify(obj));
     };
     const path = req.url?.split('?')[0] ?? '';
+    if (req.method === 'GET' && path.endsWith('/models')) {
+      const zdrOnly = new URLSearchParams(req.url?.split('?')[1]).get('zdr') === 'true';
+      return json(200, {
+        data: catalog.filter((m) => !zdrOnly || m.zdr).map(({ zdr: _, ...m }) => m),
+      });
+    }
     if (req.method === 'POST' && path.endsWith('/audio/transcriptions')) {
       // Records the multipart text fields and the file's name, type and size.
       const chunks: Buffer[] = [];
@@ -100,6 +158,10 @@ export async function startFakeLlm(
       requests.push({ path: req.url ?? '', headers: req.headers, body });
       const turn = take(queue, body) ?? fallback?.(body);
       if (!turn) return json(500, { error: { message: 'fake-llm: no scripted turn' } });
+      if ('error' in turn)
+        return json(turn.error.status, {
+          error: { code: turn.error.status, message: turn.error.message },
+        });
 
       const id = `chatcmpl-${requests.length}`;
       const created = Math.floor(Date.now() / 1000);
@@ -164,6 +226,8 @@ export async function startFakeLlm(
   return {
     url: `${origin}/v1`,
     requests,
+    /** Served at `GET /v1/models` (point `OPENROUTER_CATALOG` at `url`); edit before the server starts. */
+    catalog,
     push: (turn: FakeTurn) => void queue.push(turn),
     /** Text the `/audio/transcriptions` route returns. */
     setTranscript: (text: string) => void (transcript = text),

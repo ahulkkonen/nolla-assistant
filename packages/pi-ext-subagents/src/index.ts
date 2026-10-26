@@ -23,14 +23,16 @@ export type SubagentsOptions = {
   chatId: string;
   userId: string;
   dataDir: string;
-  /** `PI_CODING_AGENT_DIR` of the children; its `models.json` resolves the `zdr` provider. */
+  /** `PI_CODING_AGENT_DIR` of the children; its `models.json` resolves the `zdr` and `open` providers. */
   agentDir: string;
   /** Working folder of the children; file tools stay inside it. */
   cwd: string;
   litellm: { url: string; key: string };
   /** Loads `pi-ext-pseudo` into every child when set. */
   pseudoUrl?: string | undefined;
-  /** Default model id of the `zdr` provider, e.g. `zdr/strong`. */
+  /** The parent's Pi provider (phase-10 decision 11): children run in it and nowhere else. */
+  provider: 'zdr' | 'open';
+  /** Default child model id in `provider`, e.g. `zdr/strong`; the parent's model. */
   model: string;
   tools: string[];
   /** Loads `pi-ext-sandbox` into every child; without it `bash` is removed from `tools`. */
@@ -78,7 +80,7 @@ const textOf = (m: Msg) =>
  * Add `subagent` to the host `tools`.
  */
 export function subagentsExtension(opts: SubagentsOptions): ExtensionFactory {
-  const { chatId, userId, model, ask, log, timeoutMs = MINUTES_10 } = opts;
+  const { chatId, userId, provider, model, ask, log, timeoutMs = MINUTES_10 } = opts;
   // Pi's built-in `bash` is never allowed (plan §2 invariant 8): without the sandbox extension,
   // `--tools bash` would enable the built-in one.
   const { broker } = opts;
@@ -111,7 +113,7 @@ export function subagentsExtension(opts: SubagentsOptions): ExtensionFactory {
           '--session-dir',
           sessionDir,
           '--provider',
-          'zdr',
+          provider,
           '--model',
           childModel,
           '--tools',
@@ -270,6 +272,14 @@ export function subagentsExtension(opts: SubagentsOptions): ExtensionFactory {
         if (tasks.length > MAX_TASKS)
           throw new Error(
             `Too many tasks: at most ${MAX_TASKS} (${MAX_PARALLEL} run at a time, ${MAX_TASKS - MAX_PARALLEL} wait). Split the work.`,
+          );
+        // A child keeps the chat's data policy: a prompt-injected model id must not leave it.
+        const foreign = tasks.find(
+          (t) => t.model !== undefined && !t.model.startsWith(`${provider}/`),
+        );
+        if (foreign)
+          throw new Error(
+            `Model ${foreign.model} is not allowed: subagent models must start with ${provider}/. Leave model unset to use the chat's model.`,
           );
         const children: Child[] = tasks.map((t) => ({
           id: randomUUID(),

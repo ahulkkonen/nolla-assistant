@@ -25,14 +25,25 @@ import {
 } from '../mcp.ts';
 import type { MemoryStore } from '../memory.ts';
 import { pathGuard } from './guard.ts';
+import { type Catalog, piModelId, policyOf, resolveModelId, thinkingLevel } from './models.ts';
+
+/** The chat row fields a session build reads: its agent and its model policy (phase-10). */
+export type ChatModel = {
+  agentId: string;
+  modelId: string | null;
+  reasoning: string;
+  dataPolicy: string;
+};
 
 type RegistryOptions = {
   dataDir: string;
   userId: string;
   /** Current agent profiles; read at every session build. */
   agents: () => Agents;
-  /** The chat's `agentId` (DB row) for `get`. */
-  getAgentId: (chatId: string) => string | undefined;
+  /** The chat's agent and model policy (DB row) for `get`; undefined when the row is gone. */
+  getChat: (chatId: string) => ChatModel | undefined;
+  /** Model catalog: thinking level of catalog models (phase-10 decision 7). */
+  catalog: Pick<Catalog, 'get'>;
   approval: { ask: Ask; timeoutMs?: number };
   skillsDir: string;
   /** `sandbox-broker`; unset means no `bash` tool at all. */
@@ -60,7 +71,16 @@ type RegistryOptions = {
     log: (chatId: string, ...args: Parameters<PseudoLog>) => void;
   };
 };
-type Entry = { session: Promise<AgentSession>; lastUsed: number; unsubscribe?: () => void };
+type Entry = {
+  session: Promise<AgentSession>;
+  lastUsed: number;
+  unsubscribe?: () => void;
+  /** The policy the session was built with. */
+  chat: ChatModel;
+};
+
+const samePolicy = (a: ChatModel, b: ChatModel) =>
+  a.modelId === b.modelId && a.reasoning === b.reasoning && a.dataPolicy === b.dataPolicy;
 
 async function stop(e: Entry) {
   e.unsubscribe?.();
@@ -91,26 +111,40 @@ export class SessionRegistry {
     for (const d of [this.agentDir, this.sessionDir, this.cwd]) mkdirSync(d, { recursive: true });
   }
 
-  create(chatId: string, agentId: string): Promise<AgentSession> {
-    return this.track(chatId, agentId, () =>
+  /** `chat` is passed in: `chat.create` builds the session before it inserts the row. */
+  create(chatId: string, chat: ChatModel): Promise<AgentSession> {
+    return this.track(chatId, chat, () =>
       SessionManager.create(this.cwd, this.sessionDir, { id: chatId }),
     );
   }
 
   /** Opens the chat's session. Pi writes the JSONL only after the first message, so a missing file means an empty chat. */
   async get(chatId: string): Promise<AgentSession> {
-    const session = await this.track(chatId, this.opts.getAgentId(chatId) ?? 'assistant', () => {
-      const path = SessionManager.findById(this.cwd, chatId, this.sessionDir);
-      return path
-        ? SessionManager.open(path, this.sessionDir)
-        : SessionManager.create(this.cwd, this.sessionDir, { id: chatId });
-    });
-    // `chat.delete` may have run while the session loaded.
-    if (this.opts.getAgentId(chatId) === undefined) {
-      await this.remove(chatId);
-      throw new ChatNotFound();
+    for (;;) {
+      const chat = this.opts.getChat(chatId) ?? {
+        agentId: 'assistant',
+        modelId: null,
+        reasoning: 'auto',
+        dataPolicy: 'zdr',
+      };
+      const session = await this.track(chatId, chat, () => {
+        const path = SessionManager.findById(this.cwd, chatId, this.sessionDir);
+        return path
+          ? SessionManager.open(path, this.sessionDir)
+          : SessionManager.create(this.cwd, this.sessionDir, { id: chatId });
+      });
+      // `chat.delete` may have run while the session loaded.
+      const now = this.opts.getChat(chatId);
+      if (now === undefined) {
+        await this.remove(chatId);
+        throw new ChatNotFound();
+      }
+      // A policy change during the build (or an eviction) means a stale session: rebuild it, so
+      // an `open` session never outlives "Palauta ZDR". A running one stays until it settles.
+      const built = this.entries.get(chatId)?.chat;
+      if (built && samePolicy(built, now)) return session;
+      if (built && !(await this.evict(chatId))) return session;
     }
-    return session;
   }
 
   has(chatId: string): boolean {
@@ -135,6 +169,30 @@ export class SessionRegistry {
     }
   }
 
+  /**
+   * Drops the chat's idle session so the next `get` rebuilds it with the stored model policy
+   * (phase-10 decision 14). The JSONL stays. False while a run is active: nothing changes then.
+   */
+  async evict(chatId: string): Promise<boolean> {
+    for (;;) {
+      const e = this.entries.get(chatId);
+      if (!e) return true;
+      const session = await e.session.catch(() => undefined);
+      // Replaced or removed while loading: look again.
+      if (this.entries.get(chatId) !== e) continue;
+      if (session && !session.isIdle) return false;
+      this.entries.delete(chatId);
+      e.unsubscribe?.();
+      session?.dispose();
+      return true;
+    }
+  }
+
+  /** After a catalog change: new sessions and children read the new `models.json`; open ones keep their model. */
+  resetModels(): void {
+    this.runtime = undefined;
+  }
+
   async dispose(): Promise<void> {
     const all = [...this.entries.values()];
     this.entries.clear();
@@ -150,7 +208,7 @@ export class SessionRegistry {
     if (path) rmSync(path, { force: true });
   }
 
-  /** Shared model runtime. Pi cannot create one without built-in providers, so the test asserts only `zdr` resolves credentials (invariant 2 guard). */
+  /** Shared model runtime. Pi cannot create one without built-in providers, so the test asserts only `zdr` and `open` resolve credentials (invariant 2 guard). */
   modelRuntime(): Promise<ModelRuntime> {
     this.runtime ??= ModelRuntime.create({
       authPath: resolve(this.agentDir, 'auth.json'),
@@ -161,7 +219,7 @@ export class SessionRegistry {
 
   private track(
     chatId: string,
-    agentId: string,
+    chat: ChatModel,
     manager: () => SessionManager,
   ): Promise<AgentSession> {
     const existing = this.entries.get(chatId);
@@ -169,8 +227,8 @@ export class SessionRegistry {
       existing.lastUsed = Date.now();
       return existing.session;
     }
-    const session = this.build(chatId, agentId, manager);
-    this.entries.set(chatId, { session, lastUsed: Date.now() });
+    const session = this.build(chatId, chat, manager);
+    this.entries.set(chatId, { session, lastUsed: Date.now(), chat });
     session.catch(() => {
       if (this.entries.get(chatId)?.session === session) this.entries.delete(chatId);
     });
@@ -179,18 +237,27 @@ export class SessionRegistry {
 
   private async build(
     chatId: string,
-    agentId: string,
+    chat: ChatModel,
     manager: () => SessionManager,
   ): Promise<AgentSession> {
+    const { agentId } = chat;
     const profile = this.opts.agents().get(agentId);
     if (!profile) throw new Error(`Agent profile ${agentId} not found`);
     const sessionManager = manager();
     const { pseudo, subagents, memory } = this.opts;
     const withSubagents = profile.subagents && subagents;
     const modelRuntime = await this.modelRuntime();
-    const model = modelRuntime.getModel('zdr', profile.model);
-    if (!model)
-      throw new Error(`Model ${profile.model} of agent ${agentId} not found in models.json`);
+    const modelPolicy = policyOf(chat);
+    // The only prefix choice (phase-10 "What pa-server sends"); children follow it.
+    const { provider, id: modelId } = piModelId(modelPolicy, profile);
+    const model = modelRuntime.getModel(provider, modelId);
+    if (!model) throw new Error(`Model ${modelId} of chat ${chatId} not found in models.json`);
+    const thinking = thinkingLevel(
+      modelPolicy,
+      modelPolicy.modelId === null
+        ? undefined
+        : this.opts.catalog.get(resolveModelId(modelPolicy.modelId)),
+    );
     const { broker } = this.opts;
     // Pi's built-in `bash` is never enabled (invariant 8): `bash` stays only with the broker tool.
     const tools = profile.tools.allow.filter((t) => t !== 'bash' || broker);
@@ -259,7 +326,8 @@ export class SessionRegistry {
                 cwd: this.cwd,
                 litellm: withSubagents.litellm,
                 pseudoUrl: withSubagents.pseudoUrl,
-                model: profile.model,
+                provider,
+                model: modelId,
                 // Children never touch memory.
                 tools: tools.filter((t) => t !== 'memory' && t !== 'recall'),
                 broker,
@@ -313,6 +381,7 @@ export class SessionRegistry {
       agentDir: this.agentDir,
       modelRuntime,
       model,
+      ...(thinking ? { thinkingLevel: thinking } : {}),
       sessionManager,
       resourceLoader,
       tools: [...tools, ...(withSubagents ? ['subagent'] : []), ...mcpTools],

@@ -47,6 +47,8 @@ export async function buildServer({
   | 'sockets'
   | 'memory'
   | 'push'
+  | 'catalog'
+  | 'refusals'
 > & {
   config: Config;
   integrations: Integrations;

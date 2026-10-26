@@ -144,6 +144,8 @@ export const test = base.extend<{
         DATA_DIR: dataDir,
         LITELLM_URL: llm.url,
         LITELLM_MASTER_KEY: KEY,
+        // Model catalog from the fake (phase-10): Auto is a catalog model.
+        OPENROUTER_CATALOG: llm.url,
         AUTH_ORIGIN: `http://127.0.0.1:${port}`,
         COOKIE_SECRET: 'e'.repeat(40),
         AUTH_PASSWORD_HASH: await hashPassword(PASSWORD),

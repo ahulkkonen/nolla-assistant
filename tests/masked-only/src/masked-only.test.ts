@@ -219,6 +219,7 @@ test('masked-only: 10-turn tool conversation, then restart and chat.open', async
     DATA_DIR: dataDir,
     LITELLM_URL: llm.url,
     LITELLM_MASTER_KEY: KEY,
+    OPENROUTER_CATALOG: llm.url,
     PORT: String(await freePort()),
     HOST: '127.0.0.1',
     LOG_LEVEL: 'debug',

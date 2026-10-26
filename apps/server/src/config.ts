@@ -78,6 +78,9 @@ export function loadConfig(env: Env = process.env) {
     vapid,
     // Test only: accepts any push endpoint host (a loopback fake push service).
     pushAllowAnyHost: pushAnyHost(env),
+    // Public model catalog (phase-10 decision 8): the OpenRouter API base, or `off` (no fetch; the
+    // cached DATA_DIR/openrouter/catalog.json still loads). Tests point it at the fake LLM.
+    openrouterCatalog: env.OPENROUTER_CATALOG || 'https://openrouter.ai/api/v1',
     // Both or nothing: without them no `bash` tool exists (Pi's built-in one is never enabled).
     broker:
       env.BROKER_URL && env.BROKER_TOKEN

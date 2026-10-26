@@ -37,7 +37,8 @@ test('create chat, stream reply, reload after restart', { timeout: 30_000 }, asy
   expect(new Set(deltas.map((d) => d.messageId)).size).toBe(1);
   expect(deltas.map((d) => d.text).join('')).toBe(final.message.text);
   expect(final.message.text).toBe(SCRIPTED);
-  expect(llm.requests[0]?.body.model).toBe('zdr/strong');
+  // A new chat is Auto under ZDR (phase-10 decisions 5 and 6).
+  expect(llm.requests[0]?.body.model).toBe('zdr/google/gemini-4-argon');
   expect(llm.requests[0]?.headers.authorization).toBe(`Bearer ${KEY}`);
   await c.idle();
   c.ws.close();
@@ -104,12 +105,15 @@ test('tool turn reports read status; guard denies paths outside workspace', {
   await c.idle();
 });
 
-test('only the zdr provider resolves credentials (invariant 2)', { timeout: 30_000 }, async () => {
+test('only the zdr and open providers resolve credentials (invariant 2)', {
+  timeout: 30_000,
+}, async () => {
   const { run } = await boot([]);
   const srv = await run();
   const available = await (await srv.registry.modelRuntime()).getAvailable();
   expect(available.length).toBeGreaterThan(0);
-  expect(available.every((m) => m.provider === 'zdr')).toBe(true);
+  // Phase-10 decision 15: `open` is the per-chat opt-out; both reach only LiteLLM.
+  expect(new Set(available.map((m) => m.provider))).toEqual(new Set(['zdr', 'open']));
 });
 
 test('auth: cookie required, password login, rate limit, logout', { timeout: 30_000 }, async () => {

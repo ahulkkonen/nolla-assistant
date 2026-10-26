@@ -29,10 +29,24 @@ export const chats = sqliteTable(
     // relative to DATA_DIR, e.g. sessions/<userId>/<chatId>.jsonl
     sessionPath: text().notNull(),
     summary: text(),
+    // Phase-10 model policy. 'auto' | OpenRouter id | null (the agent profile's alias).
+    modelId: text(),
+    reasoning: text().notNull().default('auto'),
+    // 'open' only after a recorded ZDR refusal (phase-10 decision 9); the server and zod enforce it.
+    dataPolicy: text({ enum: ['zdr', 'open'] })
+      .notNull()
+      .default('zdr'),
     createdAt: text().notNull(),
     updatedAt: text().notNull(),
   },
   (t) => [index('chats_user_archived_updated_idx').on(t.userId, t.archived, t.updatedAt)],
+);
+
+/** Favourite models (phase-10 decision 13), shown in `createdAt` order. */
+export const modelFavorites = sqliteTable(
+  'modelFavorites',
+  { userId: text().notNull(), modelId: text().notNull(), createdAt: text().notNull() },
+  (t) => [primaryKey({ columns: [t.userId, t.modelId] })],
 );
 
 const chatRef = () =>

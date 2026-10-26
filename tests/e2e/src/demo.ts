@@ -58,6 +58,7 @@ await start(
     DATA_DIR: dataDir,
     LITELLM_URL: llm.url,
     LITELLM_MASTER_KEY: KEY,
+    OPENROUTER_CATALOG: llm.url,
     PSEUDO_URL: sidecar.url,
     AUTH_ORIGIN: `http://localhost:${port}`,
     COOKIE_SECRET: 'd'.repeat(40),

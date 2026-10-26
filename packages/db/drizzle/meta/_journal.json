@@ -29,6 +29,13 @@
       "when": 1792915430853,
       "tag": "0003_workable_magdalene",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1792995683008,
+      "tag": "0004_windy_chronomancer",
+      "breakpoints": true
     }
   ]
 }

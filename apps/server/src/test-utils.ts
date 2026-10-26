@@ -46,6 +46,8 @@ export async function boot(turns: FakeTurn[], env: Record<string, string> = {}) 
     AUTH_PASSWORD_HASH: PASSWORD_HASH,
     // No `mcp-workspace` host in tests; tests/mcp passes its own file.
     MCP_CONFIG: 'none',
+    // The fake LLM serves the model catalog (Auto is a catalog model); no call to openrouter.ai.
+    OPENROUTER_CATALOG: llm.url,
     ...env,
   });
   cleanups.push(
