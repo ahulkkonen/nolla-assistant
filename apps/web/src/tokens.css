@@ -243,6 +243,16 @@
   --info-subtle: #e5eefb;
   --mask: #ece4fb;
   --mask-line: #7151c4;
+  /* Phase 19 charts: clay, teal, blue, ochre, plum, rose; each >= 3:1 on --card. */
+  --chart-1: #b5532a;
+  --chart-2: #2c7a73;
+  --chart-3: #1d5bbf;
+  --chart-4: #9a6700;
+  --chart-5: #7151c4;
+  --chart-6: #b5446e;
+  --chart-faint: #9a988f;
+  --chart-band: #f3efe6;
+  --chart-accent-soft: #f4dfd3;
   --radius: 12px;
   --elevation-sm: 0 1px 2px rgb(20 20 19 / 0.05);
   --elevation-md: 0 1px 3px rgb(20 20 19 / 0.06), 0 4px 16px rgb(20 20 19 / 0.08);
@@ -297,6 +307,15 @@
     --info-subtle: #22314a;
     --mask: #3e3557;
     --mask-line: #b8a3f0;
+    --chart-1: #e3936b;
+    --chart-2: #6cbab1;
+    --chart-3: #8fb6f5;
+    --chart-4: #dcb05a;
+    --chart-5: #b8a3f0;
+    --chart-6: #e795b5;
+    --chart-faint: #7f7d75;
+    --chart-band: #3a3936;
+    --chart-accent-soft: #4d3429;
     --elevation-sm: 0 0 #0000;
     --elevation-md: 0 8px 32px rgb(0 0 0 / 0.45);
     --elevation-lg: 0 8px 32px rgb(0 0 0 / 0.45);

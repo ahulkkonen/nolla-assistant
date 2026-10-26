@@ -6,6 +6,7 @@ const KINDS: Record<string, Artifact['kind']> = {
   jsx: 'react',
   tsx: 'react',
   mermaid: 'mermaid',
+  'vega-lite': 'vega-lite',
 };
 const MIN_CODE_LINES = 30;
 const MAX_INPUT = 200_000;
@@ -22,8 +23,24 @@ const clean = (s: string) =>
     .trim()
     .slice(0, MAX_TITLE);
 
-/** First `<h1>`..`<h6>` text, or for markdown the first `#` heading, in the first 4 KB. */
+/** `title.text` (or a string `title`) of a Vega-Lite spec; a line array is joined. */
+function specTitle(content: string): string | undefined {
+  try {
+    const t = (JSON.parse(content) as { title?: unknown }).title;
+    const text = typeof t === 'object' && t !== null ? (t as { text?: unknown }).text : t;
+    const s = Array.isArray(text) ? text.join(' ') : text;
+    return typeof s === 'string' ? clean(s) || undefined : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * First `<h1>`..`<h6>` text, or for markdown the first `#` heading, in the first 4 KB; a Vega-Lite
+ * spec's title.
+ */
 function headingOf(lang: string, content: string): string | undefined {
+  if (lang === 'vega-lite') return specTitle(content);
   const head = content.slice(0, TITLE_SCAN);
   for (let i = head.indexOf('<h'); i >= 0; i = head.indexOf('<h', i + 2)) {
     if (!'123456'.includes(head[i + 2] ?? 'x')) continue;
@@ -61,7 +78,7 @@ function fencedBlocks(text: string) {
   return blocks;
 }
 
-/** Artifacts in an assistant text: `html`, `jsx`/`tsx`, `mermaid` blocks and code over 30 lines. */
+/** Artifacts in an assistant text: `html`, `jsx`/`tsx`, `mermaid`, `vega-lite` blocks and code over 30 lines. */
 export function extractArtifacts(messageId: string, text: string): Artifact[] {
   const out: Artifact[] = [];
   for (const { lang, content } of fencedBlocks(text)) {

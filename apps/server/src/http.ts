@@ -3,7 +3,7 @@ import cookie from '@fastify/cookie';
 import multipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
 import websocket from '@fastify/websocket';
-import type { ServerMessage } from '@pa/protocol';
+import { SANDBOX_CSP, type ServerMessage } from '@pa/protocol';
 import Fastify from 'fastify';
 import { adminRoutes } from './admin.ts';
 import { authRoutes, requireUser, type SessionSockets } from './auth/routes.ts';
@@ -34,6 +34,25 @@ const HTML_CSP = [
   `report-uri ${CSP_REPORT_PATH}`,
   'report-to csp',
 ].join('; ');
+
+/**
+ * The artifact sandbox page (phase-19 decision 2). A `srcdoc` frame inherits HTML_CSP, which
+ * blocks every inline script, so artifacts load this page with its own policy instead. It writes
+ * the one document its opener or parent posts; `sandbox` keeps it on an opaque origin even when
+ * it is opened in a tab of its own.
+ */
+const SANDBOX_HEADER = `sandbox allow-scripts; ${SANDBOX_CSP}; frame-ancestors 'self'`;
+const SANDBOX_PAGE = `<!doctype html><meta charset="utf-8"><title>Artefakti</title><script>
+var host = opener || parent, done = false;
+addEventListener('message', function (e) {
+  if (done || e.source !== host || typeof e.data !== 'string') return;
+  done = true;
+  document.open();
+  document.write(e.data);
+  document.close();
+});
+host.postMessage('sandbox-ready', '*');
+</script>`;
 
 const under = (path: string, prefix: string) => path === prefix || path.startsWith(`${prefix}/`);
 
@@ -104,6 +123,15 @@ export async function buildServer({
   });
   await app.register(websocket);
   app.get('/healthz', async () => ({ ok: true }));
+  // Static and without data, so no login: the posted document never reaches the server.
+  app.get('/api/sandbox', async (_req, reply) =>
+    reply
+      .header('Content-Security-Policy', SANDBOX_HEADER)
+      .header('X-Frame-Options', 'SAMEORIGIN')
+      .header('Cache-Control', 'no-cache')
+      .type('text/html; charset=utf-8')
+      .send(SANDBOX_PAGE),
+  );
   await cspReportRoutes(app, (msg, data) => app.log.warn(data, msg));
   // Open sockets per session: a revoked session's sockets close (phase-15 decision 12).
   const socketSessions = new Map<{ close(code: number, reason: string): void }, string>();

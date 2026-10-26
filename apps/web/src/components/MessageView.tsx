@@ -46,7 +46,13 @@ export function CopyButton({ text, className }: { text: () => string; className:
   );
 }
 
-const ARTIFACT_KIND = { html: 'html', jsx: 'react', tsx: 'react', mermaid: 'mermaid' } as const;
+const ARTIFACT_KIND = {
+  html: 'html',
+  jsx: 'react',
+  tsx: 'react',
+  mermaid: 'mermaid',
+  'vega-lite': 'vega-lite',
+} as const;
 const hash = (s: string) => {
   let h = 5381;
   for (let i = 0; i < s.length; i++) h = (h * 33) ^ s.charCodeAt(i);

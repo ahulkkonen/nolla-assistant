@@ -47,6 +47,7 @@ export function ActionMenu({
   open,
   onOpenChange,
   note,
+  Icon = MoreHorizontal,
 }: {
   label: string;
   actions: Action[];
@@ -55,6 +56,8 @@ export function ActionMenu({
   onOpenChange?: (open: boolean) => void;
   /** A non-interactive line at the end (the chat menu's cost, phase 13). */
   note?: string | undefined;
+  /** The trigger's icon; ⋯ by default. */
+  Icon?: LucideIcon;
 }) {
   return (
     <DropdownMenu
@@ -64,13 +67,13 @@ export function ActionMenu({
     >
       <DropdownMenuTrigger asChild>
         <IconButton label={label} {...(small ? { className: 'size-7' } : {})}>
-          <MoreHorizontal size={16} />
+          <Icon size={16} />
         </IconButton>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" collisionPadding={8} className="w-auto min-w-48">
-        {actions.map(({ label, Icon, run }) => (
+        {actions.map(({ label, Icon: ItemIcon, run }) => (
           <DropdownMenuItem key={label} {...(run ? { onSelect: run } : { disabled: true })}>
-            <Icon size={16} className="text-muted-foreground" />
+            <ItemIcon size={16} className="text-muted-foreground" />
             {label}
           </DropdownMenuItem>
         ))}

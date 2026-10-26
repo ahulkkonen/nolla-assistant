@@ -139,6 +139,112 @@ function seedWork(dir: string) {
 /** An assistant reply with one HTML block (an artifact). */
 export const HTML_REPLY =
   'Tässä sivu:\n\n```html\n<h1>Hei artefakti</h1>\n<p>Tämä sivu toimii hiekkalaatikossa.</p>\n```';
+const block = (lang: string, body: unknown) =>
+  `\`\`\`${lang}\n${typeof body === 'string' ? body : JSON.stringify(body, null, 2)}\n\`\`\``;
+const MONTHS = 'tammi helmi maalis huhti touko kesä heinä elo syys loka marras joulu'.split(' ');
+const KWH = [452, 401, 356, 270, 198, 142, 131, 150, 214, 298, 365, 393];
+/** Phase 19: a bar chart with a lifted title, subtitle and caption (R1) and a colour role (R7). */
+export const CHART_REPLY = `Tässä kulutus kuukausittain:\n\n${block('vega-lite', {
+  $schema: 'https://vega.github.io/schema/vega-lite/v6.json',
+  title: {
+    text: 'Sähkönkulutus kuukausittain 2025',
+    subtitle: 'Talven kuukaudet kuluttivat **yli kolme kertaa** kesän verran.',
+  },
+  description: 'Pylväskaavio kotitalouden sähkönkulutuksesta kuukausittain vuonna 2025.',
+  usermeta: { caption: 'Lähde: sähköyhtiön kulutusraportti, yhteensä 3 370 kWh.' },
+  data: { values: MONTHS.map((kk, i) => ({ kk, kWh: KWH[i] })) },
+  mark: 'bar',
+  encoding: {
+    x: { field: 'kk', type: 'ordinal', sort: null, title: null },
+    y: { field: 'kWh', type: 'quantitative', title: 'Kulutus (kWh)' },
+    color: { value: '@accent' },
+  },
+  config: { font: 'Comic Sans MS' },
+})}\n\nTammikuu oli vuoden kulutetuin kuukausi.`;
+const PRICES = [
+  [5210, 3890],
+  [5185, 3905],
+  [5160, 3920],
+  [5190, 3940],
+  [5230, 3960],
+  [5260, 3985],
+];
+/** Phase 19: two series with dates, colour roles and direct end labels (R3 padding right 44). */
+export const LINE_REPLY = `Hinnat kehittyivät näin:\n\n${block('vega-lite', {
+  title: { text: 'Asuntojen neliöhinnat 2026', subtitle: 'Vanhat kerrostaloasunnot, €/m²' },
+  description: 'Viivakaavio kahden kaupungin asuntojen neliöhinnoista tammi–kesäkuussa 2026.',
+  data: {
+    values: PRICES.flatMap(([a, b], i) => [
+      { kk: `2026-0${i + 1}-01`, kaupunki: 'Helsinki', hinta: a },
+      { kk: `2026-0${i + 1}-01`, kaupunki: 'Tampere', hinta: b },
+    ]),
+  },
+  encoding: {
+    x: { field: 'kk', type: 'temporal', title: null, axis: { format: '%b', tickCount: 6 } },
+    y: { field: 'hinta', type: 'quantitative', title: 'Hinta (€/m²)', scale: { zero: false } },
+    color: {
+      field: 'kaupunki',
+      type: 'nominal',
+      scale: { range: ['@accent', '@c2'] },
+      legend: null,
+    },
+  },
+  layer: [
+    { mark: { type: 'line', color: '#ff0000' } },
+    {
+      transform: [{ filter: 'month(datum.kk) == 5' }],
+      mark: { type: 'text', align: 'left', dx: 6 },
+      encoding: { text: { field: 'kaupunki' } },
+    },
+  ],
+})}\n\nHelsingin hinnat nousivat kesäkuuhun mennessä noin prosentin.`;
+/** Phase 19: a refused spec (R6): a `url` in a transform; the fallback shows the inline rows. */
+export const REFUSED_REPLY = `Kaavio:\n\n${block('vega-lite', {
+  title: 'Haettu data',
+  data: {
+    values: [
+      { tuote: 'Kahvi', kpl: 12 },
+      { tuote: 'Tee', kpl: 7 },
+    ],
+  },
+  transform: [
+    { lookup: 'tuote', from: { data: { url: 'https://example.com/x.csv' }, key: 'tuote' } },
+  ],
+  mark: 'bar',
+  encoding: { x: { field: 'tuote' }, y: { field: 'kpl', type: 'quantitative' } },
+})}`;
+/** Phase 19: a flowchart with accTitle, accDescr and a quoted "kesä" label. */
+export const MERMAID_REPLY = `Suunnitelma:\n\n${block(
+  'mermaid',
+  `flowchart TD
+  accTitle: Lomasuunnitelma
+  accDescr: Kesäloman suunnittelun vaiheet ideasta varaukseen.
+  A["Idea: kesä"] --> B["Budjetti"]
+  B --> C{"Mökki vai matka?"}
+  C -->|"Mökki"| D["Varaa mökki"]
+  C -->|"Matka"| E["Varaa liput"]`,
+)}`;
+/** Phase 19: an HTML artifact on the design kit: `.card`, `.stat`, `.callout` and a Plot chart. */
+export const KIT_REPLY = `Tässä yhteenveto:\n\n${block(
+  'html',
+  `<h1>Vedenkulutus viikolla 43</h1>
+<p>Viikon kulutus pysyi tavoitteessa. Suurin kulutus osui lauantaille.</p>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:16px">
+  <div class="card stat"><span class="value">812 l</span><span class="label">Viikon kulutus</span></div>
+  <div class="card stat"><span class="value">116 l</span><span class="label">Keskimäärin päivässä</span></div>
+</div>
+<div class="callout info">Tavoite on alle 120 litraa päivässä.</div>
+<figure id="kaavio"><figcaption>Päivittäinen kulutus litroina.</figcaption></figure>
+<script>
+const data = [['ma', 104], ['ti', 98], ['ke', 121], ['to', 110], ['pe', 117], ['la', 149], ['su', 113]]
+  .map(([pv, l]) => ({ pv, l }));
+document.getElementById('kaavio').prepend(Plot.plot({
+  width: document.body.clientWidth - 32, height: 200, marginLeft: 40,
+  x: { label: null, domain: data.map((d) => d.pv) }, y: { label: 'Litraa', grid: true },
+  marks: [Plot.barY(data, { x: 'pv', y: 'l', fill: 'var(--chart-1)' }), Plot.ruleY([0])],
+}));
+</script>`,
+)}`;
 const KEY = 'sk-e2e-master';
 
 const freePort = async () => {
