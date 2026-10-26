@@ -9,6 +9,7 @@ import {
   ShieldCheck,
   ShieldOff,
   Split,
+  UserPlus,
   UserRound,
   X,
 } from 'lucide-react';
@@ -112,6 +113,58 @@ const pendingActions = (p: VaultPending) => {
   };
 };
 
+/**
+ * A collision (phase 12): a yes-or-no question, so both answers are visible buttons. The held
+ * message waits for it, so the card says so.
+ */
+function CollisionRow({
+  p,
+  owner,
+  confirm,
+  more,
+}: {
+  p: VaultPending;
+  owner: string | undefined;
+  confirm: () => void;
+  more: Action[];
+}) {
+  const same = more[0];
+  return (
+    <li className="flex flex-col gap-3 rounded-lg border bg-card px-4 py-3 md:flex-row md:items-center">
+      <div className="min-w-0 flex-1">
+        <div className="truncate font-medium">{p.text}</div>
+        <p className="text-meta text-pretty text-muted-foreground">
+          Onko tämä uusi henkilö? Nimi on jo pseudonyymi{owner ? ` henkilölle ${owner}` : ''}.
+          Viesti odottaa vastausta.
+        </p>
+      </div>
+      {/* Phones: 50 % each under the text, as the confirmation buttons (brief 7.5). */}
+      <div className="grid shrink-0 grid-cols-2 gap-2 md:flex">
+        <Button
+          variant="outline"
+          size="sm"
+          aria-label={`Uusi henkilö: ${p.text}`}
+          onClick={confirm}
+        >
+          <UserPlus size={16} />
+          Uusi henkilö
+        </Button>
+        {same && (
+          <Button
+            variant="outline"
+            size="sm"
+            aria-label={`Sama henkilö: ${p.text}`}
+            onClick={same.run}
+          >
+            <UserRound size={16} />
+            Sama henkilö
+          </Button>
+        )}
+      </div>
+    </li>
+  );
+}
+
 function PendingLane({ pending, entities }: { pending: VaultPending[]; entities: VaultEntity[] }) {
   return (
     <section aria-labelledby="pending-title" className="flex flex-col gap-3">
@@ -122,6 +175,8 @@ function PendingLane({ pending, entities }: { pending: VaultPending[]; entities:
         {pending.map((p) => {
           const { confirm, confirmLabel, more } = pendingActions(p);
           const owner = entities.find((e) => e.id === p.entityId)?.canonical;
+          if (p.reason === 'collision')
+            return <CollisionRow key={p.id} p={p} owner={owner} confirm={confirm} more={more} />;
           return (
             // Phones: "Vahvista" goes under the text so the text keeps its width.
             <li
@@ -131,9 +186,7 @@ function PendingLane({ pending, entities }: { pending: VaultPending[]; entities:
               <div className="col-start-1 row-start-1 min-w-0">
                 <div className="truncate font-medium">{p.text}</div>
                 <div className="text-meta text-muted-foreground">
-                  {p.reason === 'collision'
-                    ? `Onko tämä uusi henkilö? · nimi on jo pseudonyymi${owner ? ` henkilölle ${owner}` : ''} · viesti odottaa vastausta`
-                    : `${kind(p.kind)} · suojattu kunnes vahvistat · ${Math.round(p.score * 100)} %`}
+                  {`${kind(p.kind)} · suojattu kunnes vahvistat · ${Math.round(p.score * 100)} %`}
                 </div>
               </div>
               <Button

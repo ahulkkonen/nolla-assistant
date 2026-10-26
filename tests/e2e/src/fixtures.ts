@@ -155,6 +155,9 @@ export const DICT = {
   '010190-123M': '010190-900B',
 };
 
+/** The surrogate of Matti Virtanen, typed as a real person's name: a collision (phase 12). */
+export const COLLIDING = 'Pekka Laaksonen';
+
 export type App = {
   url: string;
   dataDir: string;
@@ -172,13 +175,14 @@ deliver: chat
 
 export const test = base.extend<{
   app: App;
-  pseudo: 'off' | 'full' | 'empty';
+  pseudo: 'off' | 'full' | 'empty' | 'collision';
   automation: boolean;
   approvalTimeoutMs: number;
   memoryUser: string;
   workFiles: boolean;
 }>({
-  // Starts the fake sidecar and sets PSEUDO_URL: `full` has DICT plus one pending item.
+  // Starts the fake sidecar and sets PSEUDO_URL: `full` has DICT plus one pending item;
+  // `collision` has DICT, and typing COLLIDING holds the message (phase 12).
   pseudo: ['off', { option: true }],
   // Writes AUTOMATION into the run's own AUTOMATIONS_DIR (always a temp dir, empty by default).
   automation: [false, { option: true }],
@@ -195,9 +199,11 @@ export const test = base.extend<{
         ? undefined
         : pseudo === 'empty'
           ? await startFakeSidecar({})
-          : await startFakeSidecar(DICT, {
-              pending: [{ kind: 'person', text: 'Koski', detector: 'gliner', score: 0.42 }],
-            });
+          : pseudo === 'collision'
+            ? await startFakeSidecar(DICT, { collide: [COLLIDING] })
+            : await startFakeSidecar(DICT, {
+                pending: [{ kind: 'person', text: 'Koski', detector: 'gliner', score: 0.42 }],
+              });
     const dataDir = mkdtempSync(join(tmpdir(), 'pa-e2e-'));
     mkdirSync(join(dataDir, 'work/aleksi'), { recursive: true });
     if (workFiles) seedWork(join(dataDir, 'work/aleksi'));

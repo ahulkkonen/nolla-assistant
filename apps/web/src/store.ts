@@ -251,8 +251,8 @@ const ERROR_TEXT: Record<string, string> = {
   not_implemented: 'Ei vielä tuettu.',
   failed: 'Toiminto epäonnistui.',
   pseudo_down: 'Pseudonymisointipalvelu ei vastaa.',
-  pseudo_collision:
-    'Viestissä on nimi, joka on jo pseudonyymi. Vastaa Nimisuojassa, niin viesti lähtee.',
+  // A toast: at most 60 characters (brief 7.9); its action "Avaa Nimisuoja" says where.
+  pseudo_collision: 'Nimi on jo pseudonyymi. Vastaa Nimisuojassa.',
   held: 'Edellinen viesti odottaa Nimisuojaa.',
   memory_full: 'Muisti on täynnä.',
   memory_conflict: 'Teksti on muuttunut, lataa uudelleen.',
@@ -538,10 +538,12 @@ export const useStore = create<State>()((set, get) => {
         case 'chat.held': {
           const last = get().messages[msg.chatId]?.findLast((m) => m.role === 'user');
           set((st) => ({ held: { ...st.held, [msg.chatId]: last?.text ?? '' } }));
-          return get().notify(ERROR_TEXT.pseudo_collision ?? msg.type, {
-            label: 'Avaa Nimisuoja',
-            onClick: () => get().setScreen('vault'),
+          // A question, not a success: a warning toast that stays long enough to use its action.
+          toast.warning(ERROR_TEXT.pseudo_collision ?? msg.type, {
+            duration: 8000,
+            action: { label: 'Avaa Nimisuoja', onClick: () => get().setScreen('vault') },
           });
+          return;
         }
         case 'chat.released': {
           const st = get();

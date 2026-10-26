@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import type { Page } from '@playwright/test';
 import {
   acceptProposal,
+  COLLIDING,
   DICT,
   expect,
   HTML_REPLY,
@@ -186,6 +187,37 @@ test.describe('vault', () => {
     await expect(page.getByRole('heading', { name: 'Vahvistettavat' })).toHaveCount(0);
     await expect(rows).toHaveCount(3);
     await expect(rows.filter({ hasText: 'Koski' })).toHaveCount(1);
+  });
+});
+
+test.describe('collision', () => {
+  test.use({ pseudo: 'collision' });
+
+  test('collision: a name equal to an issued surrogate holds the message, Uusi henkilö resumes it', async ({
+    app,
+    page,
+  }) => {
+    app.llm.push({ text: 'Soitan hänelle huomenna.' });
+    await app.login(page);
+    const ask = `Soita ${COLLIDING} huomenna`;
+    await send(page, ask);
+    // Held: the toast asks for an answer, and the composer says what it waits for.
+    await expect(page.getByText('Nimi on jo pseudonyymi. Vastaa Nimisuojassa.')).toBeVisible();
+    await expect(page.getByLabel('Viesti')).toHaveAttribute('placeholder', 'Odottaa Nimisuojaa');
+    await expect(thread(page).getByText(ask)).toBeVisible();
+    expect(app.llm.requests).toHaveLength(0);
+
+    await page.getByRole('button', { name: 'Avaa Nimisuoja' }).click();
+    const row = page.getByRole('listitem').filter({ hasText: 'Onko tämä uusi henkilö?' });
+    await expect(row).toContainText(COLLIDING);
+    await row.getByRole('button', { name: 'Uusi henkilö' }).click();
+    await expect(page.getByRole('heading', { name: 'Vahvistettavat' })).toHaveCount(0);
+
+    // Resumed: the reply arrives in the chat; the model never saw the typed name.
+    await page.locator('nav li > button').first().click();
+    await expect(page.locator('.md').last()).toHaveText('Soitan hänelle huomenna.');
+    await expect(page.getByLabel('Viesti')).toHaveAttribute('placeholder', 'Kirjoita viesti');
+    expect(JSON.stringify(app.llm.requests[0]?.body)).not.toContain(COLLIDING);
   });
 });
 

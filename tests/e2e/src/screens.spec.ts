@@ -5,6 +5,7 @@ import AxeBuilder from '@axe-core/playwright';
 import type { Page } from '@playwright/test';
 import {
   acceptProposal,
+  COLLIDING,
   expect,
   HTML_REPLY,
   memoryTurns,
@@ -605,6 +606,31 @@ for (const scheme of ['light', 'dark'] as const) {
       });
 
       if (vp.width !== 1024) {
+        test.describe('collision', () => {
+          test.use({ pseudo: 'collision' });
+
+          test('chat-held', async ({ app, page }) => {
+            await app.login(page);
+            await sendMessage(page, `Soita ${COLLIDING} huomenna`);
+            await expect(page.getByRole('button', { name: 'Avaa Nimisuoja' })).toBeVisible();
+            await expect(page.getByLabel('Viesti')).toHaveAttribute(
+              'placeholder',
+              'Odottaa Nimisuojaa',
+            );
+            await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+            await shot(page, 'chat-held', vp.width, scheme);
+          });
+
+          test('vault-collision', async ({ app, page }) => {
+            await app.login(page);
+            await sendMessage(page, `Soita ${COLLIDING} huomenna`);
+            await page.getByRole('button', { name: 'Avaa Nimisuoja' }).click();
+            await expect(page.getByText('Onko tämä uusi henkilö?')).toBeVisible();
+            await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+            await shot(page, 'vault-collision', vp.width, scheme);
+          });
+        });
+
         test.describe('pseudo', () => {
           test.use({ pseudo: 'full' });
 

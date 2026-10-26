@@ -53,10 +53,10 @@ lines and the harness enforces the plan's thresholds.
    returns an empty `masked`, no spans and the list `collisions`, and it records no spans. The same
    mention sent again gets the same open row. The input hook waits on `awaitCollision`. The server
    sends `chat.held { chatId, pendingIds }` to the chat and a fresh `vault.state` to every screen. The
-   client shows the toast "Viestissä on nimi, joka on jo pseudonyymi. Vastaa Nimisuojassa, niin viesti
-   lähtee." and the composer placeholder "Odottaa Nimisuojaa". The vault screen shows the row as "Onko
+   client shows a warning toast "Nimi on jo pseudonyymi. Vastaa Nimisuojassa." (brief 7.9 caps toasts at
+   60 characters) with the action "Avaa Nimisuoja", and the composer placeholder "Odottaa Nimisuojaa". The vault screen shows the row as "Onko
    tämä uusi henkilö?" with the name of the entity. The buttons are "Uusi henkilö" (accept) and "Sama
-   henkilö" (reject). Nothing goes to the model or to the session file before the answer. While the
+   henkilö" (reject). Both buttons are visible on the card. Nothing goes to the model or to the session file before the answer. While the
    hold exists, the server refuses a new message or a retry in that chat with the error code `held`
    ("Edellinen viesti odottaa Nimisuojaa."), so nothing runs ahead of the held message.
 8. **Release.** A hold ends with `chat.released { chatId, outcome }`:
