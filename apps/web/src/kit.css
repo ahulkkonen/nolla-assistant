@@ -177,6 +177,9 @@ th {
 .chart strong {
   color: var(--card-foreground);
 }
+.chart figcaption {
+  margin-top: 12px;
+}
 #vis {
   width: 100%;
 }

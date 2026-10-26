@@ -174,3 +174,15 @@ in `apps/web/package.json` (decision 2).
 - Model HTML that sets its own colours can conflict with the dark page. The prompt tells the model
   to use the kit variables.
 - Each themed artifact document carries about 190 KB of base64 fonts.
+
+## Status (2026-10-26)
+
+- Tasks 1 to 6 are done. `pnpm typecheck` and `pnpm lint` pass.
+- `pnpm --filter @pa/web test`: 46 tests pass (10 new in `viz.test.ts`). The server tests of
+  `artifacts.test.ts` and `csp.test.ts` pass (one new test for `/api/sandbox`).
+- e2e `screens` (strict axe): 456 pass, 2 skipped. New screens: `chart-artifact`,
+  `mermaid-artifact` and `kit-artifact` at 390 and 1024, light and dark. `artifact-panel` changed,
+  because HTML artifacts now use the kit and the theme.
+- e2e `chromium`, the artifact, file, export and chart flows: 119 pass. New flows: the chart with the
+  lifted title, the fallback table, the SVG and PNG export.
+- Not done: the repair turn after a refused spec (out of scope), the DOT block (out of scope).
