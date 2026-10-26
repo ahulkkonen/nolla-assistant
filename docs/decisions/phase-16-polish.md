@@ -94,8 +94,13 @@ https://tesseract-ocr.github.io/tessdoc/Command-Line-Usage.html, `pdftoppm -h` (
    profile (agent picker, per-chat agent, editor) write a test-only profile `kirjoittaja`
    ("Kirjoittaja") into their own agents folder.
 3. **A missing profile falls back.** When a chat's stored agent id has no profile, the registry
-   builds the session with the profile of `DEFAULT_AGENT_ID`. The chat row keeps its id. The usage
-   rows of such a chat get the default agent's id, because that agent ran.
+   builds the session with the profile of `DEFAULT_AGENT_ID` (`liveAgentId` in `agents.ts`). The
+   usage rows of such a chat (chat, subagent, search and task rows) get the default agent's id,
+   because that agent ran.
+   - The chat row keeps its dead agent id. `chat.state`, `chat.list` and the chat export show that
+     id (the export shows the id as the agent name). The client shows the id of an unknown agent,
+     as for a deleted agent (phase-15 decision 19). The admin delete of an agent still moves its
+     chats to `assistant`.
 4. **No migration in code.** An existing install keeps its copy of `research.yaml` in
    `DATA_DIR/agents` (phase-15 decision 4). `docs/deploy.md` tells the user to delete "Tutkija" in
    Settings › Agentit after this upgrade. That delete moves the chats of Tutkija to Avustaja.
@@ -146,7 +151,9 @@ https://tesseract-ocr.github.io/tessdoc/Command-Line-Usage.html, `pdftoppm -h` (
 12. **Per chat.** `ChatUsage` gets the optional fields `input`, `output`, `cacheRead` and
     `cacheWrite`. The `chats` row gets four running-total columns. Migration 0008 adds them and
     fills them from the chat's `usage` rows. `usageRecorder` adds to them in the same transaction as
-    `costUsd` and `tokens`. The chat export JSON (`chat.usage`) carries them too.
+    `costUsd` and `tokens`. The chat export JSON (`chat.usage`) carries them too. The export keeps
+    `version: 1`: the four fields are optional in `ChatExport`, so older exports stay valid, and a
+    consumer must treat them as optional.
 13. **Per month.** Each `usage.state` row (per model) gets the optional fields `input`, `output`,
     `cacheRead` and `cacheWrite`, the sums of the month.
 

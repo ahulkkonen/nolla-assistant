@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, realpathSync, watch } from 'node:fs';
 import { basename, join, resolve, sep } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
-import { AgentFile } from '@pa/protocol';
+import { AgentFile, DEFAULT_AGENT_ID } from '@pa/protocol';
 import { parse } from 'yaml';
 import type { z } from 'zod';
 
@@ -15,6 +15,8 @@ export const unruled = (p: z.infer<typeof AgentFile>) =>
 /** `prompt` holds the prompt text, not its path. */
 export type AgentProfile = z.infer<typeof AgentFile>;
 export type Agents = Map<string, AgentProfile>;
+/** The agent that runs a chat: its own, or the default when its profile is gone (phase-16 decision 3). */
+export const liveAgentId = (agents: Agents, id: string) => (agents.has(id) ? id : DEFAULT_AGENT_ID);
 
 /**
  * Reads every `*.yaml` in `dir`. A bad file goes to `onError` and keeps its `prev` version (if

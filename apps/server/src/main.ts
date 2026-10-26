@@ -9,7 +9,7 @@ import {
   type PseudoLog,
 } from '@pa/pi-ext-pseudo';
 import type { ServerMessage } from '@pa/protocol';
-import { loadAgents, watchAgents } from './agents.ts';
+import { liveAgentId, loadAgents, watchAgents } from './agents.ts';
 import { approvals as approvalStore } from './approval.ts';
 import { purgeExpiredSessions } from './auth/session.ts';
 import { startAutomations } from './automations.ts';
@@ -143,8 +143,12 @@ export async function start(
     },
   });
   // Model calls into `usage` and the chat totals (phase-13 decision 13).
-  const recordUsage = usageRecorder(db, config.userId, (msg, data) =>
-    app.log.warn(data ?? {}, msg),
+  const recordUsage = usageRecorder(
+    db,
+    config.userId,
+    (msg, data) => app.log.warn(data ?? {}, msg),
+    undefined,
+    (id) => liveAgentId(agentMap, id),
   );
   // ECB rate (phase-13 "Egress"); `start` below runs once `app` exists.
   const fx = fxRates({

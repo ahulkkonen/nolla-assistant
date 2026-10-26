@@ -421,3 +421,18 @@ test('usage.state: per agent and search count', () => {
   });
   close();
 });
+
+test('usageRecorder: a task row of a chat whose agent is gone gets the agent that runs it', () => {
+  const { db, close } = freshDb();
+  // c1's agent `kirjoittaja` has no profile here: the default agent runs the chat.
+  const record = usageRecorder(
+    db,
+    'u1',
+    () => {},
+    undefined,
+    (id) => (id === 'assistant' ? id : 'assistant'),
+  );
+  record({ kind: 'task', chatId: 'c1' }, messageUsage(assistant(piUsage)));
+  expect(db.select().from(usage).get()?.agentId).toBe('assistant');
+  close();
+});

@@ -168,14 +168,16 @@ export function rawUsage(model: string, raw: unknown, warn?: Warn): CallUsage | 
 
 /**
  * Writes one `usage` row. A row with a chat adds to the chat's running totals in the same
- * transaction and takes the chat's agent when `at` names none; a chat deleted meanwhile gives a
- * row without a chat. A failure only warns: usage never stops a reply.
+ * transaction and takes the chat's agent when `at` names none, through `agentOf` (the agent that
+ * runs the chat, phase-16 decision 3); a chat deleted meanwhile gives a row without a chat. A
+ * failure only warns: usage never stops a reply.
  */
 export function usageRecorder(
   db: Db,
   userId: string,
   warn: Warn,
   now: () => Date = () => new Date(),
+  agentOf: (agentId: string) => string = (id) => id,
 ): RecordUsage {
   const record = (at: UsageAt, u: CallUsage | undefined) => {
     if (!u) return;
@@ -200,7 +202,7 @@ export function usageRecorder(
           .values({
             userId,
             chatId: chat ? at.chatId : null,
-            agentId: at.agentId ?? chat?.agentId ?? null,
+            agentId: at.agentId ?? (chat ? agentOf(chat.agentId) : null),
             kind: at.kind,
             ...u,
             createdAt: now().toISOString(),

@@ -20,7 +20,7 @@ import { sandboxExtension } from '@pa/pi-ext-sandbox';
 import { type Child, subagentsExtension } from '@pa/pi-ext-subagents';
 import { topicsExtension } from '@pa/pi-ext-topics';
 import { DEFAULT_AGENT_ID, WEB_SEARCH_TOOL } from '@pa/protocol';
-import type { AgentProfile, Agents } from '../agents.ts';
+import { type AgentProfile, type Agents, liveAgentId } from '../agents.ts';
 import { type Ask, approvalGate } from '../approval.ts';
 import {
   allowedToolNames,
@@ -274,7 +274,7 @@ export class SessionRegistry {
   /** The chat's profile; a deleted agent's chat runs with the default agent (phase-16 decision 3). */
   private profileOf(agentId: string): AgentProfile | undefined {
     const agents = this.opts.agents();
-    return agents.get(agentId) ?? agents.get(DEFAULT_AGENT_ID);
+    return agents.get(liveAgentId(agents, agentId));
   }
 
   /**

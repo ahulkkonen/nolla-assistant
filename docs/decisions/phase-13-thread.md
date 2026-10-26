@@ -364,6 +364,8 @@ Changes to existing schemas. All new fields are optional, so older fixtures stay
 - `chat.state` gets `forkedFrom: ForkLink.nullable().optional()`.
 - `ChatExport` keeps `version: 1`. `chat` gets `usage: ChatUsage.optional()`, the root gets
   `fx: FxRate.nullable().optional()`, and each message gets `usage: CallUsage.optional()`.
+- Phase 16 adds the optional `input`, `output`, `cacheRead` and `cacheWrite` to `ChatUsage`, still in
+  `version: 1` (`phase-16-polish.md`, decision 12).
 
 New client messages:
 
