@@ -284,9 +284,12 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
     return reasoning === 'auto' || !!m?.reasoning?.efforts.includes(reasoning);
   };
 
-  /** Drops the idle session so the next message rebuilds it; a running chat refuses the change. */
-  const evict = async (chatId: string) => {
-    if (!(await registry.evict(chatId))) throw new RunActive();
+  /**
+   * A model or policy change needs an idle chat (decision 14). Synchronous, like the row write
+   * after it: no prompt can start between the check and the write.
+   */
+  const assertIdle = (chatId: string) => {
+    if (registry.running(chatId)) throw new RunActive();
   };
   send(socket, agentsState(agents()));
   // A reload must not lose open approvals.
@@ -394,8 +397,13 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
       case 'chat.create': {
         if (!agents().has(msg.agentId)) throw new NotFound();
         if (msg.topicId) ownTopic(msg.topicId);
-        const model = msg.model ?? { modelId: 'auto', reasoning: 'auto' };
-        if (!validChoice(model)) return send(socket, errorMsg('bad_message'));
+        const choice = msg.model ?? { modelId: 'auto', reasoning: 'auto' };
+        if (!validChoice(choice)) return send(socket, errorMsg('bad_message'));
+        // No Auto in the catalog (offline first start): the profile's alias, so chats still work.
+        const model =
+          choice.modelId === 'auto' && !catalog.get(AUTO_MODEL)
+            ? { modelId: null, reasoning: 'auto' }
+            : choice;
         const id = randomUUID();
         // Never from the client: every new chat starts ZDR-only (phase-10 proof 1).
         const chat = { agentId: msg.agentId, ...model, dataPolicy: 'zdr' } as const;
@@ -471,29 +479,28 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
       }
       case 'chat.pin':
         return update(msg.chatId, { pinned: msg.pinned });
+      // Row first, then the stale session: a message in between already builds from the new row.
       case 'chat.setModel': {
         owned(msg.chatId);
         if (!validChoice(msg)) return send(socket, errorMsg('bad_message'));
-        await evict(msg.chatId);
+        assertIdle(msg.chatId);
         // Consent was for one model: a change ends it (phase-10 decision 9).
         refusals.delete(msg.chatId);
-        return update(msg.chatId, {
-          modelId: msg.modelId,
-          reasoning: msg.reasoning,
-          dataPolicy: 'zdr',
-        });
+        update(msg.chatId, { modelId: msg.modelId, reasoning: msg.reasoning, dataPolicy: 'zdr' });
+        await registry.evict(msg.chatId);
+        return;
       }
       case 'chat.setDataPolicy': {
-        owned(msg.chatId);
-        await evict(msg.chatId);
-        // Checked after the await: a model change in between ends the consent.
         const r = owned(msg.chatId);
         if (
           msg.dataPolicy === 'open' &&
           (r.modelId === null || refusals.get(msg.chatId) !== r.modelId)
         )
           return send(socket, errorMsg('bad_message'));
-        return update(msg.chatId, { dataPolicy: msg.dataPolicy });
+        assertIdle(msg.chatId);
+        update(msg.chatId, { dataPolicy: msg.dataPolicy });
+        await registry.evict(msg.chatId);
+        return;
       }
       case 'models.list':
         return send(socket, modelsState());
@@ -508,7 +515,8 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
           db.delete(modelFavorites)
             .where(and(eq(modelFavorites.userId, userId), eq(modelFavorites.modelId, msg.modelId)))
             .run();
-        return toAll(modelsState());
+        // Other screens read the favourites at their next `models.list`.
+        return send(socket, modelsState());
       case 'chat.delete': {
         const { chatId } = msg;
         owned(chatId);
@@ -580,12 +588,16 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
           { chatId, length: msg.text.length, attachments: msg.attachments.length },
           'user.message',
         );
-        session
-          .prompt(msg.text + text, { streamingBehavior: 'steer', images })
-          .catch((err: unknown) => {
-            log.warn({ chatId, err }, 'prompt failed');
-            broadcast(rooms, chatId, errorMsg('prompt_failed', chatId));
-          });
+        // Held from the call on: a policy change must wait for this prompt (`assertIdle`).
+        registry.hold(
+          chatId,
+          session
+            .prompt(msg.text + text, { streamingBehavior: 'steer', images })
+            .catch((err: unknown) => {
+              log.warn({ chatId, err }, 'prompt failed');
+              broadcast(rooms, chatId, errorMsg('prompt_failed', chatId));
+            }),
+        );
         return;
       }
       case 'approval.respond': {
@@ -794,9 +806,16 @@ function forward(
         if (e.message.stopReason === 'error') {
           log.warn({ chatId, error: e.message.errorMessage }, 'model call failed');
           const r = chatRow(db, userId, chatId);
-          if (r?.modelId && isZdrRefusal(policyOf(r), e.message.errorMessage, catalog)) {
-            refusals.set(chatId, r.modelId);
-            return emit(errorMsg('zdr_unavailable', chatId));
+          if (r?.modelId) {
+            if (isZdrRefusal(policyOf(r), e.message.errorMessage, catalog)) {
+              refusals.set(chatId, r.modelId);
+              return emit(errorMsg('zdr_unavailable', chatId));
+            }
+            // Shows the form LiteLLM used if a real refusal ever goes unrecognised (risk 3).
+            log.warn(
+              { chatId, error: e.message.errorMessage?.slice(0, 80) },
+              'model error not classified as a ZDR refusal',
+            );
           }
           return emit(errorMsg('llm_failed', chatId));
         }

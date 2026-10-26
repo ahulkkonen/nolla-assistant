@@ -16,6 +16,10 @@ const EFFORT_OVERRIDES: Record<string, ReasoningEffort> = {
 const MAX_CONTEXT = 200_000;
 const MAX_OUTPUT = 64_000;
 const DAY_MS = 24 * 60 * 60_000;
+/** Retries while no catalog exists (no cache, every fetch failed), then the daily refresh. */
+const BACKOFF_MS = [60_000, 5 * 60_000];
+/** A first start without a cache waits this long for OpenRouter, not the full timeout. */
+const FIRST_TIMEOUT_MS = 5000;
 
 /** A catalog model plus the fields that only its Pi entry needs. */
 export const Model = CatalogModel.extend({
@@ -122,11 +126,15 @@ export function toModel(raw: unknown, zdrIds: Set<string>): Model | undefined {
  * Decision 8: the public catalog, twice (all tool models, then the ZDR subset). No key, no user
  * data: only these two fixed GETs.
  */
-export async function fetchCatalog(base: string, fetchFn: typeof fetch = fetch): Promise<Model[]> {
+export async function fetchCatalog(
+  base: string,
+  fetchFn: typeof fetch = fetch,
+  timeoutMs = 20_000,
+): Promise<Model[]> {
   const get = async (query: string) => {
     const res = await fetchFn(`${base}/models?supported_parameters=tools${query}`, {
       headers: { accept: 'application/json' },
-      signal: AbortSignal.timeout(20_000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     if (!res.ok) throw new Error(`catalog HTTP ${res.status}`);
     const data = ((await res.json()) as { data?: unknown } | null)?.data;
@@ -134,7 +142,12 @@ export async function fetchCatalog(base: string, fetchFn: typeof fetch = fetch):
     return data as unknown[];
   };
   const [all, zdr] = await Promise.all([get(''), get('&zdr=true')]);
-  const zdrIds = new Set(zdr.map((m) => String((m as { id?: unknown } | null)?.id)));
+  const idOf = (m: unknown) => String((m as { id?: unknown } | null)?.id);
+  const allIds = new Set(all.map(idOf));
+  const zdrIds = new Set(zdr.map(idOf));
+  // A broken ZDR answer would mark every model non-ZDR and turn outages into refusals: keep the cache.
+  if (!zdrIds.size || [...zdrIds].some((id) => !allIds.has(id)))
+    throw new Error('catalog ZDR list is empty or not a subset of the full list');
   const models = new Map<string, Model>();
   for (const raw of all) {
     const m = toModel(raw, zdrIds);
@@ -193,7 +206,10 @@ export function writeModelsJson(
       open: provider(catalog.map((m) => piEntry('open', m))),
     },
   };
-  writeFileSync(join(agentDir, 'models.json'), JSON.stringify(config, null, 2));
+  // Atomic: the runtime and subagent children read it at any time.
+  const path = join(agentDir, 'models.json');
+  writeFileSync(`${path}.tmp`, JSON.stringify(config, null, 2));
+  renameSync(`${path}.tmp`, path);
 }
 
 /** A chat row's policy columns as a `ModelPolicy`; a value that does not parse falls back to the alias under ZDR. */
@@ -208,9 +224,19 @@ export const policyOf = (r: {
 });
 
 /**
- * Decision 10: a failed call in a `zdr` chat with a catalog model, with status 403, 404 or 503
- * first (Pi's `formatProviderError`), and either a catalog without ZDR endpoints for the model or
- * a data-policy message. A ZDR model failing with 503 is an outage, not a refusal.
+ * A ZDR data-policy text. OpenRouter's training filter says "matching your data policy. Enable
+ * prompt training", which the account-level block causes and no override fixes.
+ */
+const zdrText = (m: string) =>
+  /zero data retention/i.test(m) || (/data policy/i.test(m) && !/training/i.test(m));
+
+/**
+ * Decision 10, as amended by the phase-10 review: a failed call in a `zdr` chat with a catalog
+ * model, with status 403, 404 or 503 near the start (Pi's `formatProviderError`, maybe after a
+ * short prefix), and:
+ * - 403 (also budget, guardrail and moderation): a ZDR text only;
+ * - 404 (also a model that is gone): a ZDR text, or a catalog without ZDR endpoints;
+ * - 503: a ZDR text, or a catalog without ZDR endpoints. A ZDR model with 503 is an outage.
  */
 export function isZdrRefusal(
   chat: Pick<ModelPolicy, 'modelId' | 'dataPolicy'>,
@@ -218,11 +244,10 @@ export function isZdrRefusal(
   catalog: Pick<Catalog, 'get'>,
 ): boolean {
   if (chat.dataPolicy !== 'zdr' || chat.modelId === null || !errorMessage) return false;
-  if (!/^(403|404|503)\b/.test(errorMessage)) return false;
-  return (
-    catalog.get(resolveModelId(chat.modelId))?.zdr === false ||
-    /data policy|zero data retention/i.test(errorMessage)
-  );
+  const status = /^\D{0,40}\b(403|404|503)\b/.exec(errorMessage)?.[1];
+  if (!status) return false;
+  if (zdrText(errorMessage)) return true;
+  return status !== '403' && catalog.get(resolveModelId(chat.modelId))?.zdr === false;
 }
 
 /** The OpenRouter id behind a stored `modelId`. */
@@ -255,7 +280,7 @@ export type Catalog = ReturnType<typeof modelCatalog>;
 
 /**
  * Decision 8: the catalog from `DATA_DIR/openrouter/catalog.json`, refreshed at `start` and every
- * 24 h. A failed fetch keeps the previous list. `source` is the API base or `off` (no network;
+ * 24 h (before the first catalog exists: after 1 and 5 min). A failed fetch keeps the previous list. `source` is the API base or `off` (no network;
  * the cache still loads). `onChange` gets every new list, and the cached one at `start`. Empty
  * until `start`.
  */
@@ -276,22 +301,45 @@ export function modelCatalog(opts: {
     opts.onChange(next.models);
   };
 
-  const refresh = async () => {
-    if (opts.source === 'off') return;
+  let inflight: Promise<boolean> | undefined;
+  let failures = 0;
+  let closed = false;
+
+  const fetchOnce = async (timeoutMs: number) => {
     try {
       const next: Cache = {
         fetchedAt: new Date().toISOString(),
-        models: await fetchCatalog(opts.source, opts.fetch),
+        models: await fetchCatalog(opts.source, opts.fetch, timeoutMs),
       };
       mkdirSync(join(opts.dataDir, 'openrouter'), { recursive: true });
       writeFileSync(`${path}.tmp`, JSON.stringify(next));
       renameSync(`${path}.tmp`, path);
       set(next);
+      return true;
     } catch (err) {
       opts.warn('model catalog fetch failed', {
         error: err instanceof Error ? err.message : String(err),
       });
+      return false;
     }
+  };
+  /** One fetch at a time: a second caller shares the running one. True when it got a catalog. */
+  const refresh = (timeoutMs = 20_000): Promise<boolean> => {
+    if (opts.source === 'off') return Promise.resolve(false);
+    inflight ??= fetchOnce(timeoutMs).finally(() => {
+      inflight = undefined;
+    });
+    return inflight;
+  };
+  /** Daily once a catalog exists; before that after 1 min, then 5 min, then daily. */
+  const schedule = () => {
+    if (closed) return;
+    const ms = state ? DAY_MS : (BACKOFF_MS[failures++] ?? DAY_MS);
+    timer = setTimeout(async () => {
+      await refresh();
+      schedule();
+    }, ms);
+    timer.unref();
   };
 
   return {
@@ -309,11 +357,13 @@ export function modelCatalog(opts: {
         opts.onChange([]);
       }
       if (opts.source === 'off') return;
-      timer = setInterval(() => void refresh(), DAY_MS);
-      timer.unref();
       if (state) void refresh();
-      else await refresh();
+      else await refresh(FIRST_TIMEOUT_MS);
+      schedule();
     },
-    close: () => clearInterval(timer),
+    close: () => {
+      closed = true;
+      clearTimeout(timer);
+    },
   };
 }

@@ -504,9 +504,10 @@ The refusal uses the place and shape of the existing failed-reply alert in `Thre
 | Error after the stream starts | The existing failed-reply alert | `llm_failed`. Such an error cannot be a ZDR refusal |
 | Automation run hits any model error | Nothing in the thread. The existing failure push and `lastStatus: error` | The automation never offers or sets `open` |
 | Catalog fetch fails, cache exists | Normal picker. `fetchedAt` is old | Uses the cache and tries again in 24 hours |
-| Catalog fetch fails, no cache | Picker shows only Auto and favourites by id. The dialog says "Mallilista ei ole saatavilla. Yritä myöhemmin." | Alias chats work. A chat with a catalog model fails to build and answers `failed` |
+| Catalog fetch fails, no cache | Picker shows only Auto and favourites by id. The dialog says "Mallilista ei ole saatavilla. Yritä myöhemmin." | Alias chats work. Without Auto in the catalog, `chat.create` stores `modelId: null` (the agent profile's alias). A chat with a catalog model fails to build and answers `failed`. The server tries again after 1 minute, then after 5 minutes, then every 24 hours |
 | The chosen model left the catalog | Toast "Toiminto epäonnistui." | Session build fails. The user picks another model |
 | `chat.setModel` or `chat.setDataPolicy` during a run | The control is disabled in the UI | The server answers `failed` if a message arrives |
+| User clicks "Palauta ZDR" | The badge disappears | Stores `zdr` and evicts the session. The refusal record stays: until the next model change or a server restart, the user can allow `open` again for the same model without a new refusal (decision 9) |
 
 ## Task cards
 
@@ -544,7 +545,7 @@ Out of scope: a palette command "Vaihda malli", per-message policy marks in the 
 1. **Region.** Wildcard routes have no `order`, so they can use US or global ZDR endpoints. Auto (Argon) has no EU endpoint at all. The fixed aliases keep the EU order. The text that leaves is pseudonymized.
 2. **"open" retains data.** In an `open` chat, the provider can keep prompts under its own terms. Pseudonymization recall is below 100 % (plan section 6), so a missed name can stay with that provider. The refusal alert says this before the user agrees.
 3. **Status classification.** Decision 10 depends on the status that LiteLLM passes on. The egress probe and the live check prove it. If LiteLLM maps 404 to another status, add that status to the classifier.
-4. **Pi auto-retry.** Pi can retry a 503 before it reports the error. A refusal then shows after a short delay.
+4. **Pi auto-retry.** Pi can retry a 503 before it reports the error. A refusal then shows after a short delay. Pi 1.3.0 `isIdle` is false during the retry delay and during compaction, so the server never evicts a session that is about to retry. `isIdle` is true while a prompt runs its input hooks, so the bridge marks each prompt as active from the call (`registry.hold`).
 5. **Cost.** A change of effort or model mid-chat invalidates the prompt cache. A model switch sends the whole masked history to the new model, and Pi can drop reasoning blocks from another vendor. `zdr/*` allows any catalog model, including `openai/gpt-6-astra` at 10 / 50 USD. The key budgets are the cap.
 6. **Argon price.** Google's introductory price ends on 2026-11-30. If OpenRouter follows, Auto costs 4 / 20 USD per 1M tokens from 2026-12-01.
 7. **Two keys.** A leaked open key allows non-ZDR spend up to its budget. The key lives only in the LiteLLM container, like the ZDR key.

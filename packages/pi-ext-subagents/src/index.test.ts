@@ -150,30 +150,41 @@ test('a child approval reaches the parent ask with real values', async () => {
   expect(JSON.stringify(llm.requests[2]?.body)).toContain('käyttäjä esti työkalun');
 }, 60_000);
 
-test('proof 7: in a zdr chat an open/ task model fails and no child process starts', async () => {
-  const { llm, session, states, dataDir } = await boot([
-    {
-      toolCalls: [
+// Decision 11 in both directions: a child keeps the parent's prefix.
+test.each([
+  ['zdr', 'zdr/strong', 'open/x/y'],
+  ['open', 'open/acme/model-1', 'zdr/strong'],
+] as const)(
+  'proof 7: a %s chat (%s) refuses the task model %s and starts no child',
+  async (provider, model, child) => {
+    const { llm, session, states, dataDir } = await boot(
+      [
         {
-          name: 'subagent',
-          args: {
-            mode: 'parallel',
-            tasks: [
-              { label: 'ok', task: 'first task' },
-              { label: 'leak', task: 'second task', model: 'open/x/y' },
-            ],
-          },
+          toolCalls: [
+            {
+              name: 'subagent',
+              args: {
+                mode: 'parallel',
+                tasks: [
+                  { label: 'ok', task: 'first task' },
+                  { label: 'leak', task: 'second task', model: child },
+                ],
+              },
+            },
+          ],
         },
+        { text: 'done' },
       ],
-    },
-    { text: 'done' },
-  ]);
-  await session.prompt('go');
-  // The parent's two calls only: no child ever asked the model.
-  expect(llm.requests).toHaveLength(2);
-  expect(states).toEqual([]);
-  expect(existsSync(join(dataDir, 'sessions', 'u1', 'chat-1', 'sub'))).toBe(false);
-  expect(JSON.stringify(toolMessageContent(llm.requests[1]?.body))).toContain(
-    'subagent models must start with zdr/',
-  );
-}, 60_000);
+      { provider, model },
+    );
+    await session.prompt('go');
+    // The parent's two calls only: no child ever asked the model.
+    expect(llm.requests).toHaveLength(2);
+    expect(states).toEqual([]);
+    expect(existsSync(join(dataDir, 'sessions', 'u1', 'chat-1', 'sub'))).toBe(false);
+    expect(JSON.stringify(toolMessageContent(llm.requests[1]?.body))).toContain(
+      `subagent models must start with ${provider}/`,
+    );
+  },
+  60_000,
+);

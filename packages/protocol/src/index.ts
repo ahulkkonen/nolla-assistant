@@ -331,7 +331,7 @@ export const ServerMessage = z.discriminatedUnion('type', [
       z.object({ id: id64, name: z.string(), model: z.string(), subagents: z.boolean() }),
     ),
   }),
-  /** Answer to `models.list`; also sent to every socket after `models.favorite`. */
+  /** Answer to `models.list` and, to the sending socket only, to `models.favorite`. */
   z.object({
     type: z.literal('models.state'),
     /** What 'auto' routes to, e.g. 'google/gemini-4-argon'. */

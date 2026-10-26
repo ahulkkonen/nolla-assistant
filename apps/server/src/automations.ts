@@ -128,6 +128,7 @@ export function startAutomations({
     }
     running.add(a.id);
     let chatId: string | null = null;
+    let built = false;
     try {
       if (!agents().has(a.agentId)) throw new Error(`agent ${a.agentId} not found`);
       const now = new Date();
@@ -154,13 +155,9 @@ export function startAutomations({
         .get();
       unattended.set(chatId, a.autoApprove);
       const session = await registry.create(chatId, row);
+      built = true;
       // Nobody is there to consent: an automation never runs without ZDR (phase-10 proof 5).
-      const policy = db
-        .select({ dataPolicy: chats.dataPolicy })
-        .from(chats)
-        .where(eq(chats.id, chatId))
-        .get();
-      if (policy?.dataPolicy !== 'zdr' || session.model?.provider !== 'zdr')
+      if (row.dataPolicy !== 'zdr' || session.model?.provider !== 'zdr')
         throw new Error('automation chat is not zdr');
       await prompt(chatId, a.prompt);
       const last = session.messages.findLast((m) => m.role === 'assistant');
@@ -179,6 +176,8 @@ export function startAutomations({
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err);
       log.warn({ id: a.id, chatId, error }, 'automation failed');
+      // Nobody listens to this session; opening the chat later rebuilds it from the JSONL.
+      if (built && chatId) await registry.drop(chatId);
       try {
         record(a.id, 'error', chatId, error);
       } catch (recordErr) {

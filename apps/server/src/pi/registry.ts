@@ -77,6 +77,8 @@ type Entry = {
   unsubscribe?: () => void;
   /** The policy the session was built with. */
   chat: ChatModel;
+  /** The session, once the build resolved. */
+  ready?: AgentSession;
 };
 
 const samePolicy = (a: ChatModel, b: ChatModel) =>
@@ -100,6 +102,8 @@ export class SessionRegistry {
   readonly sessionDir: string;
   readonly cwd: string;
   private readonly entries = new Map<string, Entry>();
+  /** chatId → prompts in flight (see `hold`). */
+  private readonly prompting = new Map<string, number>();
   private runtime: Promise<ModelRuntime> | undefined;
   private readonly opts: RegistryOptions;
 
@@ -151,6 +155,29 @@ export class SessionRegistry {
     return this.entries.has(chatId);
   }
 
+  /**
+   * Marks `run` (the chat's `session.prompt`) as active from the call on: Pi's `isIdle` turns
+   * false only when the run starts, after the input hooks (masking) ran.
+   */
+  hold(chatId: string, run: Promise<unknown>): void {
+    this.prompting.set(chatId, (this.prompting.get(chatId) ?? 0) + 1);
+    const done = () => {
+      const n = (this.prompting.get(chatId) ?? 1) - 1;
+      if (n > 0) this.prompting.set(chatId, n);
+      else this.prompting.delete(chatId);
+    };
+    run.then(done, done);
+  }
+
+  /**
+   * Synchronous, so a check and a row write cannot be split: a held prompt, or a built session
+   * that is not idle (a run, Pi's retry delay, compaction).
+   */
+  running(chatId: string): boolean {
+    const ready = this.entries.get(chatId)?.ready;
+    return this.prompting.has(chatId) || (ready !== undefined && !ready.isIdle);
+  }
+
   /** Subscribes once per open session; the listener is removed on eviction and dispose. */
   subscribe(chatId: string, session: AgentSession, listener: AgentSessionEventListener): void {
     const e = this.entries.get(chatId);
@@ -162,7 +189,7 @@ export class SessionRegistry {
     for (const [chatId, e] of [...this.entries]) {
       if (e.lastUsed >= cutoff) continue;
       const session = await e.session.catch(() => undefined);
-      if (this.entries.get(chatId) !== e || (session && !session.isIdle)) continue;
+      if (this.entries.get(chatId) !== e || this.running(chatId)) continue;
       this.entries.delete(chatId);
       e.unsubscribe?.();
       session?.dispose();
@@ -170,20 +197,23 @@ export class SessionRegistry {
   }
 
   /**
-   * Drops the chat's idle session so the next `get` rebuilds it with the stored model policy
-   * (phase-10 decision 14). The JSONL stays. False while a run is active: nothing changes then.
+   * Drops the chat's session when it was built with another policy than the stored one, so the
+   * next `get` rebuilds it (phase-10 decision 14). A session with the stored policy stays: it may
+   * be about to take a prompt. The JSONL stays. False while the stale session runs.
    */
   async evict(chatId: string): Promise<boolean> {
     for (;;) {
       const e = this.entries.get(chatId);
       if (!e) return true;
-      const session = await e.session.catch(() => undefined);
+      await e.session.catch(() => undefined);
       // Replaced or removed while loading: look again.
       if (this.entries.get(chatId) !== e) continue;
-      if (session && !session.isIdle) return false;
+      const now = this.opts.getChat(chatId);
+      if (now && samePolicy(e.chat, now)) return true;
+      if (this.running(chatId)) return false;
       this.entries.delete(chatId);
       e.unsubscribe?.();
-      session?.dispose();
+      e.ready?.dispose();
       return true;
     }
   }
@@ -199,11 +229,16 @@ export class SessionRegistry {
     await Promise.allSettled(all.map(stop));
   }
 
-  /** Stops and drops the chat's session, then deletes its JSONL file. */
-  async remove(chatId: string): Promise<void> {
+  /** Stops and drops the chat's session; the JSONL stays. */
+  async drop(chatId: string): Promise<void> {
     const e = this.entries.get(chatId);
     this.entries.delete(chatId);
     if (e) await stop(e).catch(() => {});
+  }
+
+  /** Stops and drops the chat's session, then deletes its JSONL file. */
+  async remove(chatId: string): Promise<void> {
+    await this.drop(chatId);
     const path = SessionManager.findById(this.cwd, chatId, this.sessionDir);
     if (path) rmSync(path, { force: true });
   }
@@ -228,10 +263,16 @@ export class SessionRegistry {
       return existing.session;
     }
     const session = this.build(chatId, chat, manager);
-    this.entries.set(chatId, { session, lastUsed: Date.now(), chat });
-    session.catch(() => {
-      if (this.entries.get(chatId)?.session === session) this.entries.delete(chatId);
-    });
+    const entry: Entry = { session, lastUsed: Date.now(), chat };
+    this.entries.set(chatId, entry);
+    session.then(
+      (s) => {
+        entry.ready = s;
+      },
+      () => {
+        if (this.entries.get(chatId) === entry) this.entries.delete(chatId);
+      },
+    );
     return session;
   }
 

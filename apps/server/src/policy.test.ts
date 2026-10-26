@@ -1,7 +1,11 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { automationRuns, chats } from '@pa/db';
+import { listenLocal } from '@pa/fake-llm';
+import { startFakeSidecar } from '@pa/pi-ext-pseudo/fake-sidecar';
 import type { ClientMessageInput } from '@pa/protocol';
 import { eq } from 'drizzle-orm';
 import { afterEach, expect, test, vi } from 'vitest';
@@ -170,6 +174,115 @@ test('registry.get rebuilds an idle session whose stored policy changed (no stal
   expect(row(chat.id)?.dataPolicy).toBe('zdr');
 });
 
+test('without Auto in the catalog, chat.create falls back to the profile alias on zdr', {
+  timeout: 30_000,
+}, async () => {
+  const b = await boot([{ text: 'Hei aliakselta.' }]);
+  // OpenRouter unreachable at a first start: no catalog, no cache.
+  b.llm.catalog.length = 0;
+  const srv = await b.run();
+  const c = await connect(b.config.port);
+  c.send({ type: 'models.list' });
+  expect(await c.next('models.state')).toMatchObject({ catalog: [], fetchedAt: null });
+  c.send({ type: 'chat.create' });
+  const { chat } = await c.next('chat.created');
+  expect(chat.modelPolicy).toEqual({ modelId: null, reasoning: 'auto', dataPolicy: 'zdr' });
+  expect((await srv.registry.get(chat.id)).model?.id).toBe('zdr/strong');
+  c.send({ type: 'user.message', chatId: chat.id, text: 'Moi' });
+  expect((await c.next('message.final')).message.text).toBe('Hei aliakselta.');
+  expect(b.llm.requests[0]?.body.model).toBe('zdr/strong');
+  // A catalog model cannot be picked without a catalog.
+  c.send({ type: 'chat.create', model: { modelId: FABLE, reasoning: 'auto' } });
+  await expect(c.next('chat.created')).rejects.toThrow('bad_message');
+});
+
+test('a message and "Palauta ZDR" sent together never leave a run on open/ under a zdr row', {
+  timeout: 30_000,
+}, async () => {
+  const { llm, c, row, create } = await start([REFUSAL, { text: 'Kiire.' }]);
+  const chat = await create({ modelId: FABLE, reasoning: 'auto' });
+  c.send({ type: 'user.message', chatId: chat.id, text: 'Moi' });
+  await expect(c.next('message.final')).rejects.toThrow('zdr_unavailable');
+  await c.idle();
+  c.inbox.length = 0;
+  c.send({ type: 'chat.setDataPolicy', chatId: chat.id, dataPolicy: 'open' });
+  expect((await c.next('chat.updated')).chat.modelPolicy.dataPolicy).toBe('open');
+
+  c.inbox.length = 0;
+  c.send({ type: 'user.message', chatId: chat.id, text: 'Kiire' });
+  c.send({ type: 'chat.setDataPolicy', chatId: chat.id, dataPolicy: 'zdr' });
+  const restored = () =>
+    c.inbox.some((m) => m.type === 'chat.updated' && m.chat.modelPolicy.dataPolicy === 'zdr');
+  const refused = () => c.inbox.some((m) => m.type === 'error' && m.code === 'failed');
+  await vi.waitFor(
+    () => {
+      expect(c.inbox.some((m) => m.type === 'message.final')).toBe(true);
+      expect(c.inbox.some((m) => m.type === 'agent.status' && m.state === 'idle')).toBe(true);
+      expect(restored() || refused()).toBe(true);
+    },
+    { timeout: 10_000, interval: 50 },
+  );
+  // Exactly one outcome, and the request matches the row: restored runs on zdr/, refused on open/.
+  expect(restored()).not.toBe(refused());
+  const sent = llm.requests.filter((r) => r.body.model !== 'zdr/task-small')[1];
+  expect(sent?.body.model).toBe(`${restored() ? 'zdr' : 'open'}/${FABLE}`);
+  expect(row(chat.id)?.dataPolicy).toBe(restored() ? 'zdr' : 'open');
+});
+
+test('"Palauta ZDR" during a prompt\'s input hooks waits for the prompt (failed, row stays open)', {
+  timeout: 40_000,
+}, async () => {
+  // The sidecar behind a delay: the prompt sits in `pi-ext-pseudo`'s input hook, where Pi still
+  // reports the session idle.
+  const sc = await startFakeSidecar({});
+  cleanups.push(sc.close);
+  let delayMs = 0;
+  const slow = createServer((req, res) => {
+    const body: Buffer[] = [];
+    req.on('data', (d: Buffer) => body.push(d));
+    req.on('end', async () => {
+      await sleep(delayMs);
+      const { host: _, 'content-length': __, ...headers } = req.headers;
+      const r = await fetch(`${sc.url}${req.url}`, {
+        method: req.method ?? 'GET',
+        headers: headers as Record<string, string>,
+        ...(req.method === 'GET' ? {} : { body: Buffer.concat(body) }),
+      });
+      res.writeHead(r.status, { 'content-type': r.headers.get('content-type') ?? 'text/plain' });
+      res.end(Buffer.from(await r.arrayBuffer()));
+    });
+  });
+  const proxy = await listenLocal(slow);
+  cleanups.push(proxy.close);
+  const { llm, c, row, create } = await start([REFUSAL, { text: 'Kiire.' }], {
+    PSEUDO_URL: proxy.origin,
+  });
+  const chat = await create({ modelId: FABLE, reasoning: 'auto' });
+  c.send({ type: 'user.message', chatId: chat.id, text: 'Moi' });
+  await expect(c.next('message.final')).rejects.toThrow('zdr_unavailable');
+  await c.idle();
+  c.inbox.length = 0;
+  c.send({ type: 'chat.setDataPolicy', chatId: chat.id, dataPolicy: 'open' });
+  expect((await c.next('chat.updated')).chat.modelPolicy.dataPolicy).toBe('open');
+
+  delayMs = 500;
+  c.inbox.length = 0;
+  c.send({ type: 'user.message', chatId: chat.id, text: 'Kiire' });
+  await sleep(200);
+  c.send({ type: 'chat.setDataPolicy', chatId: chat.id, dataPolicy: 'zdr' });
+  await expect(c.next('chat.updated')).rejects.toThrow('server error: failed');
+  expect(row(chat.id)?.dataPolicy).toBe('open');
+  expect((await c.next('message.final')).message.text).toBe('Kiire.');
+  expect(llm.requests[1]?.body.model).toBe(`open/${FABLE}`);
+  await c.idle();
+  // Once idle, the restore goes through.
+  delayMs = 0;
+  c.inbox.length = 0;
+  c.send({ type: 'chat.setDataPolicy', chatId: chat.id, dataPolicy: 'zdr' });
+  expect((await c.next('chat.updated')).chat.modelPolicy.dataPolicy).toBe('zdr');
+  expect(row(chat.id)?.dataPolicy).toBe('zdr');
+});
+
 test('decision 10: a 503 for a ZDR model is an outage (llm_failed), not a refusal', {
   timeout: 30_000,
 }, async () => {
@@ -205,7 +318,7 @@ test('proof 5: an automation run uses the profile alias on zdr and cannot be ope
   await refuseOpen(chatId);
 });
 
-test('models.list and models.favorite answer models.state; favourites reach every socket', {
+test('models.list and models.favorite answer models.state to the asking socket', {
   timeout: 30_000,
 }, async () => {
   const { config, c } = await start([]);
@@ -229,7 +342,9 @@ test('models.list and models.favorite answer models.state; favourites reach ever
     c.send({ type: 'models.favorite', modelId, favorite: true });
     await c.next('models.state');
   }
-  expect((await other.next('models.state')).favorites).toEqual([FABLE]);
+  // Shared through the database: another screen reads them at its next `models.list`.
+  expect(other.inbox.some((m) => m.type === 'models.state')).toBe(false);
+  other.send({ type: 'models.list' });
   expect((await other.next('models.state')).favorites).toEqual([FABLE, ARGON]);
   c.send({ type: 'models.favorite', modelId: FABLE, favorite: false });
   expect((await c.next('models.state')).favorites).toEqual([ARGON]);

@@ -12,7 +12,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { FAKE_CATALOG } from '@pa/fake-llm';
 import type { DataPolicy, ModelPolicy } from '@pa/protocol';
-import { afterEach, expect, test } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
 import {
   AUTO_MODEL,
   fetchCatalog,
@@ -55,13 +55,14 @@ const raw = (id: string, over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-/** A `fetch` that serves `all` and the `zdr` subset and records every call. */
+/** A `fetch` that serves `all`, and `zdrIds` for `zdr=true`, and records every call. */
 function fakeFetch(all: unknown[], zdrIds: string[]) {
   const calls: { url: string; init: RequestInit | undefined }[] = [];
   const fn = (async (url: string, init?: RequestInit) => {
     calls.push({ url, init });
     const zdrOnly = url.includes('zdr=true');
-    const data = zdrOnly ? all.filter((m) => zdrIds.includes((m as { id: string }).id)) : all;
+    const byId = (id: string) => all.find((m) => (m as { id: string }).id === id) ?? { id };
+    const data = zdrOnly ? zdrIds.map(byId) : all;
     return new Response(JSON.stringify({ data }), { status: 200 });
   }) as typeof fetch;
   return { fn, calls };
@@ -112,6 +113,19 @@ test('the catalog filter drops :variant, ~alias, openrouter/, non-text and tool-
     expect(c.init?.body).toBeUndefined();
     expect(Object.keys(c.init?.headers ?? {})).toEqual(['accept']);
   }
+});
+
+test('a ZDR list that is empty or not a subset of the full list fails the fetch', async () => {
+  const opus = raw('anthropic/claude-opus-5.5');
+  await expect(fetchCatalog('https://or.test', fakeFetch([opus], []).fn)).rejects.toThrow(
+    'not a subset',
+  );
+  await expect(
+    fetchCatalog('https://or.test', fakeFetch([opus], [opus.id, 'acme/elsewhere']).fn),
+  ).rejects.toThrow('not a subset');
+  await expect(fetchCatalog('https://or.test', fakeFetch([opus], [opus.id]).fn)).resolves.toEqual([
+    expect.objectContaining({ id: opus.id, zdr: true }),
+  ]);
 });
 
 test('a mandatory model maps off to null; efforts map to themselves', () => {
@@ -184,6 +198,8 @@ test('models.json: aliases in zdr, every catalog model in zdr and open, never op
       apiKey: '$LITELLM_MASTER_KEY',
     });
   expect(JSON.stringify(json)).not.toContain('openRouterRouting');
+  // Written through a temp file and a rename: no half-written file for a reader.
+  expect(readdirSync(dir)).toEqual(['models.json']);
   // Without a catalog only the aliases remain, and `open` is empty.
   writeModelsJson(dir, 'http://litellm:4000/v1');
   const bare = JSON.parse(readFileSync(join(dir, 'models.json'), 'utf8'));
@@ -275,7 +291,55 @@ test('a failed fetch uses the cache; off never fetches; a good fetch rewrites th
   const empty = make('https://or.test/api/v1', fakeFetch([raw('openrouter/auto')], []).fn);
   await empty.start();
   await empty.refresh();
+  empty.close();
   expect(empty.list().map((m) => m.id)).toEqual([opus.id]);
+
+  // Single flight: two callers share one fetch (two GETs).
+  const once = fakeFetch([opus], [opus.id]);
+  const shared = make('https://or.test/api/v1', once.fn);
+  await Promise.all([shared.refresh(), shared.refresh()]);
+  expect(once.calls).toHaveLength(2);
+});
+
+test('without a catalog, failed fetches retry after 1 min and 5 min, then daily', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+  try {
+    const opus = raw('anthropic/claude-opus-5.5');
+    let up = false;
+    let calls = 0;
+    const fn = (async (url: string) => {
+      calls++;
+      if (!up) throw new Error('offline');
+      return fakeFetch([opus], [opus.id]).fn(url);
+    }) as typeof fetch;
+    const catalog = modelCatalog({
+      dataDir: tmp(),
+      source: 'https://or.test',
+      fetch: fn,
+      onChange: () => {},
+      warn: () => {},
+    });
+    await catalog.start();
+    expect(calls).toBe(2); // the two GETs of the first attempt
+    await vi.advanceTimersByTimeAsync(59_000);
+    expect(calls).toBe(2);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(calls).toBe(4);
+    await vi.advanceTimersByTimeAsync(4 * 60_000);
+    expect(calls).toBe(4);
+    up = true;
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(calls).toBe(6);
+    expect(catalog.get(opus.id)).toBeDefined();
+    // A catalog exists: the next fetch is a day later.
+    await vi.advanceTimersByTimeAsync(23 * 60 * 60_000);
+    expect(calls).toBe(6);
+    await vi.advanceTimersByTimeAsync(60 * 60_000);
+    expect(calls).toBe(8);
+    catalog.close();
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 test('proof 2: piModelId returns open/ only for dataPolicy open', () => {
@@ -346,7 +410,7 @@ test("proof 2: 'open/' appears in no other server or extension source file", () 
   expect(offenders).toEqual([]);
 });
 
-test('decision 10: a refusal needs zdr, a catalog model, 403/404/503 and no ZDR or a policy text', () => {
+test('decision 10: 403 needs a ZDR text; 404 and 503 a ZDR text or a catalog without ZDR', () => {
   const catalog = {
     get: (id: string) =>
       ({ 'acme/no-zdr': { zdr: false }, 'acme/zdr': { zdr: true } })[id] as Model | undefined,
@@ -354,13 +418,26 @@ test('decision 10: a refusal needs zdr, a catalog model, 403/404/503 and no ZDR 
   const zdr = (modelId: string | null) => ({ modelId, dataPolicy: 'zdr' as const });
   const notFound = '404: {"code":404,"message":"No endpoints found matching your data policy"}';
   expect(isZdrRefusal(zdr('acme/no-zdr'), '404 Not Found', catalog)).toBe(true);
-  expect(isZdrRefusal(zdr('acme/no-zdr'), '403 guardrail block', catalog)).toBe(true);
+  expect(isZdrRefusal(zdr('acme/no-zdr'), '503 No provider available', catalog)).toBe(true);
   expect(isZdrRefusal(zdr('acme/zdr'), notFound, catalog)).toBe(true);
   expect(isZdrRefusal(zdr('acme/unknown'), '503 zero data retention', catalog)).toBe(true);
-  // An outage of a ZDR model, a non-matching status, an open chat, an alias chat.
+  expect(isZdrRefusal(zdr('acme/no-zdr'), '403: zero data retention required', catalog)).toBe(true);
+  // A short prefix before the status (LiteLLM's exception name).
+  expect(isZdrRefusal(zdr('acme/zdr'), `litellm.NotFoundError: ${notFound}`, catalog)).toBe(true);
+  // 403 is also budget, guardrail and moderation: never from the catalog alone.
+  expect(isZdrRefusal(zdr('acme/no-zdr'), '403: Key limit exceeded', catalog)).toBe(false);
+  expect(isZdrRefusal(zdr('acme/no-zdr'), '403 guardrail block', catalog)).toBe(false);
+  // A model that is gone is a 404 too.
+  expect(isZdrRefusal(zdr('acme/zdr'), '404: Model acme/zdr not found', catalog)).toBe(false);
+  expect(isZdrRefusal(zdr('acme/unknown'), '404: model not found', catalog)).toBe(false);
+  // The training filter (account-level block): no override fixes it.
+  const training =
+    '404: No endpoints found matching your data policy. Enable prompt training here: https://openrouter.ai/settings/privacy';
+  expect(isZdrRefusal(zdr('acme/zdr'), training, catalog)).toBe(false);
+  // An outage of a ZDR model, a non-matching status, a status too far in.
   expect(isZdrRefusal(zdr('acme/zdr'), '503 no provider available', catalog)).toBe(false);
   expect(isZdrRefusal(zdr('acme/no-zdr'), '500 internal error', catalog)).toBe(false);
-  expect(isZdrRefusal(zdr('acme/no-zdr'), 'stream closed: 404', catalog)).toBe(false);
+  expect(isZdrRefusal(zdr('acme/no-zdr'), `${'x'.repeat(41)} 404`, catalog)).toBe(false);
   expect(isZdrRefusal({ modelId: 'acme/no-zdr', dataPolicy: 'open' }, notFound, catalog)).toBe(
     false,
   );
