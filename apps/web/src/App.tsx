@@ -1,5 +1,5 @@
 import { Menu, SquarePen } from 'lucide-react';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet';
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -14,7 +14,7 @@ import { DEVICES_TITLE, DevicesScreen } from './components/DevicesScreen.tsx';
 import { ExportAllDialog } from './components/ExportAllDialog.tsx';
 import { ExportDialog } from './components/ExportDialog.tsx';
 import { FILES_TITLE, FilesScreen } from './components/FilesScreen.tsx';
-import { IconButton } from './components/IconButton.tsx';
+import { IconButton, Tip } from './components/IconButton.tsx';
 import { Login } from './components/Login.tsx';
 import { MEMORY_TITLE, MemoryScreen } from './components/MemoryScreen.tsx';
 import { ChatCost } from './components/MessageMeta.tsx';
@@ -42,6 +42,26 @@ const SCREEN_TITLE = {
   usage: USAGE_TITLE,
   devices: DEVICES_TITLE,
 };
+
+/** The desktop header's title: shown once the chat has a title; a tooltip when it is cut. */
+function ChatTitle({ title }: { title: string }) {
+  const titled = useStore((s) => {
+    const id = s.activeChatId;
+    return !!id && !!(s.chats.find((c) => c.id === id)?.title ?? s.summaries[id]?.title);
+  });
+  const [cut, setCut] = useState(false);
+  if (!titled) return <h1 className="sr-only">{title}</h1>;
+  return (
+    <Tip label={title} {...(cut ? {} : { open: false })}>
+      <h1
+        onPointerEnter={(e) => setCut(e.currentTarget.scrollWidth > e.currentTarget.clientWidth)}
+        className="min-w-0 flex-1 truncate text-ui font-medium"
+      >
+        {title}
+      </h1>
+    </Tip>
+  );
+}
 
 /** `--background` of each scheme (tokens.css), for the browser chrome (brief 7.7). */
 const THEME_COLOR = { light: '#faf9f5', dark: '#262624' } as const;
@@ -204,18 +224,18 @@ function Shell() {
               <SquarePen size={20} className="size-5" />
             </IconButton>
           </header>
-        ) : screen === 'chat' && !empty ? (
-          // Desktop chat header (phase 16): the title, and the chat's cost at the right.
-          // On the thread column's edges (672, or the narrower column beside the side panel); the
-          // bottom border meets the artifact panel's header.
-          <header className="z-(--z-header) h-12 shrink-0 border-b border-border px-4">
-            <div className="mx-auto flex h-full w-full max-w-(--thread-max) items-center gap-4">
-              <h1 className="min-w-0 flex-1 truncate text-ui font-medium">{title}</h1>
-              <ChatCost />
-            </div>
-          </header>
         ) : (
-          screen === 'chat' && <h1 className="sr-only">{title}</h1>
+          screen === 'chat' && (
+            // Desktop chat header (phase 16), also in a new chat (no shift on the first send): the
+            // title and the chat's cost, on the thread column's edges (672, or the narrower column
+            // beside the side panel); the bottom border meets the artifact panel's header.
+            <header className="z-(--z-header) h-12 shrink-0 border-b border-border px-4">
+              <div className="mx-auto flex h-full w-full max-w-(--thread-max) items-center gap-4">
+                <ChatTitle title={title} />
+                <ChatCost />
+              </div>
+            </header>
+          )
         )}
         {screen === 'vault' && <VaultScreen />}
         {screen === 'search' && <SearchScreen />}

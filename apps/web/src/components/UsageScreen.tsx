@@ -19,7 +19,7 @@ import {
 } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 import { useStore } from '../store.ts';
-import { cacheRate } from '../thread.ts';
+import { cacheRate, withRate } from '../thread.ts';
 import { openRoute } from '../useModel.ts';
 import { send } from '../ws.ts';
 import { EmptyState, ListSkeleton, Page } from './Page.tsx';
@@ -55,8 +55,10 @@ type BreakdownRow = {
   tokens: number;
   costUsd: number;
   estimated: boolean;
-  /** The month's cache hit rate (phase 16); a model row without the counts has none. */
-  cache?: string | undefined;
+  /** The month's token split (phase 16): model rows have it, agent rows do not. */
+  input?: number | undefined;
+  cacheRead?: number | undefined;
+  cacheWrite?: number | undefined;
 };
 
 /** One grouping of the month: a table at 768 and up, cards below (brief 7.10 4a). */
@@ -108,9 +110,12 @@ function Breakdown({
                 <TableCell className="text-right tabular-nums">{num.format(r.calls)}</TableCell>
                 <TableCell className="text-right tabular-nums">{num.format(r.tokens)}</TableCell>
                 <TableCell
-                  className={cn('text-right tabular-nums', !r.cache && 'text-muted-foreground')}
+                  className={cn(
+                    'text-right tabular-nums',
+                    !cacheRate(r) && 'text-muted-foreground',
+                  )}
                 >
-                  {cacheColumn ? (r.cache ?? '–') : null}
+                  {cacheColumn ? (cacheRate(r) ?? '–') : null}
                 </TableCell>
                 <TableCell className="text-right tabular-nums">
                   {cost(r.costUsd, r.estimated)}
@@ -129,8 +134,7 @@ function Breakdown({
                 {r.badge}
               </div>
               <p className="text-meta text-muted-foreground tabular-nums">
-                {callCount(r.calls)} · {formatTokens(r.tokens)}
-                {r.cache && ` · välimuisti ${r.cache}`}
+                {withRate(`${callCount(r.calls)} · ${formatTokens(r.tokens)}`, r)}
               </p>
             </div>
             <span className="shrink-0 tabular-nums">{cost(r.costUsd, r.estimated)}</span>
@@ -226,7 +230,6 @@ export function UsageScreen() {
                 ...r,
                 key: r.model,
                 badge: zdrOff(r.model),
-                cache: cacheRate(r),
               }))}
             />
           </div>

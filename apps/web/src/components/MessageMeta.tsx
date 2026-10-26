@@ -6,17 +6,14 @@ import {
   formatTokens,
 } from '@pa/protocol';
 import { useStore } from '../store.ts';
-import { cacheRate, fullTime, messageTime, tokensOf } from '../thread.ts';
+import { cacheRate, fullTime, messageTime, tokensOf, withRate } from '../thread.ts';
 import { modelLabel } from '../useModel.ts';
 import { Tip } from './IconButton.tsx';
 
 const count = new Intl.NumberFormat('fi');
 
 /** "3,4 k tokenia · välimuisti 82 %"; the rate only when the call had prompt tokens. */
-const tokenText = (u: CallUsage) => {
-  const rate = cacheRate(u);
-  return `${formatTokens(tokensOf(u))}${rate ? ` · välimuisti ${rate}` : ''}`;
-};
+const tokenText = (u: CallUsage) => withRate(formatTokens(tokensOf(u)), u);
 
 /** The meta as one line of text, for the touch sheet (no tooltips there). */
 export function metaText(createdAt: string, usage: CallUsage | undefined, fx: FxRate | null) {
@@ -97,7 +94,12 @@ export const chatTotal = (u: ChatUsage, fx: FxRate | null) =>
  * `chat.state` and `chat.updated` refresh. The tooltip gives the token parts and the cache rate.
  */
 export function ChatCost() {
-  const usage = useStore((s) => s.chats.find((c) => c.id === s.activeChatId)?.usage);
+  // The opened chat's own summary first: it exists also for a chat outside the loaded list.
+  const usage = useStore((s) =>
+    s.activeChatId
+      ? (s.summaries[s.activeChatId] ?? s.chats.find((c) => c.id === s.activeChatId))?.usage
+      : undefined,
+  );
   const fx = useStore((s) => s.fx);
   if (!usage?.tokens) return null;
   const rate = cacheRate(usage);
@@ -133,9 +135,9 @@ export function ChatCost() {
     >
       <span
         tabIndex={0}
-        className="shrink-0 rounded-xs text-meta whitespace-nowrap text-muted-foreground tabular-nums"
+        className="ml-auto shrink-0 rounded-xs text-meta whitespace-nowrap text-muted-foreground tabular-nums"
       >
-        {chatTotal(usage, fx)}
+        {withRate(chatTotal(usage, fx), usage)}
       </span>
     </Tip>
   );

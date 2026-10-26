@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { announce } from '../announce.ts';
 import { FAILED_TEXT, serverIdOf, type UiMessage, useStore } from '../store.ts';
-import { replyUsage } from '../thread.ts';
+import { Follow, replyUsage, threadKey } from '../thread.ts';
 import { useModel } from '../useModel.ts';
 import { forkChat, openChat, retryTurn, send, sendUserMessage, setDataPolicy } from '../ws.ts';
 import { ApprovalCard } from './ApprovalCard.tsx';
@@ -99,9 +99,7 @@ export function Thread() {
   // Open requests only: a decided one is shown by its tool row.
   const approvals = allApprovals.filter((a) => a.chatId === chatId && !a.expired && !a.denied);
   const scroller = useRef<HTMLElement>(null);
-  const pinned = useRef(true);
-  // The pill's smooth scroll is on its way: its scroll events must not stop the follow.
-  const jumping = useRef(false);
+  const follow = useRef(new Follow()).current;
   const [away, setAway] = useState(false);
   // Messages the reader has seen at the bottom; the rest count as new on the pill.
   const seen = useRef(messages.length);
@@ -112,15 +110,21 @@ export function Thread() {
     if (!away) seen.current = messages.length;
   }, [away, messages.length]);
 
-  // A sent message, or another chat, follows the bottom again.
+  // Another chat starts at its bottom, with no pill and nothing unread.
   useEffect(() => {
-    pinned.current = true;
-  }, [lastUserId, chatId]);
+    follow.reset();
+    setAway(false);
+    seen.current = useStore.getState().messages[chatId ?? '']?.length ?? 0;
+  }, [chatId]);
+
+  // A sent message follows the bottom again.
+  useEffect(() => {
+    follow.pinned = true;
+  }, [lastUserId]);
 
   // Follow the bottom while the user has not scrolled up (a jump, not a smooth scroll).
   useEffect(() => {
-    const el = scroller.current;
-    if (el && pinned.current) el.scrollTop = el.scrollHeight;
+    if (scroller.current) follow.follow(scroller.current, performance.now());
   }, [messages, stream?.text, stream?.tools, running, allApprovals, subagents, failed]);
 
   // A search hit opens at its message once the chat's messages are in.
@@ -129,7 +133,7 @@ export function Thread() {
     const el = scroller.current?.querySelector(`[data-message-id="${CSS.escape(scrollTo)}"]`);
     if (!el) return;
     el.scrollIntoView({ block: 'center' });
-    pinned.current = false;
+    follow.pinned = false;
     useStore.getState().setScrollTo(null);
   }, [messages, scrollTo]);
 
@@ -228,45 +232,45 @@ export function Thread() {
   const jump = () => {
     const el = scroller.current;
     if (!el) return;
-    pinned.current = jumping.current = true;
+    // Focus stays in the thread when the pill unmounts (not lost to <body>).
+    el.focus({ preventScroll: true });
+    follow.jump(el, !matchMedia('(prefers-reduced-motion: reduce)').matches);
     setAway(false);
-    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
-    el.scrollTo({ top: el.scrollHeight, behavior: reduce ? 'auto' : 'smooth' });
   };
   const unread = away ? messages.length - seen.current : 0;
-  const inner = (t: EventTarget) => !!(t as HTMLElement).closest('[role="region"]');
+  /** Inside a region that scrolls by itself (tool output, a tall code block): not the thread's. */
+  const inner = (t: EventTarget | null) => {
+    const r = (t as HTMLElement | null)?.closest?.('[role="region"]');
+    return !!r && r.scrollHeight > r.clientHeight;
+  };
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
       <section
         ref={scroller}
         aria-label="Keskustelu"
+        // Focus target of the pill; not a tab stop.
+        tabIndex={-1}
         onScroll={(e) => {
-          const el = e.currentTarget;
-          const gap = el.scrollHeight - el.scrollTop - el.clientHeight;
-          if (jumping.current && gap >= 48) return;
-          jumping.current = false;
-          pinned.current = gap < 48;
-          setAway(gap > 80);
+          const away = follow.scrolled(e.currentTarget, performance.now());
+          if (away !== undefined) setAway(away);
         }}
         // The reader scrolls up: the follow stops at once, before a delta can pull the thread
         // back down; `onScroll` then sets it from the real position. It also ends a smooth jump.
-        // Not inside a scrolling region of its own (tool output, code): that scroll is not ours.
+        // Not inside a region that scrolls by itself (tool output, code): that scroll is not ours.
         onWheel={(e) => {
-          jumping.current = false;
-          if (e.deltaY < 0 && !inner(e.target)) pinned.current = false;
+          if (e.deltaY < 0 && !inner(e.target)) follow.up(e.currentTarget);
+          else follow.interrupt();
         }}
-        onTouchMove={() => (jumping.current = false)}
+        onTouchMove={() => follow.interrupt()}
         onKeyDown={(e) => {
-          const t = e.target as HTMLElement;
-          if (t.closest('input, textarea, [contenteditable="true"]')) return;
-          if (['ArrowUp', 'PageUp', 'Home'].includes(e.key) && !inner(t))
-            pinned.current = jumping.current = false;
-          if (e.key !== 'End') return;
+          const key = threadKey(e);
+          if (key === 'up' && !inner(e.target)) follow.up(e.currentTarget);
+          if (key !== 'end') return;
           e.preventDefault();
           jump();
         }}
-        className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-4"
+        className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-4 outline-none"
       >
         <div className="mx-auto flex w-full max-w-(--thread-max) flex-col gap-6 py-6">
           <FindBar scroller={scroller} />

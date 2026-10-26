@@ -300,18 +300,34 @@ export const MarkdownText = memo(function MarkdownText({
       .filter(([real]) => real)
       .sort((x, y) => y[0].length - x[0].length),
   );
-  const [rehype, rehypeLast] = useMemo(() => {
+  // The base plugins depend on the annotations only: finished blocks keep the same array.
+  const rehype = useMemo(() => {
     const pairs = JSON.parse(key) as [string, string][];
-    const base = pairs.length ? [rehypeAnnotate(pairs)] : [];
-    return [base, live ? [...base, rehypeCaret] : base];
-  }, [key, live]);
+    return pairs.length ? [rehypeAnnotate(pairs)] : [];
+  }, [key]);
+  const rehypeLast = useMemo(() => (live ? [...rehype, rehypeCaret] : rehype), [rehype, live]);
   // Blocks render as siblings in one `.md`, so the DOM is the same as one parse would give.
-  const blocks = mdBlocks(text);
-  if (live) blocks[blocks.length - 1] = settleTail(blocks.at(-1) ?? '');
+  const { blocks, definitions } = mdBlocks(text, !live);
+  if (live) {
+    // A tail held back whole: the caret stays on the block before it.
+    const tail = settleTail(blocks.at(-1) ?? '');
+    if (tail) blocks[blocks.length - 1] = tail;
+    else blocks.pop();
+  }
+  // Each block gets the reference definitions it uses (`[label]`); they render nothing.
+  const withDefinitions = (b: string) => {
+    const low = b.toLowerCase();
+    const used = definitions.filter((d) => low.includes(`[${d.label}]`) && !b.includes(d.line));
+    return used.length ? `${b}\n\n${used.map((d) => d.line).join('\n')}` : b;
+  };
   return (
     <div className="md break-words">
       {blocks.map((b, i) => (
-        <Block key={i} text={b} rehype={i === blocks.length - 1 ? rehypeLast : rehype} />
+        <Block
+          key={i}
+          text={withDefinitions(b)}
+          rehype={i === blocks.length - 1 ? rehypeLast : rehype}
+        />
       ))}
     </div>
   );

@@ -122,6 +122,11 @@ type State = {
   /** The source of each forked chat from its `chat.state` (phase 13); null: not a fork. */
   forkedFrom: Record<string, ForkLink | null>;
   /**
+   * The summary of each chat opened here (`chat.state`, then `chat.updated`): the desktop header
+   * reads it, also for a chat outside the loaded list (archived, opened from search).
+   */
+  summaries: Record<string, ChatSummary>;
+  /**
    * A `chat.fork` sent from this client, until its `chat.state` (or an error) arrives. `localId`
    * is the edited text's message in the new chat; `forkId` the new chat once `chat.created` came.
    */
@@ -412,6 +417,7 @@ export const useStore = create<State>()((set, get) => {
     exportJob: null,
     exportAllOpen: false,
     forkedFrom: {},
+    summaries: {},
     pendingFork: null,
     thinkingLive: {},
     thinkingText: {},
@@ -460,6 +466,9 @@ export const useStore = create<State>()((set, get) => {
               was.dataPolicy !== now.dataPolicy;
             return {
               chats: sortChats(msg.chat.archived === st.archivedView ? [msg.chat, ...rest] : rest),
+              ...(st.summaries[msg.chat.id]
+                ? { summaries: { ...st.summaries, [msg.chat.id]: msg.chat } }
+                : {}),
               policies: { ...st.policies, [msg.chat.id]: now },
               ...(policyChanged ? { zdrRefused: omit(st.zdrRefused, msg.chat.id) } : {}),
             };
@@ -509,10 +518,7 @@ export const useStore = create<State>()((set, get) => {
             });
             return {
               messages: { ...st.messages, [msg.chat.id]: [...kept, ...local] },
-              // The open chat's totals (the desktop header) are fresh on every open.
-              chats: st.chats.map((c) =>
-                c.id === msg.chat.id ? { ...c, usage: msg.chat.usage } : c,
-              ),
+              summaries: { ...st.summaries, [msg.chat.id]: msg.chat },
               policies: { ...st.policies, [msg.chat.id]: msg.chat.modelPolicy },
               forkedFrom: { ...st.forkedFrom, [msg.chat.id]: msg.forkedFrom ?? null },
               ...(mine ? { pendingFork: null, activeChatId: msg.chat.id, screen: 'chat' } : {}),

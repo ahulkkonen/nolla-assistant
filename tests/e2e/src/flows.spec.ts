@@ -5,6 +5,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { SEARCH_DENIED } from '@pa/server/src/search-tool.ts';
 import type { Page } from '@playwright/test';
 import {
+  type App,
   acceptProposal,
   CHART_REPLY,
   COLLIDING,
@@ -109,6 +110,12 @@ const LONG_MD = Array.from({ length: 125 }, (_, i) =>
   ].join('\n'),
 ).join('\n');
 
+/** LONG_MD with a reference link per section and a sources list of definitions at the end. */
+const LONG_REFS = `${LONG_MD.replace(/\[linkki\]\(https:\/\/example\.com\/(\d+)\)/g, '[lähde][$1]')}\n\nLähteet:\n\n${Array.from(
+  { length: 125 },
+  (_, i) => `[${i}]: https://example.com/${i}`,
+).join('\n')}\n`;
+
 /**
  * fake-llm sends a turn at once. This delivers its text in frames of about 200 characters, one
  * every 4 ms, as a live model does; other frames keep their order. Call before the page opens
@@ -155,9 +162,9 @@ const countCommits = (page: Page) =>
     };
   });
 
-test('long stream: render cost, then the jump-to-latest pill', async ({ app, page }) => {
-  test.setTimeout(120_000);
-  app.llm.push({ text: LONG_MD });
+/** Streams `text` paced and returns "N commits, M ms script" for the stream. */
+const measureStream = async (app: App, page: Page, text: string, check: () => Promise<void>) => {
+  app.llm.push({ text });
   await countCommits(page);
   await paceDeltas(page);
   await app.login(page);
@@ -169,9 +176,27 @@ test('long stream: render cost, then the jump-to-latest pill', async ({ app, pag
   const commits = () => page.evaluate(() => (window as unknown as { __commits: number }).__commits);
   const [c0, s0] = [await commits(), await script()];
   await send(page, 'Kirjoita pitkä vastaus');
-  await expect(page.locator('.md').last().locator('table')).toHaveCount(125, { timeout: 60_000 });
+  await check();
   await expect(page.getByRole('button', { name: 'Pysäytä' })).toHaveCount(0);
-  const cost = `${(await commits()) - c0} commits, ${Math.round(((await script()) - s0) * 1000)} ms script`;
+  return `${(await commits()) - c0} commits, ${Math.round(((await script()) - s0) * 1000)} ms script`;
+};
+
+test('long stream with a sources list: render cost', async ({ app, page }) => {
+  test.setTimeout(120_000);
+  const cost = await measureStream(app, page, LONG_REFS, () =>
+    expect(page.locator('.md').last().locator('a[href="https://example.com/124"]')).toHaveCount(1, {
+      timeout: 60_000,
+    }),
+  );
+  console.log(`long stream with sources: ${cost}`);
+  test.info().annotations.push({ type: 'long stream with sources', description: cost });
+});
+
+test('long stream: render cost, then the jump-to-latest pill', async ({ app, page }) => {
+  test.setTimeout(120_000);
+  const cost = await measureStream(app, page, LONG_MD, () =>
+    expect(page.locator('.md').last().locator('table')).toHaveCount(125, { timeout: 60_000 }),
+  );
   console.log(`long stream: ${cost}`);
   test.info().annotations.push({ type: 'long stream', description: cost });
 

@@ -282,7 +282,7 @@ for (const scheme of ['light', 'dark'] as const) {
             .contentFrame()
             .getByRole('heading', { name: 'Hei artefakti' }),
         ).toBeVisible();
-        const cost = header.getByText(/tokenia$/);
+        const cost = header.getByText(/tokenia/);
         await expect(cost).toBeVisible();
         await cost.hover();
         await expect(page.getByRole('tooltip')).toContainText('Välimuisti');
@@ -1474,9 +1474,11 @@ for (const scheme of ['light', 'dark'] as const) {
         await send(page, 'Lue note.txt ja jatka');
         await hold.reached;
         // Scrolled up while the turn runs: its tool round and its reply arrive as 2 new messages.
-        await page
-          .getByRole('region', { name: 'Keskustelu' })
-          .evaluate((el) => el.scrollTo({ top: 0 }));
+        // Two scrolls: a scroll within 50 ms of the follow's own jump counts as the follow's.
+        const region = page.getByRole('region', { name: 'Keskustelu' });
+        await region.evaluate((el) => el.scrollTo({ top: 10 }));
+        await page.waitForTimeout(100);
+        await region.evaluate((el) => el.scrollTo({ top: 0 }));
         hold.release();
         await expect(page.getByRole('button', { name: 'Uusimpaan · 2 uutta' })).toBeVisible();
         await expect(page.getByRole('button', { name: 'Pysäytä' })).toHaveCount(0);

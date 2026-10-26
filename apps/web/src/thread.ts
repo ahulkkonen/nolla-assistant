@@ -27,23 +27,35 @@ export const fullTime = (iso: string) => {
   return `${weekday.format(d)} ${fullDate.format(d)} klo ${clock.format(d)}`;
 };
 
-const percent = new Intl.NumberFormat('fi', { style: 'percent', maximumFractionDigits: 0 });
+const percent = (digits: number) =>
+  new Intl.NumberFormat('fi', { style: 'percent', maximumFractionDigits: digits });
+const wholePercent = percent(0);
+const finePercent = percent(1);
 
-/**
- * The prompt cache hit rate (phase-16 decision 10), "82 %": `cacheRead / (input + cacheRead +
- * cacheWrite)`. Undefined when the counts are missing (older totals) or the divisor is 0.
- */
 type CacheCounts = {
   input?: number | undefined;
   cacheRead?: number | undefined;
   cacheWrite?: number | undefined;
 };
+
+/**
+ * The prompt cache hit rate (phase-16 decision 10), "82 %": `cacheRead / (input + cacheRead +
+ * cacheWrite)`. Undefined unless all three counts are there (older totals lack them) and the
+ * divisor is above 0. One decimal below 1 % and above 99 % ("99,6 %"), so 100 % means all.
+ */
 export function cacheRate(u: CacheCounts | undefined) {
-  if (u?.input === undefined) return undefined;
-  const read = u.cacheRead ?? 0;
-  const all = u.input + read + (u.cacheWrite ?? 0);
-  return all ? percent.format(read / all) : undefined;
+  if (u?.input === undefined || u.cacheRead === undefined || u.cacheWrite === undefined) return;
+  const all = u.input + u.cacheRead + u.cacheWrite;
+  if (!all) return;
+  const rate = u.cacheRead / all;
+  return (rate < 0.01 || rate > 0.99 ? finePercent : wholePercent).format(rate);
 }
+
+/** `text` + " · välimuisti 82 %" when the counts give a rate (meta, menu, header, Käyttö). */
+export const withRate = (text: string, u: CacheCounts | undefined) => {
+  const rate = cacheRate(u);
+  return rate ? `${text} · välimuisti ${rate}` : text;
+};
 
 /** Tokens of a call: input, output and both cache parts, as Pi's `totalTokens`. */
 export const tokensOf = (u: CallUsage) => u.input + u.output + u.cacheRead + u.cacheWrite;
@@ -141,7 +153,8 @@ export function findOffsets(text: string, q: string): number[] {
   return out;
 }
 
-const FENCE = /^\s*(`{3,}|~{3,})/;
+/** A fence line, also after list or quote markers (`1. ```bash`, `- ```js`, `> ````). */
+const FENCE = /^(?:\s*(?:[-*+]|\d+[.)])\s+|\s*>\s?)*\s*(`{3,}|~{3,})/;
 /** A fence line that closes `open` (same char, at least as long, nothing after it). */
 const closes = (line: string, open: string) => {
   const m = FENCE.exec(line);
@@ -149,25 +162,45 @@ const closes = (line: string, open: string) => {
     !!m && m[1]![0] === open[0] && m[1]!.length >= open.length && !line.slice(m[0].length).trim()
   );
 };
+/** A link reference definition, or a footnote definition (`[^1]:`). */
+const DEFINITION = /^ {0,3}\[([^\]\n]+)\]:\s*\S/;
 
 /**
  * Splits Markdown at blank lines outside code fences, so a streamed reply re-renders only its
  * last block. A blank line before an indented line or a list item does not split (loose lists,
- * nested content), and text with link reference or footnote definitions stays whole, because
- * those resolve across blocks.
+ * nested content). `definitions` are the finished link reference definitions: they resolve
+ * across blocks, so the caller appends to each block the ones it uses (a definition renders
+ * nothing; a block changes only when a definition it uses arrives). A
+ * footnote definition renders a section of its own, so that text stays one block, and so does a
+ * `final` text that ends inside a fence: a fence the scan misread would invert every later block.
  */
-export function mdBlocks(text: string): string[] {
-  if (/^ {0,3}\[[^\]\n]+\]:/m.test(text)) return [text];
+export function mdBlocks(
+  text: string,
+  final = false,
+): { blocks: string[]; definitions: { label: string; line: string }[] } {
   const lines = text.split('\n');
   const blocks: string[] = [];
+  const definitions: { label: string; line: string }[] = [];
+  const whole = { blocks: [text], definitions: [] };
   let start = 0;
   let fence = '';
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]!;
     if (fence) {
       if (closes(line, fence)) fence = '';
-    } else if (FENCE.test(line)) fence = FENCE.exec(line)![1]!;
-    else if (
+      continue;
+    }
+    const open = FENCE.exec(line);
+    if (open) {
+      fence = open[1]!;
+      continue;
+    }
+    const def = DEFINITION.exec(line);
+    if (def?.[1]?.startsWith('^')) return whole;
+    // The last line may still grow: only finished definitions are shared.
+    if (def?.[1] && i + 1 < lines.length)
+      definitions.push({ label: def[1].trim().toLowerCase(), line });
+    if (
       !line.trim() &&
       i > start &&
       i + 1 < lines.length &&
@@ -177,16 +210,35 @@ export function mdBlocks(text: string): string[] {
       start = i + 1;
     }
   }
+  if (fence && final) return whole;
   blocks.push(lines.slice(start).join('\n'));
-  return blocks;
+  return { blocks, definitions };
 }
 
+/** The length of the unclosed code span opener (0: every span closed); escaped backticks are text. */
+const openSpan = (text: string) => {
+  let open = 0;
+  for (const run of text.replace(/\\`/g, '').match(/`+/g) ?? [])
+    open = open === run.length ? 0 : open || run.length;
+  return open;
+};
+
+/** Table cells of a row: escaped pipes and pipes inside code spans do not split. */
+const cells = (row: string) =>
+  row
+    .replace(/\\\|/g, '')
+    .replace(/(`+)[\s\S]*?\1/g, '')
+    .trim()
+    .replace(/^\|/, '')
+    .replace(/\|$/, '')
+    .split('|');
+
 /**
- * The streamed last block as it will read once its closing markers arrive, so nothing flips
- * between raw and rendered text: an unclosed inline code span or link is closed, a table's
- * delimiter row gets its missing cells, and a half-typed fence or a lone list marker (which
- * would read as a setext heading underline) waits for the next delta. An unclosed fence already
- * renders as a code block (CommonMark).
+ * The streamed last block, settled so that it never shows what the final text will not render;
+ * when unsure it holds back instead of closing. An unclosed inline code span or link URL is
+ * closed; a table's delimiter row gets its missing cells; a half-typed fence, a lone list marker
+ * or a setext underline (`-`, `--`, `=`) after text waits for the next delta. An unclosed fence
+ * already renders as a code block (CommonMark).
  */
 export function settleTail(block: string): string {
   const lines = block.split('\n');
@@ -195,30 +247,143 @@ export function settleTail(block: string): string {
   lines.forEach((line, i) => {
     if (fence) {
       if (closes(line, fence)) [fence, after] = ['', i + 1];
-    } else if (FENCE.test(line)) fence = FENCE.exec(line)![1]!;
+    } else {
+      const open = FENCE.exec(line);
+      if (open) fence = open[1]!;
+    }
   });
   const last = lines.at(-1)!;
-  if (/^\s*(`{1,2}|~{1,2})$/.test(last) || (!fence && /^\s*([-*+]|\d+[.)])\s*$/.test(last)))
+  const prev = lines.at(-2)?.trim();
+  if (
+    /^\s*(`{1,2}|~{1,2})$/.test(last) ||
+    (!fence && /^\s*([-*+]|\d+[.)])\s*$/.test(last)) ||
+    (!fence && prev && /^ {0,3}(=+|-+)\s*$/.test(last))
+  )
     lines.pop();
   if (fence) return lines.join('\n');
-  const cells = (row: string) => row.trim().replace(/^\|/, '').replace(/\|$/, '').split('|');
   const head = lines.at(-2);
   const tail = lines.at(-1);
-  if (head?.includes('|') && tail && /^\s*\|?\s*:?-[-:|\s]*$/.test(tail)) {
+  // A delimiter row being typed under a header row of two or more unescaped pipes.
+  if (
+    head &&
+    tail &&
+    (head.replace(/\\\|/g, '').match(/\|/g) ?? []).length >= 2 &&
+    /^[\s|:-]*-[\s|:-]*$/.test(tail)
+  ) {
     const want = cells(head).length;
     const typed = cells(tail).filter((c) => c.includes('-'));
     if (typed.length < want)
       lines[lines.length - 1] =
         `|${[...typed, ...Array<string>(want - typed.length).fill(' --- ')].join('|')}|`;
   }
-  let out = lines.join('\n');
-  // Code spans: a run of backticks opens one, the next run of the same length closes it.
-  let open = 0;
-  for (const run of lines.slice(after).join('\n').match(/`+/g) ?? [])
-    open = open === run.length ? 0 : open || run.length;
-  if (open) out = out.endsWith('`'.repeat(open)) ? out.slice(0, -open) : out + '`'.repeat(open);
+  const out = lines.join('\n');
+  const open = openSpan(lines.slice(after).join('\n'));
+  if (open) {
+    // A trailing run is the opener itself or maybe a closer still being typed: hold it back and
+    // add no closer. Otherwise close the span.
+    const trailing = /(?<!\\)`+$/.exec(out)?.[0].length ?? 0;
+    if (trailing) return out.slice(0, -trailing);
+    return out + '`'.repeat(open);
+  }
   // A link whose URL is still coming: closed; an image waits whole (no request to half a URL).
-  const link = /(!?)\[[^\]\n]*\]\([^)\s]*$/.exec(out);
-  if (link) out = link[1] ? out.slice(0, link.index) : `${out})`;
-  return out;
+  const link = /(!?)\[[^\]\n]*\]\([^)\s`]*$/.exec(out);
+  if (!link) return out;
+  return link[1] ? out.slice(0, link.index) : `${out})`;
+}
+
+/** The thread's scroll container as the follow logic needs it (an element, or a test double). */
+type Scroller = {
+  scrollTop: number;
+  scrollHeight: number;
+  clientHeight: number;
+  scrollTo(options: ScrollToOptions): void;
+};
+const gapOf = (el: Scroller) => el.scrollHeight - el.scrollTop - el.clientHeight;
+/** Pinned within this many px of the bottom; the pill shows past `AWAY`. */
+const NEAR = 48;
+const AWAY = 80;
+
+/**
+ * Auto-follow of a streaming thread (brief 7.5). Only the reader unpins it (wheel, touch, keys or
+ * a scroll this follow did not cause); the follow's own jumps and the pill's smooth scroll never
+ * do. `now` is a `performance.now()` time.
+ */
+export class Follow {
+  pinned = true;
+  jumping = false;
+  /** When the follow last scrolled by itself. */
+  private ours = Number.NEGATIVE_INFINITY;
+  private scrolledSinceJump = false;
+  private timer: ReturnType<typeof setTimeout> | undefined;
+
+  /** Content changed: stay at the bottom while pinned (a jump, not a smooth scroll). */
+  follow(el: Scroller, now: number) {
+    if (!this.pinned) return;
+    el.scrollTop = el.scrollHeight;
+    this.ours = now;
+  }
+
+  /** A scroll event: whether the reader is away from the bottom, or undefined to keep the state. */
+  scrolled(el: Scroller, now: number): boolean | undefined {
+    const gap = gapOf(el);
+    this.scrolledSinceJump = true;
+    if (this.jumping && gap >= NEAR) return undefined;
+    this.jumping = false;
+    // Content grew again after the follow's own scroll, within a frame: not the reader.
+    if (this.pinned && gap >= NEAR && now - this.ours < 50) return undefined;
+    this.pinned = gap < NEAR;
+    return gap > AWAY;
+  }
+
+  /** The reader scrolls up: the follow stops at once, when the thread can scroll up at all. */
+  up(el: Scroller) {
+    this.jumping = false;
+    if (el.scrollHeight > el.clientHeight && el.scrollTop > 0) this.pinned = false;
+  }
+
+  /** The reader takes over a smooth jump (touch). */
+  interrupt() {
+    this.jumping = false;
+  }
+
+  /** The pill or End: to the bottom, and the follow resumes. */
+  jump(el: Scroller, smooth: boolean) {
+    this.pinned = this.jumping = true;
+    this.scrolledSinceJump = false;
+    clearTimeout(this.timer);
+    el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
+    // Already there (or an instant jump): no scroll event may come to end the jump.
+    if (gapOf(el) < NEAR) this.jumping = false;
+    else
+      this.timer = setTimeout(() => {
+        if (!this.scrolledSinceJump) this.jumping = false;
+      }, 600);
+  }
+
+  /** Another chat: pinned, no jump on its way. */
+  reset() {
+    this.pinned = true;
+    this.jumping = false;
+    clearTimeout(this.timer);
+  }
+}
+
+/** Targets that keep their keys: menus, dialogs, lists, buttons and every text entry. */
+const OWN_KEYS =
+  '[role="menu"], [role="dialog"], [role="listbox"], [role="radiogroup"], button, input, textarea, select, [contenteditable], [role="textbox"]';
+
+/** A key in the thread: `end` jumps to the latest, `up` stops the follow, else nothing. */
+export function threadKey(e: {
+  key: string;
+  altKey: boolean;
+  ctrlKey: boolean;
+  metaKey: boolean;
+  shiftKey: boolean;
+  target: EventTarget | null;
+}): 'end' | 'up' | undefined {
+  if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+  const t = e.target as { closest?: (s: string) => unknown } | null;
+  if (!t?.closest || t.closest(OWN_KEYS)) return;
+  if (e.key === 'End') return 'end';
+  if (e.key === 'ArrowUp' || e.key === 'PageUp' || e.key === 'Home') return 'up';
 }
