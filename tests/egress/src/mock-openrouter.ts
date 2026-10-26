@@ -8,6 +8,12 @@ export type UpstreamRequest = {
   body: any;
 };
 
+/** Chat model that the mock refuses like OpenRouter refuses a model without a matching endpoint. */
+export const NO_ENDPOINT_MODEL = 'acme/no-zdr';
+export const NO_ENDPOINT_ERROR = {
+  error: { code: 404, message: 'No endpoints found matching your data policy' },
+};
+
 /**
  * Mock OpenRouter: records every request and answers chat (plain and SSE), embeddings and
  * transcriptions. Docker Desktop reaches 127.0.0.1 through host.docker.internal; on Linux the
@@ -24,8 +30,8 @@ export async function startMockOpenRouter() {
       const multipart = String(req.headers['content-type']).startsWith('multipart/');
       const body = multipart ? raw : JSON.parse(raw || '{}');
       requests.push({ path, headers: req.headers, body });
-      const json = (obj: unknown) => {
-        res.writeHead(200, { 'Content-Type': 'application/json' });
+      const json = (obj: unknown, status = 200) => {
+        res.writeHead(status, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(obj));
       };
       const usage = { prompt_tokens: 3, completion_tokens: 1, total_tokens: 4, cost: 0.00001 };
@@ -38,6 +44,7 @@ export async function startMockOpenRouter() {
         });
       }
       if (path.endsWith('/audio/transcriptions')) return json({ text: 'hei maailma' });
+      if (body.model === NO_ENDPOINT_MODEL) return json(NO_ENDPOINT_ERROR, 404);
       const base = { id: 'gen-1', created: Math.floor(Date.now() / 1000), model: body.model };
       if (body.stream !== true) {
         return json({

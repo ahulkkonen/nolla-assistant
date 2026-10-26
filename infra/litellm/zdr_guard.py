@@ -1,26 +1,44 @@
-"""LiteLLM pre_call guardrail enforcing plan invariant 2 (ZDR on every model call).
+"""LiteLLM pre_call guardrail enforcing plan invariant 2 (ZDR by default on every model call).
 
 Mounted next to litellm.yaml and loaded as `zdr_guard.ZdrGuard` with `default_on: true`, so it
-runs for chat completions, embeddings and audio transcriptions. Refuses with HTTP 400:
+runs for chat completions, embeddings and audio transcriptions. It allows:
 
-- a `model` that does not start with `zdr/`;
-- a `model` that is not in the allowlist: aliases whose every deployment carries
-  extra_body.provider {zdr: true, data_collection: "deny", allow_fallbacks: false};
-- any client-sent `extra_body` or routing field. A client `extra_body` replaces the configured
-  one in LiteLLM 1.105.1 and would drop the provider block (see decision 0004, finding 2).
+- an exact `zdr/` alias whose every deployment carries
+  extra_body.provider {zdr: true, data_collection: "deny", allow_fallbacks: false}, on any call type;
+- `zdr/<vendor>/<model>` on chat completions, when every `zdr/*` deployment carries
+  {zdr: true, data_collection: "deny"};
+- `open/<vendor>/<model>` on chat completions, when OPENROUTER_OPEN_API_KEY is set and every
+  `open/*` deployment carries {data_collection: "deny"} without `zdr: true`.
 
-Decision record: docs/decisions/0004-litellm-openrouter-zdr.md.
+Everything else gets HTTP 400, and so does any client-sent `extra_body` or routing field. A client
+`extra_body` replaces the configured one in LiteLLM 1.105.1 and would drop the provider block
+(decision 0004, finding 2).
+
+Decision records: docs/decisions/0004-litellm-openrouter-zdr.md, docs/decisions/phase-10-models.md.
 """
+
+import os
+import re
 
 from fastapi import HTTPException
 from litellm.integrations.custom_guardrail import CustomGuardrail
 
 CLIENT_ROUTING_FIELDS = ("extra_body", "provider", "models", "route", "transforms")
 ZDR_PREFIX = "zdr/"
+OPEN_PREFIX = "open/"
+WILDCARD_PREFIXES = (ZDR_PREFIX, OPEN_PREFIX)
+# The proxy passes route_type as call_type: "acompletion" for /chat/completions in 1.105.1.
+CHAT_CALL_TYPES = ("completion", "acompletion")
+# Same shape as ModelId in packages/protocol: vendor/model, lowercase, no `~alias`, no `:variant`.
+OPENROUTER_ID = re.compile(r"^[a-z0-9][a-z0-9._-]*/[a-z0-9][a-z0-9._-]*$")
+
+
+def provider_block(litellm_params: dict) -> dict:
+    return (litellm_params.get("extra_body") or {}).get("provider") or {}
 
 
 def is_zdr_pinned(litellm_params: dict) -> bool:
-    provider = (litellm_params.get("extra_body") or {}).get("provider") or {}
+    provider = provider_block(litellm_params)
     return (
         provider.get("zdr") is True
         and provider.get("data_collection") == "deny"
@@ -39,6 +57,14 @@ def zdr_allowlist(model_list: list) -> set:
     }
 
 
+def route_ok(prefix: str, litellm_params: dict) -> bool:
+    """A wildcard route denies data collection; zdr/* also requires ZDR, open/* must not claim it."""
+    provider = provider_block(litellm_params)
+    if provider.get("data_collection") != "deny":
+        return False
+    return (provider.get("zdr") is True) == (prefix == ZDR_PREFIX)
+
+
 def refuse(detail: str):
     raise HTTPException(status_code=400, detail=f"zdr_guard: {detail}")
 
@@ -51,8 +77,26 @@ class ZdrGuard(CustomGuardrail):
         if sent:
             refuse(f"client routing fields not allowed: {sent}")
         model = data.get("model")
-        if not isinstance(model, str) or not model.startswith(ZDR_PREFIX):
-            refuse(f"model must be a zdr/ alias, got {model!r}")
-        if model not in zdr_allowlist(llm_router.model_list if llm_router else []):
+        if not isinstance(model, str):
+            refuse(f"model must be a string, got {model!r}")
+        model_list = llm_router.model_list if llm_router else []
+        if model in zdr_allowlist(model_list):
+            return data
+        # The router sends an exact model_name to its own deployment, never to a pattern route.
+        if model in {d["model_name"] for d in model_list}:
             refuse(f"alias {model!r} is not a ZDR-pinned alias in litellm.yaml")
+
+        prefix = next((p for p in WILDCARD_PREFIXES if model.startswith(p)), None)
+        if prefix is None:
+            refuse(f"model must be a zdr/ alias, zdr/<vendor>/<model> or open/<vendor>/<model>, got {model!r}")
+        if not OPENROUTER_ID.match(model[len(prefix) :]):
+            refuse(f"{model!r} is not a ZDR-pinned alias or {prefix}<vendor>/<model>")
+        if call_type not in CHAT_CALL_TYPES:
+            refuse(f"{prefix}<vendor>/<model> is allowed on chat completions only, got {call_type!r}")
+        # LiteLLM falls back to OPENROUTER_API_KEY when a deployment key is empty: fail closed here.
+        if prefix == OPEN_PREFIX and not os.environ.get("OPENROUTER_OPEN_API_KEY"):
+            refuse("open/ models are off: OPENROUTER_OPEN_API_KEY is not set")
+        pattern = [d for d in model_list if d["model_name"] == prefix + "*"]
+        if not pattern or not all(route_ok(prefix, d["litellm_params"]) for d in pattern):
+            refuse(f"route {prefix}* is missing in litellm.yaml or has the wrong provider block")
         return data

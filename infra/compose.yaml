@@ -80,7 +80,8 @@ services:
     mem_limit: 128m
     networks: [internal, skill-egress, skill-proxy-only]
 
-  # Model egress (plan §4, decision 0004). The only service holding OPENROUTER_API_KEY.
+  # Model egress (plan §4, decision 0004). The only service holding the OpenRouter keys.
+  # OPENROUTER_OPEN_API_KEY may stay empty: zdr_guard then refuses open/ models (phase-10).
   litellm:
     image: ghcr.io/berriai/litellm:v1.105.1@sha256:b7b9e2c306343721802253d0dd9436b9634a2eb4e14da7c7cf06c5c7b7530802
     command: ["--config", "/app/config/litellm.yaml", "--port", "4000"]
@@ -94,6 +95,7 @@ services:
       - ./litellm/zdr_guard.py:/app/config/zdr_guard.py:ro
     environment:
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+      OPENROUTER_OPEN_API_KEY: ${OPENROUTER_OPEN_API_KEY:-}
       OPENROUTER_API_BASE: ${OPENROUTER_API_BASE:-https://openrouter.ai/api/v1}
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
       OR_SITE_URL: ${OR_SITE_URL:-https://assistant.invalid}

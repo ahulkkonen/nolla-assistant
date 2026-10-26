@@ -1,6 +1,9 @@
-# LiteLLM proxy config. Decision record: docs/decisions/0004-litellm-openrouter-zdr.md.
-# Invariant 2: every alias is zdr/* and carries extra_body.provider {zdr: true,
-# data_collection: deny, allow_fallbacks: false}. zdr_guard.ZdrGuard refuses anything else.
+# LiteLLM proxy config. Decision records: docs/decisions/0004-litellm-openrouter-zdr.md and
+# docs/decisions/phase-10-models.md.
+# Invariant 2: every exact alias is zdr/ and carries extra_body.provider {zdr: true,
+# data_collection: deny, allow_fallbacks: false}. The zdr/* route carries {zdr: true,
+# data_collection: deny}. Only open/* uses OPENROUTER_OPEN_API_KEY and has no zdr flag.
+# zdr_guard.ZdrGuard refuses anything else.
 # OPENROUTER_API_BASE defaults to https://openrouter.ai/api/v1 in infra/compose.yaml.
 model_list:
   - model_name: zdr/strong
@@ -69,6 +72,25 @@ model_list:
           order: [nebius, deepinfra]
           allow_fallbacks: false
     model_info: { mode: embedding }
+
+  # Any OpenRouter chat model under ZDR (phase-10). Exact aliases above win over this pattern.
+  - model_name: zdr/*
+    litellm_params:
+      model: openrouter/*
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: os.environ/OPENROUTER_API_BASE
+      extra_body:
+        provider: { zdr: true, data_collection: deny }
+
+  # Per-chat override after a ZDR refusal (phase-10). Separate key, no ZDR guardrail.
+  # zdr_guard refuses open/ names while OPENROUTER_OPEN_API_KEY is empty.
+  - model_name: open/*
+    litellm_params:
+      model: openrouter/*
+      api_key: os.environ/OPENROUTER_OPEN_API_KEY
+      api_base: os.environ/OPENROUTER_API_BASE
+      extra_body:
+        provider: { data_collection: deny }
 
 guardrails:
   # Runs on every call type (chat, embeddings, transcription); see zdr_guard.py.

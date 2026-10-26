@@ -19,6 +19,28 @@ Phase 2 ships only `pa-server`. Later phases add services to `infra/compose.yaml
    openssl rand -base64 48
    ```
 
+3. Set up the OpenRouter account and its two API keys (decision `phase-10-models`, decision 1).
+   Do these steps in the default workspace.
+
+   1. Open https://openrouter.ai/settings/privacy. Turn off the ZDR toggle for all five model
+      groups. An account toggle applies to every key, so it also blocks the open key.
+   2. On the same page, keep the setting that blocks providers that train on prompts.
+   3. Do not add ZDR to the default guardrail of the workspace. That guardrail applies to every
+      key in the workspace.
+   4. Create the ZDR guardrail. Set all five `enforce_zdr_*` fields to true and set a monthly
+      budget.
+   5. Create an API key. In the **API Keys** section of the ZDR guardrail, assign the guardrail to
+      this key. A guardrail enforces nothing until you assign it. This key is
+      `OPENROUTER_API_KEY`. Every `zdr/` route uses it.
+   6. Create the open guardrail. Do not turn on ZDR in it. Set its own monthly budget.
+   7. Create a second API key and assign the open guardrail to it. This key is
+      `OPENROUTER_OPEN_API_KEY`. Only the `open/*` route uses it.
+   8. Add both keys as Coolify environment variables in section 2, step 4. Only the `litellm`
+      service gets them.
+
+   `OPENROUTER_OPEN_API_KEY` is optional. When it is empty, LiteLLM refuses every `open/` model
+   with HTTP 400. Then no model call leaves without ZDR.
+
 ## 2. Create the Coolify resource
 
 1. In Coolify, add a new resource of type **Docker Compose** from this Git repository.
@@ -179,12 +201,14 @@ docker run --rm --env-file restore.env \
 ## Local run with Docker
 
 This runs every service on your machine, with the real pseudonymization service and the real
-LiteLLM egress. Only the OpenRouter key is real; nothing leaves the machine except model calls.
+LiteLLM egress. Only the OpenRouter keys are real; nothing leaves the machine except model calls.
 
 1. Copy `.env.example` to `.env`. Fill in `OPENROUTER_API_KEY`, `LITELLM_MASTER_KEY`,
    `PSEUDO_VAULT_KEY`, `BROKER_TOKEN`, `COOKIE_SECRET` and `AUTH_PASSWORD_HASH`
    (`node scripts/hash-password.mjs`). Write each `$` of the hash as `$$`, because compose
    interpolates `$name` in `.env`. Keep `AUTH_ORIGIN=http://localhost:3000`.
+   `OPENROUTER_OPEN_API_KEY` is optional (section 1, step 3). When it is empty, LiteLLM refuses
+   every `open/` model with HTTP 400.
 2. Google Workspace is optional. Without a client, set `GOOGLE_OAUTH_CLIENT_ID=unused`,
    `GOOGLE_OAUTH_CLIENT_SECRET=unused` and `USER_GOOGLE_EMAIL=you@example.com`. The
    Google tools then show "Ei yhdistetty".
