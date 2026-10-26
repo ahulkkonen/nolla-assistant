@@ -21,6 +21,8 @@ const T = {
   'card-foreground': '#141413',
   muted: '#f0eee6',
   'muted-foreground': '#64635d',
+  secondary: '#ebe9e0',
+  input: '#8a8880',
   border: '#1f1e1d1f',
   link: '#1d5bbf',
   info: '#1d5bbf',

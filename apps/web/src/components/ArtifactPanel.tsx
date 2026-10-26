@@ -1,4 +1,4 @@
-import type { Artifact } from '@pa/protocol';
+import { type Artifact, mermaidMeta } from '@pa/protocol';
 import {
   Check,
   ChevronDown,
@@ -19,7 +19,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { saveFile } from '@/lib/utils';
+import { cn, saveFile } from '@/lib/utils';
 import { saveArtifact } from '../api.ts';
 import runtimeUrl from '../artifact-runtime.ts?worker&url';
 import { fileError, showInFiles } from '../files.ts';
@@ -48,6 +48,7 @@ import { htmlDocument, postWhenReady, SANDBOX_URL, SandboxFrame } from './Sandbo
 import { SidePanel } from './SidePanel.tsx';
 
 const EMPTY: Artifact[] = [];
+const TAB = 'data-active:bg-card data-active:shadow-sm dark:data-active:bg-card';
 const EXT: Record<string, string> = {
   html: 'html',
   react: 'jsx',
@@ -80,6 +81,7 @@ const loadScript = (url: string) => {
 };
 
 type Scheme = 'light' | 'dark';
+const phone = globalThis.matchMedia?.('(max-width: 767.98px)');
 const darkQuery = globalThis.matchMedia?.('(prefers-color-scheme: dark)');
 const onScheme = (cb: () => void) => {
   darkQuery?.addEventListener('change', cb);
@@ -142,8 +144,10 @@ const escapeHtml = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 /** The R1 chart page: the lifted title as HTML, the spec as JSON, then the chart runtime. */
-const chartBody = ({ spec, lifted: { title, subtitle, caption } }: Chart, rt: string) =>
-  `<figure class="chart">${title ? `<h2>${inlineHtml(title)}</h2>` : ''}${subtitle ? `<p>${inlineHtml(subtitle)}</p>` : ''}<div id="vis"></div>${caption ? `<figcaption>${inlineHtml(caption)}</figcaption>` : ''}</figure><script type="application/json" id="spec">${JSON.stringify(spec).replace(/</g, '\\u003c')}</script><script>${inline(rt)}</script>`;
+const figure = (kind: string, { title, subtitle, caption }: Lifted, body: string) =>
+  `<figure class="${kind}">${title ? `<h2>${inlineHtml(title)}</h2>` : ''}${subtitle ? `<p>${inlineHtml(subtitle)}</p>` : ''}${body}${caption ? `<figcaption>${inlineHtml(caption)}</figcaption>` : ''}</figure>`;
+const chartBody = ({ spec, lifted }: Chart, rt: string) =>
+  `${figure('chart', lifted, '<div id="vis"></div>')}<script type="application/json" id="spec">${JSON.stringify(spec).replace(/</g, '\\u003c')}</script><script>${inline(rt)}</script>`;
 
 /**
  * The sandboxed document of an artifact (`code` and `file` have none); a chart also keeps what its
@@ -212,15 +216,18 @@ async function documentFor(a: Artifact, scheme: Scheme): Promise<Doc> {
       theme: 'base',
       // Flat shapes: Mermaid 12's `neo` look adds tinted drop shadows.
       look: 'classic',
-      themeVariables: mermaidTheme(t, scheme === 'dark'),
+      // Labels 14 px, 13 on phones.
+      themeVariables: mermaidTheme(t, scheme === 'dark', phone?.matches ? 13 : 14),
       htmlLabels: false,
     });
     const { svg } = await mermaid.render(`m${a.id.replace(/\W/g, '')}`, a.content);
-    const title = /^\s*accTitle\s*:\s*(.+)$/m.exec(a.content)?.[1]?.trim();
+    // R1 for diagrams: accTitle and accDescr as the heading and the caption.
+    const { title, description: caption } = mermaidMeta(a.content);
+    const lifted = { ...(title ? { title } : {}), ...(caption ? { caption } : {}) };
     return {
-      html: page(`<figure class="diagram">${svg}</figure>`, head),
+      html: page(figure('diagram', lifted, svg), head),
       svg,
-      lifted: title ? { title } : {},
+      lifted,
       theme: { t, fonts },
     };
   }
@@ -437,7 +444,7 @@ export function ArtifactPanel() {
       asChild
     >
       <aside aria-label="Artefaktit" className="flex h-full min-h-0 flex-col bg-card">
-        {/* Phones: the tabs take a second row so the title keeps its width. */}
+        {/* The tabs take a second row, so the title keeps the header's width. */}
         <div className="flex min-h-12 shrink-0 flex-wrap items-center gap-x-2 border-b px-3">
           <h2 className="flex h-12 min-w-0 flex-1 items-center text-ui font-semibold">
             {artifacts.length > 1 ? (
@@ -467,9 +474,14 @@ export function ArtifactPanel() {
             )}
           </h2>
           {!plain && (
-            <TabsList className="max-md:order-last max-md:mb-2 max-md:w-full">
-              <TabsTrigger value="preview">Esikatselu</TabsTrigger>
-              <TabsTrigger value="code">Koodi</TabsTrigger>
+            <TabsList className="order-last mb-2 w-full max-md:h-11!">
+              {/* Selected: --card with --shadow-sm (brief 7.5), not the canvas colour. */}
+              <TabsTrigger value="preview" className={TAB}>
+                Esikatselu
+              </TabsTrigger>
+              <TabsTrigger value="code" className={TAB}>
+                Koodi
+              </TabsTrigger>
             </TabsList>
           )}
           <div className="flex">
@@ -527,7 +539,7 @@ export function ArtifactPanel() {
           <div className="min-h-0 flex-1 p-3">{code}</div>
         ) : (
           <>
-            <TabsContent value="preview" className="min-h-0 flex-1 p-3">
+            <TabsContent value="preview" className={cn('min-h-0 flex-1', !ready?.theme && 'p-3')}>
               {preview}
             </TabsContent>
             <TabsContent value="code" className="min-h-0 flex-1 p-3">

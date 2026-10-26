@@ -150,11 +150,25 @@ th {
 .card.stat {
   margin: 0;
 }
-/* Observable Plot: our font and page colour instead of its system-ui on white. */
+/* Observable Plot, styled like the Vega charts: our font and page colour, muted tick and axis
+   labels, no tick marks, grid in --border, bars with radius 3. */
 [class^="plot-"] {
   --plot-background: var(--card);
   font-family: var(--font-sans);
   font-size: 12px;
+}
+[class^="plot-"] :is(g[aria-label$="tick label"], g[aria-label$="axis label"]) {
+  fill: var(--muted-foreground);
+}
+[class^="plot-"] g[aria-label$="-axis tick"] {
+  display: none;
+}
+[class^="plot-"] g[aria-label$="grid"] {
+  stroke: var(--border);
+  stroke-opacity: 1;
+}
+[class^="plot-"] g[aria-label="bar"] rect {
+  rx: 3px;
 }
 @media print {
   body {
@@ -169,9 +183,8 @@ th {
   }
 }
 /* The chart page of a ```vega-lite artifact (R1). */
-.chart h2 + p {
-  font-size: 14px;
-  line-height: 20px;
+.chart h2 + p,
+.diagram h2 + p {
   color: var(--muted-foreground);
 }
 .chart strong {
@@ -183,9 +196,33 @@ th {
 #vis {
   width: 100%;
 }
-/* A ```mermaid artifact: centred, never wider than the page. */
+/* A ```mermaid artifact: centred, never wider than the page. Mermaid's own <style> uses id
+   selectors, hence !important. Edges: --muted-foreground at 1.5 px whatever the scale; nodes:
+   radius 8 and an --input border (the fill and border colours come from the theme variables). */
 .diagram svg {
   display: block;
   margin-inline: auto;
   height: auto;
+}
+.diagram
+  svg
+  :is(
+    .flowchart-link,
+    .transition,
+    .relation,
+    [class^="messageLine"],
+    .edge-pattern-solid,
+    .edge-pattern-dashed
+  ) {
+  stroke: var(--muted-foreground) !important;
+  stroke-width: 1.5px !important;
+  vector-effect: non-scaling-stroke;
+}
+.diagram svg marker path {
+  fill: var(--muted-foreground) !important;
+  stroke: var(--muted-foreground) !important;
+}
+.diagram svg :is(.node, .statediagram-state, .actor) rect {
+  rx: 8px;
+  ry: 8px;
 }

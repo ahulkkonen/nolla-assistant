@@ -289,23 +289,22 @@ for (const scheme of ['light', 'dark'] as const) {
         await shot(page, 'chat-header', vp.width, scheme);
       });
 
-      // Phase 19: a chart, a diagram and a kit page, at the phone and the docked panel.
-      if (vp.width !== 1440)
-        for (const [screen, text, ready] of [
-          ['chart-artifact', CHART_REPLY, '#vis svg .mark-rect'],
-          ['mermaid-artifact', MERMAID_REPLY, '.diagram svg'],
-          ['kit-artifact', KIT_REPLY, 'figure svg'],
-        ] as const)
-          test(screen, async ({ app, page }) => {
-            app.llm.push({ text });
-            await app.login(page);
-            await sendMessage(page, 'Piirrä');
-            const frame = page.getByRole('complementary', { name: 'Artefaktit' }).locator('iframe');
-            await expect(frame.contentFrame().locator(ready).first()).toBeVisible({
-              timeout: 15_000,
-            });
-            await shot(page, screen, vp.width, scheme);
+      // Phase 19: a chart, a diagram and a kit page.
+      for (const [screen, text, ready] of [
+        ['chart-artifact', CHART_REPLY, '#vis svg .mark-rect'],
+        ['mermaid-artifact', MERMAID_REPLY, '.diagram svg'],
+        ['kit-artifact', KIT_REPLY, 'figure svg'],
+      ] as const)
+        test(screen, async ({ app, page }) => {
+          app.llm.push({ text });
+          await app.login(page);
+          await sendMessage(page, 'Piirrä');
+          const frame = page.getByRole('complementary', { name: 'Artefaktit' }).locator('iframe');
+          await expect(frame.contentFrame().locator(ready).first()).toBeVisible({
+            timeout: 15_000,
           });
+          await shot(page, screen, vp.width, scheme);
+        });
 
       test('palette', async ({ app, page }) => {
         await app.login(page);

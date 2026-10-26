@@ -37,7 +37,10 @@ export function postWhenReady(win: () => Window | null | undefined, html: string
   return () => removeEventListener('message', onMessage);
 }
 
-/** Radius 12 and a border; `themed` pages use --card (phase-19 decision 6), files stay white. */
+/**
+ * A file's page: white, radius 12 and a border. A `themed` artifact page sits on the panel's own
+ * --card surface without a frame (phase-19 decision 6).
+ */
 export function SandboxFrame({
   title,
   html,
@@ -60,7 +63,7 @@ export function SandboxFrame({
       title={title}
       sandbox="allow-scripts"
       src={SANDBOX_URL}
-      className={cn('block size-full rounded-lg border', themed ? 'bg-card' : 'bg-white')}
+      className={cn('block size-full', themed ? 'bg-card' : 'rounded-lg border bg-white')}
     />
   );
 }

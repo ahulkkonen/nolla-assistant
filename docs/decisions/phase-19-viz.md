@@ -175,6 +175,26 @@ in `apps/web/package.json` (decision 2).
   to use the kit variables.
 - Each themed artifact document carries about 190 KB of base64 fonts.
 
+## UI review fixes (2026-10-26)
+
+A blind UI review scored the first screenshots as FAIL. Changes:
+
+- A themed artifact page has no inner frame. It sits on the panel's `--card` surface without a
+  border, so the page does not look like an empty box under short content. The page padding is
+  16 px. Every `html`, `jsx` and `tsx` artifact gets the kit, also without kit classes.
+- The tabs Esikatselu and Koodi are in a second header row, so the title keeps the header width.
+  The track is 44 px high below 768 px. The selected tab is `--card` with `--shadow-sm`.
+- Vega: `bandPaddingInner` 0.25; bar corner radius 4 at the end of the bar only.
+- The chart subtitle uses the body type (15/24) in `--muted-foreground`.
+- Mermaid: the artifact title is `accTitle` (else a `title` line). `accTitle` and `accDescr` show
+  as the heading and the caption, as in R1 (`mermaidMeta` in `@pa/protocol`). Edges are
+  `--muted-foreground` at 1.5 px with a non-scaling stroke. Nodes have radius 8, an `--input`
+  border and a `--secondary` fill. Labels are 14 px, 13 px on phones.
+- Plot: `Plot.plot` is wrapped. The model cannot change these defaults: the width is the page
+  content width, there are no tick marks and no domain line, and the y label is rotated and
+  centred like the Vega axis title. `kit.css` mutes the tick and axis labels, sets the grid to
+  `--border` and gives bars radius 3.
+
 ## Status (2026-10-26)
 
 - Tasks 1 to 6 are done. `pnpm typecheck` and `pnpm lint` pass.

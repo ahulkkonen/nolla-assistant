@@ -15,7 +15,9 @@ const NAMES = [
   'card-foreground',
   'muted',
   'muted-foreground',
+  'secondary',
   'border',
+  'input',
   'link',
   'info',
   'info-subtle',
@@ -88,7 +90,8 @@ export function vegaConfig(t: Tokens): Obj {
     header: { labelFont: sans, labelColor: t.foreground, titleFont: sans },
     text: { font: sans, fontSize: 13, color: t.foreground },
     mark: { color: t['chart-1'] },
-    bar: { cornerRadiusEnd: 3 },
+    bar: { cornerRadiusEnd: 4 },
+    scale: { bandPaddingInner: 0.25 },
     line: { strokeWidth: 2 },
     point: { filled: true },
     rule: { color: t['chart-faint'] },
@@ -99,15 +102,15 @@ export function vegaConfig(t: Tokens): Obj {
 }
 
 /** Mermaid `base` theme variables (decision 9). */
-export const mermaidTheme = (t: Tokens, dark: boolean) => ({
+export const mermaidTheme = (t: Tokens, dark: boolean, fontSize = 14) => ({
   darkMode: dark,
   fontFamily: t['font-sans'],
-  fontSize: '14px',
+  fontSize: `${fontSize}px`,
   background: t.card,
-  mainBkg: t.background,
-  primaryColor: t.background,
+  mainBkg: t.secondary,
+  primaryColor: t.secondary,
   primaryTextColor: t.foreground,
-  primaryBorderColor: t['chart-faint'],
+  primaryBorderColor: t.input,
   secondaryColor: t['chart-accent-soft'],
   secondaryTextColor: t.foreground,
   secondaryBorderColor: t['chart-1'],
@@ -120,12 +123,12 @@ export const mermaidTheme = (t: Tokens, dark: boolean) => ({
   noteTextColor: t.foreground,
   noteBorderColor: t.info,
   edgeLabelBackground: t.card,
-  actorBkg: t.background,
-  actorBorder: t['chart-faint'],
+  actorBkg: t.secondary,
+  actorBorder: t.input,
   actorTextColor: t.foreground,
   signalColor: t['muted-foreground'],
   signalTextColor: t.foreground,
-  labelBoxBkgColor: t.background,
+  labelBoxBkgColor: t.secondary,
   labelTextColor: t.foreground,
 });
 
