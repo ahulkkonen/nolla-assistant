@@ -35,7 +35,8 @@ export function AgentPicker() {
   );
 
   // Phones, started chat: no chip; the model sheet names the agent on its first line.
-  if (chatId && mobile) return null;
+  // An sr-only name keeps the agent reachable while a run disables the sheet.
+  if (chatId && mobile) return <span className="sr-only">Agentti: {name}</span>;
   if (chatId)
     return (
       <Tip label="Agentti valitaan uuden keskustelun alussa">

@@ -47,6 +47,8 @@ const price = (m: CatalogModel) => (
     {usd(m.price.input)}
     <span className="text-muted-foreground">{'\u2009/\u2009'}</span>
     {usd(m.price.output)}
+    {/* The unit lives in the visual column header; screen readers hear it here. */}
+    <span className="sr-only"> $ / M tok</span>
   </>
 );
 /** The catalog's two number columns: fixed widths, so the header and every row line up. */
