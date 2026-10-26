@@ -202,6 +202,134 @@ export const ChatExport = z.object({
 });
 export type ChatExport = z.infer<typeof ChatExport>;
 
+/**
+ * Files screen (docs/decisions/phase-11-files.md). `work` is the agent's work dir, `files` the
+ * chat uploads (read-only, flat, newest first).
+ */
+export const FileRoot = z.enum(['work', 'files']);
+export type FileRoot = z.infer<typeof FileRoot>;
+
+/** A path relative to a root, '/'-separated; '' is the root. The server checks the rest. */
+export const TreePath = z
+  .string()
+  .max(4096)
+  .refine((p) => !p.includes('\0'), 'NUL in path');
+
+/** How the screen previews a file; null: download only (type or size cap, decision 9). */
+export const PreviewKind = z.enum(['text', 'markdown', 'code', 'image', 'pdf', 'html']);
+export type PreviewKind = z.infer<typeof PreviewKind>;
+
+/** Preview caps in bytes per kind (decision 9); a bigger file is download only. */
+export const PREVIEW_MAX: Record<PreviewKind, number> = {
+  text: 1024 ** 2,
+  markdown: 1024 ** 2,
+  code: 1024 ** 2,
+  html: 2 * 1024 ** 2,
+  image: 20 * 1024 ** 2,
+  pdf: 50 * 1024 ** 2,
+};
+
+export const TreeEntry = z.object({
+  name: z.string(),
+  /** Relative to the root, '/'-separated. In `files` it is the upload id. */
+  path: z.string(),
+  type: z.enum(['dir', 'file']),
+  /** Bytes; 0 for a folder. */
+  size: z.int().min(0),
+  /** 'inode/directory' for a folder. */
+  mime: z.string(),
+  modifiedAt: z.iso.datetime(),
+  preview: PreviewKind.nullable(),
+  /** The chat that uploaded the file, or the chat and message whose tool call or artifact wrote it. */
+  origin: z
+    .object({ chatId: id64, messageId: id64.nullable(), chatTitle: z.string().nullable() })
+    .nullable(),
+});
+export type TreeEntry = z.infer<typeof TreeEntry>;
+
+/** Query of `GET /api/files/tree`. */
+export const TreeQuery = z.object({
+  root: FileRoot.default('work'),
+  path: TreePath.default(''),
+  /** `nextCursor` of the previous page. */
+  cursor: z.string().max(4096).optional(),
+  limit: z.coerce.number().int().min(1).max(500).default(200),
+});
+
+export const TreeListing = z.object({
+  root: FileRoot,
+  path: z.string(),
+  entries: z.array(TreeEntry),
+  nextCursor: z.string().nullable(),
+});
+export type TreeListing = z.infer<typeof TreeListing>;
+
+/** Query of `GET /api/files/tree/raw`. `download=1` always sends an attachment. */
+export const TreeRawQuery = z.object({
+  root: FileRoot.default('work'),
+  path: TreePath,
+  download: z.enum(['0', '1']).default('0'),
+});
+
+export const TrashEntry = z.object({
+  /** The entry name in `.trash`: `<epoch ms>-<name>`. */
+  id: z.string(),
+  name: z.string(),
+  /** Where "Palauta" puts it back. */
+  originalPath: z.string(),
+  type: z.enum(['dir', 'file']),
+  size: z.int().min(0),
+  deletedAt: z.iso.datetime(),
+});
+export type TrashEntry = z.infer<typeof TrashEntry>;
+
+export const TrashListing = z.object({
+  entries: z.array(TrashEntry),
+  nextCursor: z.string().nullable(),
+});
+export type TrashListing = z.infer<typeof TrashListing>;
+
+/** `GET /api/files/tree/usage`: bytes. `used` = `work` + `trash` + `files`. */
+export const FileUsage = z.object({
+  used: z.int().min(0),
+  quota: z.int().min(0),
+  work: z.int().min(0),
+  trash: z.int().min(0),
+  files: z.int().min(0),
+  /** Per file in the work dir (upload, agent write). */
+  maxFileSize: z.int().min(0),
+  /** Per chat attachment (model ingest). */
+  maxAttachSize: z.int().min(0),
+});
+export type FileUsage = z.infer<typeof FileUsage>;
+
+/** Bodies of the work-dir routes. */
+export const TreeMkdir = z.object({ path: TreePath });
+export const TreeMove = z.object({ from: TreePath, to: TreePath });
+export const TreeRestore = z.object({ id: z.string().min(1).max(512) });
+export const TreeAttach = z.object({ path: TreePath, chatId: id64.optional() });
+export const TreeSaveArtifact = z.object({
+  chatId: id64,
+  artifactId: z.string().min(1).max(64),
+  /** The work-dir folder to save into. */
+  dir: TreePath.default(''),
+});
+
+/** `{ error }` codes of the file routes; the web maps each to a Finnish text. */
+export const FileError = z.enum([
+  'bad_message',
+  'bad_path',
+  'bad_name',
+  'not_found',
+  'exists',
+  'empty',
+  'too_large',
+  'quota',
+  'unsupported',
+  'pseudo_down',
+]);
+export type FileError = z.infer<typeof FileError>;
+
 /** Client to server messages. `auth.login` is itself a union on `method`. */
 const authLogin = z.literal('auth.login');
 export const AuthLogin = z.discriminatedUnion('method', [

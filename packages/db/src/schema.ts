@@ -148,6 +148,34 @@ export const files = sqliteTable('files', {
   createdAt: text().notNull(),
 });
 
+/** The chat and message whose `write`/`edit` call or saved artifact last wrote a work-dir file (phase-11 decision 6). */
+export const fileOrigins = sqliteTable(
+  'fileOrigins',
+  {
+    userId: text().notNull(),
+    // Relative to the user's work dir, '/'-separated; `.trash/<entry>/…` while in the trash.
+    path: text().notNull(),
+    chatId: chatRef(),
+    // The assistant entry id (`Message.id`); null when not found.
+    messageId: text(),
+    updatedAt: text().notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.path] })],
+);
+
+/** Where each `.trash` entry came from, for "Palauta" (phase-11 decision 5). */
+export const fileTrash = sqliteTable(
+  'fileTrash',
+  {
+    userId: text().notNull(),
+    // The entry name in `.trash`: `<epoch ms>-<name>`.
+    id: text().notNull(),
+    originalPath: text().notNull(),
+    deletedAt: text().notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.id] })],
+);
+
 export const authSessions = sqliteTable('authSessions', {
   // sha256 hex of the raw cookie token; the token itself is never stored.
   id: text().primaryKey(),

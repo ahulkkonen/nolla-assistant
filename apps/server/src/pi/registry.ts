@@ -24,7 +24,7 @@ import {
   writeTools,
 } from '../mcp.ts';
 import type { MemoryStore } from '../memory.ts';
-import { pathGuard } from './guard.ts';
+import { pathGuard, type WorkHooks } from './guard.ts';
 import { type Catalog, piModelId, policyOf, resolveModelId, thinkingLevel } from './models.ts';
 
 /** The chat row fields a session build reads: its agent and its model policy (phase-10). */
@@ -46,6 +46,8 @@ type RegistryOptions = {
   catalog: Pick<Catalog, 'get'>;
   approval: { ask: Ask; timeoutMs?: number };
   skillsDir: string;
+  /** Work-dir size check and file origins (phase-11); unset: per-file limit only, no origins. */
+  work?: WorkHooks;
   /** `sandbox-broker`; unset means no `bash` tool at all. */
   broker?: { url: string; token: string } | undefined;
   extensionFactories?: InlineExtension[];
@@ -393,7 +395,7 @@ export class SessionRegistry {
               }),
             ]
           : []),
-        pathGuard(this.cwd),
+        pathGuard(this.cwd, chatId, this.opts.work),
         // Fail closed: without the sidecar nothing could be masked (invariant 1).
         ...(memory && pseudo
           ? [

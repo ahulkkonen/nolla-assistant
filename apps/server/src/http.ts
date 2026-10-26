@@ -13,6 +13,7 @@ import { fileRoutes, MAX_FILE_BYTES, MAX_FILES } from './files.ts';
 import type { Integrations } from './integrations.ts';
 import { pushRoutes } from './push.ts';
 import { sttRoutes } from './stt.ts';
+import { treeRoutes, type WorkStore } from './tree.ts';
 
 const NO_CACHE = new Set(['index.html', 'sw.js', 'manifest.webmanifest']);
 const HTML_CSP = [
@@ -34,6 +35,7 @@ export async function buildServer({
   config,
   logStream,
   integrations,
+  work,
   ...bridge
 }: Pick<
   BridgeDeps,
@@ -52,6 +54,8 @@ export async function buildServer({
 > & {
   config: Config;
   integrations: Integrations;
+  /** Work-dir sizes and file origins (phase-11). */
+  work: WorkStore;
   /** Test hook: receives the pino output instead of stdout. */
   logStream?: { write(line: string): void };
 }) {
@@ -70,7 +74,8 @@ export async function buildServer({
   app.addHook('onSend', async (_req, reply) => {
     reply.header('X-Content-Type-Options', 'nosniff');
     reply.header('Referrer-Policy', 'no-referrer');
-    reply.header('X-Frame-Options', 'DENY');
+    // The PDF preview (`/api/files/tree/raw`) sets SAMEORIGIN for its own frame.
+    if (!reply.hasHeader('x-frame-options')) reply.header('X-Frame-Options', 'DENY');
     reply.header('Permissions-Policy', 'camera=(), geolocation=()');
     if (config.cookieSecure) reply.header('Strict-Transport-Security', 'max-age=31536000');
     // HTML only; /api/files/:id sets its own sandbox CSP and never serves text/html.
@@ -81,7 +86,14 @@ export async function buildServer({
   await app.register(websocket);
   app.get('/healthz', async () => ({ ok: true }));
   authRoutes(app, db, config);
-  fileRoutes(app, db, config.dataDir, auth);
+  fileRoutes(app, db, config.dataDir, auth, (userId) => work.used(userId));
+  treeRoutes(app, auth, {
+    db,
+    dataDir: config.dataDir,
+    work,
+    registry: bridge.registry,
+    pseudo: bridge.pseudo,
+  });
   exportRoutes(app, auth, bridge);
   integrations.routes(app, auth);
   sttRoutes(app, auth, config);

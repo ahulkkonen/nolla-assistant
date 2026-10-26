@@ -237,6 +237,16 @@ describe.skipIf(!hasDocker)(hasDocker ? 'sandbox broker (docker)' : `sandbox ${S
     expect(existsSync(join(dataDir, 'work', 'u1', 'a'))).toBe(true);
   });
 
+  test('bash cannot see or write the trash (phase-11 decision 4)', async () => {
+    mkdirSync(join(dataDir, 'work', 'u1', '.trash'), { recursive: true });
+    writeFileSync(join(dataDir, 'work', 'u1', '.trash', '1793000000000-old.txt'), 'x');
+    const ls = await run({ command: 'ls -A /work/.trash; touch /work/.trash/new' });
+    expect(ls.output).not.toContain('old.txt');
+    expect(ls.output).toMatch(/read-only|permission/i);
+    expect(existsSync(join(dataDir, 'work', 'u1', '.trash', 'new'))).toBe(false);
+    expect(existsSync(join(dataDir, 'work', 'u1', '.trash', '1793000000000-old.txt'))).toBe(true);
+  });
+
   test('timeout kills and removes the container', async () => {
     const t0 = Date.now();
     const { chatId, end } = await run({ command: 'sleep 30', timeoutMs: 2000 });

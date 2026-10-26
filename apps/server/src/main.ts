@@ -18,6 +18,7 @@ import { SessionRegistry } from './pi/registry.ts';
 import { pushService } from './push.ts';
 import { indexIdle } from './search.ts';
 import { titleJobs } from './topics.ts';
+import { purgeTrash, workStore } from './tree.ts';
 
 export async function start(
   config: Config = loadConfig(),
@@ -115,9 +116,14 @@ export async function start(
     },
     warn: (msg, data) => app.log.warn(data ?? {}, msg),
   });
+  const work = workStore(db, config.dataDir);
   const registry = new SessionRegistry({
     dataDir: config.dataDir,
     userId: config.userId,
+    work: {
+      used: () => work.used(config.userId),
+      written: (path, chatId, messageId) => work.written(config.userId, path, chatId, messageId),
+    },
     agents,
     getChat: (chatId) => chatRow(db, config.userId, chatId),
     catalog,
@@ -153,6 +159,7 @@ export async function start(
     push,
     automations: () => automations,
     integrations,
+    work,
     catalog,
     refusals: new Map(),
     ...(logStream ? { logStream } : {}),
@@ -196,6 +203,14 @@ export async function start(
   timer.unref();
   const purge = setInterval(() => purgeExpiredSessions(db), 60 * 60_000);
   purge.unref();
+  // Trash entries older than 30 days (phase-11 decision 5): at start, then daily.
+  const purgeFiles = () =>
+    void purgeTrash(db, work, config.userId).catch((err: unknown) =>
+      app.log.warn({ error: err instanceof Error ? err.message : 'unknown' }, 'trash purge failed'),
+    );
+  purgeFiles();
+  const trashTimer = setInterval(purgeFiles, 24 * 60 * 60_000);
+  trashTimer.unref();
   const close = async () => {
     selfSeed.abort();
     stopWatch();
@@ -204,6 +219,7 @@ export async function start(
     memory.close();
     clearInterval(timer);
     clearInterval(purge);
+    clearInterval(trashTimer);
     await titles.close();
     await registry.dispose();
     await app.close();

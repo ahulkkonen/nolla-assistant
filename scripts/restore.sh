@@ -33,7 +33,7 @@ for db in app; do
   else echo "no litestream replica for $db.db"; fi
 done
 
-# Everything else (sessions, files, pi, memory) from the latest snapshot. /backup-extra is a
+# Everything else (sessions, files, work dirs, pi, memory) from the latest snapshot. /backup-extra is a
 # read-only mount here: exclude the whole tree, or restic fails on its lchown. A database without a
 # Litestream replica falls back to its snapshot copy.
 # shellcheck disable=SC2086

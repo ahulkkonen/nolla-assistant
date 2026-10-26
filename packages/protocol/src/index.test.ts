@@ -6,6 +6,9 @@ import {
   ClientMessage,
   ModelId,
   ServerMessage,
+  TreeMove,
+  TreeQuery,
+  TreeSaveArtifact,
 } from './index.ts';
 
 describe('ClientMessage', () => {
@@ -166,5 +169,21 @@ describe('unions', () => {
   it('are non-empty', () => {
     expect(ClientMessage.options.length).toBeGreaterThan(0);
     expect(ServerMessage.options.length).toBeGreaterThan(0);
+  });
+});
+
+describe('file routes (phase-11)', () => {
+  it('TreeQuery defaults to the work root and coerces the limit', () => {
+    expect(TreeQuery.parse({})).toEqual({ root: 'work', path: '', limit: 200 });
+    expect(TreeQuery.parse({ root: 'files', limit: '5' }).limit).toBe(5);
+    expect(TreeQuery.safeParse({ limit: '501' }).success).toBe(false);
+    expect(TreeQuery.safeParse({ root: 'etc' }).success).toBe(false);
+  });
+  it('paths refuse NUL; the server checks the rest', () => {
+    expect(TreeMove.safeParse({ from: 'a\0', to: 'b' }).success).toBe(false);
+    expect(TreeMove.safeParse({ from: '../a', to: 'b' }).success).toBe(true);
+  });
+  it('TreeSaveArtifact saves into the work root by default', () => {
+    expect(TreeSaveArtifact.parse({ chatId: 'c1', artifactId: 'a1' }).dir).toBe('');
   });
 });

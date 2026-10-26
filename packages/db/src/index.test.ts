@@ -2,7 +2,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, test } from 'vitest';
-import { chats, openDb, users } from './index.ts';
+import { chats, fileOrigins, fileTrash, openDb, users } from './index.ts';
 
 test('open, insert, read, fts, wal', () => {
   const path = join(mkdtempSync(join(tmpdir(), 'pa-db-')), 't.db');
@@ -49,6 +49,23 @@ test('open, insert, read, fts, wal', () => {
     .get('brave');
   expect(hit).toEqual({ chat_id: 'c1', kind: 'transcript' });
   expect(sqlite.pragma('journal_mode', { simple: true })).toBe('wal');
+
+  // Phase-11: a file origin goes with its chat; a trash row has no chat.
+  db.insert(fileOrigins)
+    .values({ userId: 'u1', path: 'a.md', chatId: 'c1', messageId: 'm1', updatedAt: now })
+    .run();
+  db.insert(fileTrash)
+    .values({ userId: 'u1', id: '1793000000000-b.md', originalPath: 'b.md', deletedAt: now })
+    .run();
+  expect(() =>
+    db
+      .insert(fileOrigins)
+      .values({ userId: 'u1', path: 'c.md', chatId: 'missing', updatedAt: now })
+      .run(),
+  ).toThrow();
+  sqlite.prepare('DELETE FROM chats WHERE id = ?').run('c1');
+  expect(db.select().from(fileOrigins).all()).toEqual([]);
+  expect(db.select().from(fileTrash).all()).toHaveLength(1);
 
   expect(() => openDb(path)).not.toThrow();
 });

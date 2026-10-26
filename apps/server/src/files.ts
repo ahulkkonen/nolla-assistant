@@ -1,12 +1,13 @@
 import { randomUUID } from 'node:crypto';
-import { createReadStream, createWriteStream, mkdirSync, rmSync } from 'node:fs';
-import { open, readFile } from 'node:fs/promises';
+import { constants, createReadStream, createWriteStream, mkdirSync, rmSync } from 'node:fs';
+import { copyFile, mkdir, open, readFile, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import type { PromptOptions } from '@earendil-works/pi-coding-agent';
 import { chats, type Db, files } from '@pa/db';
+import { USER_QUOTA } from '@pa/pi-ext-subagents/workspace';
 import type { AttachmentRef } from '@pa/protocol';
-import { and, eq, inArray, sum } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import type { FastifyInstance, preHandlerHookHandler } from 'fastify';
 import mammoth from 'mammoth';
 import sharp from 'sharp';
@@ -24,7 +25,6 @@ const MAX_TEXT = 60_000;
 const MAX_PDF_PAGES = 100;
 const MAX_DOCX_UNZIPPED = 50 * 1024 * 1024;
 const EXTRACT_TIMEOUT_MS = 20_000;
-const USER_QUOTA = 2 * 1024 ** 3;
 const SNIFF_BYTES = 8192;
 const TEXT_FAILED = '(tekstin poiminta epäonnistui)';
 
@@ -82,26 +82,30 @@ const toRef = (r: FileRow): AttachmentRef => ({
   kind: IMAGE_MIMES.has(r.mime) ? 'image' : 'document',
 });
 
+const ownsChat = (db: Db, userId: string, chatId: string | null): chatId is string =>
+  chatId !== null &&
+  db
+    .select({ id: chats.id })
+    .from(chats)
+    .where(and(eq(chats.id, chatId), eq(chats.userId, userId)))
+    .get() !== undefined;
+
 /** RFC 5987 value for `filename*`. */
-const rfc5987 = (s: string) =>
+export const rfc5987 = (s: string) =>
   encodeURIComponent(s).replace(/['()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
 
+/** `used`: the user's bytes in both roots; uploads count toward the shared quota (phase-11 decision 7). */
 export function fileRoutes(
   app: FastifyInstance,
   db: Db,
   dataDir: string,
   auth: preHandlerHookHandler,
+  used: (userId: string) => Promise<number>,
 ) {
   app.post('/api/files', { preHandler: auth, bodyLimit: 260 * 1024 * 1024 }, async (req, reply) => {
     const { userId } = req;
     mkdirSync(join(dataDir, 'files', userId), { recursive: true });
-    const used = Number(
-      db
-        .select({ total: sum(files.size) })
-        .from(files)
-        .where(eq(files.userId, userId))
-        .get()?.total ?? 0,
-    );
+    const before = await used(userId);
     const stored: FileRow[] = [];
     const cleanup = () => {
       for (const r of stored) rmSync(join(dataDir, r.path), { force: true });
@@ -139,7 +143,7 @@ export function fileRoutes(
         if (part.file.truncated) return fail(413, 'too_large');
         row.size = part.file.bytesRead;
         added += row.size;
-        if (used + added > USER_QUOTA) return fail(413, 'quota');
+        if (before + added > USER_QUOTA) return fail(413, 'quota');
         if (!sniff(row.mime, await readHead(join(dataDir, path)))) return fail(415, 'unsupported');
       }
     } catch (err) {
@@ -147,14 +151,8 @@ export function fileRoutes(
       throw err;
     }
     if (stored.length === 0) return fail(400, 'empty');
-    const ownsChat =
-      chatId !== null &&
-      db
-        .select({ id: chats.id })
-        .from(chats)
-        .where(and(eq(chats.id, chatId), eq(chats.userId, userId)))
-        .get() !== undefined;
-    for (const r of stored) r.chatId = ownsChat ? chatId : null;
+    const owned = ownsChat(db, userId, chatId);
+    for (const r of stored) r.chatId = owned ? chatId : null;
     db.insert(files).values(stored).run();
     return { files: stored.map(toRef) };
   });
@@ -256,6 +254,48 @@ async function safeText(buf: Buffer, mime: string): Promise<string> {
 }
 
 export class AttachmentNotFound extends Error {}
+
+/**
+ * Copies a work-dir file into the uploads, so a message can carry it like an upload (phase-11
+ * decision 10). The copy is a snapshot: later edits of the work file do not change the message.
+ * `mime` comes from the name; other text (`text`: code, HTML) goes as `text/plain`. A type that
+ * `ingestAttachments` cannot read is `unsupported`.
+ */
+export async function attachFile(
+  db: Db,
+  dataDir: string,
+  userId: string,
+  src: { path: string; name: string; mime: string; text: boolean },
+  chatId: string | undefined,
+): Promise<AttachmentRef | 'unsupported' | 'too_large'> {
+  const known = IMAGE_MIMES.has(src.mime) || DOC_MIMES.has(src.mime);
+  const mime = known ? src.mime : src.text ? 'text/plain' : undefined;
+  if (!mime) return 'unsupported';
+  const { size } = await stat(src.path);
+  if (size > MAX_FILE_BYTES) return 'too_large';
+  if (!sniff(mime, await readHead(src.path))) return 'unsupported';
+  const id = randomUUID();
+  const path = join('files', userId, id);
+  await mkdir(join(dataDir, 'files', userId), { recursive: true });
+  await copyFile(src.path, join(dataDir, path), constants.COPYFILE_EXCL);
+  const row: FileRow = {
+    id,
+    userId,
+    chatId: chatId !== undefined && ownsChat(db, userId, chatId) ? chatId : null,
+    name: cleanName(src.name) || id,
+    mime,
+    size,
+    path,
+    createdAt: new Date().toISOString(),
+  };
+  try {
+    db.insert(files).values(row).run();
+  } catch (err) {
+    await rm(join(dataDir, path), { force: true });
+    throw err;
+  }
+  return toRef(row);
+}
 
 /**
  * Loads the user's files for a message, binds them to `chatId`, and returns Pi images plus the

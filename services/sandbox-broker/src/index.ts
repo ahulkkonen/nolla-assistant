@@ -140,7 +140,8 @@ export function containerConfig(cfg: BrokerConfig, body: RunBody, proxyToken?: s
       NanoCpus: 2e9,
       PidsLimit: 256,
       ReadonlyRootfs: true,
-      Tmpfs: { '/tmp': 'rw,size=64m' },
+      // An empty read-only tmpfs hides the trash from `bash` (phase-11 decision 4).
+      Tmpfs: { '/tmp': 'rw,size=64m', '/work/.trash': 'ro,size=4k' },
       CapDrop: ['ALL'],
       SecurityOpt: ['no-new-privileges'],
       AutoRemove: false,
@@ -219,11 +220,13 @@ async function* run(
   startProxy: () => Promise<ReturnType<typeof createProxy>>,
 ) {
   const work = join(cfg.dataDir, 'work', body.userId);
-  mkdirSync(work, { recursive: true });
+  // `.trash` exists before Docker mounts the tmpfs on it, so Docker does not create it as root.
+  mkdirSync(join(work, '.trash'), { recursive: true });
   // uid 10001 is shared: pa-server (infra/Dockerfile.server) and the runner both run as it, so the
   // work dir stays writable for Pi's own tools and for the sandbox.
   try {
     chownSync(work, RUNNER_UID, RUNNER_UID);
+    chownSync(join(work, '.trash'), RUNNER_UID, RUNNER_UID);
   } catch {
     // Not root (tests on a workstation): Docker Desktop maps ownership itself.
   }
