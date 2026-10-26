@@ -55,12 +55,24 @@ in `apps/web/package.json` (decision 2).
    self-contained file (`?worker&url`), as it does the React runtime. The sandbox CSP has no
    `'unsafe-eval'`, so the runtime calls `vegaEmbed` with `ast: true` and the
    `expressionInterpreter` of `vega-interpreter`.
-3. **Fonts in the sandbox.** The document inlines Inter, Source Serif 4 and JetBrains Mono (the latin
-   `wght` WOFF2 files of `@fontsource-variable`) as base64 `@font-face` rules. The old CSP blocked
-   all fonts (`default-src 'none'`). The CSP gets one new directive: `font-src data:`. A data URI
-   font cannot load anything and cannot send anything. All other directives do not change:
-   `default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:;
-   font-src data:; form-action 'none'; base-uri 'none'`.
+3. **The sandbox page.** Finding: a `srcdoc` iframe inherits the CSP of the app page. Since phase
+   16 the app CSP has `script-src 'self'` and `font-src 'self'`. Thus no inline script of any
+   artifact ran (React artifacts were broken), and no font could load. The e2e tests did not see
+   this, because they checked HTML artifacts without a script. Fix: the frame loads
+   `GET /api/sandbox` (no login, a static page). The response has its own CSP header:
+   `sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline'; style-src
+   'unsafe-inline'; img-src data:; font-src data:; form-action 'none'; base-uri 'none';
+   frame-ancestors 'self'`, and `X-Frame-Options: SAMEORIGIN`. The page tells its parent (or its
+   opener) "sandbox-ready". The parent posts the document once. The page writes it with
+   `document.open()`, `document.write()` and `document.close()`. The CSP meta tag stays the first
+   element of every document. The policy string is `SANDBOX_CSP` in `@pa/protocol`, shared by the
+   header and the meta tag. "Avaa uudessa ikkunassa" opens `/api/sandbox` in a tab and posts the
+   document there; the `sandbox` directive keeps the tab on an opaque origin.
+   **Changed directive:** `font-src data:` is new. The document inlines Inter, Source Serif 4 and
+   JetBrains Mono (the latin `wght` WOFF2 files of `@fontsource-variable`) as base64 `@font-face`
+   rules. A data URI font cannot load anything and cannot send anything. The `sandbox` and
+   `frame-ancestors` directives are new because the policy is now a header. All other directives
+   are as before.
 4. **Theme from the tokens, frozen at render time (R2, R7).** The parent page reads the token values
    with `getComputedStyle` on `<html>`. It builds the Vega config, the colour roles, the Mermaid
    `themeVariables` and the sandbox token sheet from these values. A theme change (setting or OS)
@@ -85,9 +97,10 @@ in `apps/web/package.json` (decision 2).
      colour literal and every `scheme`, then sets the theme config.
    - R3: `autosize: {type: "fit-x", contains: "padding"}` and `width: "container"`. Padding right is
      44 px when a text mark sits to the right of its point (`align: "left"` or `dx > 0`), else 8 px.
-   - R4: below 480 px of container width, an ordinal, nominal, point or band x axis shows every
-     second label (`labelExpr` of the addendum, with `n` = the number of distinct x values), and the
-     height is at most 200 px.
+   - R4: below 480 px of container width, an ordinal, nominal, point or band x axis with more than
+     six distinct values shows every second label (`labelExpr` of the addendum, with `n` = the
+     number of distinct x values), and the height is at most 200 px. Six labels or fewer fit at
+     390 px, so they all stay.
    - R5: the runtime waits for `document.fonts.ready` before `vegaEmbed`.
    - R6: the spec must parse as JSON and match a zod schema of the top-level shape. The renderer
      refuses any `url` key, more than 500 data rows in total, and a spec without a mark, layer,

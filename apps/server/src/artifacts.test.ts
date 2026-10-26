@@ -12,6 +12,7 @@ describe('extractArtifacts', () => {
       '```python\nprint(1)\n```',
       '```tsx\nexport default () => <div/>;\n```',
       '~~~mermaid\ngraph TD; A-->B\n~~~',
+      '```vega-lite\n{"title": {"text": ["Myynti", "2026"]}, "mark": "bar"}\n```',
       `\`\`\`python\n${long}\n\`\`\``,
     ].join('\n\n');
     const a = extractArtifacts('m1', text);
@@ -19,11 +20,12 @@ describe('extractArtifacts', () => {
       ['html', 'My page', 'html'],
       ['react', 'tsx #2', 'tsx'],
       ['mermaid', 'mermaid #3', 'mermaid'],
-      ['code', 'python #4', 'python'],
+      ['vega-lite', 'Myynti 2026', 'vega-lite'],
+      ['code', 'python #5', 'python'],
     ]);
     expect(a[0]?.id).toBe(createHash('sha1').update('m1:0').digest('hex'));
     expect(a[2]?.content).toBe('graph TD; A-->B');
-    expect(a[3]?.content).toBe(long);
+    expect(a[4]?.content).toBe(long);
   });
 
   it('ignores unclosed fences and plain text; the closer must match the opener', () => {

@@ -230,13 +230,20 @@ export type VaultPending = z.infer<typeof VaultPending>;
 
 export const Artifact = z.object({
   id: z.string(),
-  kind: z.enum(['html', 'react', 'code', 'mermaid', 'file']),
+  kind: z.enum(['html', 'react', 'code', 'mermaid', 'vega-lite', 'file']),
   title: z.string(),
   language: z.string().optional(),
   content: z.string(),
   mime: z.string().optional(),
 });
 export type Artifact = z.infer<typeof Artifact>;
+
+/**
+ * The artifact sandbox policy: the header of `GET /api/sandbox` and the meta tag of every sandbox
+ * document. `font-src data:` serves the inlined fonts (phase-19 decision 3).
+ */
+export const SANDBOX_CSP =
+  "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:; form-action 'none'; base-uri 'none'";
 
 /** A browser `PushSubscription` as JSON (`POST /api/push/subscribe` and `push.subscribe`). */
 export const PushSubscription = z.object({

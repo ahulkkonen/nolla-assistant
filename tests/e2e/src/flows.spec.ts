@@ -6,6 +6,7 @@ import { SEARCH_DENIED } from '@pa/server/src/search-tool.ts';
 import type { Page } from '@playwright/test';
 import {
   acceptProposal,
+  CHART_REPLY,
   COLLIDING,
   DICT,
   deviceRows,
@@ -20,6 +21,7 @@ import {
   openSettings,
   openVault,
   png,
+  REFUSED_REPLY,
   search,
   searchTurns,
   secondDevice,
@@ -1163,11 +1165,61 @@ test('artifact CSP is the first element even when the HTML starts with a script'
   await page.getByLabel('Viesti').fill('Tee sivu');
   await page.getByLabel('Viesti').press('ControlOrMeta+Enter');
   const frame = page.getByRole('complementary', { name: 'Artefaktit' }).locator('iframe');
-  await expect(frame).toHaveAttribute(
-    'srcdoc',
-    /^<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src 'none';/,
+  // Phase 19: the frame loads the sandbox page (its own CSP header) and the document is posted.
+  await expect(frame).toHaveAttribute('src', '/api/sandbox');
+  const doc = frame.contentFrame();
+  await expect(doc.getByRole('heading', { name: 'Skripti ensin' })).toBeVisible();
+  await expect(doc.locator('head > :first-child')).toHaveAttribute(
+    'content',
+    /^default-src 'none';/,
   );
-  await expect(frame.contentFrame().getByRole('heading', { name: 'Skripti ensin' })).toBeVisible();
+  // The artifact's own script runs (a srcdoc frame inherited the app CSP, which blocked it).
+  expect(await doc.locator('html').evaluate(() => document.title)).toBe('x');
+});
+
+test('vega-lite: the chart renders in the sandbox with the lifted title (phase 19)', async ({
+  app,
+  page,
+}) => {
+  app.llm.push({ text: CHART_REPLY });
+  await app.login(page);
+  await send(page, 'Piirrä kulutus');
+  const panel = page.getByRole('complementary', { name: 'Artefaktit' });
+  // The server titles the artifact from the spec's title.text.
+  await expect(
+    panel.getByRole('heading', { name: 'Sähkönkulutus kuukausittain 2025' }),
+  ).toBeVisible();
+  const frame = panel.locator('iframe').contentFrame();
+  // R1: title, subtitle (with <strong>) and caption are HTML; the number and unit do not break.
+  await expect(frame.getByRole('heading', { level: 2 })).toHaveText(
+    'Sähkönkulutus kuukausittain 2025',
+  );
+  await expect(frame.locator('.chart strong')).toHaveText('yli kolme kertaa');
+  await expect(frame.locator('figcaption')).toHaveText(/3 370 kWh/);
+  await expect(frame.locator('#vis svg')).toBeVisible();
+  // R2: the model's font is gone; R7: the bars have the theme's accent.
+  await expect(frame.locator('#vis svg text').first()).toHaveAttribute(
+    'font-family',
+    /Inter Variable/,
+  );
+  const accent = await page.evaluate(() =>
+    getComputedStyle(document.documentElement).getPropertyValue('--chart-1').trim(),
+  );
+  await expect(frame.locator('#vis svg .mark-rect path').first()).toHaveAttribute('fill', accent);
+});
+
+test('vega-lite: a spec with a url falls back to its data as a table (R6)', async ({
+  app,
+  page,
+}) => {
+  app.llm.push({ text: REFUSED_REPLY });
+  await app.login(page);
+  await send(page, 'Piirrä haettu data');
+  const data = page.getByRole('region', { name: 'Kaavion data' });
+  await expect(data.getByText('Kaavio epäonnistui')).toBeVisible();
+  await expect(data.getByText(/url/)).toBeVisible();
+  await expect(data.getByRole('cell', { name: 'Kahvi' })).toBeVisible();
+  await expect(data.getByRole('cell', { name: '12' })).toBeVisible();
 });
 
 test('command palette: Ctrl+K, "Nimi", Enter opens the vault', async ({ app, page }) => {

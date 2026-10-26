@@ -36,7 +36,7 @@ export default defineConfig({
         navigateFallbackDenylist: [/^\/api\//, /^\/ws/, /^\/healthz/],
         // Push and notification-click handlers (public/push-sw.js).
         importScripts: ['push-sw.js'],
-        // The app's own chunks; Mermaid's lazy chunks (`assets/lazy/`) and the artifact runtime
+        // The app's own chunks; Mermaid's lazy chunks (`assets/lazy/`) and the artifact runtimes
         // are fetched (and cached) on first use instead of adding ~5 MB to the install.
         // Fonts: only the latin `wght` files (Finnish ä, ö, å are in it); other subsets load on use.
         globPatterns: [
@@ -45,7 +45,7 @@ export default defineConfig({
           'assets/*-latin-wght-*.woff2',
           '*.{png,webmanifest}',
         ],
-        globIgnores: ['assets/lazy/**', 'assets/artifact-runtime-*.js'],
+        globIgnores: ['assets/lazy/**', 'assets/*-runtime-*.js'],
         runtimeCaching: [
           {
             urlPattern: ({ url }) => url.pathname.startsWith('/assets/'),

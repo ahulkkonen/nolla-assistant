@@ -230,6 +230,7 @@ async function binOf(root: string, create: boolean): Promise<string | null | und
 
 const EXT: Record<string, string> = {
   mermaid: 'mmd',
+  'vega-lite': 'json',
   python: 'py',
   javascript: 'js',
   typescript: 'ts',
@@ -246,7 +247,7 @@ const EXT: Record<string, string> = {
 /** "<title>.<ext>" for "Tallenna tiedostoksi" (decision 12). */
 function artifactName(a: Artifact): string {
   const lang =
-    a.kind === 'html' || a.kind === 'mermaid'
+    a.kind === 'html' || a.kind === 'mermaid' || a.kind === 'vega-lite'
       ? a.kind
       : a.kind === 'react'
         ? a.language === 'tsx'

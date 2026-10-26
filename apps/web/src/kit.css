@@ -1,0 +1,81 @@
+/* Phase 19 design kit for the sandboxed artifact page (docs/decisions/phase-19-viz.md, decision
+   10). The renderer puts the font faces and the token sheet (the active theme's values of
+   tokens.css) before this file, and this file before the artifact's own content. */
+*,
+::before,
+::after {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  padding: 16px;
+  background: var(--card);
+  color: var(--card-foreground);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 24px;
+  text-wrap: pretty;
+  -webkit-font-smoothing: antialiased;
+}
+/* Type scale 1.2 from 15 px: 18, 21.6, 25.9. */
+h1,
+h2 {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  text-wrap: balance;
+  margin: 0 0 8px;
+}
+h1 {
+  font-size: 26px;
+  line-height: 32px;
+}
+h2 {
+  font-size: 21.6px;
+  line-height: 28px;
+}
+h3 {
+  font-size: 18px;
+  line-height: 26px;
+  font-weight: 600;
+  margin: 0 0 8px;
+}
+p {
+  margin: 0 0 12px;
+}
+p,
+ul,
+ol,
+blockquote,
+figcaption {
+  max-width: 68ch;
+}
+img,
+svg,
+video,
+canvas {
+  max-width: 100%;
+}
+figure {
+  margin: 0 0 16px;
+}
+figcaption {
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--muted-foreground);
+}
+strong {
+  font-weight: 600;
+}
+/* The chart page of a ```vega-lite artifact (R1). */
+.chart h2 + p {
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--muted-foreground);
+}
+.chart strong {
+  color: var(--card-foreground);
+}
+#vis {
+  width: 100%;
+}

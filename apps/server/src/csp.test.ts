@@ -12,6 +12,18 @@ const post = (port: number, type: string, body: unknown) =>
     body: JSON.stringify(body),
   });
 
+test('sandbox page: its own CSP with sandbox, framed by the app only', async () => {
+  const { config, run } = await boot([]);
+  await run();
+  const res = await api(config.port, '/api/sandbox');
+  expect(res.status).toBe(200);
+  expect(res.headers.get('content-security-policy')).toBe(
+    "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:; form-action 'none'; base-uri 'none'; frame-ancestors 'self'",
+  );
+  expect(res.headers.get('x-frame-options')).toBe('SAMEORIGIN');
+  expect(await res.text()).toContain("host.postMessage('sandbox-ready', '*')");
+});
+
 test('csp report: logged and 204; a flood gets 429', { timeout: 30_000 }, async () => {
   const web = tempDir('pa-web-');
   writeFileSync(join(web, 'index.html'), '<!doctype html><title>t</title>');
