@@ -440,7 +440,12 @@ and the iframe from `ArtifactPanel.tsx` into a shared component and does not cop
 
 ## Status (2026-10-26)
 
-Task card 1 is committed as `9055c37`. The review found no blocking item and 13 should-fix items;
-all 13 are fixed (not committed yet). Server 104 tests, subagents 12, protocol 17, db 1, sandbox
-(Docker) 17 pass. The per-request multipart `limits.fileSize` replaces the plugin's 25 MB default:
-a 30 MB work upload succeeds. Task cards 2 and 3 are open.
+All three task cards are done. Commits: `9055c37` and `26f53d0` (server), `66aa680`, `dc972cc` and
+`d67b9db` (web). The server review found no blocking item and 13 should-fix items, all fixed. The
+web review found no sandbox escape and 12 should-fix items, all fixed. The scored UI review passed
+after two rounds with every cell at 5. Gate on a clean checkout: typecheck, lint (one in-flight
+phase-13 file aside) and `pnpm test` pass with e2e 330; `pnpm test:sandbox` 17. The per-request
+multipart `limits.fileSize` replaces the plugin's 25 MB default: a 30 MB work upload succeeds.
+
+Known ceilings stay in Risks: the write-side symlink race that Pi's own tools share, the apparent-size
+quota count, and `bash` writes outside the quota check.

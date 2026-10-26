@@ -163,3 +163,6 @@ Status on 2026-10-25. The plan, section 13, defines each gate.
 | 8 | Memory | done |
 | 9 | Production UI on shadcn/ui (`docs/decisions/phase-9-ui.md`) | done, on-device checks open |
 | 10 | Model picker, thinking level, per-chat ZDR override (`docs/decisions/phase-10-models.md`) | done, open key is a user step |
+| 11 | Files screen, trash, quota, work-dir attachments (`docs/decisions/phase-11-files.md`) | done |
+| 12 | Pseudonymization hardening: rare surrogates, collisions, email and street (`docs/decisions/phase-12-pseudo.md`) | done |
+| 13 | Thread depth: fork, thinking, cost, find (`docs/decisions/phase-13-thread.md`) | in progress |

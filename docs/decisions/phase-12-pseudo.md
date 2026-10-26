@@ -268,3 +268,8 @@ scoring showed one partly masked name (`tiina kokko`). Overlap scoring counted i
   not ask.
 - Reject is remembered per exact text. Another inflection of the same name asks again.
 - Lower-case streets with a bare number in the middle of a phrase are not masked (decision 14).
+
+Commits: `342313a` (first round) and `2f667e5` (review round), web collision UI `1e1bfb5` and
+`e8149ef`. The code review found no leak and eight should-fix items, all fixed. The scored UI review
+of `chat-held` and `vault-collision` passed after one fix round with every cell at 5. The local
+Docker stack runs the final image.
