@@ -1110,7 +1110,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
         if (collisions.held(chatId)) return send(socket, errorMsg('held', chatId));
         const { images, text } = await ingestAttachments(
           db,
-          { dataDir },
+          { dataDir, warn: (m, data) => log.warn(data ?? {}, m) },
           userId,
           chatId,
           msg.attachments,

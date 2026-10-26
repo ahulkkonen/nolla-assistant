@@ -12,6 +12,7 @@ import type { FastifyInstance, preHandlerHookHandler } from 'fastify';
 import mammoth from 'mammoth';
 import sharp from 'sharp';
 import { getDocumentProxy } from 'unpdf';
+import { needsOcr, ocrPdf } from './ocr.ts';
 
 export type ImageContent = NonNullable<PromptOptions['images']>[number];
 
@@ -195,7 +196,9 @@ async function toImage(buf: Buffer, mime: string): Promise<ImageContent> {
   return { type: 'image', data: out.toString('base64'), mimeType: `image/${format}` };
 }
 
-async function pdfText(buf: Buffer): Promise<string> {
+type Extracted = { text: string /** PDF only. */; pages?: number };
+
+async function pdfText(buf: Buffer): Promise<Extracted> {
   const pdf = await getDocumentProxy(new Uint8Array(buf));
   try {
     const pages: string[] = [];
@@ -203,7 +206,7 @@ async function pdfText(buf: Buffer): Promise<string> {
       const { items } = await (await pdf.getPage(i)).getTextContent();
       pages.push(items.map((it) => ('str' in it ? it.str + (it.hasEOL ? '\n' : '') : '')).join(''));
     }
-    return pages.join('\n');
+    return { text: pages.join('\n'), pages: pdf.numPages };
   } finally {
     await pdf.loadingTask.destroy();
   }
@@ -234,26 +237,26 @@ export function zipUnpackedSize(buf: Buffer): number {
   return total;
 }
 
-async function toText(buf: Buffer, mime: string): Promise<string> {
+async function toText(buf: Buffer, mime: string): Promise<Extracted> {
   if (mime === 'application/pdf') return pdfText(buf);
   if (mime === DOCX) {
     if (zipUnpackedSize(buf) > MAX_DOCX_UNZIPPED) throw new Error('docx too large unpacked');
-    return (await mammoth.extractRawText({ buffer: buf })).value;
+    return { text: (await mammoth.extractRawText({ buffer: buf })).value };
   }
-  return buf.toString('utf8');
+  return { text: buf.toString('utf8') };
 }
 
-/** Extracted text, or the failure marker after an error or 20 s. */
+/** Extracted text (and a PDF's page count), or the failure marker after an error or 20 s. */
 // ponytail: the timeout stops waiting but does not cancel the parser; move extraction to a worker if a stuck parse ever matters.
-async function safeText(buf: Buffer, mime: string): Promise<string> {
+async function safeText(buf: Buffer, mime: string): Promise<Extracted> {
   let timer: NodeJS.Timeout | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => reject(new Error('extract timeout')), EXTRACT_TIMEOUT_MS);
   });
   try {
-    return (await Promise.race([toText(buf, mime), timeout])).slice(0, MAX_TEXT);
+    return await Promise.race([toText(buf, mime), timeout]);
   } catch {
-    return TEXT_FAILED;
+    return { text: TEXT_FAILED };
   } finally {
     clearTimeout(timer);
   }
@@ -322,7 +325,7 @@ export async function attachFile(
  */
 export async function ingestAttachments(
   db: Db,
-  config: { dataDir: string },
+  config: { dataDir: string; warn?: (msg: string, data?: object) => void },
   userId: string,
   chatId: string,
   refs: AttachmentRef[],
@@ -342,9 +345,19 @@ export async function ingestAttachments(
   const images: ImageContent[] = [];
   let text = '';
   for (const r of ordered as FileRow[]) {
-    const buf = await readFile(join(config.dataDir, r.path));
+    const path = join(config.dataDir, r.path);
+    const buf = await readFile(path);
     if (IMAGE_MIMES.has(r.mime)) images.push(await toImage(buf, r.mime));
-    else text += `\n\n[Liite: ${r.name}]\n${await safeText(buf, r.mime)}`;
+    else {
+      const { text: extracted, pages } = await safeText(buf, r.mime);
+      // A scanned PDF has (almost) no text layer: local OCR (phase-16 decisions 14 to 18).
+      const ocr =
+        pages && needsOcr(extracted, pages)
+          ? await ocrPdf(path, pages, join(config.dataDir, 'files'), config.warn)
+          : undefined;
+      const label = ocr ? `${r.name} ${OCR_MARK}` : r.name;
+      text += `\n\n[Liite: ${label}]\n${(ocr ?? extracted).slice(0, MAX_TEXT)}`;
+    }
   }
   if (ids.length)
     db.update(files)
@@ -354,8 +367,13 @@ export async function ingestAttachments(
   return { images, text };
 }
 
-/** One block header as `ingestAttachments` writes it; `cleanName` keeps line breaks out of names. */
-const BLOCK = /\n\n\[Liite: ([^\n]*)\]\n/g;
+/** The label suffix of a document read with OCR. */
+const OCR_MARK = '(OCR)';
+/**
+ * One block header as `ingestAttachments` writes it; `cleanName` keeps line breaks out of names.
+ * The name excludes the OCR suffix, so it matches the document name.
+ */
+const BLOCK = /\n\n\[Liite: ([^\n]*?)(?: \(OCR\))?\]\n/g;
 
 /**
  * Splits a user text into its own part and the names of the `[Liite: …]` blocks that

@@ -227,22 +227,28 @@ older fixture stays valid. The server always sets them.
 
    ```sh
    docker build -f infra/Dockerfile.server --target server-test -t pa-server:test .
-   docker run --rm pa-server:test pnpm --filter @pa/server exec vitest run src/ocr.test.ts
+   docker run --rm -v "$PWD/apps/server/src:/app/apps/server/src:ro" pa-server:test \
+     pnpm --filter @pa/server exec vitest run src/ocr.test.ts
    ```
+
+   `.dockerignore` drops `*.test.ts`, so the command mounts the server sources.
 
 4. The compose smoke: `docker compose -f infra/compose.yaml up --wait` with placeholder values in
    the environment answers `/healthz`.
 
 ## Risks
 
-1. **Memory.** Tesseract with three language models uses about 100 to 200 MB while it reads one
-   page. `pa-server` has `mem_limit: 400m`. The server reads one page at a time and one file at a
-   time per message, with `OMP_THREAD_LIMIT=1`. If the container hits the limit, raise `mem_limit`.
+1. **Memory.** Tesseract with `fin+swe+eng` peaked at 123 MB (VmHWM) on a full A4 page at 200 dpi
+   in the smoke container, while the idle server used 184 MB of its `mem_limit: 400m`. The server
+   reads one page at a time and one file at a time per message, with `OMP_THREAD_LIMIT=1`. If the
+   container hits the limit, raise `mem_limit`.
 2. **Time.** A 30-page scan can take up to 90 seconds before the prompt goes to the model. The chat
    shows the normal working state during that time.
 3. **OCR quality.** OCR text can have wrong characters. A wrong character in a name can make the
    pseudo layer miss the name. This is the same risk as a name that the user types with a typo.
 4. **Stale temp dirs.** A crash during OCR leaves a `DATA_DIR/files/.ocr-*` folder. It holds at most
    one page image.
-5. **Report noise.** Browser extensions cause CSP reports. The log has the directive and the origin
+5. **Image size.** The runtime image grows from 257.8 MB to 303.9 MB (content size, +46 MB), and
+   from 1.10 GB to 1.25 GB on disk.
+6. **Report noise.** Browser extensions cause CSP reports. The log has the directive and the origin
    only, so the noise is short.
