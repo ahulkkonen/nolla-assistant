@@ -108,7 +108,9 @@ https://tesseract-ocr.github.io/tessdoc/Command-Line-Usage.html, `pdftoppm -h` (
    `/api/files/:id` and the artifact frame get no reporting directive: a sandboxed document has an
    opaque origin and cannot post.
 7. **Route.** `POST /api/csp-report` needs no session. It accepts `application/csp-report` and
-   `application/reports+json` (and `application/json`). The body limit is 16 KB.
+   `application/reports+json`. Fastify's default parsers also accept `application/json` and
+   `text/plain`; such a body holds no report and gives no log line. Another type answers 415. The
+   body limit is 16 KB (413 above it).
 8. **Rate limit.** The route uses `limiter(app, 30)` with one global key: at most 30 reports per
    minute, then 429 with `{ error: 'rate_limited' }`. A global key keeps the log bounded when many
    addresses send.
@@ -201,7 +203,7 @@ older fixture stays valid. The server always sets them.
 
 | Method and path | Body | Answer |
 | --- | --- | --- |
-| `POST /api/csp-report` | `application/csp-report`, `application/reports+json` or `application/json`, at most 16 KB | 204; 400 for a bad body, 413, 415, 429 |
+| `POST /api/csp-report` | `application/csp-report` or `application/reports+json`, at most 16 KB | 204; 400 for a bad body, 413, 415, 429 |
 
 ## Task cards
 

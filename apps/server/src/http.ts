@@ -9,6 +9,7 @@ import { adminRoutes } from './admin.ts';
 import { authRoutes, requireUser, type SessionSockets } from './auth/routes.ts';
 import { attachBridge, type BridgeDeps } from './bridge.ts';
 import type { Config } from './config.ts';
+import { CSP_REPORT_PATH, cspReportRoutes } from './csp.ts';
 import { exportRoutes } from './export.ts';
 import { exportJobs } from './export-all.ts';
 import { fileRoutes, MAX_FILE_BYTES, MAX_FILES } from './files.ts';
@@ -29,6 +30,9 @@ const HTML_CSP = [
   "frame-ancestors 'none'",
   "base-uri 'none'",
   "form-action 'self'",
+  // Phase-16 decision 6: `report-to` for current browsers, `report-uri` for the others.
+  `report-uri ${CSP_REPORT_PATH}`,
+  'report-to csp',
 ].join('; ');
 
 const under = (path: string, prefix: string) => path === prefix || path.startsWith(`${prefix}/`);
@@ -94,10 +98,13 @@ export async function buildServer({
     // HTML only; /api/files/:id sets its own sandbox CSP and never serves text/html.
     const type = String(reply.getHeader('content-type') ?? '');
     if (type.startsWith('text/html') && !reply.hasHeader('content-security-policy'))
-      reply.header('Content-Security-Policy', HTML_CSP);
+      reply
+        .header('Content-Security-Policy', HTML_CSP)
+        .header('Reporting-Endpoints', `csp="${CSP_REPORT_PATH}"`);
   });
   await app.register(websocket);
   app.get('/healthz', async () => ({ ok: true }));
+  await cspReportRoutes(app, (msg, data) => app.log.warn(data, msg));
   // Open sockets per session: a revoked session's sockets close (phase-15 decision 12).
   const socketSessions = new Map<{ close(code: number, reason: string): void }, string>();
   const sessionSockets: SessionSockets = {
