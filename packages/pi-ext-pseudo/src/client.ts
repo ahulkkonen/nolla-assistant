@@ -17,9 +17,16 @@ export type MaskSpan = {
   score: number;
   pending: boolean;
 };
-/** Offsets are in the restored text. */
-export type UnmaskSpan = { start: number; end: number; entity_id: number; surrogate_form: string };
-export type Unresolved = { start: number; end: number; form: string };
+/** Offsets are in the restored text. `path`: the string's place in a JSON input (mask.py `walk`). */
+export type JsonPath = (string | number)[];
+export type UnmaskSpan = {
+  start: number;
+  end: number;
+  entity_id: number;
+  surrogate_form: string;
+  path?: JsonPath;
+};
+export type Unresolved = { start: number; end: number; form: string; path?: JsonPath };
 export type Leak = {
   message_index: number;
   start: number;

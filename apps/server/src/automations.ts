@@ -160,6 +160,8 @@ export function startAutomations({
           title,
           titleMasked: title,
           titleLocked: true,
+          // Phase 17: an automation's prompt is not the user's words; no claims from it.
+          fromAutomation: true,
           // Directory key only, as in `chat.create`.
           sessionPath: `sessions/${userId}/`,
           createdAt: now.toISOString(),

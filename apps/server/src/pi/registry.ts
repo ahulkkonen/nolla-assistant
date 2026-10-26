@@ -514,6 +514,7 @@ export class SessionRegistry {
                   memory.store.applyWrite(w, chatId);
                   memory.onChange(chatId);
                 },
+                onTaint: () => memory.store.markTainted(chatId),
                 log: (...args) => memory.log(chatId, ...args),
               }),
             ]

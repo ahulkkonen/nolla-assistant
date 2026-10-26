@@ -19,6 +19,7 @@ import {
   broadcast,
   chatRow,
   errorMsg,
+  transcript,
   vaultState,
 } from './bridge.ts';
 import { claimStore } from './claims.ts';
@@ -35,7 +36,7 @@ import { pushService } from './push.ts';
 import { indexIdle } from './search.ts';
 import { searcher } from './search-tool.ts';
 import { seedDir } from './seed.ts';
-import { titleJobs } from './topics.ts';
+import { taskSmall, titleJobs } from './topics.ts';
 import { purgeTrash, workStore } from './tree.ts';
 import { usageRecorder } from './usage.ts';
 
@@ -174,6 +175,8 @@ export async function start(
     db,
     userId: config.userId,
     warn: (msg, data) => app.log.warn(data ?? {}, msg),
+    pseudo,
+    ask: taskSmall(config.litellmUrl, config.litellmMasterKey, recordUsage),
   });
   // Pi entries per catalog model (phase-10 decision 8); `start` below runs once `app` exists.
   const catalog = modelCatalog({
@@ -274,6 +277,23 @@ export async function start(
   });
   checkBash();
   await claimsDb.importMemory(memory.read('memory'));
+  const claimsTask = claimsDb.schedule(() =>
+    claimsDb
+      .sweep(
+        async (chatId) => {
+          const session = await registry.get(chatId);
+          return session.isIdle ? transcript(session) : undefined;
+        },
+        (chatId, activated) =>
+          broadcast(rooms, chatId, { type: 'claims.activated', chatId, claims: activated }),
+      )
+      .catch((err: unknown) =>
+        app.log.warn(
+          { error: err instanceof Error ? err.message : 'unknown' },
+          'claims sweep failed',
+        ),
+      ),
+  );
   if (!pseudo) app.log.warn('memory disabled: PSEUDO_URL unset');
   if (!push.enabled) app.log.info('push disabled: VAPID_PUBLIC/VAPID_PRIVATE/VAPID_SUBJECT unset');
   const selfSeed = new AbortController();
@@ -314,6 +334,7 @@ export async function start(
     catalog.close();
     fx.close();
     memory.close();
+    claimsTask.stop();
     clearInterval(timer);
     clearInterval(purge);
     clearInterval(trashTimer);

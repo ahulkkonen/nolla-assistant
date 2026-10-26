@@ -91,9 +91,18 @@ export function memoryExtension(opts: {
   /** Parks a tainted write unvalidated; resolves with the pending id, rejects with a message for the agent. */
   park: (write: MemoryWrite) => Promise<number>;
   applyNow: (write: MemoryWrite) => Promise<void>;
+  /** Phase 17: called once per session, the first time a turn is tainted (`chats.tainted`). */
+  onTaint?: () => void;
   log: MemoryLog;
 }): ExtensionFactory {
   let tainted = false;
+  let reported = false;
+  const taint = () => {
+    tainted = true;
+    if (reported) return;
+    reported = true;
+    opts.onTaint?.();
+  };
   /** An attachment arrived with the prompt: the next run starts tainted. */
   let attached = false;
   /** Raw template last injected in this session; unchanged content is not injected again. */
@@ -108,7 +117,7 @@ export function memoryExtension(opts: {
     pi.on('input', (event) => {
       if (!event.text?.includes(ATTACHMENT_MARKER)) return;
       attached = true;
-      tainted = true;
+      taint();
     });
 
     pi.on('before_agent_start', async (event) => {
@@ -140,10 +149,10 @@ export function memoryExtension(opts: {
 
     // Both: `tool_call` covers a write later in the same batch, `tool_result` any late result.
     pi.on('tool_call', (event, ctx) => {
-      if (!cleanTool(event.toolName, event.input, ctx.cwd)) tainted = true;
+      if (!cleanTool(event.toolName, event.input, ctx.cwd)) taint();
     });
     pi.on('tool_result', (event, ctx) => {
-      if (!cleanTool(event.toolName, event.input, ctx.cwd)) tainted = true;
+      if (!cleanTool(event.toolName, event.input, ctx.cwd)) taint();
     });
 
     pi.registerTool({

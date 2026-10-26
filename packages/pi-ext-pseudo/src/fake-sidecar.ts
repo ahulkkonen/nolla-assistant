@@ -3,7 +3,8 @@ import { listenLocal } from '@pa/fake-llm';
 import type { Collision, Json, VaultEntityRow, VaultPendingRow } from './client.ts';
 
 type Pair = { from: string; to: string; id: number };
-type Hit = { start: number; end: number; pair: Pair };
+type Path = (string | number)[];
+type Hit = { start: number; end: number; pair: Pair; path?: Path };
 
 /** One pass, longest match first. Hit offsets are in the output string. */
 function replace(s: string, pairs: Pair[]) {
@@ -22,17 +23,35 @@ function replace(s: string, pairs: Pair[]) {
   return { out, hits };
 }
 
-/** Applies `replace` to every string in a JSON value; hits keep per-string offsets. */
-function deep(v: Json, pairs: Pair[], hits: Hit[]): Json {
+/**
+ * Applies `replace` to every string in a JSON value; hits keep per-string offsets and, inside a
+ * JSON value, the `path` of their string (as the real sidecar's `walk`).
+ */
+function deep(v: Json, pairs: Pair[], hits: Hit[], path?: Path): Json {
   if (typeof v === 'string') {
     const r = replace(v, pairs);
-    hits.push(...r.hits);
+    hits.push(...(path ? r.hits.map((h) => ({ ...h, path })) : r.hits));
     return r.out;
   }
-  if (Array.isArray(v)) return v.map((x) => deep(x, pairs, hits));
+  if (Array.isArray(v)) return v.map((x, i) => deep(x, pairs, hits, [...(path ?? []), i]));
   if (v && typeof v === 'object')
-    return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, deep(x, pairs, hits)]));
+    return Object.fromEntries(
+      Object.entries(v).map(([k, x]) => [k, deep(x, pairs, hits, [...(path ?? []), k])]),
+    );
   return v;
+}
+
+/** `forms` found in the strings of `v` (restored text), as the sidecar's `unresolved`. */
+function unresolvedIn(v: Json, forms: string[], path?: Path): object[] {
+  if (typeof v === 'string')
+    return forms.flatMap((form) => {
+      const at = v.indexOf(form);
+      return at < 0 ? [] : [{ start: at, end: at + form.length, form, ...(path ? { path } : {}) }];
+    });
+  if (Array.isArray(v)) return v.flatMap((x, i) => unresolvedIn(x, forms, [...(path ?? []), i]));
+  if (v && typeof v === 'object')
+    return Object.entries(v).flatMap(([k, x]) => unresolvedIn(x, forms, [...(path ?? []), k]));
+  return [];
 }
 
 /** Longest suffix of `s` that is a proper prefix of some surrogate (contract `hold`). */
@@ -64,11 +83,16 @@ type PendingSeed = Omit<VaultPendingRow, 'id' | 'session_id' | 'reason' | 'entit
  * pair seen by `/mask` to the dictionary with a generated surrogate (digits keep surrogates from
  * matching again). `collide` lists texts that `/mask` with `user_input` reports as collisions
  * (phase 12) until the pending row is answered: accept adds the text with a new surrogate, reject
- * leaves it as it is.
+ * leaves it as it is. `unresolved` lists surrogate-like forms that `/unmask` reports as unresolved.
  */
 export async function startFakeSidecar(
   seed: Record<string, string>,
-  opts: { pending?: PendingSeed[]; learn?: boolean; collide?: string[] } = {},
+  opts: {
+    pending?: PendingSeed[];
+    learn?: boolean;
+    collide?: string[];
+    unresolved?: string[];
+  } = {},
 ) {
   // A copy: `learn` and an accepted collision add entries, and callers share one seed object
   // across tests (the e2e DICT); writing into it leaked "Uusi4 Henkilö4" into later fakes.
@@ -245,8 +269,11 @@ export async function startFakeSidecar(
         }
         if (opts.learn && !state.passthrough) learn(value);
         const live = toFake.filter((p) => !ignored.has(p.id));
-        const masked = state.passthrough ? value : deep(value, live, hits);
-        const spans = hits.map(({ start, end, pair }) => ({
+        const masked = state.passthrough
+          ? value
+          : deep(value, live, hits, typeof value === 'string' ? undefined : []);
+        const spans = hits.map(({ start, end, pair, path }) => ({
+          ...(path ? { path } : {}),
           start,
           end,
           entity_id: seen(pair).id,
@@ -260,16 +287,24 @@ export async function startFakeSidecar(
         return { masked, spans, ...(body.user_input ? { collisions: [] } : {}) };
       }
       case '/unmask': {
-        const restored = deep('text' in body ? body.text : body.json, toReal, hits);
+        const isText = 'text' in body;
+        const restored = deep(
+          isText ? body.text : body.json,
+          toReal,
+          hits,
+          isText ? undefined : [],
+        );
         const hold =
           typeof body.text === 'string' ? holdOf(body.text, Object.values(dictionary)) : 0;
-        const spans = hits.map(({ start, end, pair }) => ({
+        const spans = hits.map(({ start, end, pair, path }) => ({
           start,
           end,
           entity_id: pair.id,
           surrogate_form: pair.from,
+          ...(path ? { path } : {}),
         }));
-        return { restored, spans, unresolved: [], hold };
+        const unresolved = unresolvedIn(restored, opts.unresolved ?? [], isText ? undefined : []);
+        return { restored, spans, unresolved, hold };
       }
       case '/scan': {
         if (state.scanFail) return;
