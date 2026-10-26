@@ -1,4 +1,3 @@
-import { cpSync, existsSync, renameSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openDb, users } from '@pa/db';
@@ -34,6 +33,7 @@ import { SessionRegistry } from './pi/registry.ts';
 import { pushService } from './push.ts';
 import { indexIdle } from './search.ts';
 import { searcher } from './search-tool.ts';
+import { seedDir } from './seed.ts';
 import { titleJobs } from './topics.ts';
 import { purgeTrash, workStore } from './tree.ts';
 import { usageRecorder } from './usage.ts';
@@ -73,18 +73,11 @@ export async function start(
       for (const n of a.tools.mcp ?? [])
         if (!mcp.has(n)) agentLog(a.id, `MCP server ${n} not in ${config.mcpConfig}`, 'warn');
   };
-  // Editable copies under DATA_DIR start as the image's folders (phase-15 decision 4).
-  for (const [dir, bundled] of [
-    [config.agentsDir, BUNDLED_AGENTS],
-    [config.automationsDir, BUNDLED_AUTOMATIONS],
-  ] as const)
-    if (!existsSync(dir) && existsSync(bundled)) {
-      // Copy, then rename: a crash mid-copy leaves only `.seeding`, and the next start retries.
-      const seeding = `${dir}.seeding`;
-      rmSync(seeding, { recursive: true, force: true });
-      cpSync(bundled, seeding, { recursive: true });
-      renameSync(seeding, dir);
-    }
+  // Editable copies under DATA_DIR start as the image's folders (phase-15 decision 4); unedited
+  // files follow later images (phase-16 decision 21). `app` does not exist yet: console.
+  const seedWarn = (msg: string, data?: object) => console.warn(msg, data ?? {});
+  seedDir(config.agentsDir, BUNDLED_AGENTS, 'agent', seedWarn);
+  seedDir(config.automationsDir, BUNDLED_AUTOMATIONS, 'automation', seedWarn);
   // Startup fails without `assistant`; a later bad edit keeps the previous profile versions.
   // `app` does not exist yet, so the first load logs to the console.
   let agentMap = loadAgents(config.agentsDir, (file, err, level) =>

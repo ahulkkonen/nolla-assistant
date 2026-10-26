@@ -235,4 +235,6 @@ delete the data volume too.
 
 ## Upgrade notes
 
-- Phase 16 (one agent): after this upgrade, open Settings › Agentit and delete "Tutkija". Avustaja now has its tools, and the delete moves the chats of Tutkija to Avustaja.
+- At each start, the server updates the files in `DATA_DIR/agents` and `DATA_DIR/automations` that you did not edit to the versions in the image. It does not change a file that you edited. It logs one warning line for each such file: "agent file edited by user, not updated". Merge the change in Settings › Agentit if you want it.
+- Phase 16 (one agent): after this upgrade, open Settings › Agentit and delete "Tutkija". The delete moves the chats of Tutkija to Avustaja. Avustaja gets the tools of Tutkija only if you did not edit `assistant.yaml`. If you edited it, the log names the file. Then add `bash` and turn on "Aliagentit" in the form.
+- An install from before phase 16 has no `.seeded.json`. On the first start of phase 16, the server treats every existing file that differs from the image as edited and does not change it. So such an install must make the Avustaja change by hand, as in the item above.

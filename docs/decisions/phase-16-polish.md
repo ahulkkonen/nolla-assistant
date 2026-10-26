@@ -101,6 +101,25 @@ https://tesseract-ocr.github.io/tessdoc/Command-Line-Usage.html, `pdftoppm -h` (
    Settings › Agentit after this upgrade. That delete moves the chats of Tutkija to Avustaja.
 5. **The composer agent picker stays.** It lists the profiles that the user has.
 
+### Image updates of the editable files
+
+21. **Seed manifest.** At seeding, the server writes `DATA_DIR/agents/.seeded.json` (and the same
+    file in `DATA_DIR/automations`). It holds the sha256 of each copied image file, by relative path.
+    At each start, for each file in the image:
+    - The copy has the image's hash: the server records that hash.
+    - The copy has its manifest hash (the user did not edit it): the server writes the image file
+      over it and records the new hash.
+    - The copy has another hash (the user edited it): the copy stays. The server logs one warn line
+      `agent file edited by user, not updated` (or `automation file ...`) with the file name.
+    - The copy is missing and the manifest lists it: the user deleted it, so it stays deleted.
+    - The copy is missing and the manifest does not list it: the server copies the image file and
+      records it.
+    - The manifest is missing (an install from before phase 16): a copy that differs from the image
+      counts as edited and stays out of the manifest, so a later image never overwrites it. A copy
+      equal to the image and a missing file are recorded.
+    The update does not make a git commit. The next save from the editor commits the folder.
+    Phase-15 risk 3 ("profiles leave the image") now applies only to edited files.
+
 ### CSP reports
 
 6. **Policy.** The HTML policy gets `report-uri /api/csp-report` and `report-to csp`. Each HTML
