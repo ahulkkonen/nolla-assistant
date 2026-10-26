@@ -311,8 +311,9 @@ const AWAY = 80;
 export class Follow {
   pinned = true;
   jumping = false;
-  /** When the follow last scrolled by itself. */
+  /** When the follow last scrolled by itself, and when the reader last scrolled up. */
   private ours = Number.NEGATIVE_INFINITY;
+  private upAt = Number.NEGATIVE_INFINITY;
   private scrolledSinceJump = false;
   private timer: ReturnType<typeof setTimeout> | undefined;
 
@@ -329,6 +330,8 @@ export class Follow {
     this.scrolledSinceJump = true;
     if (this.jumping && gap >= NEAR) return undefined;
     this.jumping = false;
+    // A late event of the follow's last jump, right after the reader scrolled up: stale.
+    if (gap < NEAR && now - this.upAt < 100) return undefined;
     // Content grew again after the follow's own scroll, within a frame: not the reader.
     if (this.pinned && gap >= NEAR && now - this.ours < 50) return undefined;
     this.pinned = gap < NEAR;
@@ -336,9 +339,12 @@ export class Follow {
   }
 
   /** The reader scrolls up: the follow stops at once, when the thread can scroll up at all. */
-  up(el: Scroller) {
+  up(el: Scroller, now: number) {
     this.jumping = false;
-    if (el.scrollHeight > el.clientHeight && el.scrollTop > 0) this.pinned = false;
+    if (el.scrollHeight <= el.clientHeight || el.scrollTop <= 0) return;
+    this.pinned = false;
+    this.upAt = now;
+    this.ours = Number.NEGATIVE_INFINITY;
   }
 
   /** The reader takes over a smooth jump (touch). */

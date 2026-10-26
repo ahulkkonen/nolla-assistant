@@ -241,7 +241,9 @@ export function Thread() {
   /** Inside a region that scrolls by itself (tool output, a tall code block): not the thread's. */
   const inner = (t: EventTarget | null) => {
     const r = (t as HTMLElement | null)?.closest?.('[role="region"]');
-    return !!r && r.scrollHeight > r.clientHeight;
+    // Vertical scrollers have a max height (tool output, thinking); a code block scrolls sideways
+    // only, and its horizontal scrollbar makes it look taller than its box.
+    return !!r && getComputedStyle(r).maxHeight !== 'none' && r.scrollHeight > r.clientHeight + 1;
   };
 
   return (
@@ -259,13 +261,13 @@ export function Thread() {
         // back down; `onScroll` then sets it from the real position. It also ends a smooth jump.
         // Not inside a region that scrolls by itself (tool output, code): that scroll is not ours.
         onWheel={(e) => {
-          if (e.deltaY < 0 && !inner(e.target)) follow.up(e.currentTarget);
+          if (e.deltaY < 0 && !inner(e.target)) follow.up(e.currentTarget, performance.now());
           else follow.interrupt();
         }}
         onTouchMove={() => follow.interrupt()}
         onKeyDown={(e) => {
           const key = threadKey(e);
-          if (key === 'up' && !inner(e.target)) follow.up(e.currentTarget);
+          if (key === 'up' && !inner(e.target)) follow.up(e.currentTarget, performance.now());
           if (key !== 'end') return;
           e.preventDefault();
           jump();

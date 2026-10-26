@@ -229,11 +229,15 @@ describe('Follow', () => {
   });
   it('unpins on the reader scrolling up only when the thread can scroll up', () => {
     const f = new Follow();
-    f.up({ ...box(0) });
+    f.up({ ...box(0) }, 0);
     expect(f.pinned).toBe(true);
-    f.up({ ...box(600), scrollHeight: 400 });
+    f.up({ ...box(600), scrollHeight: 400 }, 0);
     expect(f.pinned).toBe(true);
-    f.up(box(600));
+    const el = box(600);
+    f.up(el, 1000);
+    expect(f.pinned).toBe(false);
+    // A late event of the follow's last jump does not pin it again.
+    expect(f.scrolled(el, 1020)).toBeUndefined();
     expect(f.pinned).toBe(false);
   });
   it('content growth after its own scroll does not unpin; a later scroll by the reader does', () => {
