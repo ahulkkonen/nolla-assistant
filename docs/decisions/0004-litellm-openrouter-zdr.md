@@ -241,6 +241,7 @@ The phase-3 test is the same probe set run against the real compose stack with a
    - `mcr.microsoft.com/presidio-anonymizer:2.2.362@sha256:a10a12a2a613d13cf29d3ad3641e3258444dd8c90403dd644a0a114c472c2483`
 2. **No Postgres.** `master_key` only, and `DATABASE_URL` stays unset. The `litellm` environment is `OPENROUTER_API_KEY`, `LITELLM_MASTER_KEY` (`sk-` prefix), `OR_SITE_URL`, `OR_APP_NAME` and `LITELLM_LOCAL_MODEL_COST_MAP=True`. Mount `infra/litellm.yaml`, `infra/zdr_guard.py` and `infra/presidio-recognizers.yaml` read-only. Run with `--config /app/config/litellm.yaml --port 4000`.
 3. **OpenRouter account (manual, once):**
+   - **Note (2026-10-26):** Phase 10 replaces this decision. The five account-level ZDR toggles go off. ZDR moves to key guardrails. The `zdr/*` and `open/*` wildcard routes carry the data policy. See [phase-10-models.md](phase-10-models.md), decisions 1 to 3.
    - Turn on the ZDR toggle for all five model groups in https://openrouter.ai/settings/privacy.
    - Create a guardrail with all `enforce_zdr_*` true and a model allowlist of the five model ids below. Assign the guardrail to the LiteLLM key.
 4. **Presidio backstop:** one BLOCK-only `pre_call` guardrail with `presidio_language: en`, plus a mounted recognizer registry that adds `FiPersonalIdentityCodeRecognizer` for `en`. The analyzer gets `RECOGNIZER_REGISTRY_CONF_FILE=/app/conf/presidio-recognizers.yaml`. No `fi` spaCy model and no custom image.
