@@ -1,6 +1,12 @@
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+
+/** Temp file, then rename: a reader, the file watcher or a crash never sees half a file. */
+export function writeAtomic(path: string, text: string) {
+  writeFileSync(`${path}.tmp`, text);
+  renameSync(`${path}.tmp`, path);
+}
 
 /**
  * One commit of everything in `dir` per call, in a repository of its own (created on the first

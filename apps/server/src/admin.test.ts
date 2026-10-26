@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { automationRuns, chats } from '@pa/db';
 import type { AgentDoc, AgentList, DeviceSession } from '@pa/protocol';
@@ -17,10 +17,14 @@ const turn = {
 };
 
 /** Profiles and automations under DATA_DIR, seeded from the repository, as in production. */
-async function bootAdmin(turns = Array.from({ length: 12 }, () => turn)) {
+async function bootAdmin(
+  turns = Array.from({ length: 12 }, () => turn),
+  prep: (data: string) => void = () => {},
+) {
   const data = tempDir('pa-admin-');
   const agentsDir = join(data, 'agents');
   const automationsDir = join(data, 'automations');
+  prep(data);
   const b = await boot(turns, {
     DATA_DIR: data,
     AGENTS_DIR: agentsDir,
@@ -101,6 +105,19 @@ test('agents: create, update from the form keeps comments, YAML tab, dry run, de
   });
   expect(raw.status).toBe(200);
   expect(readFileSync(file('assistant'), 'utf8')).toBe(`${yaml}# oma kommentti\n`);
+  // A key the form does not send survives a form save (here `skills`).
+  const skilled = yaml.replace('skills: []', 'skills: [ cite ]');
+  expect(skilled).not.toBe(yaml);
+  await call('PUT', '/api/agents/assistant', { yaml: skilled, prompt: a.prompt });
+  const { skills: __, ...noSkills } = a.profile;
+  const formSave = await call('PUT', '/api/agents/assistant', {
+    profile: { ...noSkills, name: 'Avustaja 3' },
+    prompt: a.prompt,
+  });
+  expect(formSave.status).toBe(200);
+  const afterForm = readFileSync(file('assistant'), 'utf8');
+  expect(afterForm).toContain('skills: [ cite ]');
+  expect(afterForm).toContain('name: Avustaja 3');
 
   // New from the form: the id comes from the name, the prompt file from the id.
   const created = await call('POST', '/api/agents', {
@@ -176,7 +193,14 @@ test('agents: create, update from the form keeps comments, YAML tab, dry run, de
 });
 
 test('agents: validation errors name the field', { timeout: 30_000 }, async () => {
-  const { call, agentsDir } = await bootAdmin();
+  // A copy that a crash cut short is replaced, not kept.
+  const { call, agentsDir } = await bootAdmin(undefined, (data) => {
+    mkdirSync(join(data, 'agents.seeding'));
+    writeFileSync(join(data, 'agents.seeding', 'puolikas.yaml'), 'id: puo');
+  });
+  expect(existsSync(join(agentsDir, 'assistant.yaml'))).toBe(true);
+  expect(existsSync(join(agentsDir, 'puolikas.yaml'))).toBe(false);
+  expect(existsSync(`${agentsDir}.seeding`)).toBe(false);
   const { agents } = (await (await call('GET', '/api/agents')).json()) as AgentList;
   const profile = agents[0]?.profile;
   const before = readFileSync(join(agentsDir, 'assistant.yaml'), 'utf8');
@@ -197,12 +221,34 @@ test('agents: validation errors name the field', { timeout: 30_000 }, async () =
   await post({ name: 'B', tools: { allow: ['bash'] } }, 'approval');
   await post({ name: '', tools: { allow: [] } }, 'name');
   await post({ name: 'C', tools: { allow: [1] } }, 'tools.allow.0');
+  await post({ name: 'D', tools: { allow: ['read', 'teleport'] } }, 'tools.allow.1');
+  // An alias bomb is a 400, not a 500.
+  const ten = (p: string) => `[${Array(10).fill(`*${p}`).join(', ')}]`;
+  const bomb = `a: &a [x, x, x, x, x, x, x, x, x, x]\nb: &b ${ten('a')}\nc: &c ${ten('b')}\nd: &d ${ten('c')}\ne: ${ten('d')}\n`;
+  await bad('PUT', '/api/agents/assistant', { yaml: bomb, prompt: 'x' }, '');
+  await bad('POST', '/api/agents', { yaml: bomb, prompt: 'x' }, '');
   await bad('PUT', '/api/agents/assistant', { yaml: 'name: [', prompt: 'x' }, '');
   await bad('PUT', '/api/agents/assistant', { yaml: '- a\n- b\n', prompt: 'x' }, '');
   expect((await call('PUT', '/api/agents/..%2Fx', { profile, prompt: 'x' })).status).toBe(404);
   expect((await call('PUT', '/api/agents/nope', { profile, prompt: 'x' })).status).toBe(404);
   expect(readFileSync(join(agentsDir, 'assistant.yaml'), 'utf8')).toBe(before);
   expect(existsSync(join(agentsDir, 'b.yaml'))).toBe(false);
+
+  // A hand-written profile uses `prompts/kopio.md`: a new `kopio` must not overwrite it.
+  writeFileSync(join(agentsDir, 'prompts', 'kopio.md'), 'Vieras ohje.');
+  writeFileSync(join(agentsDir, 'vieras.yaml'), 'id: vieras\nprompt: prompts/kopio.md\n');
+  const fresh = { model: 'zdr/fast', tools: { allow: ['read'] } };
+  const taken = await call('POST', '/api/agents', {
+    profile: { ...fresh, id: 'kopio', name: 'Kopio' },
+    prompt: 'x',
+  });
+  expect([taken.status, await taken.json()]).toEqual([409, { error: 'exists' }]);
+  const derived = await call('POST', '/api/agents', {
+    profile: { ...fresh, name: 'Kopio' },
+    prompt: 'x',
+  });
+  expect(((await derived.json()) as AgentDoc).id).toBe('kopio-2');
+  expect(readFileSync(join(agentsDir, 'prompts', 'kopio.md'), 'utf8')).toBe('Vieras ohje.');
 });
 
 test('automations: create, preview, update, disable, delete, run now', {
@@ -223,6 +269,10 @@ test('automations: create, preview, update, disable, delete, run now', {
   for (const [body, field] of [
     [{ cron: '61 * * * *' }, 'cron'],
     [{ cron: '* * * * *', timezone: 'Mars/Olympus' }, 'timezone'],
+    // Seconds, and runs closer than 5 minutes.
+    [{ cron: '0 30 7 * * 1-5' }, 'cron'],
+    [{ cron: '*/2 * * * *' }, 'cron'],
+    [{ cron: '0,1 9 * * *' }, 'cron'],
   ] as const) {
     const res = await call('POST', '/api/automations/preview', body);
     expect([res.status, ((await res.json()) as { path: string }).path]).toEqual([400, field]);
@@ -258,7 +308,12 @@ test('automations: create, preview, update, disable, delete, run now', {
   await c.next('automations.state');
 
   const path = '/api/automations/aamukatsaus';
-  // A whole state item back: only the file's keys are written.
+  expect(
+    (await call('PUT', path, { ...fields, timezone: 'Europe/Stockholm', autoApprove: ['write'] }))
+      .status,
+  ).toBe(200);
+  await c.next('automations.state');
+  // A whole state item back: only the file's keys are written; keys it leaves out stay.
   const off = await call('PUT', path, {
     ...fields,
     deliver: 'push',
@@ -274,15 +329,32 @@ test('automations: create, preview, update, disable, delete, run now', {
   const text = readFileSync(join(automationsDir, 'aamukatsaus.yaml'), 'utf8');
   expect(text).toContain('enabled: false');
   expect(text).not.toContain('lastStatus');
+  expect(text).toContain('timezone: Europe/Stockholm');
+  expect(text).toContain('autoApprove: [ write ]');
   for (const [body, field] of [
     [{ ...fields, agentId: 'nope' }, 'agentId'],
     [{ ...fields, cron: 'joka aamu' }, 'cron'],
+    [{ ...fields, cron: '*/1 * * * *' }, 'cron'],
     [{ ...fields, id: 'muu' }, 'id'],
   ] as const) {
     const res = await call('PUT', path, body);
     expect([res.status, ((await res.json()) as { path: string }).path]).toEqual([400, field]);
   }
   expect((await call('PUT', '/api/automations/nope', fields)).status).toBe(404);
+  // A hand-written file keeps its six-field cron while the form toggles it.
+  const hand = "id: vuosi\ncron: '0 0 0 1 1 *'\nprompt: Moi\n";
+  writeFileSync(join(automationsDir, 'vuosi.yaml'), hand);
+  const toggled = await call('PUT', '/api/automations/vuosi', {
+    cron: '0 0 0 1 1 *',
+    prompt: 'Moi',
+    enabled: false,
+  });
+  expect(toggled.status).toBe(200);
+  expect(
+    (await c.next('automations.state')).automations.find((x) => x.id === 'vuosi')?.enabled,
+  ).toBe(false);
+  expect((await call('DELETE', '/api/automations/vuosi')).status).toBe(204);
+  await c.next('automations.state');
 
   // "Aja nyt" runs a disabled automation through the existing path.
   c.send({ type: 'automations.run', id: 'aamukatsaus' });

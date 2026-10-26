@@ -35,6 +35,23 @@ import { messageUsage, type RecordUsage, usageExtension } from '../usage.ts';
 import { pathGuard, type WorkHooks } from './guard.ts';
 import { type Catalog, piModelId, policyOf, resolveModelId, thinkingLevel } from './models.ts';
 
+/**
+ * The tool names a profile can allow: Pi's built-ins that a session gets (`bash` only with the
+ * broker; never `powershell`) and the extension tools below. `subagent` is the profile flag.
+ */
+export const PROFILE_TOOLS = [
+  'read',
+  'write',
+  'edit',
+  'bash',
+  'grep',
+  'find',
+  'ls',
+  'recall',
+  'memory',
+  WEB_SEARCH_TOOL,
+];
+
 /** The chat row fields a session build reads: its agent and its model policy (phase-10). */
 export type ChatModel = {
   agentId: string;

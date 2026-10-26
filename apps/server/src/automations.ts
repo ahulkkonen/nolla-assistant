@@ -8,7 +8,7 @@ import type { FastifyBaseLogger } from 'fastify';
 import cron from 'node-cron';
 import { parse } from 'yaml';
 import { z } from 'zod';
-import type { Agents } from './agents.ts';
+import { type Agents, ownChange } from './agents.ts';
 import { transcript } from './bridge.ts';
 import type { SessionRegistry } from './pi/registry.ts';
 import { indexChat } from './search.ts';
@@ -207,7 +207,20 @@ export function startAutomations({
     return false;
   };
 
+  /** The `*.yaml` names and texts and the agent ids: equal means nothing to reschedule. */
+  let seen: string | undefined;
+  const signature = () =>
+    [
+      [...agents().keys()].sort().join(','),
+      ...(existsSync(dir) ? readdirSync(dir) : [])
+        .filter((f) => f.endsWith('.yaml'))
+        .sort()
+        .map((f) => `${f}\0${readFileSync(join(dir, f), 'utf8')}`),
+    ].join('\0');
   const schedule = () => {
+    const sig = signature();
+    if (sig === seen) return;
+    seen = sig;
     for (const t of tasks.values()) void t.destroy();
     list = loadAutomations(dir, (file, err) =>
       log.warn({ file, error: err instanceof Error ? err.message : String(err) }, 'bad automation'),
@@ -228,7 +241,8 @@ export function startAutomations({
   schedule();
 
   let timer: NodeJS.Timeout | undefined;
-  const watcher = watch(dir, () => {
+  const watcher = watch(dir, (_event, filename) => {
+    if (ownChange(filename)) return;
     clearTimeout(timer);
     timer = setTimeout(() => !closed && schedule(), 1000);
   });

@@ -39,10 +39,11 @@ export async function* zip(
   maxBytes = Number.POSITIVE_INFINITY,
 ): AsyncGenerator<Buffer> {
   const central: Buffer[] = [];
+  let count = 0;
   let offset = 0;
   let input = 0;
   for await (const e of entries) {
-    if (central.length >= MAX_ENTRIES) throw new ZipTooLarge('too many entries');
+    if (++count > MAX_ENTRIES) throw new ZipTooLarge('too many entries');
     const name = Buffer.from(e.name, 'utf8');
     const [time, date] = dos(e.mtime ?? new Date());
     const local = Buffer.alloc(30);
@@ -104,8 +105,8 @@ export async function* zip(
   const directory = Buffer.concat(central);
   const end = Buffer.alloc(22);
   end.writeUInt32LE(0x06054b50, 0);
-  end.writeUInt16LE(central.length / 2, 8);
-  end.writeUInt16LE(central.length / 2, 10);
+  end.writeUInt16LE(count, 8);
+  end.writeUInt16LE(count, 10);
   end.writeUInt32LE(directory.length, 12);
   end.writeUInt32LE(offset, 16);
   yield Buffer.concat([directory, end]);

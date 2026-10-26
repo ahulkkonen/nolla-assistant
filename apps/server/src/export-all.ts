@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { constants, createReadStream, createWriteStream, mkdirSync, rmSync } from 'node:fs';
-import { lstat, open, readdir, realpath, rename, rm, stat } from 'node:fs/promises';
-import { dirname, join, sep } from 'node:path';
+import { createReadStream, createWriteStream, mkdirSync, rmSync } from 'node:fs';
+import { lstat, readdir, realpath, rename, stat } from 'node:fs/promises';
+import { basename, dirname, join } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { chats, files } from '@pa/db';
 import { FILES } from '@pa/pi-ext-memory';
@@ -10,10 +10,11 @@ import { TRASH } from '@pa/pi-ext-subagents/workspace';
 import { type ExportJob, ExportStart, type ServerMessage } from '@pa/protocol';
 import { asc, eq } from 'drizzle-orm';
 import type { FastifyInstance, preHandlerHookHandler } from 'fastify';
+import { isFresh } from './auth/routes.ts';
 import type { BridgeDeps } from './bridge.ts';
 import { chatExport, dateOf, fileName, toMarkdown } from './export.ts';
 import type { MemoryStore } from './memory.ts';
-import type { WorkStore } from './tree.ts';
+import { openFile, type WorkStore } from './tree.ts';
 import { opensslEncrypt, type ZipEntry, ZipTooLarge, zip } from './zip.ts';
 
 // "Vie kaikki tiedot" (docs/decisions/phase-15-admin.md, decisions 13 to 18).
@@ -43,7 +44,7 @@ type Job = ExportJob & {
 };
 
 type Skipped = { path: string; reason: 'symlink' | 'unreadable' };
-type WorkFile = { rel: string; abs: string; size: number; mtime: Date };
+type WorkFile = { rel: string; abs: string; size: number; mtime: Date; ino: number; dev: number };
 
 /** Regular files under `root` without `.trash`; symlinks are listed, never followed. */
 async function workFiles(root: string) {
@@ -58,7 +59,7 @@ async function workFiles(root: string) {
       else if (d.isDirectory()) await walk(abs, r);
       else if (d.isFile()) {
         const s = await lstat(abs);
-        out.push({ rel: r, abs, size: s.size, mtime: s.mtime });
+        out.push({ rel: r, abs, size: s.size, mtime: s.mtime, ino: s.ino, dev: s.dev });
       }
     }
   };
@@ -68,16 +69,18 @@ async function workFiles(root: string) {
   return { out, skipped };
 }
 
-/** A regular file whose folder is inside `root`, opened without following a symlink. */
-async function openInside(abs: string, root: string) {
-  const dir = await realpath(dirname(abs)).catch(() => '');
-  if (dir !== root && !dir.startsWith(root + sep)) return undefined;
-  const fh = await open(abs, constants.O_RDONLY | constants.O_NOFOLLOW).catch(() => undefined);
-  if (fh && !(await fh.stat()).isFile()) {
-    await fh.close();
-    return undefined;
-  }
-  return fh;
+/**
+ * A regular file inside `root`, opened by the Files screen's `openFile` (no symlink, no FIFO
+ * block). With `walked`, the opened file must be the one the walk saw (inode and device), so a
+ * file swapped after the walk is skipped.
+ */
+async function openInside(abs: string, root: string, walked?: { ino: number; dev: number }) {
+  const dir = await realpath(dirname(abs)).catch(() => undefined);
+  if (!root || !dir) return undefined;
+  const file = await openFile(root, join(dir, basename(abs)));
+  if (file && (!walked || (file.ino === walked.ino && file.dev === walked.dev))) return file.fh;
+  await file?.fh.close();
+  return undefined;
 }
 
 const view = ({ userId: _, dir: __, path: ___, abort, timer, downloading, ...j }: Job): ExportJob =>
@@ -136,8 +139,15 @@ export function exportJobs(deps: Deps) {
       manifest.entries.push({ path: name, size: data.length });
     }
     /** A file entry, or a skipped one when it is not a regular file inside `root`. */
-    async function* file(name: string, abs: string, root: string, size: number, mtime: Date) {
-      const fh = root ? await openInside(abs, root) : undefined;
+    async function* file(
+      name: string,
+      abs: string,
+      root: string,
+      size: number,
+      mtime: Date,
+      walked?: WorkFile,
+    ) {
+      const fh = await openInside(abs, root, walked);
       if (!fh) manifest.skipped.push({ path: name, reason: 'unreadable' });
       else {
         yield { name, data: fh.createReadStream(), mtime } satisfies ZipEntry;
@@ -182,7 +192,7 @@ export function exportJobs(deps: Deps) {
         tick();
       }
       for (const f of found.out)
-        yield* file(`tyokansio/${f.rel}`, f.abs, workRoot, f.size, f.mtime);
+        yield* file(`tyokansio/${f.rel}`, f.abs, workRoot, f.size, f.mtime, f);
       for (const u of uploads) {
         // A name is one path segment in the archive.
         const name = `liitteet/${u.id}-${u.name.replace(/[/\\\p{Cc}]/gu, '_')}`;
@@ -246,13 +256,16 @@ export function exportJobs(deps: Deps) {
           });
         }
         const { passphrase, unmask } = body.data;
-        if (job?.status === 'building') return reply.code(409).send({ error: 'busy' });
+        // Real names leave in one file: a fresh login, as for a new passkey (decision 16).
+        if (unmask && !isFresh(req)) return reply.code(403).send({ error: 'reauth' });
         if (unmask && !pseudo) return reply.code(503).send({ error: 'pseudo_down' });
         if (
           unmask &&
           (await work.workBytes(req.userId)) + work.uploadBytes(req.userId) > EXPORT_MAX_BYTES
         )
           return reply.code(413).send({ error: 'too_large' });
+        // After the last await: a second quick start must not drop the first one.
+        if (job?.status === 'building') return reply.code(409).send({ error: 'busy' });
         if (job) drop(job);
         const id = randomUUID();
         const createdAt = new Date().toISOString();
@@ -298,6 +311,9 @@ export function exportJobs(deps: Deps) {
       );
 
       // Once (decision 17): a completed response deletes the file; an interrupted one keeps it.
+      // ponytail: "completed" means the last bytes reached the kernel's socket buffer, not the
+      // browser. A connection lost after that loses the file, and the user builds a new export;
+      // an acknowledged download would need a second client request.
       app.get<{ Params: { id: string } }>(
         '/api/export/:id/download',
         { preHandler: auth },

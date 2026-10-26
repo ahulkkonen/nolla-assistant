@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { buffer } from 'node:stream/consumers';
 import { inflateRawSync } from 'node:zlib';
+import { authSessions } from '@pa/db';
 import { type AttachmentRef, ChatExport, EXPORT_PBKDF2_ITER, type ExportJob } from '@pa/protocol';
 import { afterEach, expect, test } from 'vitest';
 import { api, bootChat, bootPseudo, login, runCleanups, tempDir } from './test-utils.ts';
@@ -206,7 +207,7 @@ test('export job: open export has chats, vault, memory, work dir and uploads; do
 test('export job: masked export has only chats; bad passphrase, cancel, pseudo down', {
   timeout: 60_000,
 }, async () => {
-  const { config, sc, port, cookie, start } = await bootExport();
+  const { config, sc, srv, port, cookie, start } = await bootExport();
   const { dataDir } = config;
 
   const short = await start({ passphrase: 'lyhyt' });
@@ -242,6 +243,13 @@ test('export job: masked export has only chats; bad passphrase, cancel, pseudo d
     masked: true,
     omitted: ['vault.json', 'muisti/', 'tyokansio/', 'liitteet/'],
   });
+
+  // Real names need a fresh login (the passkey rule); a masked export does not.
+  const age = (createdAt: string) => srv.db.update(authSessions).set({ createdAt }).run();
+  age(new Date(Date.now() - 11 * 60_000).toISOString());
+  const stale = await start({ passphrase: 'pitkä salasana 42', unmask: true });
+  expect([stale.status, await stale.json()]).toEqual([403, { error: 'reauth' }]);
+  age(new Date().toISOString());
 
   // The sidecar goes down mid-way: the open export fails and keeps no file.
   await sc.close();

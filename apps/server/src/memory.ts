@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { chats, type Db, memoryConsolidations, memoryPending } from '@pa/db';
 import {
@@ -17,7 +17,7 @@ import type { ServerMessage } from '@pa/protocol';
 import { and, desc, eq, inArray, isNotNull, ne } from 'drizzle-orm';
 import cron from 'node-cron';
 import { z } from 'zod';
-import { gitCommitter } from './git.ts';
+import { gitCommitter, writeAtomic } from './git.ts';
 import { search } from './search.ts';
 import { taskSmall } from './topics.ts';
 import type { RecordUsage } from './usage.ts';
@@ -112,10 +112,7 @@ export function memoryStore(deps: {
   const put = (texts: Partial<Record<Target, string>>, note: string) => {
     for (const [t, text] of Object.entries(texts) as [Target, string][])
       if (text.length > CAPS[t] && text.length > read(t).length) throw new MemoryError(FULL);
-    for (const [t, text] of Object.entries(texts) as [Target, string][]) {
-      writeFileSync(`${path(t)}.tmp`, text);
-      renameSync(`${path(t)}.tmp`, path(t));
-    }
+    for (const [t, text] of Object.entries(texts) as [Target, string][]) writeAtomic(path(t), text);
     commit(note);
   };
 

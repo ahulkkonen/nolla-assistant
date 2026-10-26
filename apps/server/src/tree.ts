@@ -198,13 +198,14 @@ const renameNew = (from: string) => async (to: string) => {
  * check shows there. The caller streams from the handle.
  */
 // ponytail: without /proc (macOS dev machines) a folder swap between check and open is not seen.
-async function openFile(realRoot: string, real: string) {
+export async function openFile(realRoot: string, real: string) {
   const flags = constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK;
   const fh = await open(real, flags).catch(() => undefined);
   if (!fh) return undefined;
   const st = await fh.stat();
   const opened = await readlink(`/proc/self/fd/${fh.fd}`).catch(() => real);
-  if (st.isFile() && within(realRoot, opened)) return { fh, size: st.size };
+  if (st.isFile() && within(realRoot, opened))
+    return { fh, size: st.size, ino: st.ino, dev: st.dev };
   await fh.close();
   return undefined;
 }

@@ -154,8 +154,10 @@ Source: `node_modules/node-cron` 4.6.0 (`dist/node-cron.d.ts`) and a local run.
    `path` is the dotted field path of the first zod issue or check (for example `tools.allow.0`,
    `model`, `cron`), or `''` for a YAML syntax error. `message` is an English diagnostic; the UI
    shows its own Finnish text per field and shows `message` only in the YAML tab. The other codes
-   are `not_found` (404), `exists`, `default_agent`, `in_use`, `busy` (409), `gone` (410),
-   `too_large` (413) and `pseudo_down` (503).
+   are `reauth` (403, as for passkey registration), `not_found` (404), `exists`, `default_agent`,
+   `in_use`, `busy` (409), `gone` (410), `too_large` (413) and `pseudo_down` (503). Every
+   `toJS()` of a YAML document runs in a guard, so a document that passes yaml's alias limit (an
+   alias bomb) answers `bad_message` with path `''`, not 500.
 
 ### Agents
 
@@ -164,6 +166,9 @@ Source: `node_modules/node-cron` 4.6.0 (`dist/node-cron.d.ts`) and a local run.
    these fields: name, model, prompt (Markdown text), `tools.allow`, `tools.mcp`, `approval.always`,
    `approval.never` and `subagents`. `skills` is kept on a round trip and shown in the YAML tab. The
    id is shown read-only. After the schema, the server checks, in this order:
+   - Each name in `tools.allow` is one of `PROFILE_TOOLS`, which `apps/server/src/pi/registry.ts`
+     exports next to the code that builds the session (Pi's built-ins and the extension tools).
+     `GET /api/agents` lists the same names. The error path is `tools.allow.<n>`.
    - The model is an alias of `infra/models.json` or a catalog model with ZDR, written as
      `zdr/<vendor>/<model>`. The schema's model pattern now also allows that form (plan item 1:
      "model alias or catalog model").
@@ -176,9 +181,10 @@ Source: `node_modules/node-cron` 4.6.0 (`dist/node-cron.d.ts`) and a local run.
    - The prompt text has 1 to 100,000 characters.
 4. **Save.** The prompt path is fixed by the server: `prompts/<id>.md` for a new agent, and the
    current path for an existing one (another path answers `bad_message` with path `prompt`). The
-   server writes the prompt file, then the YAML file, each to a temp file that it renames. Then it
-   reloads the profiles with the same function as the file watcher and sends `agents.state` to every
-   socket. The watcher's own reload 1 s later finds no change. The reload keeps the old object of
+   server writes the prompt file, then the YAML file, each to a temp file that it renames
+   (`writeAtomic` in `git.ts`, shared with the memory files). Then it reloads the profiles with the
+   same function as the file watcher and sends `agents.state` to every socket. Both watchers
+   ignore events of `.git` and of `*.tmp` files. A reload that changes no profile sends nothing. The reload keeps the old object of
    every profile that did not change, and the registry rebuilds a session at its next `get` when the
    session's profile object is not the current one. An idle chat therefore gets the new profile at
    its next message; a running chat finishes its turn with the old one.
@@ -188,11 +194,14 @@ Source: `node_modules/node-cron` 4.6.0 (`dist/node-cron.d.ts`) and a local run.
      repository's own git tracks, so the server does not commit there.
    - Production: `infra/compose.yaml` sets `AGENTS_DIR=/data/agents` and
      `AUTOMATIONS_DIR=/data/automations`. At start, a missing folder is seeded with a copy of the
-     image's folder. After that, an image update does not change the user's profiles (risk 3).
+     image's folder: the copy goes to `<folder>.seeding` and is renamed when complete, so a crash
+     mid-copy leaves nothing that blocks the next try. After that, an image update does not change
+     the user's profiles (risk 3).
 5. **New, duplicate and delete.**
    - New: `POST /api/agents`. Without an id, the server makes one from the name (ASCII, lower case,
-     `-` between words, at most 56 characters, then `-2`, `-3` … when taken). An id that exists
-     answers `exists`.
+     `-` between words, at most 56 characters, then `-2`, `-3` … when taken). An id is taken when
+     its profile exists or when another profile uses `prompts/<id>.md`. An explicit id that is taken
+     in either way answers `exists`, so a new agent never overwrites another profile's prompt.
    - Duplicate is a client action: the UI posts a copy of the agent with the name "<name> (kopio)"
      and the same prompt text. The copy gets its own prompt file.
    - Delete: `DELETE /api/agents/:id`. The server refuses the default agent `assistant`
@@ -204,7 +213,10 @@ Source: `node_modules/node-cron` 4.6.0 (`dist/node-cron.d.ts`) and a local run.
    profile and the prompt text. A file that fails the schema is listed with `profile: null` and its
    error, so the user can repair it in the YAML tab.
    - A save from the form sends `{ profile, prompt }`. The server merges the fields into the existing
-     YAML document key by key, so the comments on unchanged keys stay, and lists stay in flow style.
+     YAML document key by key: a key that the form sends changes, a key sent as `null` is removed,
+     and every other key stays (`skills`, a key the form does not show, the comments on unchanged
+     keys). Lists stay in flow style. The automation form follows the same rule (`timezone`,
+     `autoApprove`, `name`), and only the automation file's own keys are written.
    - A save from the YAML tab sends `{ yaml, prompt }`. The server writes the text as sent (with
      the fixed id and prompt path).
    - A tab switch calls the same route with `?dry=1`. The server runs every check and returns the
@@ -226,12 +238,17 @@ Source: `node_modules/node-cron` 4.6.0 (`dist/node-cron.d.ts`) and a local run.
    (ISO 8601 UTC) from node-cron's own `createTask(...).getNextRuns(5)`, so the preview and the
    scheduler cannot disagree. A bad expression answers `bad_message` with path `cron`.
    `automations.state` gets `nextRunAt` per enabled automation.
+   - The editor's rules: five fields (no seconds) and at least 5 minutes between runs, checked over
+     the next 20 runs. The preview and every save that creates an automation or changes its cron
+     check them (path `cron`). A hand-written file keeps its cron (six fields are still loaded), so
+     the form can still disable a fast hand-written automation.
 10. **Save, enable, run.** Save writes `automations/<id>.yaml` like a profile (temp file, rename,
     merge into the existing document), reschedules at once, sends `automations.state` to every
     socket and commits. Enable and disable is a save with `enabled` changed. "Aja nyt" uses the
     existing `automations.run` message and `runNow`, which also runs a disabled automation. Delete
     removes the file and its `automationRuns` row. A file that fails to load stays out of the list
-    and is logged, as today.
+    and is logged, as today. The automations watcher ignores `.git` and `*.tmp` events and
+    reschedules only when the YAML names and texts or the agent ids changed.
 
 ### Devices
 
@@ -275,8 +292,10 @@ Source: `node_modules/node-cron` 4.6.0 (`dist/node-cron.d.ts`) and a local run.
     - `vault.json`: the sidecar's entity list and pending items (`GET /vault/entities`).
     - `muisti/USER.md` and `muisti/MEMORY.md`.
     - `tyokansio/<path>`: every regular file of the work dir, without `.trash`. Symlinks are skipped
-      and listed in the manifest. A file is opened with `O_NOFOLLOW` after a check that its folder is
-      inside the work dir.
+      and listed in the manifest. A file is opened with the Files screen's `openFile` (`O_NOFOLLOW`
+      and `O_NONBLOCK`, a regular file by `fstat`, on Linux the fd's real path inside the work dir),
+      and its inode and device must equal those of the walk's `lstat`; otherwise it is skipped as
+      `unreadable`.
     - `liitteet/<id>-<name>`: the chat uploads.
     - `manifest.json`: version 1, the time, `masked`, the chat count, every entry with its size, the
       skipped entries with a reason, and the left-out parts.
@@ -292,7 +311,12 @@ Source: `node_modules/node-cron` 4.6.0 (`dist/node-cron.d.ts`) and a local run.
       `history` and `transcript` in `bridge.ts` take `Pick<AgentSession, 'sessionManager'>`.
 16. **The job.** `POST /api/export { passphrase, unmask }` starts a background job and answers 202
     with the job. One job at a time: a running job answers `busy`, and a new start replaces a ready
-    or failed one. When open, the start first checks the work dir and the uploads against the cap.
+    or failed one. The `busy` check runs after the last await of the route, so two quick starts
+    cannot drop the first job. When open, the start first checks the work dir and the uploads
+    against the cap.
+    - An open export (real names) needs a fresh login: the session must be less than 10 minutes
+      old, the rule of passkey registration. Otherwise the route answers 403 `{ error: 'reauth' }`.
+      A masked export needs no fresh login.
     - The job writes `DATA_DIR/exports/<job>/<file>.part` (mode 0600) and renames it when complete.
     - Progress: `done` and `total` count chats, files and the other parts. `export.state` goes to
       every socket at most every 250 ms and on each status change. `GET /api/export` returns the job
@@ -305,7 +329,10 @@ Source: `node_modules/node-cron` 4.6.0 (`dist/node-cron.d.ts`) and a local run.
     streams the file as `application/octet-stream` with `Content-Disposition: attachment` and
     `Cache-Control: no-store`. When the response completes, the server deletes the file and the job
     (`export.state` with `job: null`). An interrupted download keeps the file for another try. A
-    ready file is deleted one hour after it is ready. At start, the server deletes everything under
+    ready file is deleted one hour after it is ready. "Completes" means that the last bytes reached
+    the server's socket buffer. If the connection breaks after that, the file is gone and the user
+    builds a new export. This is the simpler safe choice: an acknowledged download would need a
+    second request from the client, and a file kept until the hour ends could be downloaded twice. At start, the server deletes everything under
     `DATA_DIR/exports`, because jobs live in memory.
 18. **Size cap.** At most 2 GiB of input (the sum of the entry sizes before compression) and 65,000
     entries. The cap keeps the zip below the ZIP64 limits (finding 7) and the disk use bounded. A job
@@ -441,7 +468,7 @@ All routes need the session cookie (`requireUser`).
 | `GET /api/auth/sessions` | | `{ sessions: DeviceSession[] }` |
 | `DELETE /api/auth/sessions/:id` | | 204; 404 |
 | `POST /api/auth/sessions/revoke-all` | | 204 with a new cookie |
-| `POST /api/export` | `ExportStart` | 202 `{ job }`; 400, 409 `busy`, 413, 503 |
+| `POST /api/export` | `ExportStart` | 202 `{ job }`; 400, 403 `reauth` (open export, session older than 10 minutes), 409 `busy`, 413, 503 |
 | `GET /api/export` | | `{ job: ExportJob \| null }` |
 | `DELETE /api/export/:id` | | 204; 404 |
 | `GET /api/export/:id/download` | | the file; 404, 409 (not ready), 410 `gone` |
@@ -501,6 +528,8 @@ The UI follows `phase-9-ui.md` section 7. All copy is Finnish. The names in brie
   - When ready: "Lataa" (the download route), the size, the expiry time, and the decrypt command in
     a code block with a copy button. The help line: "Tiedosto poistuu latauksen jälkeen tai tunnin
     kuluttua."
+  - `reauth` (403, only for "Oikeat nimet"): "Oikeat nimet vaativat tuoreen kirjautumisen. Kirjaudu
+    ulos ja takaisin sisään, ja yritä uudelleen." The masked choice stays available.
   - Errors: `pseudo_down` "Nimisuoja ei vastaa. Yritä myöhemmin uudelleen.", `too_large` "Tiedot
     ovat yli 2 Gt. Siivoa työkansiota ja yritä uudelleen.", `failed` "Vienti epäonnistui. Yritä
     uudelleen.".
@@ -559,19 +588,30 @@ The UI follows `phase-9-ui.md` section 7. All copy is Finnish. The names in brie
    and uses "Kirjaa ulos kaikkialta", which rotates the token and ends the thief's session.
 7. **Disk.** A ready export uses up to about 2 GiB in `DATA_DIR` for at most one hour.
 8. **Symlinks and races.** The agent's `bash` can create symlinks in the work dir. The export skips
-   them, opens files with `O_NOFOLLOW` and checks the folder first. A folder swapped between the check
-   and the open could still point outside; the result goes only to the user's own file.
+   them and opens files with `openFile` plus the inode check (decision 14). On Linux the fd's real
+   path catches a folder swapped for a symlink after the walk. On macOS (development only) such a
+   swap is not seen; the result goes only to the user's own file.
 9. **Deleted agent.** Its chats move to `assistant` without a per-chat message; an open screen shows
    the old agent until its next `chat.list`.
+10. **Download acknowledgement.** The server cannot see that the browser stored the whole file
+    (decision 17). A break after the last bytes left the server loses the file; the user builds a
+    new one.
 
 ## Status (2026-10-26)
 
 Task cards 1 and 2 are done (not committed). Task card 3 is open for the UI implementer, then task
 card 4.
 
-Gate: `pnpm typecheck` passes. `pnpm --filter @pa/server test` passes 160 tests (10 new), `pnpm
---filter @pa/protocol test` 40 (3 new), `pnpm --filter @pa/db test` 1. Biome passes on the changed
-files. The e2e flows wait for task card 3.
+Gate: `pnpm typecheck` passes for every package except `apps/web`, whose in-progress task-card-3
+files do not compile yet. `pnpm --filter @pa/server test` passes 164 tests (10 new tests; the review
+fixes extend them), `pnpm --filter @pa/protocol test` 40 (3 new), `pnpm --filter @pa/db test` 1.
+Biome passes on the changed files. The e2e flows wait for task card 3.
+
+Review fixes (after commit ba76cf2): the zip entry counter, `openFile` with the inode check, the
+fresh login for an open export, the `busy` check after the last await, the download note, the
+atomic seeding, the watcher filters and unchanged-reload skips, the editor cron rules, the merge
+that keeps unsent keys, the alias-bomb guard, the prompt-file collision on create, the shared
+`writeAtomic` and `PROFILE_TOOLS`.
 
 Verified on 2026-10-26: a file from the server's `zip` and `opensslEncrypt` decrypts with Homebrew
 OpenSSL 4.0.3 (gate test) and with the macOS `/usr/bin/openssl` (LibreSSL 3.3.6, manual run with

@@ -1,4 +1,4 @@
-import { cpSync, existsSync } from 'node:fs';
+import { cpSync, existsSync, renameSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openDb, users } from '@pa/db';
@@ -78,7 +78,13 @@ export async function start(
     [config.agentsDir, BUNDLED_AGENTS],
     [config.automationsDir, BUNDLED_AUTOMATIONS],
   ] as const)
-    if (!existsSync(dir) && existsSync(bundled)) cpSync(bundled, dir, { recursive: true });
+    if (!existsSync(dir) && existsSync(bundled)) {
+      // Copy, then rename: a crash mid-copy leaves only `.seeding`, and the next start retries.
+      const seeding = `${dir}.seeding`;
+      rmSync(seeding, { recursive: true, force: true });
+      cpSync(bundled, seeding, { recursive: true });
+      renameSync(seeding, dir);
+    }
   // Startup fails without `assistant`; a later bad edit keeps the previous profile versions.
   // `app` does not exist yet, so the first load logs to the console.
   let agentMap = loadAgents(config.agentsDir, (file, err, level) =>
@@ -87,7 +93,12 @@ export async function start(
   /** The watcher's reload; the agent editor calls it after each write. */
   const reloadAgents = () => {
     try {
-      agentMap = loadAgents(config.agentsDir, agentLog, agentMap);
+      const next = loadAgents(config.agentsDir, agentLog, agentMap);
+      // Unchanged profiles keep their objects: nothing to tell the screens.
+      const same =
+        next.size === agentMap.size && [...next].every(([id, p]) => agentMap.get(id) === p);
+      agentMap = next;
+      if (same) return;
       checkBash();
       sendAll(agentsState(agentMap));
     } catch (err) {

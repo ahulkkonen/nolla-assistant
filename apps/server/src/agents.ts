@@ -50,6 +50,10 @@ export function loadAgents(
   return agents;
 }
 
+/** A watcher event of the server's own temp files or git repository (phase-15 decision 4). */
+export const ownChange = (filename: string | null) =>
+  !!filename && (/(^|[\\/])\.git([\\/]|$)/.test(filename) || filename.endsWith('.tmp'));
+
 /** Calls `onChange` 1 s after the last change in `dir` (also `prompts/`). Returns a stop function. */
 export function watchAgents(
   dir: string,
@@ -57,7 +61,8 @@ export function watchAgents(
   onError: (err: Error) => void,
 ): () => void {
   let timer: NodeJS.Timeout | undefined;
-  const w = watch(dir, { recursive: true }, () => {
+  const w = watch(dir, { recursive: true }, (_event, filename) => {
+    if (ownChange(filename)) return;
     clearTimeout(timer);
     timer = setTimeout(onChange, 1000);
   });

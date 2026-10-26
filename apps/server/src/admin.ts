@@ -1,12 +1,4 @@
-import {
-  existsSync,
-  readdirSync,
-  readFileSync,
-  realpathSync,
-  renameSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import { existsSync, readdirSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { basename, dirname, join, resolve, sep } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { automationRuns, chats, type Db } from '@pa/db';
@@ -27,28 +19,17 @@ import { ZodError } from 'zod';
 import { type Agents, unruled } from './agents.ts';
 import { AutomationFile, type Automations, loadAutomations, nextRuns } from './automations.ts';
 import { slug } from './export.ts';
-import { gitCommitter } from './git.ts';
+import { gitCommitter, writeAtomic } from './git.ts';
 import type { Catalog } from './pi/models.ts';
-import type { SessionRegistry } from './pi/registry.ts';
+import { PROFILE_TOOLS, type SessionRegistry } from './pi/registry.ts';
 import { alias, aliasList } from './usage.ts';
 
 // Agent and automation editors (docs/decisions/phase-15-admin.md, decisions 1 to 10).
 
-/** The tool names a profile can allow: Pi's built-ins and ours (`subagent` is the flag). */
-export const TOOLS = [
-  'read',
-  'write',
-  'edit',
-  'bash',
-  'grep',
-  'find',
-  'ls',
-  'recall',
-  'memory',
-  'web_search',
-];
 const AGENT_ID = /^[a-z0-9-]{1,64}$/;
 const AUTOMATION_ID = /^[A-Za-z0-9_-]{1,64}$/;
+/** The editor's shortest gap between two automation runs (decision 9). */
+const MIN_GAP_MS = 5 * 60_000;
 
 export type AdminDeps = {
   db: Db;
@@ -94,17 +75,36 @@ async function checked(reply: FastifyReply, fn: () => Promise<unknown> | unknown
 const isObj = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
 const readIf = (path: string) => (existsSync(path) ? readFileSync(path, 'utf8') : undefined);
-/** Temp file and rename: the watcher and a crash never see half a file. */
-function writeAtomic(path: string, text: string) {
-  writeFileSync(`${path}.tmp`, text.endsWith('\n') ? text : `${text}\n`);
-  renameSync(`${path}.tmp`, path);
-}
+/** A text file ends with a newline. */
+const writeText = (path: string, text: string) =>
+  writeAtomic(path, text.endsWith('\n') ? text : `${text}\n`);
 
 function yamlOf(text: string): Document {
   const doc = parseDocument(text);
   const err = doc.errors[0];
   if (err) throw new Bad('', err.message);
   return doc;
+}
+
+/** The document as plain data; an alias bomb (yaml's alias count limit) is a 400, not a 500. */
+function js(doc: Document): unknown {
+  try {
+    return doc.toJS();
+  } catch (err) {
+    throw new Bad('', err instanceof Error ? err.message : 'invalid YAML');
+  }
+}
+
+/**
+ * The editor's cron rules (decision 9): five fields (no seconds) and at least 5 minutes between
+ * runs, checked over the next 20 runs. Hand-written files may still use other forms.
+ */
+function editorCron(expression: string, timezone: string) {
+  if (expression.trim().split(/\s+/).length !== 5)
+    throw new Bad('cron', 'use five fields: minute hour day month weekday');
+  const runs = nextRuns(expression, timezone, 20).map((r) => Date.parse(r));
+  if (runs.some((t, i) => i > 0 && t - (runs[i - 1] ?? 0) < MIN_GAP_MS))
+    throw new Bad('cron', 'runs must be at least 5 minutes apart');
 }
 
 /** Sets `value` at `path` with lists in flow style, as the shipped files write them. */
@@ -119,20 +119,33 @@ function setIn(doc: Document, path: string[], value: unknown) {
   else doc.contents = node as Document['contents'];
 }
 
-/** Writes `next` into `doc` key by key, so comments on unchanged keys stay (decision 6). */
+/**
+ * Writes `next` into `doc` key by key (decision 6): a key the form sends changes, a key sent as
+ * null goes, and every other key (skills, timezone, a comment) stays as it is.
+ */
 function merge(doc: Document, path: string[], cur: unknown, next: unknown) {
+  if (!isObj(next)) {
+    if (!isDeepStrictEqual(cur, next)) setIn(doc, path, next);
+    return;
+  }
   const here = path.length ? doc.getIn(path, true) : doc.contents;
-  if (isObj(next) && isObj(cur) && isMap(here)) {
-    for (const k of Object.keys(cur)) if (!(k in next)) doc.deleteIn([...path, k]);
-    for (const [k, v] of Object.entries(next)) merge(doc, [...path, k], cur[k], v);
-  } else if (!isDeepStrictEqual(cur, next)) setIn(doc, path, next);
+  const old = isObj(cur) && isMap(here) ? cur : {};
+  if (old !== cur) setIn(doc, path, {});
+  for (const [k, v] of Object.entries(next))
+    if (v === null) doc.deleteIn([...path, k]);
+    else merge(doc, [...path, k], old[k], v);
 }
 
 /** The existing file with the form's fields merged in; a broken file starts over. */
 function mergedDoc(existing: string | undefined, fields: Record<string, unknown>): Document {
   const old = parseDocument(existing ?? '');
   const doc = old.errors.length ? parseDocument('') : old;
-  merge(doc, [], doc.toJS(), fields);
+  try {
+    merge(doc, [], js(doc), fields);
+  } catch (err) {
+    if (err instanceof Bad) throw err;
+    throw new Bad('', err instanceof Error ? err.message : 'invalid fields');
+  }
   return doc;
 }
 
@@ -170,6 +183,7 @@ export function adminRoutes(app: FastifyInstance, auth: preHandlerHookHandler, d
     id: string | undefined,
     fields: Record<string, unknown>,
     fallback: string,
+    alsoTaken: (id: string) => boolean = () => false,
   ) => {
     const existing = id === undefined ? undefined : readIf(file(id));
     if (id !== undefined && existing === undefined) return null;
@@ -179,7 +193,7 @@ export function adminRoutes(app: FastifyInstance, auth: preHandlerHookHandler, d
       id ??
       (typeof fields.id === 'string'
         ? fields.id
-        : freeId(fields.name, (x) => existsSync(file(x)), fallback));
+        : freeId(fields.name, (x) => existsSync(file(x)) || alsoTaken(x), fallback));
     return { existing, to };
   };
 
@@ -194,16 +208,23 @@ export function adminRoutes(app: FastifyInstance, auth: preHandlerHookHandler, d
       throw new Bad('prompt', 'prompt must be a .md file under prompts/');
     return abs;
   };
-  /** The `prompt` path a file names; '' when it names none. */
+  /** The `prompt` path a file names; '' when it names none or does not parse. */
   const promptOf = (text: string | undefined) => {
-    const v = parseDocument(text ?? '').toJS() as unknown;
-    return isObj(v) && typeof v.prompt === 'string' ? v.prompt : '';
+    try {
+      const v = js(parseDocument(text ?? ''));
+      return isObj(v) && typeof v.prompt === 'string' ? v.prompt : '';
+    } catch {
+      return '';
+    }
   };
+  /** Another profile than `except` names the prompt file `rel`. */
+  const promptUsed = (rel: string, except?: string) =>
+    yamlIds(agentsDir).some((o) => o !== except && promptOf(readIf(agentFile(o))) === rel);
 
   const agentDoc = (id: string): AgentDoc => {
     const yaml = readFileSync(agentFile(id), 'utf8');
     try {
-      const profile = AgentFile.parse(yamlOf(yaml).toJS());
+      const profile = AgentFile.parse(js(yamlOf(yaml)));
       if (profile.id !== id) throw new Bad('id', `id ${profile.id} does not match the file name`);
       return {
         id,
@@ -235,7 +256,7 @@ export function adminRoutes(app: FastifyInstance, auth: preHandlerHookHandler, d
       defaultId: DEFAULT_AGENT_ID,
       agents: yamlIds(agentsDir).map(agentDoc),
       options: {
-        tools: TOOLS,
+        tools: PROFILE_TOOLS,
         mcp: deps.mcpNames,
         skills,
         aliases: aliasList().map(({ id, name }) => ({ id, name })),
@@ -252,9 +273,10 @@ export function adminRoutes(app: FastifyInstance, auth: preHandlerHookHandler, d
   ) => {
     const body = AgentSave.parse(rawBody);
     const input = 'yaml' in body ? yamlOf(body.yaml) : undefined;
-    const fields: unknown = input ? input.toJS() : 'profile' in body ? body.profile : undefined;
+    const fields: unknown = input ? js(input) : 'profile' in body ? body.profile : undefined;
     if (!isObj(fields)) throw new Bad('', 'expected a mapping');
-    const at = saveTarget(agentFile, id, fields, 'agentti');
+    // A derived id never takes a prompt file that another profile uses (decision 5).
+    const at = saveTarget(agentFile, id, fields, 'agentti', (x) => promptUsed(`prompts/${x}.md`));
     if (!at) return reply.code(404).send({ error: 'not_found' });
     const { existing, to: target } = at;
     // The server fixes the prompt path (decision 4).
@@ -278,19 +300,25 @@ export function adminRoutes(app: FastifyInstance, auth: preHandlerHookHandler, d
           asSent = false;
         }
     } else doc = mergedDoc(existing, { id: target, ...fields, prompt: path });
-    const profile = AgentFile.parse(doc.toJS());
+    const profile = AgentFile.parse(js(doc));
     if (!AGENT_ID.test(target)) throw new Bad('id', 'invalid id');
+    const unknown = profile.tools.allow.findIndex((t) => !PROFILE_TOOLS.includes(t));
+    if (unknown >= 0)
+      throw new Bad(`tools.allow.${unknown}`, `unknown tool ${profile.tools.allow[unknown]}`);
     if (!knownModel(profile.model)) throw new Bad('model', `unknown model ${profile.model}`);
     const missing = unruled(profile);
     if (missing.length) throw new Bad('approval', `tool ${missing[0]} has no approval rule`);
     const promptFile = promptPath(path);
-    if (id === undefined && existsSync(agentFile(target)))
+    if (
+      id === undefined &&
+      (existsSync(agentFile(target)) || (existsSync(promptFile) && promptUsed(path)))
+    )
       return reply.code(409).send({ error: 'exists' });
     const yaml = asSent && 'yaml' in body ? body.yaml : String(doc);
     if (!dry) {
       // Prompt first: a profile never names a prompt file that is not there yet.
-      writeAtomic(promptFile, body.prompt);
-      writeAtomic(agentFile(target), yaml);
+      writeText(promptFile, body.prompt);
+      writeText(agentFile(target), yaml);
       deps.reloadAgents();
       commitAgents(`agent ${target} saved`);
     }
@@ -335,8 +363,7 @@ export function adminRoutes(app: FastifyInstance, auth: preHandlerHookHandler, d
       if (automations.length) return reply.code(409).send({ error: 'in_use', automations });
       const rel = promptOf(readFileSync(agentFile(id), 'utf8'));
       rmSync(agentFile(id));
-      const shared = yamlIds(agentsDir).some((o) => promptOf(readIf(agentFile(o))) === rel);
-      if (rel && !shared) {
+      if (rel && !promptUsed(rel)) {
         try {
           rmSync(promptPath(rel), { force: true });
         } catch {
@@ -365,11 +392,14 @@ export function adminRoutes(app: FastifyInstance, auth: preHandlerHookHandler, d
     // Only the file's own keys: a client may send a whole `automations.state` item back.
     const own = Object.entries(fields).filter(([k]) => k in AutomationFile.shape);
     const doc = mergedDoc(at.existing, { id: at.to, ...Object.fromEntries(own) });
-    const a = AutomationFile.parse(doc.toJS());
+    const a = AutomationFile.parse(js(doc));
+    // A hand-written file keeps its cron until the form changes it.
+    const before = at.existing === undefined ? undefined : js(parseDocument(at.existing));
+    if (!isObj(before) || before.cron !== a.cron) editorCron(a.cron, a.timezone);
     if (!deps.agents().has(a.agentId)) throw new Bad('agentId', `unknown agent ${a.agentId}`);
     if (id === undefined && existsSync(autoFile(a.id)))
       return reply.code(409).send({ error: 'exists' });
-    writeAtomic(autoFile(a.id), String(doc));
+    writeText(autoFile(a.id), String(doc));
     automationsChanged(`automation ${a.id} saved`);
     return reply.code(id === undefined ? 201 : 200).send({ id: a.id });
   };
@@ -406,6 +436,7 @@ export function adminRoutes(app: FastifyInstance, auth: preHandlerHookHandler, d
     checked(reply, () => {
       const q = CronPreview.parse(req.body);
       const { cron, timezone } = AutomationFile.pick({ cron: true, timezone: true }).parse(q);
+      editorCron(cron, timezone);
       return { runs: nextRuns(cron, timezone) };
     }),
   );

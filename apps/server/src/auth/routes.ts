@@ -83,10 +83,13 @@ export const requireUser =
     req.sessionCreatedAt = user.createdAt;
   };
 
-/** preHandler after `requireUser`: 403 unless the session was created in the last 10 minutes. */
+/** After `requireUser`: the session was created in the last 10 minutes. */
+export const isFresh = (req: FastifyRequest) =>
+  Date.now() - Date.parse(req.sessionCreatedAt) < FRESH_MS;
+
+/** preHandler after `requireUser`: 403 `reauth` unless the session is fresh. */
 const requireFresh = async (req: FastifyRequest, reply: FastifyReply) => {
-  if (Date.now() - Date.parse(req.sessionCreatedAt) >= FRESH_MS)
-    return reply.code(403).send({ error: 'reauth' });
+  if (!isFresh(req)) return reply.code(403).send({ error: 'reauth' });
 };
 
 const responseBody = {
