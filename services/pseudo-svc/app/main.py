@@ -169,7 +169,9 @@ def pending(pending_id: int, req: m.PendingReq):
     p = v.pending_get(req.user_id, pending_id)
     if not p:
         raise HTTPException(404, "pending not found")
-    if (p["reason"] == "collision") != (req.action in ("accept", "reject")):
+    if p["status"] != "open":  # a double tap or a stale screen must not apply an answer twice
+        raise HTTPException(409, "pending item already answered")
+    if (p["reason"] == "collision") != (req.action in ("accept", "reject", "expire")):
         raise HTTPException(422, "action does not fit this pending item")
     e = v.entity(req.user_id, p["entity_id"]) if p["entity_id"] else None
     if req.action == "allowlist" and e:
@@ -182,6 +184,6 @@ def pending(pending_id: int, req: m.PendingReq):
         S.accept_collision(v, req.user_id, p)
     # reject: the row's status alone makes later input with this text that entity's surrogate again
     v.pending_set(req.user_id, pending_id, {"confirm": "confirmed", "dismiss": "dismissed", "allowlist": "allowlisted",
-                                            "accept": "accepted", "reject": "rejected"}[req.action])
+                                            "accept": "accepted", "reject": "rejected", "expire": "expired"}[req.action])
     log.info("pending id=%d reason=%s action=%s", pending_id, p["reason"], req.action)
     return {"ok": True}

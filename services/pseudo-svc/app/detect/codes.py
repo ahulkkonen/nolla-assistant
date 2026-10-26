@@ -59,6 +59,15 @@ STREET_RE = re.compile(
 STREET_LOWER_RE = re.compile(rf"(?<![\w-])([a-zåäö][a-zåäö]*(?:-[a-zåäö]*)*?)({_suf}){_NUM}")
 # road numbers, not addresses: Valtatie 4, Kantatie 51:lle
 ROADS = frozenset("valtatie kantatie seututie yhdystie moottoritie".split())
+# a measure, not a house number: "kuntotie 5 km", "Kuntotie 3 h"; a letter before a number is a staircase
+# ("koivukuja 7 e 12")
+UNIT_RE = re.compile(r"\s?(?:km|cm|mm|m|min|h|s|kpl|%|€|e|euroa|metriä|kertaa)(?![\wåäö])(?!\s?\d)")
+# a lower-case street needs an address-like end: a staircase or an apartment, or the number at a phrase end
+# or before a postcode ("uimaranta 2 kertaa" and "lasiportti 3 metriä" are no addresses)
+PHRASE_END = re.compile(r"\s*(?:[.,;:!?)\n]|$|\d{5}(?!\d))")
+POSTCODE_RE = re.compile(r"\b(\d{5})\s+([A-ZÅÄÖ][A-Za-zÅÄÖåäö-]+)")
+# plain text: "rantatie 22 a 3 40100 jyväskylä" (only right after a street, see detect)
+POSTCODE_LOWER_RE = re.compile(r"\b(\d{5})\s+([a-zåäö][a-zåäö-]+)")
 
 
 @lru_cache(maxsize=1)
@@ -176,7 +185,11 @@ def streets(text: str, lower: bool = False) -> list[Candidate]:
         for m in rx.finditer(text):
             cls = SUFFIX_CASE[m.group(2)][0]
             name = m.group(1)[:1].upper() + m.group(1)[1:]
-            if name.lower() + cls in ROADS:
+            num = re.match(r"\s\d+", m.group(3))
+            if name.lower() + cls in ROADS or num and UNIT_RE.match(text, m.start(3) + num.end()):
+                continue
+            bare = re.fullmatch(r"\s\d{1,4}(?::[a-zä]{1,3})?", m.group(3))  # only the number
+            if rx is STREET_LOWER_RE and (not num or bare and not PHRASE_END.match(text, m.end())):
                 continue
             out.append(Candidate(m.start(), m.end(), "ADDRESS", name + STREET_SUFFIX[cls].split()[0]
                                  + m.group(3).split(":")[0], "codes", 1.0, m.group(0)))
@@ -220,8 +233,15 @@ def detect(text: str, ctx=None) -> list[Candidate]:
     for m in PLATE_RE.finditer(text):
         if _near(text, m.start(), m.end(), PLATE_CTX):
             out.append(_cand(m, "PLATE", m.group(0)))
-    # postcode and city stay as they are (phase-12 decision 13); only street name and number are masked
-    out += streets(text, ctx is not None and ctx.lower)
+    lower = ctx is not None and ctx.lower
+    st = streets(text, lower)
+    out += st
+    ends = [c.end for c in st]
+    for rx in (POSTCODE_RE, POSTCODE_LOWER_RE) if lower else (POSTCODE_RE,):
+        for m in rx.finditer(text):
+            after_street = any(0 <= m.start() - e <= 3 for e in ends)
+            if after_street or rx is POSTCODE_RE and locality(m.group(2)):
+                out.append(_cand(m, "POSTCODE_CITY", m.group(1), 1.0, 1))  # the locality itself stays
     return out
 
 

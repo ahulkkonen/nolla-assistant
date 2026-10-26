@@ -205,11 +205,12 @@ def code_surrogate(r: random.Random, kind: str, canonical: str) -> str:
 
 
 def email_surrogate(vault, user_id: str, r: random.Random, canonical: str) -> str:
-    """Name-shaped local part with two digits; a webmail domain stays, any other becomes example-N.fi, with N
-    fixed per real domain for the user, so colleagues still share a domain."""
+    """Name-shaped local part with two digits; a webmail domain stays, any other becomes example-N.invalid
+    (RFC 2606: never a real domain), with N fixed per real domain for the user, so colleagues still share a
+    domain. The local part skips the pair rule: the two digits already make the address rare."""
     domain = canonical.rsplit("@", 1)[1]
     local = f"{_ascii(pick_name(r, 'first', 'Anna'))}.{_ascii(pick_name(r, 'last', 'Virtanen'))}{r.randrange(10, 100)}"
-    return f"{local}@{domain if domain in PUBLIC_MAIL else f'example-{vault.domain_number(user_id, domain)}.fi'}"
+    return f"{local}@{domain if domain in PUBLIC_MAIL else f'example-{vault.domain_number(user_id, domain)}.invalid'}"
 
 
 def make_surrogate(vault, user_id: str, kind: str, canonical: str, gen: int):

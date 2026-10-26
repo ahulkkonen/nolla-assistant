@@ -85,7 +85,7 @@ const ERRORS = {
   prompt_failed: 'Prompt failed',
   llm_failed: 'Model call failed',
   pseudo_down: 'Pseudonymization service unavailable',
-  pseudo_collision: 'A name in the message is already a pseudonym; answer in the vault to send it',
+  held: 'The previous message waits for an answer in the vault',
   memory_full: 'Memory is full',
   memory_conflict: 'Memory changed; the write no longer applies',
   zdr_unavailable: 'No zero-data-retention endpoint for this model',
@@ -301,6 +301,8 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
   send(socket, agentsState(agents()));
   // A reload must not lose open approvals.
   for (const r of approvals.list()) send(socket, r);
+  // Nor held messages (phase-12 decision 8), nor the drops a restart caused.
+  for (const m of collisions.list()) send(socket, m);
 
   const ownTopic = (topicId: string) => {
     const t = db
@@ -366,6 +368,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
     switch (msg.type) {
       case 'vault.merge':
         await pseudo.vaultMerge(msg.fromIds, msg.intoId);
+        collisions.dropEntities([...msg.fromIds, msg.intoId]); // the question no longer stands
         break;
       case 'vault.split':
         await pseudo.vaultSplit(msg.entityId, msg.spanIds);
@@ -381,14 +384,21 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
         break;
       case 'vault.neverDetect':
         await pseudo.vaultUpdate(msg.entityId, { never_detect: true });
+        collisions.dropEntities([msg.entityId]);
         break;
       case 'vault.setMode':
         await pseudo.vaultUpdate(msg.entityId, { mode: msg.mode });
         break;
       case 'vault.pending.resolve':
-        await pseudo.vaultPending(msg.pendingId, msg.action);
-        // A message held by this collision now masks again and runs.
-        collisions.answered(msg.pendingId);
+        try {
+          await pseudo.vaultPending(msg.pendingId, msg.action);
+          // A message held by this collision now masks again and runs.
+          collisions.answered(msg.pendingId);
+        } catch (err) {
+          // 409: answered or closed meanwhile (a stale screen); the fresh state below shows it.
+          if (!(err instanceof PseudoDownError && err.message.endsWith('status 409'))) throw err;
+          collisions.drop(msg.pendingId);
+        }
         break;
     }
     send(socket, await vaultState(pseudo));
@@ -651,6 +661,8 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
         // between, and a stale session is rebuilt inside `get`.
         const { chatId } = msg;
         owned(chatId);
+        // A held message comes first (phase-12 decision 8): nothing may run ahead of it.
+        if (collisions.held(chatId)) return send(socket, errorMsg('held', chatId));
         const { images, text } = await ingestAttachments(
           db,
           { dataDir },
@@ -677,6 +689,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
         return;
       }
       case 'user.retry': {
+        if (collisions.held(msg.chatId)) return send(socket, errorMsg('held', msg.chatId));
         // Every refusal names the chat: the client then keeps its thread as it was.
         const code = await retry(msg.chatId).catch((err: unknown) => {
           if (err instanceof NotFound || err instanceof ChatNotFound) return 'not_found' as const;

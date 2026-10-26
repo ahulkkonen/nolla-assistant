@@ -106,7 +106,7 @@ def _pieces(vault, user_id: str, c, e) -> list[tuple[int, int, str]]:
         m = STREET_RE.match(c.surface[:1].upper() + c.surface[1:])
         case = f"S{SUFFIX_CASE[m.group(2)][1]}" if m else None
         return [(c.start, c.end, surrogate_form(e, "", case) + (c.surface[m.end(3):] if m else ""))]
-    if e["kind"] == "EMAIL":  # x@firma.com:iin -> y@example-3.fi:hin; an unknown ending stays as typed
+    if e["kind"] == "EMAIL":  # x@firma.fi:hin -> y@example-3.invalid:iin; an unknown ending stays as typed
         base, case = email_case(c.surface)
         return [(c.start, c.end, surrogate_form(e, "", case) if case else e["surrogate"] + c.surface[len(base):])]
     return [(c.start, c.end, e["surrogate"])]
@@ -123,8 +123,8 @@ def _surrogate_cover(vault, user_id: str, session_id: str | None, text: str,
         return []
     _, real = vault_rec.matcher(vault, user_id)
     hits = [(m, *table[m.group(0)][0][::3]) for m in rx.finditer(text) if m.group(0) not in real]
-    codes_only = [(m.start(), m.end()) for m, _, kind in hits
-                  if kind not in REALISH or m.group(0).endswith("@example.invalid")]  # pre-phase-12 email surrogates
+    # an address at an .invalid domain (RFC 2606) can never be real: covered like a code surrogate
+    codes_only = [(m.start(), m.end()) for m, _, kind in hits if kind not in REALISH or ".invalid" in m.group(0)]
     if user_input:
         return codes_only
     seen = vault.last_seen(session_id, list({eid for _, eid, _ in hits})) if hits else {}
@@ -191,14 +191,18 @@ def _owner(vault, user_id: str, c) -> int | None:
 def _collisions(vault, user_id: str, session_id: str, cands: list) -> tuple[list[dict], list]:
     """User input equal to an issued surrogate is a different real person or value with the same name or
     address (phase-12 decisions 6 and 7). Each one is parked in the pending lane; the caller fails the turn closed.
-    A mention the user said is that entity (rejected) stays as it is: it is that entity's surrogate."""
+    A mention the user said is that entity (rejected) stays as it is: it is that entity's surrogate. Its span
+    is recorded, so the session counts the entity as seen and the model's echoes in tool results keep it."""
     found, keep = [], []
     for c in cands:
         eid = _owner(vault, user_id, c)
         status = vault.collision_status(user_id, eid, c.surface) if eid else None
         if eid is None or status == "accepted":
             keep.append(c)
-        elif status != "rejected":
+        elif status == "rejected":
+            vault.record_spans(user_id, session_id, None, [dict(start=c.start, end=c.end, entity_id=eid,
+                                                                surrogate=c.surface, detector="collision", score=1.0)])
+        else:
             pid = vault.pending_add(user_id, session_id, c, eid, reason="collision")
             found.append(dict(pending_id=pid, entity_id=eid, kind=c.kind))
     return found, keep

@@ -47,7 +47,11 @@ function holdOf(s: string, surrogates: string[]) {
   return best;
 }
 
-const kindOf = (real: string) => (/\d/.test(real) ? 'hetu' : 'person');
+/** `handle` result for an answered pending item (the real sidecar answers 409). */
+const CONFLICT = Symbol('conflict');
+
+/** Upper case, as the real sidecar sends kinds. */
+const kindOf = (real: string) => (/\d/.test(real) ? 'HETU' : 'PERSON');
 
 type PendingSeed = Omit<VaultPendingRow, 'id' | 'session_id' | 'reason' | 'entity_id'>;
 
@@ -80,14 +84,16 @@ export async function startFakeSidecar(
   let nextId = entries.length + 1;
   const pending: VaultPendingRow[] = (opts.pending ?? []).map((p, i) => ({
     ...p,
+    kind: p.kind.toUpperCase(),
     id: i + 1,
     session_id: '',
     reason: 'uncertain',
     entity_id: null,
   }));
   let nextPending = pending.length + 1;
-  /** Collision texts answered so far. */
+  /** Collision texts answered so far, and pending ids already closed (a second answer gets 409). */
   const answered = new Set<string>();
+  const closed = new Set<number>();
   const entity = (kind: string, canonical: string, surrogate: string, id = nextId++) => {
     const e: VaultEntityRow = {
       id,
@@ -128,11 +134,13 @@ export async function startFakeSidecar(
       return { entity: e };
     }
     if (m?.[1] === 'pending') {
+      if (closed.has(Number(m[2]))) return CONFLICT;
       const i = pending.findIndex((p) => p.id === Number(m[2]));
       const [p] = i >= 0 ? pending.splice(i, 1) : [];
       if (!p) return;
+      closed.add(p.id);
       if (p.reason === 'collision') {
-        answered.add(p.text);
+        if (body.action !== 'expire') answered.add(p.text); // expired: asked again next time
         if (body.action === 'accept') {
           const id = nextId++;
           const to = `Uusi${id} Henkilö${id}`;
@@ -302,6 +310,7 @@ export async function startFakeSidecar(
       if (req.method !== 'POST' || typeof body.user_id !== 'string')
         return json(400, { error: 'bad request' });
       const out = handle(path, body);
+      if (out === CONFLICT) return json(409, { error: 'already answered' });
       return out ? json(200, out) : json(404, { error: 'not found' });
     });
   });

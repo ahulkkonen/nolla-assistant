@@ -33,7 +33,7 @@ def test_codes_mask_and_restore(vault):
     text = "Hetu 131052-308T, tili FI21 1234 5600 0007 85, puh. 040 123 4567, posti matti.v@example.com."
     masked, spans = mask(vault, text)
     assert [s["kind"] for s in spans] == ["HETU", "IBAN", "PHONE", "EMAIL"]
-    assert "131052-308T" not in masked and "048 " in masked and "@example-1.fi" in masked  # a company domain
+    assert "131052-308T" not in masked and "048 " in masked and "@example-1.invalid" in masked  # a company domain
     hetu = spans[0]["surrogate"]
     assert 900 <= int(hetu[7:10]) <= 999 and hetu[6] == "-"
     assert unmask(vault, masked)[0] == text
@@ -346,6 +346,14 @@ def test_collision_parks_user_input_until_answered(vault):
     assert mask(vault, text) == (text, [])
 
 
+def test_expired_collision_asks_again(vault):
+    a, text = _collide(vault)
+    pid = M.mask_input(vault, U, "s1", text)[2][0]["pending_id"]
+    vault.pending_set(U, pid, "expired")  # the held message was dropped
+    again = M.mask_input(vault, U, "s1", text)[2]
+    assert again and again[0]["pending_id"] != pid
+
+
 def test_collision_accept_makes_a_new_person_and_renames_the_old(vault):
     a, text = _collide(vault)
     pid = M.mask_input(vault, U, "s1", text)[2][0]["pending_id"]
@@ -365,6 +373,10 @@ def test_collision_reject_keeps_that_entity_and_pinned_keeps_its_surrogate(vault
     pid = M.mask_input(vault, U, "s1", text)[2][0]["pending_id"]
     vault.pending_set(U, pid, "rejected")
     assert M.mask_input(vault, U, "s1", text) == (text, [], [])  # it is that entity's surrogate: stays
+    # the reject recorded a span: the model's echo in a tool result keeps the surrogate, and the reply restores
+    tool = {"content": [f"Löytyi: {a['surrogate']}"]}
+    assert M.mask(vault, U, "s1", json=tool) == (tool, [])
+    assert unmask(vault, f"Soitan, {a['surrogate']} vastaa.")[0] == "Soitan, Mikko Virtanen vastaa."
     b, text_b = _collide(vault, "Sanna Hyvönen")
     vault.set_fields(U, b["id"], pinned=1)
     S.accept_collision(vault, U, vault.pending_get(U, M.mask_input(vault, U, "s1", text_b)[2][0]["pending_id"]))
@@ -372,20 +384,22 @@ def test_collision_reject_keeps_that_entity_and_pinned_keeps_its_surrogate(vault
 
 
 def test_email_surrogates_keep_the_domain_class(vault):
-    masked, spans = mask(vault, "Kirjoitin tuomas@firma.com:iin, liisa@firma.com ja x.y@gmail.com sekä a@toinen.fi.")
+    masked, spans = mask(vault, "Kirjoitin tuomas@firma.fi:hin, liisa@firma.fi ja x.y@gmail.com sekä a@toinen.fi.")
     s1, s2, s3, s4 = [s["surrogate"] for s in spans]
-    assert s1.endswith("@example-1.fi:hin") and s2.endswith("@example-1.fi") and s4.endswith("@example-2.fi")
+    assert s1.endswith("@example-1.invalid:iin") and s2.endswith("@example-1.invalid")  # same domain, same N
+    assert s4.endswith("@example-2.invalid")
     assert re.fullmatch(r"[a-z]+\.[a-z]+\d\d@gmail\.com", s3)  # webmail stays webmail
-    assert unmask(vault, masked)[0] == "Kirjoitin tuomas@firma.com:iin, liisa@firma.com ja x.y@gmail.com sekä a@toinen.fi."
+    # the case moves to the surrogate's ending class (fi:hin -> invalid:iin) and back
+    assert unmask(vault, masked)[0] == "Kirjoitin tuomas@firma.fi:hin, liisa@firma.fi ja x.y@gmail.com sekä a@toinen.fi."
     e = vault.entity(U, spans[0]["entity_id"])
-    assert S.surrogate_form(e, "", "ELA") == e["surrogate"] + ":stä"
+    assert S.surrogate_form(e, "", "ELA") == e["surrogate"] + ":ista"
 
 
-def test_street_addresses_keep_postcode_and_city(vault):
+def test_street_and_postcode_are_two_spans(vault):
     text = "Asumme Lehtikaarteella 4, 02210 Espoo. Mökki: Strandvägen 3."
     masked, spans = mask(vault, text)
-    assert [s["kind"] for s in spans] == ["ADDRESS", "ADDRESS"] and "02210 Espoo" in masked
-    assert re.search(r"[A-ZÅÄÖ][a-zäö]+kaarteella \d+, 02210 Espoo", masked) and "vägen " in masked
+    assert [s["kind"] for s in spans] == ["ADDRESS", "POSTCODE_CITY", "ADDRESS"] and "02210" not in masked
+    assert re.search(r"[A-ZÅÄÖ][a-zäö]+kaarteella \d+, 099\d\d Espoo", masked) and "vägen " in masked
     assert unmask(vault, masked)[0] == text
     assert mask(vault, "asun koivukuja 7 b 12")[1][0]["kind"] == "ADDRESS"  # plain text: lower case too
     assert M.mask(vault, U, "s1", json={"p": "koivukuja 7 b 12"})[1] == []  # tool results: capitalised only
@@ -422,3 +436,19 @@ def test_surname_with_a_particle_is_masked_whole(vault):
     masked, spans = mask(vault, text)
     assert "Hertzen" not in masked and " von " in masked and len(spans) == 1
     assert unmask(vault, masked)[0] == text
+
+
+def test_plural_locative_of_a_surname_keeps_its_case(vault):
+    e = S.get_or_create_entity(vault, U, "PERSON", "Mikko Virtanen")
+    text = "ensin olimme Virtasilla, ja ensi kerralla mennään virtasille."
+    masked, spans = mask(vault, text)
+    assert [s["surrogate"] for s in spans] == [S.surrogate_form(e, "last", "PL_ADE"), S.surrogate_form(e, "last", "PL_ALL")]
+    assert unmask(vault, masked)[0] == "ensin olimme Virtasilla, ja ensi kerralla mennään Virtasille."
+
+
+def test_full_name_wins_over_a_newer_lone_first_name(vault):
+    S.get_or_create_entity(vault, U, "PERSON", "Tiina Kokko")
+    S.get_or_create_entity(vault, U, "PERSON", "Tiina")  # newer, owns "tiina" too
+    masked, spans = mask(vault, "tiina kokko lähti jo")
+    assert masked == spans[0]["surrogate"] + " lähti jo" and len(spans[0]["surrogate"].split()) == 2
+    assert vault.entity(U, spans[0]["entity_id"])["canonical"] == "Tiina Kokko"

@@ -5,7 +5,7 @@ import { setup, toolMessageContent } from '@pa/contract-tests/src/harness.ts';
 import type { FakeTurn } from '@pa/fake-llm';
 import { afterEach, expect, test, vi } from 'vitest';
 import { startFakeSidecar } from './fake-sidecar.ts';
-import { PseudoClient, pseudoExtension } from './index.ts';
+import { type Collision, PseudoClient, pseudoExtension } from './index.ts';
 
 const DICT = {
   'Matti Virtanen': 'Pekka Laaksonen',
@@ -27,7 +27,7 @@ async function boot(
   extra: ExtensionFactory[] = [],
   tools?: string[],
   learn = false,
-  collide: { names?: string[]; wait?: (ids: number[]) => Promise<boolean> } = {},
+  collide: { names?: string[]; wait?: (c: Collision[]) => Promise<boolean> } = {},
 ) {
   const sc = await startFakeSidecar(
     { ...DICT },
@@ -198,7 +198,7 @@ test('context_with_system masks a leaked real value and logs it', async () => {
   const leaks = logs.filter((l) => l.msg === 'pseudo leak');
   expect(leaks.at(-1)).toMatchObject({
     level: 'warn',
-    data: { kind: 'person', entityId: 1, messageIndex: expect.any(Number) },
+    data: { kind: 'PERSON', entityId: 1, messageIndex: expect.any(Number) },
   });
   noReal(JSON.stringify(logs));
 });
@@ -285,8 +285,8 @@ test('sidecar down: tool call blocked with pseudo_down', async () => {
 async function bootCollision() {
   const asked: number[][] = [];
   let answer: (ok: boolean) => void = () => {};
-  const wait = (ids: number[]) => {
-    asked.push(ids);
+  const wait = (c: Collision[]) => {
+    asked.push(c.map((x) => x.pending_id));
     return new Promise<boolean>((r) => (answer = r));
   };
   const pi = await boot([{ text: 'ok' }], [], undefined, false, {
@@ -345,4 +345,23 @@ test('without awaitCollision (a child process) input is not checked for collisio
   await session.prompt('Pekka Laaksonen kirjoitti tehtävän');
   expect(sc.requests.find((r) => r.path === '/mask')?.body.user_input).toBeUndefined();
   expect(llm.requests).toHaveLength(1);
+});
+
+test('collisions that keep coming after three answers drop the input and log it once', async () => {
+  const waits: Collision[][] = [];
+  const { llm, logs, session } = await boot([{ text: 'ok' }], [], undefined, false, {
+    names: ['Pekka Laaksonen'],
+    wait: async (c) => (waits.push(c), true), // "answered", but the row stays open
+  });
+  await session.prompt('Pekka Laaksonen?');
+  expect(waits).toHaveLength(3);
+  expect(logs.filter((l) => l.msg === 'pseudo_collision')).toHaveLength(3);
+  expect(logs.filter((l) => l.msg === 'pseudo_collision_dropped')).toEqual([
+    {
+      level: 'warn',
+      msg: 'pseudo_collision_dropped',
+      data: { hook: 'input', pendingIds: [1], kinds: ['PERSON'] },
+    },
+  ]);
+  expect(llm.requests).toHaveLength(0);
 });

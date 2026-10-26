@@ -21,12 +21,11 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 CODE_KINDS = {"HETU", "IBAN", "PHONE"}
 # Phase-12 gate (docs/decisions/phase-12-pseudo.md): recall per group, precision per predicted kind.
-THRESHOLDS = {"codes": 1.0, "PERSON": 0.98, "EMAIL": 0.95, "ADDRESS": 0.95}
+THRESHOLDS = {"codes": 1.0, "PERSON": 0.98, "EMAIL": 0.95, "ADDRESS": 0.95, "POSTCODE_CITY": 1.0}
 PRECISION_MIN = 0.97
-PRECISION_KINDS = ("PERSON", "EMAIL", "ADDRESS", "HETU", "IBAN", "PHONE")
-# Not recall targets: brand names, and postcodes with their city, which stay as they are (phase 12).
-# A prediction that overlaps only these is a false positive.
-NOT_TARGETS = {"ORG", "POSTCODE_CITY"}
+PRECISION_KINDS = ("PERSON", "EMAIL", "ADDRESS", "POSTCODE_CITY", "HETU", "IBAN", "PHONE")
+# Not recall targets: brand names. A prediction that overlaps only these is a false positive.
+NOT_TARGETS = {"ORG"}
 
 
 def _validate_module():
@@ -85,12 +84,27 @@ def overlaps(a: dict, b: dict) -> bool:
     return a["start"] < b["end"] and b["start"] < a["end"]
 
 
+def covered(text: str, gold: dict, preds: list[dict]) -> bool:
+    """Every non-space character of the gold span lies inside a prediction. A partly masked value is a
+    miss: "Carl von Hertzenin" with only "Carl" masked leaks the surname. For POSTCODE_CITY only the five
+    digits count: the city stays by design (phase 3)."""
+    if gold["kind"] == "POSTCODE_CITY":
+        gold = {**gold, "end": gold["start"] + 5}
+    inside = [(p["start"], p["end"]) for p in preds if overlaps(p, gold)]
+    i = gold["start"]  # UTF-16 offset of ch
+    for ch in surface(text, gold):
+        if not ch.isspace() and not any(s <= i and i + u16len(ch) <= e for s, e in inside):
+            return False
+        i += u16len(ch)
+    return True
+
+
 def score(recs: list[dict], preds: dict[str, list[dict]], known: set[str]) -> dict:
     """Recall per gold kind and group; precision per predicted kind and per detector.
 
-    A gold span counts as found when any predicted span overlaps it (the kind does not have to match:
-    what matters is that the value is masked). ORG and POSTCODE_CITY gold spans are not recall targets;
-    a prediction that only overlaps them or nothing counts as a false positive.
+    A gold span counts as found when predicted spans cover all of it (the kind does not have to match:
+    what matters is that the value is masked); one that predictions only overlap is a partial miss. ORG
+    gold spans are not recall targets; a prediction that only overlaps them or nothing is a false positive.
     """
     gold_tot, gold_hit = Counter(), Counter()
     pred_tot, pred_tp = Counter(), Counter()
@@ -106,13 +120,15 @@ def score(recs: list[dict], preds: dict[str, list[dict]], known: set[str]) -> di
             if g["kind"] == "PERSON":
                 groups.append("vault_known_names" if g["ref"] in known else "unseen_names")
             hits = [p for p in ps if overlaps(p, g)]
+            found = bool(hits) and covered(r["text"], g, hits)
             for k in groups:
                 gold_tot[k] += 1
-                gold_hit[k] += bool(hits)
-            if hits:
+                gold_hit[k] += found
+            if found:
                 det_first[hits[0]["detector"]] += 1
             else:
-                misses.append({"id": r["id"], "kind": g["kind"], "surface": surface(r["text"], g), "groups": groups})
+                misses.append({"id": r["id"], "kind": g["kind"], "surface": surface(r["text"], g), "groups": groups,
+                               "partial": bool(hits)})
         for p in ps:
             tp = any(overlaps(p, g) for g in targets)
             pred_tot[p["kind"]] += 1
@@ -154,7 +170,9 @@ def report(res: dict) -> None:
     print("by detector:")
     for k, v in res["by_detector"].items():
         print(f"  {k:18} predicted {v['predicted']:4} precision {v['precision']}  recall share {v['recall_share']}")
-    print(f"false positives: {len(res['false_positives'])}  decoy hits: {len(res['decoy_hits'])}  misses: {len(res['misses'])}")
+    partial = sum(m["partial"] for m in res["misses"])
+    print(f"false positives: {len(res['false_positives'])}  decoy hits: {len(res['decoy_hits'])}  "
+          f"misses: {len(res['misses'])} (partly masked: {partial})")
     for k, v in res["thresholds"].items():
         print(f"  {'PASS' if v['pass'] else 'FAIL'} {k}: {v['value']} (min {v['min']})")
 
@@ -175,6 +193,9 @@ def self_test() -> None:
     assert res["recall"]["vault_known_names"]["recall"] == 1.0 and res["thresholds"]["precision PERSON"]["pass"]
     assert res["thresholds"]["EMAIL"]["value"] is None and not res["thresholds"]["EMAIL"]["pass"]
     assert score([rec], {"t1": got[:1]}, set())["recall"]["PHONE"]["recall"] == 0.0
+    half = [{**got[0], "end": got[0]["end"] - 4}]  # "Virtas" of "Virtaselle": a partial mask is a miss
+    res = score([rec], {"t1": half}, set())
+    assert res["recall"]["PERSON"]["recall"] == 0.0 and res["misses"][0]["partial"]
 
 
 def main() -> int:

@@ -186,13 +186,25 @@ def known_name(word: str) -> bool:
     return bool(readings(word) & {"FIRST", "LAST"})
 
 
+@lru_cache(maxsize=1)
+def _common_surnames() -> dict[str, list[str]]:
+    """First two letters -> DVV surnames with at least LONE_SURNAME_MIN holders (all in the precomputed tables)."""
+    idx = defaultdict(list)
+    for n, c in names()["last"].items():
+        if c >= LONE_SURNAME_MIN and n.isalpha():
+            idx[n[:2]].append(n)
+    return idx
+
+
 @lru_cache(maxsize=50000)
 def surname_shaped(word: str) -> str | None:
     """The DVV surname with at least LONE_SURNAME_MIN holders that the capitalised token is an inflected form
-    of (Nyströmille -> Nyström), else None. The bare nominative does not count: from and said are DVV surnames."""
-    return next((lemma for lemma, kind in lemmas(word) if kind == "last" and word != lemma
-                 and _count(lemma, "last") >= LONE_SURNAME_MIN and word in forms.generate_forms(lemma, "last").values()),
-                None)
+    of (Nyströmille -> Nyström), else None. The bare nominative does not count: from and said are DVV surnames.
+    Only the form tables are read, not Voikko or Omorfi: this runs on every unknown lower-case word."""
+    if len(word) < 4:
+        return None
+    return next((n for n in _common_surnames().get(word[:2], ()) if n != word and _lcp(n, word) >= max(2, len(n) - 3)
+                 and word in forms.generate_forms(n, "last").values()), None)
 
 
 def lower_names(text: str) -> list[Candidate]:
@@ -208,9 +220,11 @@ def lower_names(text: str) -> list[Candidate]:
         w = m.group(0)
         if w in LOWER_STOP or not plain_word(text, m.start(), m.end()):
             continue
-        if lexicon and not known_name(cap(w)) and (common_word(w) or not surname_shaped(cap(w))):
+        known = not lexicon or known_name(cap(w))
+        shaped = None if known or common_word(w) else surname_shaped(cap(w))
+        if not (known or shaped):
             continue
-        lem = lemmas(cap(w))
+        lem = lemmas(cap(w)) if known else ((shaped, "last"),)
         first = next((l for l, k in lem if k == "first" and _count(l, "first") >= MIN_FIRST_COUNT), None)
         last = next((l for l, k in lem if k == "last" and _count(l, "last") >= MIN_SURNAME_COUNT), None)
         if first or last:

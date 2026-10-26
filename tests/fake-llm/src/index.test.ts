@@ -90,3 +90,74 @@ test('an error turn answers with its status; GET /models serves the catalog', as
     await fake.close();
   }
 });
+
+test('reasoning streams before the text; the usage chunk carries cost and token details', async () => {
+  const fake = await startFakeLlm([
+    {
+      text: 'vastaus',
+      reasoning: 'mietin ensin',
+      thinkMs: 30,
+      usage: {
+        prompt_tokens: 100,
+        completion_tokens: 20,
+        cost: 0.0123,
+        reasoning_tokens: 5,
+        cached_tokens: 40,
+      },
+    },
+    { text: 'ilman', reasoning: 'lyhyt' },
+  ]);
+  const call = (stream: boolean) =>
+    fetch(`${fake.url}/chat/completions`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'm',
+        stream,
+        stream_options: { include_usage: true },
+        messages: [],
+      }),
+    });
+  try {
+    const start = Date.now();
+    const e = events(await (await call(true)).text());
+    expect(Date.now() - start).toBeGreaterThanOrEqual(30);
+    const deltas = e.flatMap((x) => x.choices.map((c: { delta: object }) => c.delta));
+    const firstText = deltas.findIndex((d) => d.content);
+    const lastThink = deltas.findLastIndex((d) => d.reasoning_content);
+    expect(deltas.map((d) => d.reasoning_content ?? '').join('')).toBe('mietin ensin');
+    expect(lastThink).toBeLessThan(firstText);
+    expect(e.at(-1).usage).toEqual({
+      prompt_tokens: 100,
+      completion_tokens: 20,
+      total_tokens: 120,
+      prompt_tokens_details: { cached_tokens: 40 },
+      completion_tokens_details: { reasoning_tokens: 5 },
+      cost: 0.0123,
+    });
+    const body = (await (await call(false)).json()) as {
+      choices: { message: { reasoning_content?: string } }[];
+      usage: object;
+    };
+    expect(body.choices[0]?.message.reasoning_content).toBe('lyhyt');
+    expect(body.usage).toEqual({ prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 });
+  } finally {
+    await fake.close();
+  }
+});
+
+test('GET the ECB path serves the rate CSV and is not a recorded request', async () => {
+  const fake = await startFakeLlm();
+  try {
+    const res = await fetch(
+      `${fake.url}/service/data/EXR/D.USD.EUR.SP00.A?lastNObservations=1&format=csvdata&detail=dataonly`,
+    );
+    expect(res.headers.get('content-type')).toBe('text/csv');
+    expect((await res.text()).split('\n')[1]).toBe(
+      'EXR.D.USD.EUR.SP00.A,D,USD,EUR,SP00,A,2026-10-23,1.1193',
+    );
+    expect(fake.requests).toHaveLength(0);
+  } finally {
+    await fake.close();
+  }
+});

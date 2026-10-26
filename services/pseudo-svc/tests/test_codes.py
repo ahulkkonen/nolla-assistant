@@ -54,7 +54,7 @@ def test_plates_need_context():
 def test_addresses_and_postcodes():
     found = kinds("Asun Hämeenkadulla 21 A 4, 33100 Tampereella. Paketti Asema-aukiolta 1 ja Kalevankaari 11 as 3.")
     assert ("ADDRESS", "Hämeenkadulla 21 A 4") in found
-    assert not [k for k in found if k[0] == "POSTCODE_CITY"]  # postcode and city stay as they are (phase 12)
+    assert ("POSTCODE_CITY", "33100") in found
     assert ("ADDRESS", "Asema-aukiolta 1") in found
     assert ("ADDRESS", "Kalevankaari 11 as 3") in found
     assert not kinds("Remontti maksoi 12500 euroa.")
@@ -74,11 +74,34 @@ def test_phase12_streets():
 def test_phase12_lowercase_street_in_plain_text():
     from app.mask import Ctx
 
-    found = [(c.kind, c.surface, c.canonical) for c in detect("asun koivukuja 7 b 12", Ctx(None, "u", lower=True))]
-    assert found == [("ADDRESS", "koivukuja 7 b 12", "Koivukuja 7 b 12")]
+    found = [(c.kind, c.surface, c.canonical) for c in detect("asun koivukuja 7 b 12 33100 tampere", Ctx(None, "u", lower=True))]
+    assert found == [("ADDRESS", "koivukuja 7 b 12", "Koivukuja 7 b 12"), ("POSTCODE_CITY", "33100", "33100")]
+    assert not [c for c in detect("maksoin 12500 euroa", Ctx(None, "u", lower=True))]  # a number, no street before
 
 
 def test_phase12_emails():
     assert kinds("Kuva logo@2x.png ja ikoni@3x.webp") == []
     assert kinds("Kirjoitin x.y@firma.fi:hin ja a@b.com:iin, c@d.fi:xyz") == [
         ("EMAIL", "x.y@firma.fi:hin"), ("EMAIL", "a@b.com:iin"), ("EMAIL", "c@d.fi")]
+
+
+def test_phase12_lowercase_street_needs_an_address_shape():
+    from app.mask import Ctx
+
+    def found(text):
+        return [c.surface for c in detect(text, Ctx(None, "u", lower=True)) if c.kind == "ADDRESS"]
+
+    for decoy in ["mennään uimaranta 2 kertaa viikossa", "kuntotie 5 km on kevyt", "lasiportti 3 metriä leveä",
+                  "Kuntotie 5 km on kevyt"]:
+        assert found(decoy) == [], decoy
+    assert found("oon koulutiellä 3") == ["koulutiellä 3"]  # the number at a phrase end
+    assert found("asun koivukuja 7 e 12 jos tuut") == ["koivukuja 7 e 12"]  # staircase e, not euros
+    assert found("rantatie 22 40100 jyväskylä") == ["rantatie 22"]  # before a postcode
+
+
+def test_phase12_suffix_classes_keep_their_case_index():
+    from app.detect.codes import STREET_SUFFIX, SUFFIX_CASE
+
+    old = ("katu", "tie", "kuja", "polku", "väylä", "kaari", "rinne", "raitti", "ranta", "tori", "aukio")
+    before = {f: (c, i) for c in old for i, f in enumerate(STREET_SUFFIX[c].split())}  # the phase-3 table
+    assert all(SUFFIX_CASE[f] == v for f, v in before.items())

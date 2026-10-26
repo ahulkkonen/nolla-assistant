@@ -1,7 +1,13 @@
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openDb, users } from '@pa/db';
-import { PSEUDO_COLLISION, PSEUDO_DOWN, PseudoClient, type PseudoLog } from '@pa/pi-ext-pseudo';
+import {
+  PSEUDO_COLLISION,
+  PSEUDO_COLLISION_DROPPED,
+  PSEUDO_DOWN,
+  PseudoClient,
+  type PseudoLog,
+} from '@pa/pi-ext-pseudo';
 import type { ServerMessage } from '@pa/protocol';
 import { loadAgents, watchAgents } from './agents.ts';
 import { approvals as approvalStore } from './approval.ts';
@@ -102,15 +108,36 @@ export async function start(
     const hook = (data as { hook?: string } | undefined)?.hook;
     if (msg === PSEUDO_DOWN && (hook === 'input' || hook === 'context_with_system'))
       broadcast(rooms, chatId, errorMsg('pseudo_down', chatId));
-    // The message waits for an answer in the vault (phase-12 decision 7): say so, and show the item.
-    if (msg === PSEUDO_COLLISION && pseudo) {
-      broadcast(rooms, chatId, errorMsg('pseudo_collision', chatId));
-      vaultState(pseudo).then(sendAll, (err: unknown) =>
-        app.log.warn({ chatId, error: String(err) }, 'vault state after collision failed'),
-      );
-    }
+    // The message waits (`chat.held` came from the wait): show the item on every screen.
+    if (msg === PSEUDO_COLLISION) vaultToAll(chatId);
+    if (msg === PSEUDO_COLLISION_DROPPED)
+      collisions.gaveUp(chatId, (data as { pendingIds: number[] }).pendingIds);
   };
-  const collisions = collisionWaits();
+  const vaultToAll = (chatId?: string) =>
+    pseudo &&
+    vaultState(pseudo).then(sendAll, (err: unknown) =>
+      app.log.warn({ chatId, error: String(err) }, 'vault state after collision failed'),
+    );
+  // Phase-12 decisions 7 and 8: holds, and the pending items a dropped hold closes.
+  const collisions = collisionWaits({
+    notify: (chatId, m) => broadcast(rooms, chatId, m),
+    expire: (ids) => {
+      if (!pseudo) return;
+      Promise.allSettled(ids.map((id) => pseudo.vaultPending(id, 'expire'))).then(() =>
+        vaultToAll(),
+      );
+    },
+  });
+  // A restart drops every held message: close their items, and release the chats to new sockets.
+  if (pseudo)
+    pseudo.vaultList().then(
+      ({ pending }) => {
+        const open = pending.filter((p) => p.reason === 'collision');
+        collisions.orphan([...new Set(open.map((p) => p.session_id))]);
+        for (const p of open) void pseudo.vaultPending(p.id, 'expire').catch(() => {});
+      },
+      (err: unknown) => app.log.warn({ error: String(err) }, 'collision cleanup at startup failed'),
+    );
   // `app` exists by the time any memory callback runs.
   const memory = memoryStore({
     db,

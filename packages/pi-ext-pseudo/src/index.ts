@@ -1,5 +1,5 @@
 import type { ExtensionFactory, ToolResultEventResult } from '@earendil-works/pi-coding-agent';
-import type { Json, PseudoClient } from './client.ts';
+import type { Collision, Json, PseudoClient } from './client.ts';
 
 export * from './client.ts';
 
@@ -7,8 +7,10 @@ export type PseudoLog = (level: 'warn' | 'debug', msg: string, data?: object) =>
 
 /** Logged (at `warn`) whenever the sidecar fails; the host tells the user. */
 export const PSEUDO_DOWN = 'pseudo_down';
-/** Logged (at `warn`) when user input names an issued surrogate; the host tells the user. */
+/** Logged (at `warn`) when user input names an issued surrogate; the input waits for `awaitCollision`. */
 export const PSEUDO_COLLISION = 'pseudo_collision';
+/** Logged (at `warn`) when collisions keep coming after three answers: the input is dropped, nothing waits. */
+export const PSEUDO_COLLISION_DROPPED = 'pseudo_collision_dropped';
 
 /**
  * Masks everything that enters the Pi session and unmasks tool arguments (plan §6, invariant 1).
@@ -22,10 +24,10 @@ export function pseudoExtension(opts: {
   log?: PseudoLog;
   /**
    * When set, what the user types is checked for names equal to issued surrogates (phase-12
-   * decision 5). The input waits for this: true once the user answered every pending id (the text
+   * decision 5). The input waits for this: true once the user answered every collision (the text
    * is masked again), false to drop it. Unset (a child process, no user to ask): no check.
    */
-  awaitCollision?: (pendingIds: number[]) => Promise<boolean>;
+  awaitCollision?: (collisions: Collision[]) => Promise<boolean>;
 }): ExtensionFactory {
   const { client, sessionId, log = () => {}, awaitCollision } = opts;
   const down = (hook: string, err: unknown) =>
@@ -40,15 +42,19 @@ export function pseudoExtension(opts: {
         let r = await client.mask(sessionId, event.text, { userInput });
         // Fail closed until the user answers in the vault; a later answer can raise a new collision.
         for (let round = 0; r.collisions?.length; round++) {
-          const pendingIds = r.collisions.map((c) => c.pending_id);
-          // Waiting before the host hears of it, so an answer cannot come first.
-          const answered = round < 3 ? awaitCollision?.(pendingIds) : undefined;
-          log('warn', PSEUDO_COLLISION, {
+          const data = {
             hook: 'input',
-            pendingIds,
+            pendingIds: r.collisions.map((c) => c.pending_id),
             kinds: r.collisions.map((c) => c.kind),
-          });
-          if (!answered || !(await answered)) return { action: 'handled' };
+          };
+          if (round >= 3 || !awaitCollision) {
+            log('warn', PSEUDO_COLLISION_DROPPED, data);
+            return { action: 'handled' };
+          }
+          // Waiting before the host hears of it, so an answer cannot come first.
+          const answered = awaitCollision(r.collisions);
+          log('warn', PSEUDO_COLLISION, data);
+          if (!(await answered)) return { action: 'handled' };
           r = await client.mask(sessionId, event.text, { userInput });
         }
         const { masked, spans } = r;

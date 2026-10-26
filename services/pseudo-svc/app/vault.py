@@ -139,7 +139,7 @@ class Vault:
                                    " DO UPDATE SET value=value+1 RETURNING value", (user_id, name)).fetchone()[0]
 
     def domain_number(self, user_id: str, domain: str) -> int:
-        """N of example-N.fi for a real email domain: assigned once per user and domain, never reused."""
+        """N of example-N.invalid for a real email domain: assigned once per user and domain, never reused."""
         key = f"email_domain:{domain}"
         with self.lock:
             hit = self.q("SELECT value FROM counter WHERE user_id=? AND name=?", (user_id, key))
@@ -262,11 +262,12 @@ class Vault:
     # -- pending lane
     def pending_add(self, user_id: str, session_id: str, c, entity_id: int, reason: str = "uncertain") -> int | None:
         """Queue a detection once per (entity, kind, text, reason), whatever its later status. Returns the id of
-        the open row (new or queued before), None when the row was answered already."""
+        the open row (new or queued before), None when the row was answered already. An expired collision row
+        (its held message was dropped) gets a new row: the question is asked again."""
         with self.lock:
             hit = self.q("SELECT id, status FROM pending WHERE user_id=? AND entity_id=? AND kind=? AND text=?"
                          " AND reason=? ORDER BY id DESC LIMIT 1", (user_id, entity_id, c.kind, c.surface, reason))
-            if hit:
+            if hit and hit[0]["status"] != "expired":
                 return hit[0]["id"] if hit[0]["status"] == "open" else None
             return self.x("INSERT INTO pending(user_id,session_id,kind,text,start,end,detector,score,created_at,"
                           "entity_id,reason,canonical) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",

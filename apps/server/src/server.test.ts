@@ -356,7 +356,7 @@ test('vault: list, merge, pin and pending resolve answer with vault.state', {
   expect(state.pending).toEqual([
     {
       id: 1,
-      kind: 'person',
+      kind: 'PERSON',
       text: 'Koski',
       detector: 'gliner',
       score: 0.4,

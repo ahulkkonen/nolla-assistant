@@ -28,8 +28,6 @@ def matcher(vault, user_id: str, side: str = "real"):
     global compiles
     table = defaultdict(list)
     for form, eid, part, analysis, kind in vault.all_forms(user_id, side):
-        if side == "real" and kind == "POSTCODE_CITY":
-            continue  # postcodes stay as they are since phase 12; old entities still restore
         if len(form) <= MAX_FORM:
             table[form].append((eid, part, analysis, kind))
             if side == "real" and kind in NAMES and form.lower() != form:
@@ -98,16 +96,24 @@ def detect(text: str, ctx) -> list[Candidate]:
     rx, table = scoped(ctx.vault, ctx.user_id, ctx.only, ctx.lower) if ctx.only else matcher(ctx.vault, ctx.user_id)
     if not rx:
         return []
-    hits = []
+    found = []
     for m in rx.finditer(text):
         opts = table[m.group(0)]
         if m.group(0).islower() and opts[0][3] in NAMES and not (ctx.lower and plain_word(text, m.start(), m.end())):
             continue  # a lower-case variant: plain text only, never in a path or identifier
+        found.append((m, opts))
+    hits = []
+    for i, (m, opts) in enumerate(found):
+        # an adjacent name part of one of the same people: "tiina kokko" is Tiina Kokko, even when a newer
+        # entity also owns "tiina" (else "kokko" stays a lone ordinary word and leaks)
+        near = {o[0] for j in (i - 1, i + 1) if 0 <= j < len(found)
+                and text[min(m.end(), found[j][0].end()):max(m.start(), found[j][0].start())] == " "
+                for o in found[j][1]}
         recent = {}
         if len({o[0] for o in opts}) > 1 and ctx.session_id:
             recent = ctx.vault.last_seen(ctx.session_id, [o[0] for o in opts])
-        # most recent referent in the session, else the newest entity
-        opts = sorted(opts, key=lambda o: (recent.get(o[0], 0), o[0]), reverse=True)
+        # a neighbour's person, else the most recent referent in the session, else the newest entity
+        opts = sorted(opts, key=lambda o: (o[0] in near, recent.get(o[0], 0), o[0]), reverse=True)
         eid, part, analysis, kind = opts[0]
         hits.append((m, eid, part, analysis, kind))
     out: list[Candidate] = []

@@ -13,13 +13,14 @@ from functools import lru_cache
 from pathlib import Path
 
 SG_CASES = ["NOM", "GEN", "PAR", "ESS", "TRA", "INE", "ELA", "ILL", "ADE", "ABL", "ALL", "ABE"]
-PL_CASES = ["NOM", "GEN", "PAR", "INS", "COM"]
+# plural locatives too: the family (mennään Laaksosille, Laaksosilla, Laaksosiin), phase-12 decision 17
+PL_CASES = ["NOM", "GEN", "PAR", "INS", "COM", "INE", "ELA", "ILL", "ADE", "ABL", "ALL"]
 POSS = {"SG1": "ni", "SG2": "si", "3": "nsA", "PL1": "mme", "PL2": "nne"}
 CLITICS = {"KIN": "kin", "HAN": "hAn", "KO": "kO"}
 CLITIC_CASES = SG_CASES  # clitics on every singular case, plan asks for NOM and GEN at least
 
 # key -> omorfi tag suffix. Only the bare cases go through Omorfi; clitic and possessive forms are
-# built from them by rule (they only append a suffix), which keeps generation at 17 lookups per name.
+# built from them by rule (they only append a suffix), which keeps generation at 23 lookups per name.
 KEYS: dict[str, str] = {c: f"[NUM=SG][CASE={c}]" for c in SG_CASES}
 KEYS.update({f"PL_{c}": f"[NUM=PL][CASE={c}]" for c in PL_CASES})
 
@@ -135,6 +136,10 @@ def _rule_forms(word: str, kind: str) -> dict[str, str]:
         "ALL": weak + "lle", "ABE": weak + "tt" + A,
         "PL_NOM": weak + "t", "PL_GEN": pl_gen, "PL_PAR": pl_par,
         "PL_INS": pl_weak + "n", "PL_COM": pl + "neen",
+        "PL_INE": pl_weak + "ss" + A, "PL_ELA": pl_weak + "st" + A, "PL_ADE": pl_weak + "ll" + A,
+        "PL_ABL": pl_weak + "lt" + A, "PL_ALL": pl_weak + "lle",
+        # a stem in a diphthong takes -hin (Lindqvisteihin, Kokkoihin), else -in (Laaksosiin, Lahtiin)
+        "PL_ILL": pl + ("hin" if pl[-2:-1] in VOWELS else "in"),
     }
     poss_stem = strong if cls != "cons" else word + "i"
     for p, suf in POSS.items():

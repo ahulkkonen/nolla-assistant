@@ -8,11 +8,30 @@ import type { AddressInfo } from 'node:net';
  * job) then cannot take each other's turns.
  */
 export type FakeTurn = (
-  | { text: string; usage?: { prompt_tokens: number; completion_tokens: number } }
-  | { toolCalls: { id?: string; name: string; args: Record<string, unknown> }[]; text?: string }
+  | ({ text: string } & FakeReply)
+  | ({ toolCalls: { id?: string; name: string; args: Record<string, unknown> }[]; text?: string } & FakeReply)
   /** An HTTP error before the stream, as LiteLLM passes an upstream refusal or outage on. */
   | { error: { status: number; message: string } }
 ) & { match?: string | RegExp };
+/**
+ * Phase 13: `reasoning` streams as `reasoning_content` deltas before the text (LiteLLM's field),
+ * `thinkMs` waits after them. `usage.cost` is OpenRouter's billed USD, which LiteLLM passes on.
+ */
+type FakeReply = {
+  reasoning?: string;
+  thinkMs?: number;
+  usage?: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    cost?: number;
+    reasoning_tokens?: number;
+    cached_tokens?: number;
+  };
+};
+/** The ECB rate the fake serves (`ECB_RATES` = `url`): USD per 1 EUR, as the live probe got it. */
+export const FAKE_ECB_CSV =
+  'KEY,FREQ,CURRENCY,CURRENCY_DENOM,EXR_TYPE,EXR_SUFFIX,TIME_PERIOD,OBS_VALUE\n' +
+  'EXR.D.USD.EUR.SP00.A,D,USD,EUR,SP00,A,2026-10-23,1.1193\n';
 /** An OpenRouter `/api/v1/models` entry; `zdr` marks the ids that `?zdr=true` returns. */
 export type FakeCatalogModel = { id: string; zdr: boolean } & Record<string, unknown>;
 
@@ -114,6 +133,10 @@ export async function startFakeLlm(
       res.end(JSON.stringify(obj));
     };
     const path = req.url?.split('?')[0] ?? '';
+    if (req.method === 'GET' && path.endsWith('/service/data/EXR/D.USD.EUR.SP00.A')) {
+      res.writeHead(200, { 'Content-Type': 'text/csv' });
+      return res.end(FAKE_ECB_CSV);
+    }
     if (req.method === 'GET' && path.endsWith('/models')) {
       const zdrOnly = new URLSearchParams(req.url?.split('?')[1]).get('zdr') === 'true';
       return json(200, {
@@ -148,7 +171,7 @@ export async function startFakeLlm(
     }
     let raw = '';
     req.on('data', (c) => (raw += c));
-    req.on('end', () => {
+    req.on('end', async () => {
       let body: any;
       try {
         body = JSON.parse(raw);
@@ -172,13 +195,25 @@ export async function startFakeLlm(
           : [];
       const text = turn.text ?? '';
       const finish = calls.length ? 'tool_calls' : 'stop';
-      const usage =
-        'usage' in turn && turn.usage
-          ? { ...turn.usage, total_tokens: turn.usage.prompt_tokens + turn.usage.completion_tokens }
-          : { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
+      const u = turn.usage;
+      const usage = u
+        ? {
+            prompt_tokens: u.prompt_tokens,
+            completion_tokens: u.completion_tokens,
+            total_tokens: u.prompt_tokens + u.completion_tokens,
+            ...(u.cached_tokens !== undefined
+              ? { prompt_tokens_details: { cached_tokens: u.cached_tokens } }
+              : {}),
+            ...(u.reasoning_tokens !== undefined
+              ? { completion_tokens_details: { reasoning_tokens: u.reasoning_tokens } }
+              : {}),
+            ...(u.cost !== undefined ? { cost: u.cost } : {}),
+          }
+        : { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
 
       if (body.stream !== true) {
         const message: Record<string, unknown> = { role: 'assistant', content: text || null };
+        if (turn.reasoning) message.reasoning_content = turn.reasoning;
         if (calls.length) {
           message.tool_calls = calls.map((c) => ({
             id: c.id,
@@ -205,6 +240,8 @@ export async function startFakeLlm(
         send([{ index: 0, delta: d, finish_reason }]);
 
       delta({ role: 'assistant', content: '' });
+      for (const part of split(turn.reasoning ?? '', 8)) delta({ reasoning_content: part });
+      if (turn.thinkMs) await new Promise((r) => setTimeout(r, turn.thinkMs));
       for (const part of split(text, 8)) delta({ content: part });
       calls.forEach((c, index) => {
         delta({

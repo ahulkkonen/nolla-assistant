@@ -10,7 +10,12 @@ import {
   SessionManager,
 } from '@earendil-works/pi-coding-agent';
 import { type MemoryLog, memoryExtension } from '@pa/pi-ext-memory';
-import { type PseudoClient, type PseudoLog, pseudoExtension } from '@pa/pi-ext-pseudo';
+import {
+  type Collision,
+  type PseudoClient,
+  type PseudoLog,
+  pseudoExtension,
+} from '@pa/pi-ext-pseudo';
 import { sandboxExtension } from '@pa/pi-ext-sandbox';
 import { type Child, subagentsExtension } from '@pa/pi-ext-subagents';
 import { topicsExtension } from '@pa/pi-ext-topics';
@@ -62,7 +67,7 @@ type RegistryOptions = {
     client: PseudoClient;
     log: (chatId: string, ...args: Parameters<PseudoLog>) => void;
     /** Holds user input that names an issued surrogate until the user answers (phase 12). */
-    awaitCollision?: (chatId: string, pendingIds: number[]) => Promise<boolean>;
+    awaitCollision?: (chatId: string, collisions: Collision[]) => Promise<boolean>;
   };
   /** Loads `pi-ext-memory` when `pseudo` is set; `onChange` runs after each write or parked write. */
   memory?: {
@@ -353,8 +358,8 @@ export class SessionRegistry {
                 log: (...args) => pseudo.log(chatId, ...args),
                 ...(pseudo.awaitCollision
                   ? {
-                      awaitCollision: (ids: number[]) =>
-                        pseudo.awaitCollision?.(chatId, ids) ?? Promise.resolve(false),
+                      awaitCollision: (c: Collision[]) =>
+                        pseudo.awaitCollision?.(chatId, c) ?? Promise.resolve(false),
                     }
                   : {}),
               }),

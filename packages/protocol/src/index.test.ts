@@ -187,3 +187,68 @@ describe('file routes (phase-11)', () => {
     expect(TreeSaveArtifact.parse({ chatId: 'c1', artifactId: 'a1' }).dir).toBe('');
   });
 });
+
+describe('thread depth (phase-13)', () => {
+  const usage = {
+    model: 'zdr/google/gemini-4-argon',
+    input: 100,
+    output: 20,
+    cacheRead: 0,
+    cacheWrite: 0,
+    reasoning: 5,
+    costUsd: 0.0123,
+    estimated: false,
+  };
+  it('chat.fork needs text; usage.get needs a real month', () => {
+    const fork = { type: 'chat.fork', chatId: 'c1', messageId: 'e1', text: 'uusi' };
+    expect(ClientMessage.safeParse(fork).success).toBe(true);
+    expect(ClientMessage.safeParse({ ...fork, text: '' }).success).toBe(false);
+    expect(ClientMessage.safeParse({ type: 'usage.get', month: '2026-10' }).success).toBe(true);
+    expect(ClientMessage.safeParse({ type: 'usage.get', month: '2026-13' }).success).toBe(false);
+    expect(ClientMessage.safeParse({ type: 'thinking.get', chatId: 'c1', messageId: 'e1' }).success).toBe(
+      true,
+    );
+  });
+  it('a message carries usage and thinking; both stay optional', () => {
+    const message = {
+      id: 'e1',
+      role: 'assistant',
+      text: 'vastaus',
+      annotations: [],
+      attachments: [],
+      tools: [],
+      createdAt: '2026-10-26T10:00:00.000Z',
+    };
+    const final = { type: 'message.final', chatId: 'c1', message };
+    expect(ServerMessage.safeParse(final).success).toBe(true);
+    const full = { ...final, message: { ...message, usage, thinking: { ms: 1200 } } };
+    expect(ServerMessage.safeParse(full).success).toBe(true);
+    const negative = { ...final, message: { ...message, usage: { ...usage, costUsd: -1 } } };
+    expect(ServerMessage.safeParse(negative).success).toBe(false);
+  });
+  it('fx.state takes a rate or null; usage.state lists rows', () => {
+    const rate = { usdPerEur: 1.1193, date: '2026-10-23' };
+    expect(ServerMessage.safeParse({ type: 'fx.state', rate }).success).toBe(true);
+    expect(ServerMessage.safeParse({ type: 'fx.state', rate: null }).success).toBe(true);
+    expect(
+      ServerMessage.safeParse({ type: 'fx.state', rate: { ...rate, usdPerEur: 0 } }).success,
+    ).toBe(false);
+    const row = {
+      model: usage.model,
+      name: 'Gemini 4 Argon',
+      calls: 1,
+      tokens: 120,
+      reasoning: 5,
+      costUsd: 0.0123,
+      estimated: false,
+    };
+    expect(
+      ServerMessage.safeParse({
+        type: 'usage.state',
+        month: '2026-10',
+        months: ['2026-10'],
+        rows: [row],
+      }).success,
+    ).toBe(true);
+  });
+});

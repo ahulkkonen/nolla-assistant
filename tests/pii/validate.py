@@ -104,7 +104,7 @@ def composition(recs: list[dict]) -> list[str]:
     hetus = [s["canonical"] for s in spans if s["kind"] == "HETU"]
     fi = [s for s in spans if s["kind"] == "IBAN" and s["canonical"].startswith("FI")]
     need = {
-        "lines == 512": len(recs) == 512,
+        "lines == 516": len(recs) == 516,
         "oblique-name lines >= 60": sum(1 for r in recs if "inflected" in r["tags"] and any(s["kind"] == "PERSON" for s in r["spans"])) >= 60,
         "first-name-only >= 30": tags["first-name-only"] >= 30,
         "nickname >= 10": tags["nickname"] >= 10,

@@ -73,6 +73,41 @@ export const CatalogModel = z.object({
 });
 export type CatalogModel = z.infer<typeof CatalogModel>;
 
+/** One model call (phase-13 decision 12). `costUsd` is what OpenRouter billed unless `estimated`. */
+export const CallUsage = z.object({
+  /** The model id LiteLLM got, e.g. 'zdr/google/gemini-4-argon' or 'zdr/strong'. */
+  model: z.string().max(200),
+  input: z.int().min(0),
+  output: z.int().min(0),
+  cacheRead: z.int().min(0),
+  cacheWrite: z.int().min(0),
+  /** A part of `output`. */
+  reasoning: z.int().min(0),
+  costUsd: z.number().min(0),
+  /** True: Pi's price table, not the billed cost. */
+  estimated: z.boolean(),
+});
+export type CallUsage = z.infer<typeof CallUsage>;
+
+/** A chat's running totals (phase-13 decision 13). */
+export const ChatUsage = z.object({ costUsd: z.number().min(0), tokens: z.int().min(0) });
+export type ChatUsage = z.infer<typeof ChatUsage>;
+
+/** ECB reference rate: USD per 1 EUR on `date` (phase-13 decision 16). */
+export const FxRate = z.object({ usdPerEur: z.number().positive(), date: z.iso.date() });
+export type FxRate = z.infer<typeof FxRate>;
+
+/** Where a forked chat came from (phase-13 decision 4). */
+export const ForkLink = z.object({
+  chatId: id64,
+  /** The edited user message in the source chat. */
+  messageId: id64,
+  /** Null when the source chat has no title or is deleted. */
+  title: z.string().nullable(),
+  deleted: z.boolean(),
+});
+export type ForkLink = z.infer<typeof ForkLink>;
+
 export const ChatSummary = z.object({
   id: z.string(),
   title: z.string().nullable(),
@@ -83,6 +118,8 @@ export const ChatSummary = z.object({
   /** True after a manual rename: automatic titling no longer changes the title. */
   titleLocked: z.boolean().optional(),
   modelPolicy: ModelPolicy,
+  /** The server always sets it; optional for older fixtures. */
+  usage: ChatUsage.optional(),
   updatedAt: z.iso.datetime(),
 });
 export type ChatSummary = z.infer<typeof ChatSummary>;
@@ -113,6 +150,10 @@ export const Message = z.object({
   attachments: z.array(AttachmentRef).max(20),
   tools: z.array(ToolRow),
   createdAt: z.iso.datetime(),
+  /** Assistant messages with tokens. */
+  usage: CallUsage.optional(),
+  /** Set when the message has thinking text; the text loads with `thinking.get`. */
+  thinking: z.object({ ms: z.int().min(0).nullable() }).optional(),
 });
 export type Message = z.infer<typeof Message>;
 
@@ -188,7 +229,10 @@ export const ChatExport = z.object({
     agent: z.object({ id: id64, name: z.string() }),
     /** The topic name; null in a masked export (a topic name has no masked form). */
     topic: z.string().nullable(),
+    usage: ChatUsage.optional(),
   }),
+  /** The rate the file's euro amounts use; null: amounts in USD. */
+  fx: FxRate.nullable().optional(),
   messages: z.array(
     z.object({
       role: Message.shape.role,
@@ -204,6 +248,7 @@ export const ChatExport = z.object({
       tools: z.array(ToolRow.pick({ name: true, status: true })),
       /** The artifacts in `text`; they also stay in it as fenced code blocks. */
       artifacts: z.array(Artifact.omit({ id: true })),
+      usage: CallUsage.optional(),
     }),
   ),
 });
@@ -446,6 +491,16 @@ export const ClientMessage = z.discriminatedUnion('type', [
     limit: z.int().min(1).max(50).default(20),
   }),
   z.object({ type: z.literal('push.subscribe'), subscription: PushSubscription }),
+  /** "Haarauta": a new chat from before `messageId`, which then gets `text` (phase-13 decision 1). */
+  z.object({
+    type: z.literal('chat.fork'),
+    chatId: id64,
+    /** A user message entry on the chat's current branch. */
+    messageId: id64,
+    text: z.string().min(1).max(100_000),
+  }),
+  z.object({ type: z.literal('thinking.get'), chatId: id64, messageId: id64 }),
+  z.object({ type: z.literal('usage.get'), month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/) }),
   z.object({ type: z.literal('ping') }),
 ]);
 export type ClientMessage = z.infer<typeof ClientMessage>;
@@ -484,6 +539,8 @@ export const ServerMessage = z.discriminatedUnion('type', [
     chat: ChatSummary,
     messages: z.array(Message),
     artifacts: z.array(Artifact).optional(),
+    /** Set for a chat that "Haarauta" started. */
+    forkedFrom: ForkLink.nullable().optional(),
   }),
   z.object({ type: z.literal('chat.list'), chats: z.array(ChatSummary) }),
   z.object({ type: z.literal('chat.created'), chat: ChatSummary }),
@@ -508,6 +565,43 @@ export const ServerMessage = z.discriminatedUnion('type', [
     annotations: z.array(Annotation),
   }),
   z.object({ type: z.literal('message.final'), chatId: id64, message: Message }),
+  /** The streamed message `messageId` (stream id) thinks now, or stopped thinking. */
+  z.object({
+    type: z.literal('message.thinking'),
+    chatId: id64,
+    messageId: id64,
+    active: z.boolean(),
+  }),
+  /** Answer to `thinking.get`: the restored thinking text of one assistant entry. */
+  z.object({
+    type: z.literal('thinking.text'),
+    chatId: id64,
+    messageId: id64,
+    text: z.string(),
+    annotations: z.array(Annotation),
+  }),
+  /** At attach and after each new rate. Null: no rate yet, show USD. */
+  z.object({ type: z.literal('fx.state'), rate: FxRate.nullable() }),
+  /** Answer to `usage.get`: the user's model calls of `month`, grouped by model. */
+  z.object({
+    type: z.literal('usage.state'),
+    month: z.string(),
+    /** 'YYYY-MM', newest first, at most 24. */
+    months: z.array(z.string()),
+    rows: z.array(
+      z.object({
+        model: z.string(),
+        /** Catalog name, alias name from infra/models.json, or the id. */
+        name: z.string(),
+        calls: z.int().min(0),
+        tokens: z.int().min(0),
+        reasoning: z.int().min(0),
+        costUsd: z.number().min(0),
+        /** True when any call of the group is an estimate. */
+        estimated: z.boolean(),
+      }),
+    ),
+  }),
   z.object({
     type: z.literal('tool.start'),
     chatId: id64,
@@ -566,6 +660,17 @@ export const ServerMessage = z.discriminatedUnion('type', [
     type: z.literal('agent.status'),
     chatId: id64,
     state: z.enum(['idle', 'running']),
+  }),
+  /**
+   * The chat's last user message waits: it names an issued surrogate, and the vault's pending lane
+   * asks the user (phase-12 decision 7). The chat takes no new message until `chat.released`.
+   */
+  z.object({ type: z.literal('chat.held'), chatId: id64, pendingIds: z.array(z.int()) }),
+  /** The held message runs (`resumed`) or is gone (`dropped`: the client gives its text back). */
+  z.object({
+    type: z.literal('chat.released'),
+    chatId: id64,
+    outcome: z.enum(['resumed', 'dropped']),
   }),
   z.object({
     type: z.literal('vault.state'),
@@ -639,3 +744,5 @@ export const ServerMessage = z.discriminatedUnion('type', [
   z.object({ type: z.literal('pong') }),
 ]);
 export type ServerMessage = z.infer<typeof ServerMessage>;
+
+export * from './format.ts';

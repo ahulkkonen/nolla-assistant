@@ -151,6 +151,10 @@ type State = {
   expireApproval(requestId: string): void;
   /** Last `vault.state`; null until the first one arrives. */
   vault: { entities: VaultEntity[]; pending: VaultPending[] } | null;
+  /** Per chat, the user message that waits for the vault (`chat.held`): its text, given back on a drop. */
+  held: Record<string, string>;
+  /** Text for the composer to take back: a held message that was dropped. Never sent again by itself. */
+  draft: { chatId: string; text: string } | null;
   topics: TopicState['topics'];
   /** The first `topic.state` has arrived (the topics screen shows skeletons until then). */
   topicsLoaded: boolean;
@@ -249,6 +253,7 @@ const ERROR_TEXT: Record<string, string> = {
   pseudo_down: 'Pseudonymisointipalvelu ei vastaa.',
   pseudo_collision:
     'Viestissä on nimi, joka on jo pseudonyymi. Vastaa Nimisuojassa, niin viesti lähtee.',
+  held: 'Edellinen viesti odottaa Nimisuojaa.',
   memory_full: 'Muisti on täynnä.',
   memory_conflict: 'Teksti on muuttunut, lataa uudelleen.',
   zdr_unavailable: 'Mallilla ei ole ZDR-reittiä. Avaa keskustelu ja valitse toinen malli.',
@@ -320,6 +325,8 @@ export const useStore = create<State>()((set, get) => {
     integrations: null,
     ...loadStt(),
     vault: null,
+    held: {},
+    draft: null,
     topics: [],
     topicsLoaded: false,
     proposals: [],
@@ -527,6 +534,33 @@ export const useStore = create<State>()((set, get) => {
           return set((st) => ({ related: { ...st.related, [msg.chatId]: msg.related } }));
         case 'vault.state':
           return set({ vault: { entities: msg.entities, pending: msg.pending } });
+        // Phase 12: a message that names an issued surrogate waits for an answer in the vault.
+        case 'chat.held': {
+          const last = get().messages[msg.chatId]?.findLast((m) => m.role === 'user');
+          set((st) => ({ held: { ...st.held, [msg.chatId]: last?.text ?? '' } }));
+          return get().notify(ERROR_TEXT.pseudo_collision ?? msg.type, {
+            label: 'Avaa Nimisuoja',
+            onClick: () => get().setScreen('vault'),
+          });
+        }
+        case 'chat.released': {
+          const st = get();
+          const text = st.held[msg.chatId];
+          if (text === undefined) return;
+          if (msg.outcome === 'resumed') return set({ held: omit(st.held, msg.chatId) });
+          // Dropped: the message never reached the chat, so it leaves the thread and its text goes
+          // back to the composer.
+          const thread = st.messages[msg.chatId] ?? [];
+          const last = thread.at(-1);
+          set({
+            held: omit(st.held, msg.chatId),
+            draft: { chatId: msg.chatId, text },
+            ...(last?.role === 'user' && last.text === text
+              ? { messages: { ...st.messages, [msg.chatId]: thread.slice(0, -1) } }
+              : {}),
+          });
+          return get().notify('Viestiä ei lähetetty. Teksti on taas kirjoituskentässä.');
+        }
         case 'models.state': {
           const { type: _, ...models } = msg;
           return set({ models });

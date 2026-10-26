@@ -552,6 +552,12 @@ multi-entity,email,nickname,ablative :: {{Jaakko Mustonen|P}} ({{jaska.mustonen@
 multi-entity,iban,allative,inflected :: Maksu {{Veera Kettuselle|P|Veera Kettunen||allatiivi}} tilille {{FI0857293847561027|I}}, viestiksi "{{Väinö Pesonen|P}} jäsenmaksu".
 multi-entity :: Varahenkilöt: {{Ari Savolainen|P}} {{040 118 7720|T}}, {{Liisa Turunen|P}} {{050 448 1932|T}}.
 multi-entity,email :: Laskutus: {{Revontulenkaari 15 A 2|A}}, {{96400 Rovaniemi|Z}}, {{laskutus@revontulirakennus.fi|E}}.
+# --- phase 12: plural locative of a family name (c513)
+plural,adessive,allative :: Vietimme juhannuksen {{Virtasilla|P|Virtanen|Mikko Virtanen|monikon adessiivi, perhe}}, ja ensi kesänä mennään {{Korhosille|P|Korhonen|Juhani Korhonen|monikon allatiivi, perhe}}.
+# --- phase 12: lower-case words with a street suffix and a number that are no addresses (c514-c516)
+lowercase,phone-typed,address-decoy,no-pii :: mennään {{uimaranta 2|!A|uimaranta, ei osoite}} kertaa viikossa jos sää sallii
+lowercase,phone-typed,address-decoy,no-pii :: {{kuntotie 5|!A|kuntoilureitti, ei osoite}} km on sopiva lenkki aamulla
+lowercase,phone-typed,address-decoy,no-pii :: tilasin {{lasiportti 3|!A|lasiovi, ei osoite}} metriä leveänä
 """
 
 MARK = re.compile(r"\{\{(.+?)\}\}")
@@ -631,7 +637,7 @@ def text_slice(text: str, span: dict) -> str:
 def main() -> None:
     lines = [ln for ln in SRC.splitlines() if ln.strip() and not ln.startswith("#")]
     recs = [parse(i + 1, ln) for i, ln in enumerate(lines)]
-    assert len(recs) == 512, len(recs)
+    assert len(recs) == 516, len(recs)
     out = Path(__file__).with_name("corpus.jsonl")
     out.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in recs), encoding="utf-8")
     print(f"wrote {len(recs)} lines to {out}")

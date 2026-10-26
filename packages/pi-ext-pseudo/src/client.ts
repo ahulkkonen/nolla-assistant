@@ -55,8 +55,11 @@ export type VaultPendingRow = {
   reason: 'uncertain' | 'collision';
   entity_id: number | null;
 };
-/** confirm, dismiss, allowlist: an uncertain detection. accept (a new person), reject (that entity): a collision. */
-export type PendingAction = 'confirm' | 'dismiss' | 'allowlist' | 'accept' | 'reject';
+/**
+ * confirm, dismiss, allowlist: an uncertain detection. accept (a new person), reject (that entity): a
+ * collision. expire: the host closes a collision whose held message was dropped. An answered item: 409.
+ */
+export type PendingAction = 'confirm' | 'dismiss' | 'allowlist' | 'accept' | 'reject' | 'expire';
 export type VaultPatch = {
   pinned?: boolean;
   allowlisted?: boolean;

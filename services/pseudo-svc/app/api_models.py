@@ -160,8 +160,9 @@ class SeedReq(BaseModel):
 
 class PendingReq(BaseModel):
     user_id: str = UserId
-    # confirm, dismiss, allowlist: an uncertain detection; accept (a new person), reject (that entity): a collision
-    action: Literal["confirm", "dismiss", "allowlist", "accept", "reject"]
+    # confirm, dismiss, allowlist: an uncertain detection; accept (a new person), reject (that entity): a collision;
+    # expire: pa-server closes a collision whose held message was dropped
+    action: Literal["confirm", "dismiss", "allowlist", "accept", "reject", "expire"]
 
 
 class Ok(BaseModel):

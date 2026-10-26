@@ -89,6 +89,35 @@ describe('store reducers', () => {
     expect(useStore.getState().failed.c1).toBeUndefined();
   });
 
+  it('a held message: marked while held, its text back in the composer when dropped', () => {
+    const local = (id: string, text: string) =>
+      useStore.getState().addLocalMessage('c1', {
+        id,
+        role: 'user',
+        text,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        annotations: [],
+        attachments: [],
+        tools: [],
+      } as never);
+    const { apply } = useStore.getState();
+    local('m1', 'Soita Pekka Laaksonen');
+    apply({ type: 'chat.held', chatId: 'c1', pendingIds: [1] });
+    expect(useStore.getState().held).toEqual({ c1: 'Soita Pekka Laaksonen' });
+    apply({ type: 'chat.released', chatId: 'c1', outcome: 'resumed' });
+    expect(useStore.getState().held).toEqual({});
+    expect(useStore.getState().draft).toBeNull();
+
+    local('m2', 'Pekka Laaksonen?');
+    apply({ type: 'chat.held', chatId: 'c1', pendingIds: [2] });
+    apply({ type: 'chat.released', chatId: 'c1', outcome: 'dropped' });
+    const st = useStore.getState();
+    expect(st.draft).toEqual({ chatId: 'c1', text: 'Pekka Laaksonen?' });
+    expect(st.messages.c1?.map((m) => m.text)).toEqual(['Soita Pekka Laaksonen']); // never sent
+    apply({ type: 'chat.released', chatId: 'c1', outcome: 'dropped' }); // nothing held: ignored
+    expect(useStore.getState().messages.c1).toHaveLength(1);
+  });
+
   it('records a ZDR refusal with its model in any chat; a policy change or a rewind ends it', () => {
     const { apply } = useStore.getState();
     const fable = {

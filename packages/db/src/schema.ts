@@ -1,4 +1,4 @@
-import { index, integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { index, integer, primaryKey, real, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 
 export const users = sqliteTable('users', {
   id: text().primaryKey(),
@@ -36,6 +36,13 @@ export const chats = sqliteTable(
     dataPolicy: text({ enum: ['zdr', 'open'] })
       .notNull()
       .default('zdr'),
+    // Phase-13 running totals of this chat's `usage` rows (decision 13).
+    costUsd: real().notNull().default(0),
+    tokens: integer().notNull().default(0),
+    // Phase-13 fork link (decision 4). No foreign key: the link stays after the source is deleted.
+    forkedFromChatId: text(),
+    forkedFromMessageId: text(),
+    forkedAt: text(),
     createdAt: text().notNull(),
     updatedAt: text().notNull(),
   },
@@ -206,3 +213,28 @@ export const automationRuns = sqliteTable('automationRuns', {
   lastChatId: text(),
   lastError: text(),
 });
+
+/** One row per model call (phase-13 decision 13). Numbers and ids only, no text. */
+export const usage = sqliteTable(
+  'usage',
+  {
+    id: integer().primaryKey({ autoIncrement: true }),
+    userId: text().notNull(),
+    // No foreign key: rows outlive a deleted chat, so monthly totals stay true.
+    chatId: text(),
+    agentId: text(),
+    // chat: a reply in a chat. task: title job or consolidation. subagent: a child's reply.
+    kind: text({ enum: ['chat', 'task', 'subagent'] }).notNull(),
+    // The model id LiteLLM got, e.g. 'zdr/strong' or 'open/anthropic/claude-fable-5.1'.
+    model: text().notNull(),
+    input: integer().notNull(),
+    output: integer().notNull(),
+    cacheRead: integer().notNull(),
+    cacheWrite: integer().notNull(),
+    reasoning: integer().notNull(),
+    costUsd: real().notNull(),
+    estimated: integer({ mode: 'boolean' }).notNull(),
+    createdAt: text().notNull(),
+  },
+  (t) => [index('usage_user_created_idx').on(t.userId, t.createdAt)],
+);

@@ -28,6 +28,13 @@ PAIRS = [
     ("Åkerlund", "last", "GEN", "Åkerlundin"), ("Åkerlund", "last", "ILL", "Åkerlundiin"),
     ("Turkka", "last", "GEN", "Turkan"), ("Turkka", "last", "ABL", "Turkalta"),
     ("Mäki", "last", "GEN", "Mäen"), ("Matti", "first", "ABE", "Matitta"),
+    # plural locatives: the family (phase 12)
+    ("Laaksonen", "last", "PL_ALL", "Laaksosille"), ("Laaksonen", "last", "PL_ABL", "Laaksosilta"),
+    ("Laaksonen", "last", "PL_ADE", "Laaksosilla"), ("Laaksonen", "last", "PL_INE", "Laaksosissa"),
+    ("Laaksonen", "last", "PL_ELA", "Laaksosista"), ("Laaksonen", "last", "PL_ILL", "Laaksosiin"),
+    ("Lahti", "last", "PL_ADE", "Lahdilla"), ("Lahti", "last", "PL_ILL", "Lahtiin"),
+    ("Kokko", "last", "PL_ALL", "Kokoille"), ("Kokko", "last", "PL_ILL", "Kokkoihin"),
+    ("Lindqvist", "last", "PL_ALL", "Lindqvisteille"), ("Lindqvist", "last", "PL_ILL", "Lindqvisteihin"),
 ]
 
 
@@ -39,7 +46,7 @@ def test_known_pairs(name, kind, case, form):
 
 def test_paradigm_size():
     f = generate_forms("Hulkkonen", "last")
-    assert len(f) >= 15 + 3 + 3 * 2 and f["ALL"] == "Hulkkoselle"
+    assert len(f) >= 15 + 3 + 3 * 2 + 6 and f["ALL"] == "Hulkkoselle" and f["PL_ALL"] == "Hulkkosille"
 
 
 @pytest.mark.skipif(not os.environ.get("OMORFI_MODELS"), reason="Omorfi models not present")

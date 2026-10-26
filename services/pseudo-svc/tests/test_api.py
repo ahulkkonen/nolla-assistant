@@ -38,12 +38,13 @@ async def test_user_id_required(client):
 async def test_seed_mask_unmask_scan(client):
     seed = await post(client, "/vault/seed", {"entities": [{"canonical": "Mikko Virtanen", "kind": "PERSON"}]})
     assert seed["ok"] and len(seed["ids"]) == 1
-    m = await post(client, "/mask", {"session_id": "s", "text": "😀 Virtaselle 131052-308T"})
+    # the period: a hetu surrogate's check letter can be a prefix of a surrogate name (hold 1)
+    m = await post(client, "/mask", {"session_id": "s", "text": "😀 Virtaselle 131052-308T."})
     assert {s["kind"] for s in m["spans"]} == {"PERSON", "HETU"} and m["spans"][0]["start"] == 3
     assert set(m["spans"][0]) == {"start", "end", "entity_id", "kind", "surrogate", "real_form", "detector",
                                   "score", "pending"}
     u = await post(client, "/unmask", {"text": m["masked"]})
-    assert u["restored"] == "😀 Virtaselle 131052-308T" and u["hold"] == 0 and u["unresolved"] == []
+    assert u["restored"] == "😀 Virtaselle 131052-308T." and u["hold"] == 0 and u["unresolved"] == []
     j = await post(client, "/mask", {"session_id": "s", "json": {"a": ["Virtaselle"]}})
     assert (await post(client, "/unmask", {"json": j["masked"]}))["restored"] == {"a": ["Virtaselle"]}
     sc = await post(client, "/scan", {"session_id": "s", "messages": [
@@ -137,5 +138,7 @@ async def test_collision_round_trip(client):
     bad = await client.post(f"/vault/pending/{c['pending_id']}", json={**U, "action": "confirm"})
     assert bad.status_code == 422
     assert (await post(client, f"/vault/pending/{c['pending_id']}", {"action": "accept"}))["ok"]
+    twice = await client.post(f"/vault/pending/{c['pending_id']}", json={**U, "action": "accept"})
+    assert twice.status_code == 409  # a double tap does not regenerate the entity again
     again = await post(client, "/mask", {"session_id": "s", "text": f"Hei {surrogate}!", "user_input": True})
     assert again["collisions"] == [] and surrogate not in again["masked"]
