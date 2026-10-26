@@ -1,10 +1,19 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { chats, openDb, usage } from '@pa/db';
+import type { CallUsage } from '@pa/protocol';
 import { eq } from 'drizzle-orm';
 import { afterEach, expect, test } from 'vitest';
 import { bootChat, bootResearch, runCleanups, tempDir } from './test-utils.ts';
-import { messageUsage, monthOf, rawUsage, usageMonth, usageRecorder } from './usage.ts';
+import {
+  messageUsage,
+  monthOf,
+  type RecordUsage,
+  rawUsage,
+  usageExtension,
+  usageMonth,
+  usageRecorder,
+} from './usage.ts';
 
 afterEach(runCleanups);
 
@@ -282,4 +291,76 @@ test('a subagent child writes a subagent row of the parent chat', { timeout: 60_
       estimated: true,
     }),
   ]);
+});
+
+/** The extension's handlers on a stand-in for Pi's extension API. */
+function extensionHandlers(record: RecordUsage) {
+  const handlers = new Map<string, (e: unknown) => unknown>();
+  usageExtension(
+    { kind: 'chat', chatId: 'c1' },
+    record,
+  )({
+    on: (name: string, fn: (e: unknown) => unknown) => void handlers.set(name, fn),
+  } as never);
+  return (name: string, e: unknown) => handlers.get(name)?.(e);
+}
+const assistantMsg = (responseId: string, timestamp: number) => ({
+  role: 'assistant',
+  model: 'zdr/strong',
+  responseId,
+  timestamp,
+  content: [],
+  usage: { ...piUsage, cost: { total: 0.0009 } },
+});
+
+test('the extension: cost by response id, one row per message, a broken cost is an estimate', () => {
+  const rows: CallUsage[] = [];
+  const warnings: string[] = [];
+  const record = Object.assign((_: unknown, u: CallUsage | undefined) => void (u && rows.push(u)), {
+    warn: (m: string) => void warnings.push(m),
+  });
+  const emit = extensionHandlers(record);
+  // A stopped stream's cost (r0) never lands on the next message (r1).
+  emit('provider_stream_event', { data: { id: 'r0', usage: { cost: 0.7 } } });
+  emit('message_start', { message: { role: 'assistant' } });
+  emit('provider_stream_event', { data: { id: 'r1', usage: { cost: 0.5 } } });
+  const first = assistantMsg('r1', 1);
+  const out = emit('message_end', { message: first }) as { message: { pa: object } };
+  expect(out.message.pa).toEqual({ costUsd: 0.5 });
+  // A repeated message_end writes no second row.
+  emit('message_end', { message: first });
+  expect(rows.map((r) => [r.costUsd, r.estimated])).toEqual([[0.5, false]]);
+  // Only the stopped stream's cost: the next message is an estimate.
+  emit('turn_start', {});
+  emit('provider_stream_event', { data: { id: 'r2', usage: { cost: 0.3 } } });
+  emit('message_start', { message: { role: 'assistant' } });
+  emit('message_end', { message: assistantMsg('r3', 2) });
+  // Above 1000 USD per call: warned, and the estimate is used.
+  emit('message_start', { message: { role: 'assistant' } });
+  emit('provider_stream_event', { data: { id: 'r4', usage: { cost: 5000 } } });
+  emit('message_end', { message: assistantMsg('r4', 3) });
+  expect(rows.slice(1).map((r) => [r.costUsd, r.estimated])).toEqual([
+    [0.0009, true],
+    [0.0009, true],
+  ]);
+  expect(warnings).toEqual(['usage cost out of range; the estimate is used']);
+  expect(
+    rawUsage('zdr/task-small', { prompt_tokens: 10, completion_tokens: 1, cost: 1e6 })?.estimated,
+  ).toBe(true);
+});
+
+test('usageRecorder: a chat deleted meanwhile gives a row without a chat', () => {
+  const { db, close } = freshDb();
+  usageRecorder(db, 'u1', () => {})(
+    { kind: 'chat', chatId: 'gone' },
+    messageUsage(assistant(piUsage)),
+  );
+  expect(
+    db
+      .select()
+      .from(usage)
+      .all()
+      .map((r) => [r.chatId, r.agentId]),
+  ).toEqual([[null, null]]);
+  close();
 });

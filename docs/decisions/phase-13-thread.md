@@ -198,12 +198,16 @@ EXR.D.USD.EUR.SP00.A,D,USD,EUR,SP00,A,2026-10-23,1.1193
    claim 1). The title is `<old title> (haara)` and the masked title is `<old masked title> (haara)`.
    A titled fork gets `titleLocked: true`, so the title job keeps the title. An untitled source gives
    an untitled fork, which the title job names as usual. The row stores the link in three new columns:
-   `forkedFromChatId`, `forkedFromMessageId` (the edited user entry) and `forkedAt`. The columns have
-   no foreign key, so a fork keeps its link text after the source chat is deleted.
-5. **Order of work.** The server checks the request, restores the block part (decision 6), writes the
-   file, copies the sidecar scope and inserts the row. Then it builds the session with `registry.get`.
-   A failed build deletes the row and the file. The server then sends `chat.created` and `chat.state`
-   to the socket, in this order. `chat.state` carries `forkedFrom`. Last, the server joins the socket
+   `forkedFromChatId`, `forkedFromMessageId` (the edited user entry) and `forkedAt` (the time of the
+   edited message in the source: the copied messages are older, the fork's own messages are newer).
+   The columns have no foreign key, so a fork keeps its link text after the source chat is deleted.
+5. **Order of work.** The server holds the source chat, as `retry` does. It checks the request and
+   restores the block part (decision 6). After that await it checks again that the source leaf did
+   not move and that no run started. Then it writes the file and checks that the file exists, copies
+   the sidecar scope and inserts the row, and builds the session with `registry.get`. Any failure
+   from the copy on deletes the row, the file and the copied sidecar scope
+   (`POST /session/fork/drop`), and answers `failed` or `pseudo_down`. A deleted fork also drops its
+   copied scope. The server then sends `chat.created` and `chat.state` to the socket, in this order. `chat.state` carries `forkedFrom`. Last, the server joins the socket
    to the new room and prompts the edited text under `registry.hold`, as `user.message` does. The
    client sees the copied history before the first delta of the new reply.
 6. **The fork's first turn.** The prompt text is the edited text plus the attachment blocks of the
@@ -214,7 +218,8 @@ EXR.D.USD.EUR.SP00.A,D,USD,EUR,SP00,A,2026-10-23,1.1193
    real text once. The file rows stay with the source chat, because `ingestAttachments` would move
    them.
 7. **What the fork shows.** The copied messages keep their entry ids, times and texts. Their
-   attachment chips come from the files of the source chat while that chat exists. The copied
+   attachment chips come from the files of the source chats up to `forkedAt` (a fork of a fork walks
+   the chain), while each source exists. The copied
    replies show no cost: `history()` drops `usage` of messages older than `forkedAt`. The fork's
    running totals start at zero, so no cost counts twice. The search index takes the copied messages
    at the first `agent_settled` of the fork, because `indexChat` indexes every unindexed message of
@@ -464,8 +469,13 @@ export const usage = sqliteTable(
 
 - `POST /session/fork` with body `{ user_id, from_session_id, to_session_id, until }` answers
   `{ ok: true, entities: <count> }`. Both session ids follow the session id rule of the other routes.
-- The vault copies with one statement: for each entity with a span in `from_session_id` and
-  `created_at <= until`, insert one span row in `to_session_id` with `detector = 'fork'`.
+- For each entity with a span in `from_session_id` at or before `until`, the vault inserts one span
+  row in `to_session_id` with `detector = 'fork'` and the first time the entity was seen. Times
+  compare as parsed instants, so a span in the same millisecond as the fork point is copied. A time
+  without a zone answers 422.
+- `POST /session/fork/drop` with body `{ user_id, session_id }` deletes only the `fork` rows of that
+  session (a failed fork, a deleted forked chat). No consumer reads `entry_id` or the offsets of a
+  span row, so the copied rows with zero offsets break nothing.
 - The vault list (`seen_count`, `last_seen`, `vault.py:222`) leaves out the rows with `detector = 'fork'`.
 
 ## Egress

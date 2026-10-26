@@ -71,7 +71,7 @@ export function taskSmall(litellmUrl: string, litellmMasterKey: string, onUsage?
         choices?: { message?: { content?: string | null } }[];
         usage?: unknown;
       };
-      onUsage?.({ kind: 'task', chatId }, rawUsage(TASK_MODEL, body.usage));
+      onUsage?.({ kind: 'task', chatId }, rawUsage(TASK_MODEL, body.usage, onUsage.warn));
       return body.choices?.[0]?.message?.content ?? '';
     }
   };

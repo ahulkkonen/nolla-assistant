@@ -187,3 +187,29 @@ async def test_session_fork_validates(client):
     body = {"from_session_id": "a", "to_session_id": "a", "until": _now()}
     assert (await client.post("/session/fork", json={**U, **body})).status_code == 422
     assert (await client.post("/session/fork", json={**U, **body, "to_session_id": "b", "until": "26.10.2026"})).status_code == 422
+
+
+async def test_session_fork_compares_instants(client, vault):
+    """`until` in the same millisecond as a span copies it, also when written with another zone form;
+    a naive time is refused. The drop removes only the copied rows."""
+    await post(client, "/vault/seed", {"entities": [{"canonical": "Mikko Virtanen", "kind": "PERSON"}]})
+    await post(client, "/mask", {"session_id": "src", "text": "Mikko Virtanen tuli."})
+    (created,) = vault.q("SELECT created_at FROM span WHERE session_id='src' ORDER BY id LIMIT 1")[0]
+    assert created.endswith("Z")
+    same = await post(client, "/session/fork", {"from_session_id": "src", "to_session_id": "f1", "until": created})
+    assert same["entities"] == 1
+    offset = created.replace("Z", "+00:00")
+    assert (await post(client, "/session/fork", {"from_session_id": "src", "to_session_id": "f2",
+                                                  "until": offset}))["entities"] == 1
+    from datetime import datetime, timedelta
+    earlier = (datetime.fromisoformat(created) - timedelta(milliseconds=1)).isoformat()
+    assert (await post(client, "/session/fork", {"from_session_id": "src", "to_session_id": "f3",
+                                                  "until": earlier}))["entities"] == 0
+    naive = {**U, "from_session_id": "src", "to_session_id": "f4", "until": created.rstrip("Z")}
+    assert (await client.post("/session/fork", json=naive)).status_code == 422
+    # A fork of the fork: the copied row keeps the first-seen time, so it copies on.
+    assert (await post(client, "/session/fork", {"from_session_id": "f1", "to_session_id": "f5",
+                                                  "until": created}))["entities"] == 1
+    assert (await post(client, "/session/fork/drop", {"session_id": "f1"}))["entities"] == 1
+    assert (await post(client, "/session/fork/drop", {"session_id": "src"}))["entities"] == 0
+    assert vault.q("SELECT count(*) FROM span WHERE session_id='src'")[0][0] == 1

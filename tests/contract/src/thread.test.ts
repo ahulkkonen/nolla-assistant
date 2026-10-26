@@ -101,3 +101,25 @@ test('createBranchedSession on a second manager copies the path and leaves the s
   const header = JSON.parse(readFileSync(file, 'utf8').split('\n')[0] ?? '');
   expect(header).toMatchObject({ type: 'session', id, parentSession: source });
 });
+
+test('one message_end per assistant message, tool rounds included (no re-emit)', async () => {
+  const ends: unknown[] = [];
+  const { session } = await setup(
+    [{ toolCalls: [{ name: 'read', args: { path: 'missing.txt' } }] }, { text: 'valmis' }],
+    [
+      (pi) =>
+        void pi.on(
+          'message_end',
+          (e) => void (e.message.role === 'assistant' && ends.push(e.message)),
+        ),
+    ],
+  );
+  const listened: unknown[] = [];
+  session.subscribe((e) => {
+    if (e.type === 'message_end' && e.message.role === 'assistant') listened.push(e.message);
+  });
+  await session.prompt('lue');
+  expect(ends).toHaveLength(2);
+  expect(new Set(ends).size).toBe(2);
+  expect(listened).toHaveLength(2);
+});

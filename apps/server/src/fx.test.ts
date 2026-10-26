@@ -109,3 +109,37 @@ test('ECB_RATES=off makes no request', async () => {
   expect(calls).toHaveLength(0);
   fx.close();
 });
+
+test('close during a request writes nothing; start runs once', async () => {
+  const dataDir = tmp();
+  let answer: (r: Response) => void = () => {};
+  const calls: string[] = [];
+  const slow = (async (url: string, init?: RequestInit) => {
+    calls.push(url);
+    return new Promise<Response>((resolve, reject) => {
+      answer = resolve;
+      init?.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+    });
+  }) as typeof fetch;
+  const seen: FxRate[] = [];
+  const warnings: string[] = [];
+  const fx = fxRates({
+    dataDir,
+    source: 'https://ecb.test',
+    fetch: slow,
+    onChange: (r) => void seen.push(r),
+    warn: (m) => void warnings.push(m),
+  });
+  fx.start();
+  fx.start();
+  expect(calls).toHaveLength(1);
+  const pending = fx.refresh();
+  fx.close();
+  answer(new Response(FAKE_ECB_CSV));
+  expect(await pending).toBe(false);
+  expect(fx.get()).toBeNull();
+  expect(seen).toEqual([]);
+  expect(warnings).toEqual([]);
+  expect(() => readFileSync(join(dataDir, 'fx', 'usd-eur.json'))).toThrow();
+  expect(await fx.refresh()).toBe(false);
+});

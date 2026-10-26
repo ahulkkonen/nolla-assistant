@@ -127,6 +127,13 @@ export class PseudoClient {
     });
   }
 
+  /** Removes what `forkSession` copied into `sessionId` (a failed fork, a deleted chat). */
+  dropFork(sessionId: string) {
+    return this.post<{ ok: true; entities: number }>('/session/fork/drop', {
+      session_id: sessionId,
+    });
+  }
+
   vaultList() {
     return this.post<{ entities: VaultEntityRow[]; pending: VaultPendingRow[] }>(
       `/vault/entities?user_id=${encodeURIComponent(this.userId)}`,

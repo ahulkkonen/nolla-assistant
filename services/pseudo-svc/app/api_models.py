@@ -2,7 +2,7 @@
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import AwareDatetime, BaseModel, Field, model_validator
 
 UserId = Field(min_length=1, max_length=200)
 MAX_TEXT = 200_000
@@ -170,8 +170,13 @@ class ForkReq(BaseModel):
     user_id: str = UserId
     from_session_id: str = Field(min_length=1, max_length=200)
     to_session_id: str = Field(min_length=1, max_length=200)
-    # the fork point entry's time: ISO 8601 UTC, as both pa-server and the vault write it
-    until: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$")
+    # the fork point entry's time, with a zone; compared as an instant with each span's time
+    until: AwareDatetime
+
+
+class ForkDropReq(BaseModel):
+    user_id: str = UserId
+    session_id: str = Field(min_length=1, max_length=200)
 
 
 class ForkRes(BaseModel):

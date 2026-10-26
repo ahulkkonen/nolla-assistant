@@ -366,7 +366,7 @@ test('collisions that keep coming after three answers drop the input and log it 
   expect(llm.requests).toHaveLength(0);
 });
 
-test('forkSession posts the two session ids and the fork time (phase 13)', async () => {
+test('forkSession and dropFork post the session ids and the fork time (phase 13)', async () => {
   const sc = await startFakeSidecar({ 'Matti Virtanen': 'Pekka Laaksonen' });
   try {
     const client = new PseudoClient(sc.url, 'u1');
@@ -377,6 +377,11 @@ test('forkSession posts the two session ids and the fork time (phase 13)', async
       body: { user_id: 'u1', from_session_id: 'chat-a', to_session_id: 'chat-b', until },
     });
     await expect(client.forkSession('chat-a', 'chat-a', until)).rejects.toThrow('status 404');
+    expect(await client.dropFork('chat-b')).toEqual({ ok: true, entities: 0 });
+    expect(sc.requests.at(-1)).toEqual({
+      path: '/session/fork/drop',
+      body: { user_id: 'u1', session_id: 'chat-b' },
+    });
   } finally {
     await sc.close();
   }

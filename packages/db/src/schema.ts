@@ -42,6 +42,7 @@ export const chats = sqliteTable(
     // Phase-13 fork link (decision 4). No foreign key: the link stays after the source is deleted.
     forkedFromChatId: text(),
     forkedFromMessageId: text(),
+    // The edited message's time in the source: copied messages are older, the fork's own newer.
     forkedAt: text(),
     createdAt: text().notNull(),
     updatedAt: text().notNull(),

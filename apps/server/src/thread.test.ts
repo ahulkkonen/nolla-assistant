@@ -1,9 +1,22 @@
-import { readFileSync } from 'node:fs';
-import { chats } from '@pa/db';
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { setTimeout as sleep } from 'node:timers/promises';
+import { chats, files, openDb } from '@pa/db';
+import { startFakeSidecar } from '@pa/pi-ext-pseudo/fake-sidecar';
 import type { ChatExport } from '@pa/protocol';
 import { eq } from 'drizzle-orm';
 import { afterEach, expect, test } from 'vitest';
-import { api, bootChat, bootPseudo, login, runCleanups } from './test-utils.ts';
+import { cutText, threadFiles } from './bridge.ts';
+import {
+  api,
+  bootChat,
+  bootPseudo,
+  cleanups,
+  login,
+  runCleanups,
+  sidecarProxy,
+  tempDir,
+} from './test-utils.ts';
 import { monthOf } from './usage.ts';
 
 // Phase 13 (docs/decisions/phase-13-thread.md): fork, thinking, usage and the rate over the socket.
@@ -124,6 +137,13 @@ test('a fork with the sidecar: scope copied up to the fork point, edited text ma
   const body = JSON.stringify(llm.requests.at(-1)?.body);
   expect(body).not.toContain(REAL);
   expect(body.split(SURROGATE).length - 1).toBe(3); // copied user, copied reply, edited text
+  // Deleting the fork drops its copied scope; deleting a chat that is no fork does not ask.
+  c.send({ type: 'chat.delete', chatId: fork.id });
+  await c.next('chat.deleted');
+  c.send({ type: 'chat.delete', chatId: chat.id });
+  await c.next('chat.deleted');
+  const drops = sc.requests.filter((r) => r.path === '/session/fork/drop');
+  expect(drops.map((r) => r.body.session_id)).toEqual([fork.id]);
 });
 
 test('thinking: live state, Message.thinking with ms, thinking.get restores the text', async () => {
@@ -200,4 +220,159 @@ test('the export carries the chat total, the cost per reply and the rate', async
   expect(json.fx).toEqual({ usdPerEur: 1.1193, date: '2026-10-23' });
   expect(json.chat.usage).toEqual({ costUsd: 0.0123, tokens: 120 });
   expect(json.messages[1]?.usage).toMatchObject({ costUsd: 0.0123, estimated: false });
+});
+
+/** A fake sidecar behind a proxy that can delay or fail a path. */
+async function bootProxied(turns: Parameters<typeof bootChat>[0]) {
+  const sc = await startFakeSidecar({ [REAL]: SURROGATE });
+  cleanups.push(sc.close);
+  const proxy = await sidecarProxy(sc.url);
+  return { ...(await bootChat(turns, { PSEUDO_URL: proxy.url })), sc, proxy };
+}
+
+test('chat.fork holds the source: a model change during its restore step fails', async () => {
+  const { c, chat, proxy } = await bootProxied([
+    { text: 'Eka.' },
+    { text: 'Toka.' },
+    { text: 'Haara.' },
+  ]);
+  await turn(c, chat.id, 'Yksi');
+  await turn(c, chat.id, 'Kaksi');
+  const user2 = (await open(c, chat.id)).messages[2];
+  proxy.delayMs = 500;
+  c.inbox.length = 0;
+  c.send({ type: 'chat.fork', chatId: chat.id, messageId: user2?.id ?? '', text: 'Muokattu' });
+  await sleep(200);
+  c.send({ type: 'chat.setModel', chatId: chat.id, modelId: 'auto', reasoning: 'auto' });
+  await expect(c.next('chat.updated')).rejects.toThrow('server error: failed');
+  proxy.delayMs = 0;
+  await c.next('chat.created');
+  await c.idle();
+});
+
+test('a failed sidecar scope copy leaves no row, no file, and drops the scope', async () => {
+  const { c, chat, srv, sc, proxy } = await bootProxied([{ text: 'Eka.' }, { text: 'Toka.' }]);
+  await turn(c, chat.id, 'Yksi');
+  await turn(c, chat.id, 'Kaksi');
+  const user2 = (await open(c, chat.id)).messages[2];
+  const sessions = () => readdirSync(srv.registry.sessionDir).filter((f) => f.endsWith('.jsonl'));
+  const before = sessions();
+  proxy.fail.add('/session/fork');
+  c.send({ type: 'chat.fork', chatId: chat.id, messageId: user2?.id ?? '', text: 'Muokattu' });
+  await expect(c.next('chat.created')).rejects.toThrow('server error: pseudo_down');
+  expect(
+    srv.db
+      .select()
+      .from(chats)
+      .all()
+      .map((r) => r.id),
+  ).toEqual([chat.id]);
+  expect(sessions()).toEqual(before);
+  expect(sc.requests.some((r) => r.path === '/session/fork/drop')).toBe(true);
+});
+
+test('a fork point at a user entry without a reply (a stopped run) copies it', async () => {
+  const { c, chat, srv, sc } = await bootPseudo({ [REAL]: SURROGATE }, [
+    { text: 'Eka.' },
+    { text: 'Toka.' },
+    { text: 'Haara.' },
+  ]);
+  await turn(c, chat.id, 'Yksi');
+  // A run stopped before its reply: the user entry stays without an assistant entry after it.
+  const sm = (await srv.registry.get(chat.id)).sessionManager;
+  sm.appendMessage({
+    role: 'user',
+    content: [{ type: 'text', text: 'Keskeytetty' }],
+    timestamp: Date.now(),
+  });
+  const stopped = sm.getLeafEntry();
+  await srv.registry.drop(chat.id);
+  await turn(c, chat.id, 'Kolme');
+  const messages = (await open(c, chat.id)).messages;
+  const last = messages.at(-2);
+  expect(last?.text).toBe('Kolme');
+  c.send({ type: 'chat.fork', chatId: chat.id, messageId: last?.id ?? '', text: 'Muokattu' });
+  await c.next('chat.created');
+  const state = await c.next('chat.state');
+  expect(state.messages.map((m) => m.text)).toEqual(['Yksi', 'Eka.', 'Keskeytetty']);
+  await c.idle();
+  const call = sc.requests.find((r) => r.path === '/session/fork');
+  expect(call?.body.until).toBe(new Date(stopped?.timestamp ?? 0).toISOString());
+});
+
+test('a fork of an open chat runs on zdr/ with the same bare model id', async () => {
+  const fable = 'anthropic/claude-fable-5.1';
+  const { c, chat, srv, llm } = await bootChat([{ text: 'Eka.' }, { text: 'Haara.' }]);
+  await turn(c, chat.id, 'Yksi');
+  srv.db
+    .update(chats)
+    .set({ modelId: fable, dataPolicy: 'open' })
+    .where(eq(chats.id, chat.id))
+    .run();
+  const user1 = (await open(c, chat.id)).messages[0];
+  c.send({ type: 'chat.fork', chatId: chat.id, messageId: user1?.id ?? '', text: 'Alusta' });
+  const { chat: fork } = await c.next('chat.created');
+  await c.idle();
+  expect(fork.modelPolicy).toMatchObject({ modelId: fable, dataPolicy: 'zdr' });
+  expect(llm.requests.at(-1)?.body.model).toBe(`zdr/${fable}`);
+});
+
+test('threadFiles walks the fork chain, each source cut at the edited message', () => {
+  const { db, sqlite } = openDb(join(tempDir('pa-thread-'), 'app.db'));
+  cleanups.push(() => void sqlite.close());
+  const t = (h: number) => `2026-10-26T${String(h).padStart(2, '0')}:00:00.000Z`;
+  const chat = (id: string, from: string | null, forkedAt: string | null) =>
+    db
+      .insert(chats)
+      .values({
+        id,
+        userId: 'u1',
+        sessionPath: 's/',
+        forkedFromChatId: from,
+        forkedAt,
+        createdAt: t(0),
+        updatedAt: t(0),
+      })
+      .run();
+  const file = (id: string, chatId: string, h: number) =>
+    db
+      .insert(files)
+      .values({
+        id,
+        userId: 'u1',
+        chatId,
+        name: `${id}.txt`,
+        mime: 'text/plain',
+        size: 1,
+        path: `files/${id}`,
+        createdAt: t(h),
+      })
+      .run();
+  // G ← S (edited a G message of 05:00) ← R (edited an S message of 08:00).
+  chat('G', null, null);
+  chat('S', 'G', t(5));
+  chat('R', 'S', t(8));
+  file('g1', 'G', 4);
+  file('g2', 'G', 6); // after S's fork point: never on S or R
+  file('s1', 'S', 7);
+  file('s2', 'S', 9); // after R's fork point
+  file('r1', 'R', 10);
+  const row = (id: string) => db.select().from(chats).where(eq(chats.id, id)).get();
+  const ids = (id: string) => {
+    const r = row(id);
+    return r ? threadFiles(db, 'u1', r).map((f) => f.id) : [];
+  };
+  expect(ids('R')).toEqual(['g1', 's1', 'r1']);
+  expect(ids('S')).toEqual(['g1', 's1', 's2']);
+});
+
+test('cutText cuts at a paragraph or a space, never inside a surrogate pair', () => {
+  expect(cutText('lyhyt', 10)).toBe('lyhyt');
+  const para = `${'a'.repeat(30)}\n\n${'b'.repeat(30)}`;
+  expect(cutText(para, 40)).toBe(`${'a'.repeat(30)}…`);
+  const words = `${'a'.repeat(30)} ${'b'.repeat(30)}`;
+  expect(cutText(words, 40)).toBe(`${'a'.repeat(30)}…`);
+  const emoji = `${'x'.repeat(3000)}😀😀`;
+  const cut = cutText(emoji, 3001);
+  expect(cut).toBe(`${'x'.repeat(3000)}…`);
 });

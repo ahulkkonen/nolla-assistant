@@ -59,18 +59,22 @@ export function fxRates(opts: {
   const path = join(opts.dataDir, 'fx', 'usd-eur.json');
   let rate: FxRate | null = null;
   let timer: NodeJS.Timeout | undefined;
+  let started = false;
+  // `close` aborts a request in flight; a refresh that ends after it writes nothing.
+  const closing = new AbortController();
 
   /** True when it got a rate. A failure keeps the cached value. */
   const refresh = async () => {
-    if (opts.source === 'off') return false;
+    if (opts.source === 'off' || closing.signal.aborted) return false;
     try {
       const res = await (opts.fetch ?? fetch)(`${opts.source}${ECB_PATH}`, {
         headers: { accept: 'text/csv' },
         redirect: 'error',
-        signal: AbortSignal.timeout(TIMEOUT_MS),
+        signal: AbortSignal.any([AbortSignal.timeout(TIMEOUT_MS), closing.signal]),
       });
       if (!res.ok) throw new Error(`ECB status ${res.status}`);
       const next = parseEcbCsv(await capped(res, MAX_BYTES));
+      if (closing.signal.aborted) return false;
       mkdirSync(join(opts.dataDir, 'fx'), { recursive: true });
       writeFileSync(
         `${path}.tmp`,
@@ -83,7 +87,10 @@ export function fxRates(opts: {
       return true;
     } catch (err) {
       // The message only: never the body.
-      opts.warn('ECB rate fetch failed', { error: err instanceof Error ? err.message : 'unknown' });
+      if (!closing.signal.aborted)
+        opts.warn('ECB rate fetch failed', {
+          error: err instanceof Error ? err.message : 'unknown',
+        });
       return false;
     }
   };
@@ -92,8 +99,10 @@ export function fxRates(opts: {
     /** Null: no rate yet (show USD). */
     get: () => rate,
     refresh,
-    /** Loads the cache, then fetches in the background and every 6 hours. */
+    /** Loads the cache, then fetches in the background and every 6 hours. Once only. */
     start() {
+      if (started) return;
+      started = true;
       try {
         const { usdPerEur, date } = Cache.parse(JSON.parse(readFileSync(path, 'utf8')));
         rate = { usdPerEur, date };
@@ -106,6 +115,9 @@ export function fxRates(opts: {
       timer = setInterval(() => void refresh(), EVERY_MS);
       timer.unref();
     },
-    close: () => clearInterval(timer),
+    close: () => {
+      clearInterval(timer);
+      closing.abort();
+    },
   };
 }

@@ -290,6 +290,8 @@ export async function startFakeSidecar(
       case '/session/fork':
         if (body.from_session_id === body.to_session_id) return;
         return { ok: true, entities: entities.size };
+      case '/session/fork/drop':
+        return { ok: true, entities: 0 };
     }
   };
 

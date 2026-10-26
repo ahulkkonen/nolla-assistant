@@ -112,6 +112,14 @@ def fork(req: m.ForkReq):
     return {"ok": True, "entities": n}
 
 
+@app.post("/session/fork/drop", response_model=m.ForkRes)
+def fork_drop(req: m.ForkDropReq):
+    """A failed fork or a deleted forked chat: only the copied rows go, the session's own spans stay."""
+    n = vault().drop_fork(req.user_id, req.session_id)
+    log.info("fork drop entities=%d", n)
+    return {"ok": True, "entities": n}
+
+
 @app.get("/vault/entities", response_model=m.EntitiesRes)
 def entities(user_id: str = Query(min_length=1, max_length=200)):
     S.ensure_self(vault(), user_id)

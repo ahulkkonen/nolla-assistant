@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { rmSync } from 'node:fs';
+import { existsSync, rmSync } from 'node:fs';
 import { join as joinPath, resolve, sep } from 'node:path';
 import {
   type AgentSession,
@@ -169,18 +169,41 @@ export function thinkingOf(m: AgentMessage): string {
     .join('\n\n');
 }
 
-/** `thinking.get` cuts here, before the restore (a surrogate split by the cut stays masked). */
+/** `thinking.get` cuts at most here, before the restore. */
 const THINKING_MAX = 50_000;
 
 /**
- * The files of a chat's thread. A fork also shows the source chat's files on the copied messages,
- * while the source exists (phase-13 decision 7).
+ * At most `max` UTF-16 units of `s`: cut at a paragraph break, else at a space or line break, when
+ * one is in the last 2,000 units; never inside a surrogate pair. "…" marks a cut.
+ */
+export function cutText(s: string, max: number): string {
+  if (s.length <= max) return s;
+  const floor = Math.max(0, max - 2000);
+  let at = s.lastIndexOf('\n\n', max);
+  if (at <= floor) at = Math.max(s.lastIndexOf(' ', max), s.lastIndexOf('\n', max));
+  if (at <= floor) at = max;
+  if (isHigh(s.charCodeAt(at - 1))) at--;
+  return `${s.slice(0, at)}…`;
+}
+
+/**
+ * The files of a chat's thread. A fork also shows the files of its sources (a fork of a fork walks
+ * the chain) up to the edited message's time (`forkedAt`), while each source exists (phase-13
+ * decision 7).
  */
 export function threadFiles(db: Db, userId: string, r: ChatRow) {
-  const own = chatFiles(db, userId, r.id);
-  if (!r.forkedFromChatId || !r.forkedAt) return own;
-  const until = r.forkedAt;
-  return [...chatFiles(db, userId, r.forkedFromChatId).filter((f) => f.createdAt <= until), ...own];
+  const all = chatFiles(db, userId, r.id);
+  const seen = new Set([r.id]);
+  for (let at = r; at.forkedFromChatId && at.forkedAt && !seen.has(at.forkedFromChatId); ) {
+    const cut = at.forkedAt;
+    const source = chatRow(db, userId, at.forkedFromChatId);
+    if (!source) break;
+    seen.add(source.id);
+    all.push(...chatFiles(db, userId, source.id).filter((f) => f.createdAt <= cut));
+    // The source's own copied part ends earlier still.
+    at = source.forkedAt && source.forkedAt > cut ? { ...source, forkedAt: cut } : source;
+  }
+  return all.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
 
 /** A fork's copied replies cost in the source chat, not here (phase-13 decision 7). */
@@ -478,16 +501,44 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
     }
   };
 
+  /**
+   * The real text and the images of a stored user entry, to prompt again (`user.retry`,
+   * `chat.fork`). The session keeps masked text and the input hook masks again, so the text is
+   * restored first. Undefined while the sidecar is down.
+   */
+  const resend = async (entry: UserEntry) => {
+    let down = false;
+    const { text } = await restorer(pseudo, () => {
+      down = true;
+    })(textOf(entry.message));
+    if (down) return undefined;
+    const { content } = entry.message;
+    const images =
+      typeof content === 'string' ? [] : content.flatMap((b) => (b.type === 'image' ? [b] : []));
+    return { text, images };
+  };
+
+  /** Prompts `sent` in `chatId`; a failure tells the room `prompt_failed` and resolves false. */
+  const promptOrFail = (
+    chatId: string,
+    session: AgentSession,
+    sent: NonNullable<Awaited<ReturnType<typeof resend>>>,
+  ) =>
+    session.prompt(sent.text, { images: sent.images }).then(
+      () => true,
+      (err: unknown) => {
+        log.warn({ chatId, err }, 'prompt failed');
+        broadcast(rooms, chatId, errorMsg('prompt_failed', chatId));
+        return false;
+      },
+    );
+
   /** Rewinds the branch to before `last` and prompts its text again (under `retry`'s hold). */
   const rerun = async (chatId: string, session: AgentSession, last: UserEntry) => {
     const sm = session.sessionManager;
     const leaf = sm.getLeafId();
-    // The session keeps masked text and the input hook masks again: send the real text.
-    let down = false;
-    const { text } = await restorer(pseudo, () => {
-      down = true;
-    })(textOf(last.message));
-    if (down) return 'pseudo_down';
+    const sent = await resend(last);
+    if (!sent) return 'pseudo_down';
     // After the await: a message sent meanwhile moved the leaf or started a run.
     if (sm.getLeafId() !== leaf || !session.isIdle) return 'failed';
     // No reply yet: the leaf is the user entry, and navigating to it is a no-op. Its parent
@@ -505,18 +556,9 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
     // The dead branch ran no tool, but an approval may still wait on it.
     approvals.cancel(chatId);
     const rewound = sm.getLeafId();
-    const { content } = last.message;
-    const images =
-      typeof content === 'string' ? [] : content.flatMap((b) => (b.type === 'image' ? [b] : []));
     join(chatId, session);
-    try {
-      await session.prompt(text, { images });
-    } catch (err) {
-      // `prompt_failed` means: the branch was rewound, the client sends the message anew.
-      log.warn({ chatId, err }, 'retry prompt failed');
-      broadcast(rooms, chatId, errorMsg('prompt_failed', chatId));
-      return undefined;
-    }
+    // `prompt_failed` means: the branch was rewound, the client sends the message anew.
+    if (!(await promptOrFail(chatId, session, sent))) return undefined;
     // The input hook dropped the text (the sidecar went down after the check above; it already
     // broadcast `pseudo_down`): put the old turn back. A turn without a reply cannot go back,
     // because navigation to a user entry lands on its parent.
@@ -543,110 +585,124 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
   /**
    * "Haarauta" (phase-13 decisions 1 to 6): a new chat from the masked session up to the edited user
    * message, copied unchanged, then the edited text as its first turn. The source does not change.
+   * Held like `retry`: no policy change starts on the source meanwhile.
    */
-  const fork = async ({
-    chatId,
-    messageId,
-    text,
-  }: Extract<ClientMessage, { type: 'chat.fork' }>) => {
-    const src = owned(chatId);
-    const session = await registry.get(chatId);
-    assertIdle(chatId);
+  const fork = async (msg: Extract<ClientMessage, { type: 'chat.fork' }>) => {
+    const src = owned(msg.chatId);
+    const session = await registry.get(msg.chatId);
+    // Synchronous from this check to the hold.
+    if (registry.running(msg.chatId)) return send(socket, errorMsg('failed', msg.chatId));
     const branch = session.sessionManager.getBranch();
-    const at = branch.findIndex((e) => e.id === messageId);
+    const at = branch.findIndex((e) => e.id === msg.messageId);
     const edited = branch[at];
     if (edited?.type !== 'message' || edited.message.role !== 'user')
-      return send(socket, errorMsg('bad_message', chatId));
+      return send(socket, errorMsg('bad_message', msg.chatId));
+    let release = () => {};
+    registry.hold(msg.chatId, new Promise<void>((r) => (release = r)));
+    try {
+      const code = await forkFrom(src, session, branch, at, edited as UserEntry, msg.text);
+      if (code) send(socket, errorMsg(code, msg.chatId));
+    } finally {
+      release();
+    }
+  };
+
+  const forkFrom = async (
+    src: ChatRow,
+    session: AgentSession,
+    branch: Entry[],
+    at: number,
+    edited: UserEntry,
+    text: string,
+  ): Promise<keyof typeof ERRORS | undefined> => {
+    const sm = session.sessionManager;
+    const leaf = sm.getLeafId();
     // Before the edited entry, past its own `pseudo-spans` entry (pi-ext-pseudo's input hook).
     const prev = branch[at - 1];
-    const point =
-      prev?.type === 'custom' && prev.customType === 'pseudo-spans' ? branch[at - 2] : prev;
-    // The original attachments go with the edited text: its images, and its document blocks
-    // restored (the input hook masks the whole text once), as `rerun` does.
-    const { content } = edited.message;
-    const images =
-      typeof content === 'string' ? [] : content.flatMap((b) => (b.type === 'image' ? [b] : []));
-    let down = false;
-    const restored = await restorer(pseudo, () => {
-      down = true;
-    })(textOf(edited.message));
-    if (down) return send(socket, errorMsg('pseudo_down', chatId));
-    const createdAt = (e: (typeof branch)[number]) =>
-      e.type === 'message' ? new Date(e.message.timestamp).toISOString() : '';
+    const pointAt = prev?.type === 'custom' && prev.customType === 'pseudo-spans' ? at - 2 : at - 1;
+    // Only the system prompt and custom entries before it: nothing to copy, the fork starts empty.
+    const talk = (e: Entry | undefined) =>
+      e?.type === 'message' && (e.message.role === 'user' || e.message.role === 'assistant');
+    const point = branch.slice(0, pointAt + 1).some(talk) ? branch[pointAt] : undefined;
+    const sent = await resend(edited);
+    if (!sent) return 'pseudo_down';
+    // After the await: a message sent meanwhile moved the leaf or started a run.
+    if (sm.getLeafId() !== leaf || !session.isIdle) return 'failed';
+    // The edited message's time: the fork shows the source's files up to it (decision 7).
+    const editedAt = new Date(edited.message.timestamp).toISOString();
     const before = branch
       .slice(0, at)
       .findLast((e) => e.type === 'message' && e.message.role === 'user');
     const docs = filesOf(
       threadFiles(db, userId, src),
-      before ? createdAt(before) : '',
-      createdAt(edited),
+      before?.type === 'message' ? new Date(before.message.timestamp).toISOString() : '',
+      editedAt,
     )
       .filter((f) => f.kind === 'document')
       .map((f) => f.name);
-    const blocks = restored.text.slice(splitBlocks(restored.text, docs).own.length);
+    // Its document blocks go with the edited text (decision 6).
+    const blocks = sent.text.slice(splitBlocks(sent.text, docs).own.length);
 
-    // The copy: the masked entries from the root to the fork point, unchanged (no sidecar call).
     let id: string = randomUUID();
-    const file = session.sessionManager.getSessionFile();
-    if (point && file) {
-      const copy = SessionManager.open(file, registry.sessionDir);
-      copy.createBranchedSession(point.id);
-      id = copy.getSessionId();
-    }
-    const drop = () => registry.remove(id).catch(() => {});
-    // The sidecar must know the copied surrogates, or a tool result masks them again (decision 3).
-    if (pseudo && point)
-      try {
-        await pseudo.forkSession(chatId, id, point.timestamp);
-      } catch {
-        await drop();
-        return send(socket, errorMsg('pseudo_down', chatId));
-      }
-    const now = new Date().toISOString();
-    const haara = (t: string | null) => (t ? `${t} (haara)` : null);
-    const r = db
-      .insert(chats)
-      .values({
-        id,
-        userId,
-        agentId: src.agentId,
-        topicId: src.topicId,
-        title: haara(src.title),
-        titleMasked: haara(src.titleMasked),
-        titleLocked: !!src.title,
-        modelId: src.modelId,
-        reasoning: src.reasoning,
-        // Consent for `open` was for the source chat only (phase-10 proof 1).
-        dataPolicy: 'zdr',
-        sessionPath: src.sessionPath,
-        forkedFromChatId: chatId,
-        forkedFromMessageId: messageId,
-        forkedAt: now,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .returning()
-      .get();
-    let forked: AgentSession;
+    let inserted = false;
     try {
-      forked = await registry.get(id);
+      if (point) {
+        // The copy: the masked entries from the root to the fork point, unchanged.
+        const file = sm.getSessionFile();
+        if (!file) throw new Error('fork source has no file');
+        const copy = SessionManager.open(file, registry.sessionDir);
+        const out = copy.createBranchedSession(point.id);
+        id = copy.getSessionId();
+        // A path with a message is always written; without the file the fork would start empty.
+        if (!out || !existsSync(out)) throw new Error('fork copy not written');
+        // The sidecar must know the copied surrogates, or a tool result masks them again.
+        if (pseudo) await pseudo.forkSession(src.id, id, new Date(point.timestamp).toISOString());
+      }
+      const now = new Date().toISOString();
+      const haara = (t: string | null) => (t ? `${t} (haara)` : null);
+      const r = db
+        .insert(chats)
+        .values({
+          id,
+          userId,
+          agentId: src.agentId,
+          topicId: src.topicId,
+          title: haara(src.title),
+          titleMasked: haara(src.titleMasked),
+          titleLocked: !!src.title,
+          // A bare OpenRouter id: the prefix comes from `dataPolicy` (phase-10 `piModelId`).
+          modelId: src.modelId,
+          reasoning: src.reasoning,
+          // Consent for `open` was for the source chat only (phase-10 proof 1).
+          dataPolicy: 'zdr',
+          sessionPath: src.sessionPath,
+          forkedFromChatId: src.id,
+          forkedFromMessageId: edited.id,
+          forkedAt: editedAt,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .returning()
+        .get();
+      inserted = true;
+      const forked = await registry.get(id);
+      send(socket, { type: 'chat.created', chat: summary(r) });
+      send(socket, await chatState(r, forked));
+      join(id, forked);
+      registry.hold(id, promptOrFail(id, forked, { ...sent, text: text + blocks }));
+      return undefined;
     } catch (err) {
-      db.delete(chats)
-        .where(and(eq(chats.id, id), eq(chats.userId, userId)))
-        .run();
-      await drop();
-      throw err;
+      // Nothing of a half-made fork stays: its row, its file, its sidecar scope.
+      if (inserted)
+        db.delete(chats)
+          .where(and(eq(chats.id, id), eq(chats.userId, userId)))
+          .run();
+      await registry.remove(id).catch(() => {});
+      if (pseudo && point) await pseudo.dropFork(id).catch(() => {});
+      if (err instanceof PseudoDownError) return 'pseudo_down';
+      log.warn({ chatId: src.id, err }, 'fork failed');
+      return 'failed';
     }
-    send(socket, { type: 'chat.created', chat: summary(r) });
-    send(socket, await chatState(r, forked));
-    join(id, forked);
-    registry.hold(
-      id,
-      forked.prompt(text + blocks, { images }).catch((err: unknown) => {
-        log.warn({ chatId: id, err }, 'fork prompt failed');
-        broadcast(rooms, id, errorMsg('prompt_failed', id));
-      }),
-    );
   };
 
   const handle = async (msg: ClientMessage) => {
@@ -719,7 +775,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
         let down = false;
         const { text, annotations } = await restorer(pseudo, () => {
           down = true;
-        })(thinking.slice(0, THINKING_MAX));
+        })(cutText(thinking, THINKING_MAX));
         if (down) return send(socket, errorMsg('pseudo_down', msg.chatId));
         return send(socket, {
           type: 'thinking.text',
@@ -793,7 +849,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
         return send(socket, modelsState());
       case 'chat.delete': {
         const { chatId } = msg;
-        owned(chatId);
+        const deleted = owned(chatId);
         // Row first: a concurrent `registry.get` then fails instead of reviving the chat.
         const paths = db.transaction((tx) => {
           const own = and(eq(files.chatId, chatId), eq(files.userId, userId));
@@ -834,6 +890,16 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
         }
         rooms.delete(chatId);
         refusals.delete(chatId);
+        // A fork's copied sidecar scope goes with it (phase-13 decision 3).
+        if (pseudo && deleted.forkedFromChatId)
+          await pseudo
+            .dropFork(chatId)
+            .catch((err: unknown) =>
+              log.warn(
+                { chatId, error: err instanceof Error ? err.message : 'unknown' },
+                'fork scope drop failed',
+              ),
+            );
         return toAll({ type: 'chat.deleted', chatId });
       }
       case 'chat.focus':

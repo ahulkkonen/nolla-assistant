@@ -43,6 +43,15 @@ class SurrogateConflict(Exception):
     """A surrogate form is already owned by another entity of the user."""
 
 
+def _instant(s: str | None) -> datetime.datetime | None:
+    """An ISO 8601 time as an aware UTC instant; None when it does not parse."""
+    try:
+        t = datetime.datetime.fromisoformat(s or "")
+    except ValueError:
+        return None
+    return t if t.tzinfo else t.replace(tzinfo=datetime.UTC)
+
+
 def now() -> str:
     return datetime.datetime.now(datetime.UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
@@ -208,15 +217,29 @@ class Vault:
                 " VALUES (?,?,?,?,?,?,?,?,?,?)", (user_id, session_id, entry_id, s["start"], s["end"], s["entity_id"],
                                                   s["surrogate"], s["detector"], s["score"], t)).lastrowid for s in spans]
 
-    def fork_spans(self, user_id: str, from_session: str, to_session: str, until: str) -> int:
+    def fork_spans(self, user_id: str, from_session: str, to_session: str, until: datetime.datetime) -> int:
         """A forked chat copies masked entries, so its session must know the entities its source had seen up to
-        `until` (phase-13 decision 3): one span row per entity, `detector='fork'`, at the first time seen."""
+        `until` (phase-13 decision 3): one span row per entity, `detector='fork'`, at the first time seen. Times
+        compare as instants, not as strings."""
+        first: dict[int, tuple[datetime.datetime, str, str | None]] = {}
+        for eid, created, form in self.q("SELECT entity_id, created_at, surrogate_form FROM span"
+                                         " WHERE user_id=? AND session_id=? AND entity_id IS NOT NULL",
+                                         (user_id, from_session)):
+            at = _instant(created)
+            if at and at <= until and (eid not in first or at < first[eid][0]):
+                first[eid] = (at, created, form)
         with self.lock:
-            return self.db.execute(
+            self.db.executemany(
                 "INSERT INTO span(user_id,session_id,entry_id,start,end,entity_id,surrogate_form,detector,score,created_at)"
-                " SELECT user_id, ?, NULL, 0, 0, entity_id, min(surrogate_form), 'fork', 1.0, min(created_at) FROM span"
-                " WHERE user_id=? AND session_id=? AND created_at<=? AND entity_id IS NOT NULL GROUP BY entity_id",
-                (to_session, user_id, from_session, until)).rowcount
+                " VALUES (?,?,NULL,0,0,?,?,'fork',1.0,?)",
+                [(user_id, to_session, eid, form, created) for eid, (_, created, form) in first.items()])
+        return len(first)
+
+    def drop_fork(self, user_id: str, session_id: str) -> int:
+        """Removes what `fork_spans` copied into `session_id` (a failed fork, a deleted chat); its own spans stay."""
+        with self.lock:
+            return self.db.execute("DELETE FROM span WHERE user_id=? AND session_id=? AND detector='fork'",
+                                   (user_id, session_id)).rowcount
 
     # -- never detect
     def never_detect(self, user_id: str) -> set[tuple[str, str]]:

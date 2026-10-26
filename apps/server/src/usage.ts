@@ -15,13 +15,26 @@ import type { Catalog } from './pi/models.ts';
 export type PaMeta = { costUsd?: number; thinkingMs?: number };
 export type UsageKind = 'chat' | 'task' | 'subagent';
 export type UsageAt = { kind: UsageKind; chatId: string | null; agentId?: string | null };
-export type RecordUsage = (at: UsageAt, u: CallUsage | undefined) => void;
+type Warn = (msg: string, data?: object) => void;
+/** Writes one call. `warn` reports a cost that could not be used. */
+export type RecordUsage = ((at: UsageAt, u: CallUsage | undefined) => void) & { warn?: Warn };
 
 type AgentMessage = MessageEndEvent['message'];
 
 const count0 = (x: unknown) => (typeof x === 'number' && Number.isFinite(x) && x > 0 ? x : 0);
-const isCost = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x) && x >= 0;
 const tokensOf = (u: CallUsage) => u.input + u.output + u.cacheRead + u.cacheWrite;
+/** A billed cost above this per call is a broken value; the estimate is used instead. */
+const MAX_CALL_USD = 1000;
+
+/** A billed cost in USD, or undefined when it is missing or out of range (`warn` reports that). */
+function billed(x: unknown, warn?: Warn): number | undefined {
+  if (x === undefined || x === null) return undefined;
+  if (typeof x === 'number' && Number.isFinite(x) && x >= 0 && x <= MAX_CALL_USD) return x;
+  warn?.('usage cost out of range; the estimate is used', {
+    cost: typeof x === 'number' ? x : typeof x,
+  });
+  return undefined;
+}
 
 type Alias = {
   id: string;
@@ -29,14 +42,20 @@ type Alias = {
   cost: Record<'input' | 'output' | 'cacheRead' | 'cacheWrite', number>;
 };
 let aliases: Map<string, Alias> | undefined;
-/** The fixed aliases of `infra/models.json` (names and EU prices). */
+/**
+ * The fixed aliases of `infra/models.json` (names and EU prices). Without the file: no aliases, so
+ * an estimate prices at zero and a name stays the id.
+ */
 const alias = (id: string) => {
-  aliases ??= new Map(
-    (
-      JSON.parse(readFileSync(new URL('../../../infra/models.json', import.meta.url), 'utf8'))
-        .models as Alias[]
-    ).map((m) => [m.id, m]),
-  );
+  if (!aliases)
+    try {
+      const file = new URL('../../../infra/models.json', import.meta.url);
+      aliases = new Map(
+        (JSON.parse(readFileSync(file, 'utf8')).models as Alias[]).map((m) => [m.id, m]),
+      );
+    } catch {
+      aliases = new Map();
+    }
   return aliases.get(id);
 };
 
@@ -47,13 +66,23 @@ const alias = (id: string) => {
  */
 export function usageExtension(at: UsageAt, record?: RecordUsage): ExtensionFactory {
   return (pi) => {
-    // Cleared at `message_end` only: a short stream can run ahead of the `message_start` handler.
-    let cost: number | undefined;
+    // Billed costs by the chunk's response id: a stopped stream's cost can never land on another
+    // message. The usage chunk is the last chunk, so the clear at `message_start` comes before it.
+    const costs = new Map<string | undefined, number>();
     let thinkFrom: number | undefined;
     let thinkTo: number | undefined;
+    /** `responseId:timestamp` of the recorded messages: a repeated `message_end` writes no row. */
+    const recorded = new Set<string>();
+    pi.on('turn_start', () => costs.clear());
+    pi.on('message_start', (e) => {
+      if (e.message.role !== 'assistant') return;
+      costs.clear();
+      thinkFrom = thinkTo = undefined;
+    });
     pi.on('provider_stream_event', (e) => {
-      const c = (e.data as { usage?: { cost?: unknown } } | null)?.usage?.cost;
-      if (isCost(c)) cost = c;
+      const d = e.data as { id?: unknown; usage?: { cost?: unknown } } | null;
+      const c = billed(d?.usage?.cost, record?.warn);
+      if (c !== undefined) costs.set(typeof d?.id === 'string' ? d.id : undefined, c);
     });
     // `thinking_end` comes only when the stream ends; the last delta marks the end of the thinking.
     pi.on('message_update', (e) => {
@@ -62,13 +91,19 @@ export function usageExtension(at: UsageAt, record?: RecordUsage): ExtensionFact
       else if (t === 'thinking_delta') thinkTo = performance.now();
     });
     pi.on('message_end', (e) => {
-      if (e.message.role !== 'assistant') return;
+      const m = e.message;
+      if (m.role !== 'assistant') return;
+      const key = `${m.responseId ?? ''}:${m.timestamp}`;
+      if (recorded.has(key)) return;
+      recorded.add(key);
       const pa: PaMeta = {};
+      const cost = costs.get(m.responseId);
       if (cost !== undefined) pa.costUsd = cost;
       if (thinkFrom !== undefined) pa.thinkingMs = Math.round((thinkTo ?? thinkFrom) - thinkFrom);
-      cost = thinkFrom = thinkTo = undefined;
+      costs.clear();
+      thinkFrom = thinkTo = undefined;
       const changed = Object.keys(pa).length > 0;
-      const message = changed ? ({ ...e.message, pa } as AgentMessage) : e.message;
+      const message = changed ? ({ ...m, pa } as AgentMessage) : m;
       record?.(at, messageUsage(message));
       return changed ? { message } : undefined;
     });
@@ -92,9 +127,9 @@ export function messageUsage(m: unknown): CallUsage | undefined {
     reasoning: count0(u.reasoning),
   };
   if (call.input + call.output + call.cacheRead + call.cacheWrite === 0) return undefined;
-  const billed = msg.pa?.costUsd;
-  return isCost(billed)
-    ? { ...call, costUsd: billed, estimated: false }
+  const cost = billed(msg.pa?.costUsd);
+  return cost !== undefined
+    ? { ...call, costUsd: cost, estimated: false }
     : { ...call, costUsd: count0(u.cost?.total), estimated: true };
 }
 
@@ -102,7 +137,7 @@ export function messageUsage(m: unknown): CallUsage | undefined {
  * An OpenAI `usage` object of a non-streamed LiteLLM call (the title job, consolidation) as one
  * call; undefined without tokens. Without `cost`, the alias price in `infra/models.json` estimates.
  */
-export function rawUsage(model: string, raw: unknown): CallUsage | undefined {
+export function rawUsage(model: string, raw: unknown, warn?: Warn): CallUsage | undefined {
   const r = (raw ?? {}) as any;
   const cacheRead = count0(r.prompt_tokens_details?.cached_tokens);
   const cacheWrite = count0(r.prompt_tokens_details?.cache_write_tokens);
@@ -115,7 +150,8 @@ export function rawUsage(model: string, raw: unknown): CallUsage | undefined {
     reasoning: count0(r.completion_tokens_details?.reasoning_tokens),
   };
   if (call.input + call.output + cacheRead + cacheWrite === 0) return undefined;
-  if (isCost(r.cost)) return { ...call, costUsd: r.cost, estimated: false };
+  const cost = billed(r.cost, warn);
+  if (cost !== undefined) return { ...call, costUsd: cost, estimated: false };
   const p = alias(model)?.cost ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
   const usd =
     (p.input * call.input +
@@ -128,16 +164,16 @@ export function rawUsage(model: string, raw: unknown): CallUsage | undefined {
 
 /**
  * Writes one `usage` row. A row with a chat adds to the chat's running totals in the same
- * transaction and takes the chat's agent when `at` names none. A failure only warns: usage never
- * stops a reply.
+ * transaction and takes the chat's agent when `at` names none; a chat deleted meanwhile gives a
+ * row without a chat. A failure only warns: usage never stops a reply.
  */
 export function usageRecorder(
   db: Db,
   userId: string,
-  warn: (msg: string, data?: object) => void,
+  warn: Warn,
   now: () => Date = () => new Date(),
 ): RecordUsage {
-  return (at, u) => {
+  const record = (at: UsageAt, u: CallUsage | undefined) => {
     if (!u) return;
     try {
       db.transaction((tx) => {
@@ -155,7 +191,7 @@ export function usageRecorder(
         tx.insert(usage)
           .values({
             userId,
-            chatId: at.chatId,
+            chatId: chat ? at.chatId : null,
             agentId: at.agentId ?? chat?.agentId ?? null,
             kind: at.kind,
             ...u,
@@ -170,6 +206,7 @@ export function usageRecorder(
       });
     }
   };
+  return Object.assign(record, { warn });
 }
 
 const TZ = 'Europe/Helsinki';
