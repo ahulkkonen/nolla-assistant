@@ -154,23 +154,33 @@ https://tesseract-ocr.github.io/tessdoc/Command-Line-Usage.html, `pdftoppm -h` (
 
 14. **When.** A PDF whose extracted text has fewer than 50 non-space characters per page on average
     is OCR'd. A PDF whose extraction failed is not.
-15. **How.** Per page, `pdftoppm -r 200 -png -f N -l N` writes one PNG to a temp dir under
-    `DATA_DIR/files/.ocr-*`, and `tesseract <png> - -l fin+swe+eng --psm 3` reads it. The PNG is
-    deleted after its page, and the temp dir after the file. Pages are joined with the line
-    `--- sivu N ---`. Both binaries run with `execFile` (no shell), a timeout, a 16 MB `maxBuffer`
-    and `OMP_THREAD_LIMIT=1`.
-16. **Caps.** At most 30 pages and 90 seconds per file. Past a cap, the text ends with the note
-    `(OCR katkaistu: N/M sivua)`. The text is cut at 60,000 characters like other documents.
+15. **How.** Per page, `pdftoppm -r 200 -scale-to 2000 -png -singlefile -f N -l N` writes one PNG
+    to a temp dir under `DATA_DIR/files/.ocr-*`, and `tesseract <png> - -l fin+swe+eng --psm 3`
+    reads it. `-scale-to 2000` caps the long side at 2,000 pixels, so a huge MediaBox cannot
+    allocate gigabytes. The PNG is deleted after its page, and the temp dir after the file. Pages
+    are joined with the line `--- sivu N ---`. Both binaries run with `execFile` (no shell), a 16 MB
+    `maxBuffer`, and a timeout of the time left until the deadline (at least 1 ms). The child
+    environment has only `PATH`, `HOME` and `OMP_THREAD_LIMIT=1`.
+16. **Caps.** At most 30 pages per file. One 90-second deadline is shared by all files of one
+    message; it starts when the first OCR of the message starts. Past a cap, the text ends with the
+    note `(OCR katkaistu: N/M sivua)`. A file that waits until after the deadline gets only the note.
+    The text is cut at 60,000 characters like other documents.
 17. **Label.** The block header is `[Liite: <name> (OCR)]`. `splitBlocks` reads the name without the
-    suffix, so the document name in `chat.state` stays exact.
+    suffix, so the document name in `chat.state` stays exact. `cleanName` removes a trailing
+    ` (OCR)` from an upload's name, so a user file cannot imitate the suffix.
 18. **Fallback.** When `pdftoppm` or `tesseract` is missing (ENOENT), the server keeps the
-    extracted text as today and logs one warn line `ocr unavailable` once per process. Any other
-    failure keeps the extracted text and logs `ocr failed` with the error code only. The OCR text
-    is never logged.
+    extracted text as today and logs one warn line `ocr unavailable` once per process. When a run
+    fails on page N, the server keeps pages 1 to N-1 with the note and logs `ocr failed` with the
+    error code and the page number. Output above `maxBuffer` logs `ocr output too large` and also
+    keeps the earlier pages. A run that the deadline stops keeps the earlier pages without a log
+    line. A failure on page 1 keeps the extracted text. The OCR text is never logged.
 19. **Image.** `infra/Dockerfile.server` installs `tesseract-ocr`, `tesseract-ocr-fin`,
     `tesseract-ocr-swe`, `tesseract-ocr-eng` and `poppler-utils` in a shared `os` stage. A
     `server-test` stage (built only on request) adds the dev dependencies and the sources, so the
     OCR test runs on the same packages as production.
+
+22. **One OCR at a time.** A process-wide queue runs at most one OCR pipeline at a time. A waiting
+    file counts its wait against the deadline of its own message.
 
 ### Chat cost in the header
 

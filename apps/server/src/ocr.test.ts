@@ -70,6 +70,41 @@ test('splitBlocks reads an OCR block under its document name', () => {
   expect(splitBlocks(text, ['skannaus.pdf'])).toEqual({ own: 'Lue tämä', names: ['skannaus.pdf'] });
 });
 
+test('ocr: a failing page keeps the pages before it; the children get only PATH and HOME', async () => {
+  const bin = tempDir('pa-ocr-bin-');
+  // pdftoppm writes the PNG it is asked for; tesseract prints its environment, fails on call 3.
+  writeFileSync(join(bin, 'pdftoppm'), '#!/bin/sh\nfor a; do :; done\n: > "$a.png"\n', {
+    mode: 0o755,
+  });
+  writeFileSync(
+    join(bin, 'tesseract'),
+    `#!/bin/sh\nn=$(($(cat ${bin}/n 2>/dev/null || echo 0) + 1)); echo $n > ${bin}/n\n[ $n -lt 3 ] || exit 1\necho "sivu$n $(env | cut -d= -f1 | sort | tr '\\n' ' ')"\n`,
+    { mode: 0o755 },
+  );
+  const path = process.env.PATH;
+  process.env.PATH = `${bin}:${path}`;
+  process.env.PA_OCR_SECRET = 'x';
+  const warns: unknown[] = [];
+  try {
+    const text = await ocrPdf(
+      join(bin, 'in.pdf'),
+      5,
+      join(bin, 'files'),
+      Date.now() + 10_000,
+      (m, d) => warns.push([m, d]),
+    );
+    expect(text).toContain('--- sivu 1 ---\nsivu1');
+    expect(text).toContain('--- sivu 2 ---\nsivu2');
+    expect(text).toMatch(/\(OCR katkaistu: 2\/5 sivua\)$/);
+    expect(text).not.toContain('PA_OCR_SECRET');
+    expect(text).toContain('OMP_THREAD_LIMIT');
+    expect(warns).toEqual([['ocr failed', { code: 1, page: 3 }]]);
+  } finally {
+    process.env.PATH = path;
+    delete process.env.PA_OCR_SECRET;
+  }
+});
+
 // Runs in the server-test image (docs/decisions/phase-16-polish.md, gate 3); skipped without the binaries.
 test.skipIf(!onPath('tesseract') || !onPath('pdftoppm'))(
   'ocr: a scanned PDF gives its text',
@@ -88,13 +123,13 @@ test.skipIf(!onPath('tesseract') || !onPath('pdftoppm'))(
     const pdf = join(dir, 'skannaus.pdf');
     writeFileSync(pdf, imagePdf(jpeg, w, h));
     const scratch = join(dir, 'files');
-    const text = await ocrPdf(pdf, 1, scratch);
+    const text = await ocrPdf(pdf, 1, scratch, Date.now() + 60_000);
     expect(text).toMatch(/^--- sivu 1 ---\n/);
     expect(text?.toLowerCase()).toContain('torstaina');
     // The page image and the temp dir are gone.
     expect(readdirSync(scratch)).toEqual([]);
-    // Two pages claimed, a zero budget: nothing read, so the caller keeps its own text.
-    expect(await ocrPdf(pdf, 2, scratch, undefined, 0)).toBeUndefined();
+    // Past the shared deadline: only the note.
+    expect(await ocrPdf(pdf, 2, scratch, Date.now())).toBe('(OCR katkaistu: 0/2 sivua)');
 
     // Through the attachment path: no text layer, so the block is OCR text with the label suffix.
     const { db, sqlite } = openDb(join(dir, 'app.db'));

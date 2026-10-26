@@ -21,38 +21,68 @@ let unavailable = false;
 export const needsOcr = (text: string, pages: number) =>
   pages > 0 && text.replace(/\s/g, '').length / pages < MIN_CHARS_PER_PAGE;
 
+/** The tail of the chain: one OCR pipeline per process at a time (phase-16 decision 22). */
+let queue: Promise<unknown> = Promise.resolve();
+
 /**
- * The OCR text of the first 30 pages within 90 s, pages joined with `--- sivu N ---`; a note ends
- * a cut text. Undefined when the binaries are missing or a run fails: the caller keeps its text.
- * `pdf` is the stored upload; `scratch` holds a temp dir with one page image at a time.
+ * The OCR text of the first 30 pages before `deadline` (epoch ms, shared by the files of one
+ * message), pages joined with `--- sivu N ---`; a note ends a cut text, and a file that waited past
+ * the deadline gets only the note. Undefined when the binaries are missing or the first page
+ * fails: the caller keeps its text. `pdf` is the stored upload; `scratch` holds a temp dir with one
+ * page image at a time.
  */
-export async function ocrPdf(
+export function ocrPdf(
   pdf: string,
   pages: number,
   scratch: string,
+  deadline: number,
   warn?: Warn,
-  budgetMs = OCR_BUDGET_MS,
+): Promise<string | undefined> {
+  const job = () => ocrPages(pdf, pages, scratch, deadline, warn);
+  const next = queue.then(job, job);
+  queue = next.catch(() => {});
+  return next;
+}
+
+async function ocrPages(
+  pdf: string,
+  pages: number,
+  scratch: string,
+  deadline: number,
+  warn?: Warn,
 ): Promise<string | undefined> {
   if (unavailable) return undefined;
-  const deadline = Date.now() + budgetMs;
+  const last = Math.min(pages, OCR_MAX_PAGES);
+  const out: string[] = [];
+  if (Date.now() >= deadline) return cut(out, pages);
   await mkdir(scratch, { recursive: true });
   const dir = await mkdtemp(join(scratch, '.ocr-'));
-  // One thread: the container has a memory limit, and one page at a time is enough.
-  const env = { ...process.env, OMP_THREAD_LIMIT: '1' };
-  const out: string[] = [];
+  // Only what the binaries need; one thread, because the container has a memory limit.
+  const env = {
+    PATH: process.env.PATH ?? '/usr/bin:/bin',
+    ...(process.env.HOME ? { HOME: process.env.HOME } : {}),
+    OMP_THREAD_LIMIT: '1',
+  };
+  const opts = () => ({ timeout: Math.max(1, deadline - Date.now()), maxBuffer: MAX_BUFFER, env });
+  let n = 1;
   try {
-    const last = Math.min(pages, OCR_MAX_PAGES);
-    for (let n = 1; n <= last; n++) {
-      const opts = () => ({ timeout: deadline - Date.now(), maxBuffer: MAX_BUFFER, env });
-      if (opts().timeout <= 0) break;
+    for (; n <= last && Date.now() < deadline; n++) {
       const page = String(n);
       const png = join(dir, 'p');
-      await run(
-        'pdftoppm',
-        ['-r', '200', '-png', '-singlefile', '-f', page, '-l', page, pdf, png],
-        opts(),
-      );
-      if (opts().timeout <= 0) break;
+      // `-scale-to` caps the long side, so a huge MediaBox cannot allocate gigabytes.
+      const args = [
+        '-r',
+        '200',
+        '-scale-to',
+        '2000',
+        '-png',
+        '-singlefile',
+        '-f',
+        page,
+        '-l',
+        page,
+      ];
+      await run('pdftoppm', [...args, pdf, png], opts());
       const { stdout } = await run(
         'tesseract',
         [`${png}.png`, '-', '-l', 'fin+swe+eng', '--psm', '3'],
@@ -68,15 +98,20 @@ export async function ocrPdf(
       warn?.('ocr unavailable: pdftoppm or tesseract not on PATH');
       return undefined;
     }
-    // A run killed by the timeout is the time cap: keep the pages read so far.
-    if (!e.killed) {
-      warn?.('ocr failed', { code: e.code ?? 'unknown' });
-      return undefined;
-    }
+    // A run killed by the timeout is the time cap; the others are logged. The pages read so far stay.
+    if (e.code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER') warn?.('ocr output too large', { page: n });
+    else if (!e.killed) warn?.('ocr failed', { code: e.code ?? 'unknown', page: n });
+    if (out.length === 0 && !e.killed) return undefined;
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
-  if (out.length === 0) return undefined;
-  if (out.length < pages) out.push(`(OCR katkaistu: ${out.length}/${pages} sivua)`);
-  return out.join('\n\n');
+  return cut(out, pages);
+}
+
+/** The pages, and the note when fewer than `pages` were read. */
+function cut(out: string[], pages: number) {
+  return [
+    ...out,
+    ...(out.length < pages ? [`(OCR katkaistu: ${out.length}/${pages} sivua)`] : []),
+  ].join('\n\n');
 }

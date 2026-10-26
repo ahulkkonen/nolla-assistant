@@ -12,7 +12,7 @@ import type { FastifyInstance, preHandlerHookHandler } from 'fastify';
 import mammoth from 'mammoth';
 import sharp from 'sharp';
 import { getDocumentProxy } from 'unpdf';
-import { needsOcr, ocrPdf } from './ocr.ts';
+import { needsOcr, OCR_BUDGET_MS, ocrPdf } from './ocr.ts';
 
 export type ImageContent = NonNullable<PromptOptions['images']>[number];
 
@@ -76,8 +76,15 @@ async function readHead(path: string): Promise<Buffer> {
 
 class TooLarge extends Error {}
 
-/** Strips control characters, brackets and line breaks; at most 120 characters. */
-const cleanName = (name: string) => name.replace(/[\p{Cc}\u2028\u2029[\]]/gu, '').slice(0, 120);
+/**
+ * Strips control characters, brackets and line breaks; at most 120 characters. A trailing ` (OCR)`
+ * goes too, so the OCR label suffix of `ingestAttachments` stays unambiguous (phase-16 decision 17).
+ */
+export const cleanName = (name: string) =>
+  name
+    .replace(/[\p{Cc}\u2028\u2029[\]]/gu, '')
+    .slice(0, 120)
+    .replace(/(?: \(OCR\))+$/, '');
 
 type FileRow = typeof files.$inferSelect;
 
@@ -344,6 +351,8 @@ export async function ingestAttachments(
     throw new AttachmentNotFound();
   const images: ImageContent[] = [];
   let text = '';
+  // One OCR time cap for all files of the message, set when the first OCR starts (decision 22).
+  let ocrDeadline: number | undefined;
   for (const r of ordered as FileRow[]) {
     const path = join(config.dataDir, r.path);
     const buf = await readFile(path);
@@ -353,7 +362,13 @@ export async function ingestAttachments(
       // A scanned PDF has (almost) no text layer: local OCR (phase-16 decisions 14 to 18).
       const ocr =
         pages && needsOcr(extracted, pages)
-          ? await ocrPdf(path, pages, join(config.dataDir, 'files'), config.warn)
+          ? await ocrPdf(
+              path,
+              pages,
+              join(config.dataDir, 'files'),
+              (ocrDeadline ??= Date.now() + OCR_BUDGET_MS),
+              config.warn,
+            )
           : undefined;
       const label = ocr ? `${r.name} ${OCR_MARK}` : r.name;
       text += `\n\n[Liite: ${label}]\n${(ocr ?? extracted).slice(0, MAX_TEXT)}`;

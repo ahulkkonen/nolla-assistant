@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { splitBlocks, zipUnpackedSize } from './files.ts';
+import { cleanName, splitBlocks, zipUnpackedSize } from './files.ts';
 
 const zip = (sizes: number[]) => {
   const entries = sizes.map((size) => {
@@ -36,4 +36,15 @@ test('splitBlocks: a marker in the user text stays; masked names fall back to th
   });
   // No document: nothing is cut.
   expect(splitBlocks(own, [])).toEqual({ own, names: [] });
+});
+
+test('cleanName: a name ending in (OCR) loses it, so the OCR label round-trips', () => {
+  const name = cleanName('skannaus (OCR) (OCR)');
+  expect(name).toBe('skannaus');
+  expect(cleanName('x (OCR).pdf')).toBe('x (OCR).pdf');
+  const block = (label: string) => `\n\n[Liite: ${label}]\nteksti`;
+  expect(splitBlocks(`oma${block(name)}${block(`${name} (OCR)`)}`, [name, name])).toEqual({
+    own: 'oma',
+    names: [name, name],
+  });
 });
