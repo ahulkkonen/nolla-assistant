@@ -15,3 +15,4 @@ The build plan is `docs/plan.md`. Section numbers in records refer to it.
 - `phase-9-ui.md`: production UI on shadcn/ui, design brief, review protocol and status.
 - `0006-ui-reference.md`: deep research on Claude Web and ChatGPT UI (October 2026).
 - `phase-10-models.md`: model picker, thinking level, per-chat ZDR override; OpenRouter research.
+- `phase-11-15-plan.md`: decisions for files, pseudo hardening, thread depth, web search, admin (2026-10-26).
