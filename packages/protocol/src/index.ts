@@ -242,6 +242,18 @@ export type Artifact = z.infer<typeof Artifact>;
  * The artifact sandbox policy: the header of `GET /api/sandbox` and the meta tag of every sandbox
  * document. `font-src data:` serves the inlined fonts (phase-19 decision 3).
  */
+/**
+ * A Mermaid diagram's `accTitle` and `accDescr` (phase 19): the artifact title and the lifted
+ * heading and caption. Without `accTitle` the title is a `title` line of the diagram.
+ */
+export function mermaidMeta(source: string) {
+  const line = (re: RegExp) => re.exec(source)?.[1]?.trim() || undefined;
+  return {
+    title: line(/^\s*accTitle\s*:\s*(.+)$/m) ?? line(/^\s*title\s*:?\s+(.+)$/m),
+    description: line(/^\s*accDescr\s*:\s*(.+)$/m),
+  };
+}
+
 export const SANDBOX_CSP =
   "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:; form-action 'none'; base-uri 'none'";
 

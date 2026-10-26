@@ -167,6 +167,22 @@ in `apps/web/package.json` (decision 2).
 
 ## Risks
 
+- An artifact can navigate its own frame or tab to an external URL with data in the query. No CSP
+  directive stops a document from navigating itself. The chat that the artifact can see is
+  pseudonymized, so the exposure is surrogate text. This risk is older than the sandbox page: the
+  `srcdoc` frame had it too.
+- "Avaa uudessa ikkunassa" keeps the opener reference, because the app posts the document to the
+  tab. The `sandbox` directive (without `allow-top-navigation` and `allow-popups`) stops the
+  artifact from navigating its opener. An e2e flow checks that an artifact cannot navigate the
+  opener, read `document.cookie` or `fetch('/api/chats')`.
+- The sandbox page accepts a document only from `location.origin`. Measured in Chromium:
+  `location.origin` in the CSP-sandboxed page is the real origin, not "null". The page posts
+  "sandbox-ready" to `location.origin`. In the other direction the app sees the page's messages
+  from the origin "null" and can only post to it with the target `'*'`: an opaque origin never
+  matches a named origin. The app checks `event.source` and `event.origin === 'null'` and stops
+  listening after the first "sandbox-ready". Another origin that opens `/api/sandbox` cannot make
+  it render (e2e). Opened directly, with no opener and no parent, the page does nothing.
+
 - The token sheet and the Vega config are frozen. An artifact opened in a new tab keeps the theme
   of the moment it was opened.
 - R4 runs once, when the chart renders. A panel resize across 480 px does not thin or un-thin the
@@ -174,6 +190,49 @@ in `apps/web/package.json` (decision 2).
 - Model HTML that sets its own colours can conflict with the dark page. The prompt tells the model
   to use the kit variables.
 - Each themed artifact document carries about 190 KB of base64 fonts.
+
+## UI review fixes (2026-10-26)
+
+A blind UI review scored the first screenshots as FAIL. Changes:
+
+- A themed artifact page has no inner frame. It sits on the panel's `--card` surface without a
+  border, so the page does not look like an empty box under short content. The page padding is
+  16 px. Every `html`, `jsx` and `tsx` artifact gets the kit, also without kit classes.
+- The tabs Esikatselu and Koodi are in a second header row, so the title keeps the header width.
+  The track is 44 px high below 768 px. The selected tab is `--card` with `--shadow-sm`.
+- Vega: `bandPaddingInner` 0.25; bar corner radius 4 at the end of the bar only.
+- The chart subtitle uses the body type (15/24) in `--muted-foreground`.
+- Mermaid: the artifact title is `accTitle` (else a `title` line). `accTitle` and `accDescr` show
+  as the heading and the caption, as in R1 (`mermaidMeta` in `@pa/protocol`). Edges are
+  `--muted-foreground` at 1.5 px with a non-scaling stroke. Nodes have radius 8, an `--input`
+  border and a `--secondary` fill. Labels are 14 px, 13 px on phones.
+- Plot: `Plot.plot` is wrapped. The model cannot change these defaults: the width is the page
+  content width, there are no tick marks and no domain line, and the y label is rotated and
+  centred like the Vega axis title. `kit.css` mutes the tick and axis labels, sets the grid to
+  `--border` and gives bars radius 3.
+
+## Security review fixes (2026-10-26)
+
+- The guard also counts rows under `datasets` and the steps of a `data.sequence` (500 in all).
+  It refuses any `href` (encoding or mark). It drops the model's `$schema` and sets the Vega-Lite
+  v6 schema itself, and the runtime embeds with `mode: 'vega-lite'`, so a raw Vega spec cannot
+  pass the guard.
+- Numeric `width` and `height` are at most 2000 px at every level (concat, facet, repeat,
+  layers). PNG export refuses a canvas over 4096 px on a side.
+- A chart that does not report "drawn" (`viz-ready`) within 10 s shows the fallback table.
+- Colour literals go only under keys that take colours: a `color`, `fill` or `stroke` value (and
+  the `value` and `condition` of such a channel) keeps only colour roles; a `range` loses colour
+  literals and keeps other strings. Text such as "#2024" in a title or a domain stays.
+- Export: a `<parsererror>` fails the export with a toast. `**bold**` converts in the title, the
+  subtitle and the caption. The file inlines only the font families it uses. `url(` and
+  `@import` are removed from every `<style>` of the exported SVG (a Mermaid `themeCSS` directive
+  is model-written).
+- Mermaid: `suppressErrorRendering: true`; `htmlLabels: false` at the root and for `flowchart`
+  and `class`. Measured with one diagram of each type: `journey` still draws `foreignObject` (2
+  elements); flowchart, sequence, class, state, ER, gantt, mindmap, timeline, pie, kanban, block
+  and quadrant draw none.
+- Plot and D3 load when the source matches `\bPlot\b` or `\bd3\b`. A false positive only
+  costs bytes.
 
 ## Status (2026-10-26)
 

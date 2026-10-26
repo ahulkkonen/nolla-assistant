@@ -1,4 +1,4 @@
-import type { Annotation, AttachmentRef, CallUsage } from '@pa/protocol';
+import { type Annotation, type AttachmentRef, type CallUsage, mermaidMeta } from '@pa/protocol';
 import { Check, Copy, Eye, EyeOff, FileText, PanelRight, Pencil, RotateCcw } from 'lucide-react';
 import { Popover } from 'radix-ui';
 import {
@@ -125,7 +125,9 @@ function Pre(props: ComponentProps<'pre'>) {
     st.showArtifact(st.activeChatId, {
       id: `local-${hash(content)}`,
       kind,
-      title: lang ? `${lang} (viestistä)` : 'Koodi (viestistä)',
+      title:
+        (kind === 'mermaid' && mermaidMeta(content).title) ||
+        (lang ? `${lang} (viestistä)` : 'Koodi (viestistä)'),
       ...(lang ? { language: lang } : {}),
       content,
     });

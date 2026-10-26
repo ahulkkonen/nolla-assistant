@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { Artifact, Message } from '@pa/protocol';
+import { type Artifact, type Message, mermaidMeta } from '@pa/protocol';
 
 const KINDS: Record<string, Artifact['kind']> = {
   html: 'html',
@@ -41,6 +41,10 @@ function specTitle(content: string): string | undefined {
  */
 function headingOf(lang: string, content: string): string | undefined {
   if (lang === 'vega-lite') return specTitle(content);
+  if (lang === 'mermaid') {
+    const t = mermaidMeta(content).title;
+    return t ? clean(t) : undefined;
+  }
   const head = content.slice(0, TITLE_SCAN);
   for (let i = head.indexOf('<h'); i >= 0; i = head.indexOf('<h', i + 2)) {
     if (!'123456'.includes(head[i + 2] ?? 'x')) continue;
