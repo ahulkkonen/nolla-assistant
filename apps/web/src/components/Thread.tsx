@@ -202,11 +202,9 @@ export function Thread() {
                           : {})}
                         {...(prev
                           ? {
-                              // The latest reply runs again in place; an older one as a new message.
-                              onRetry: () =>
-                                chatId && i === lastAssistant && lastAssistant > lastUser
-                                  ? retryTurn(chatId)
-                                  : void sendUserMessage(prev.text, prev.attachments),
+                              // A reply that came is asked again as a new message. Only a failed
+                              // turn runs again in place (the alert below, `user.retry`).
+                              onRetry: () => void sendUserMessage(prev.text, prev.attachments),
                             }
                           : {})}
                       />

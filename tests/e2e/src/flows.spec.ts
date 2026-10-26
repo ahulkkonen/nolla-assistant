@@ -387,6 +387,25 @@ test('model policy: a favourite without ZDR is refused, allowed for the chat, th
   await expect(page.getByText('ZDR palautettu')).toBeVisible();
 });
 
+test('Yritä uudelleen: a failed reply runs again in place, and the thread shows the message once', async ({
+  app,
+  page,
+}) => {
+  // 400 is not retried by Pi: one failed call, then the alert.
+  app.llm.push({ match: /^Hei uudelleen$/, error: { status: 400, message: 'boom' } });
+  app.llm.push({ match: /^Hei uudelleen$/, text: 'Nyt onnistui.' });
+  await app.login(page);
+  await send(page, 'Hei uudelleen');
+  const alert = page.getByRole('alert').filter({ hasText: 'Mallin kutsu epäonnistui.' });
+  await alert.getByRole('button', { name: 'Yritä uudelleen' }).click();
+  await expect(page.locator('.md').last()).toHaveText('Nyt onnistui.');
+  await expect(alert).toHaveCount(0);
+  await expect(thread(page).getByText('Hei uudelleen', { exact: true })).toHaveCount(1);
+  const chat = app.llm.requests.filter((r) => r.body.stream === true);
+  expect(chat).toHaveLength(2);
+  expect(JSON.stringify(chat[1]?.body.messages).split('Hei uudelleen')).toHaveLength(2);
+});
+
 test('agent picker: a new chat is created with the picked agent', async ({ app, page }) => {
   app.llm.push({ text: 'Tutkitaan.' });
   await app.login(page);

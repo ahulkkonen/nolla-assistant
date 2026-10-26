@@ -1,8 +1,9 @@
 import { mkdtempSync, rmSync } from 'node:fs';
+import { createServer as httpServer } from 'node:http';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { type FakeTurn, startFakeLlm } from '@pa/fake-llm';
+import { type FakeTurn, listenLocal, startFakeLlm } from '@pa/fake-llm';
 import { startFakeSidecar } from '@pa/pi-ext-pseudo/fake-sidecar';
 import { startFakeBroker } from '@pa/pi-ext-sandbox/fake-broker';
 import type { ClientMessageInput, ServerMessage } from '@pa/protocol';
@@ -156,4 +157,33 @@ export async function bootResearch(turns: FakeTurn[], env: Record<string, string
   c.send({ type: 'chat.create', agentId: 'research' });
   const { chat } = await c.next('chat.created');
   return { ...b, srv, c, chat, broker };
+}
+
+/**
+ * A proxy in front of a fake sidecar: every call waits `delayMs`; a path in `fail` answers 503.
+ * Puts a prompt into the slow or failing `pi-ext-pseudo` hooks on purpose.
+ */
+export async function sidecarProxy(target: string) {
+  const ctl = { url: '', delayMs: 0, fail: new Set<string>() };
+  const server = httpServer((req, res) => {
+    const body: Buffer[] = [];
+    req.on('data', (d: Buffer) => body.push(d));
+    req.on('end', async () => {
+      await new Promise((r) => setTimeout(r, ctl.delayMs));
+      const path = req.url?.split('?')[0] ?? '';
+      if (ctl.fail.has(path)) return void res.writeHead(503).end('down');
+      const { host: _, 'content-length': __, ...headers } = req.headers;
+      const r = await fetch(`${target}${req.url}`, {
+        method: req.method ?? 'GET',
+        headers: headers as Record<string, string>,
+        ...(req.method === 'GET' ? {} : { body: Buffer.concat(body) }),
+      });
+      res.writeHead(r.status, { 'content-type': r.headers.get('content-type') ?? 'text/plain' });
+      res.end(Buffer.from(await r.arrayBuffer()));
+    });
+  });
+  const { origin, close } = await listenLocal(server);
+  cleanups.push(close);
+  ctl.url = origin;
+  return ctl;
 }

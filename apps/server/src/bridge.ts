@@ -69,6 +69,8 @@ export type BridgeDeps = {
 };
 
 type AgentMessage = AgentSession['messages'][number];
+type Entry = ReturnType<AgentSession['sessionManager']['getBranch']>[number];
+type UserEntry = Extract<Entry, { type: 'message' }> & { message: { role: 'user' } };
 type ChatRow = typeof chats.$inferSelect;
 
 /** Fixed client-facing text per error code; details stay in the server log. */
@@ -390,6 +392,75 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
     });
   };
 
+  /**
+   * `user.retry` (phase-10): the chat's last turn failed (an error reply without tool calls, or
+   * no reply yet), so its user message runs again in place, with the same text and images. The
+   * thread and the model then hold that message once. Returns the refusal code, if any.
+   */
+  const retry = async (chatId: string): Promise<keyof typeof ERRORS | undefined> => {
+    owned(chatId);
+    const session = await registry.get(chatId);
+    // Synchronous from this check to the hold: no prompt or policy change starts in between.
+    if (registry.running(chatId)) return 'failed';
+    const last = failedTurn(session);
+    if (!last) return 'bad_message';
+    let release = () => {};
+    registry.hold(chatId, new Promise<void>((r) => (release = r)));
+    try {
+      return await rerun(chatId, session, last);
+    } finally {
+      release();
+    }
+  };
+
+  /** Rewinds the branch to before `last` and prompts its text again (under `retry`'s hold). */
+  const rerun = async (chatId: string, session: AgentSession, last: UserEntry) => {
+    const sm = session.sessionManager;
+    const leaf = sm.getLeafId();
+    // The session keeps masked text and the input hook masks again: send the real text.
+    let down = false;
+    const { text } = await restorer(pseudo, () => {
+      down = true;
+    })(textOf(last.message));
+    if (down) return 'pseudo_down';
+    // After the await: a message sent meanwhile moved the leaf or started a run.
+    if (sm.getLeafId() !== leaf || !session.isIdle) return 'failed';
+    // No reply yet: the leaf is the user entry, and navigating to it is a no-op. Its parent
+    // (not another user entry, which navigation would skip) is the point before it.
+    const target = leaf === last.id ? last.parentId : last.id;
+    const parent = target === null ? undefined : sm.getEntry(target);
+    if (
+      !target ||
+      (leaf === last.id && parent?.type === 'message' && parent.message.role === 'user')
+    )
+      return 'failed';
+    // `failed`, not `prompt_failed`: the branch did not move.
+    const nav = await session.navigateTree(target).catch(() => ({ cancelled: true }));
+    if (nav.cancelled) return 'failed';
+    // The dead branch ran no tool, but an approval may still wait on it.
+    approvals.cancel(chatId);
+    const rewound = sm.getLeafId();
+    const { content } = last.message;
+    const images =
+      typeof content === 'string' ? [] : content.flatMap((b) => (b.type === 'image' ? [b] : []));
+    join(chatId, session);
+    try {
+      await session.prompt(text, { images });
+    } catch (err) {
+      // `prompt_failed` means: the branch was rewound, the client sends the message anew.
+      log.warn({ chatId, err }, 'retry prompt failed');
+      broadcast(rooms, chatId, errorMsg('prompt_failed', chatId));
+      return undefined;
+    }
+    // The input hook dropped the text (the sidecar went down after the check above; it already
+    // broadcast `pseudo_down`): put the old turn back. A turn without a reply cannot go back,
+    // because navigation to a user entry lands on its parent.
+    // ponytail: that case loses the turn on the server; the client keeps it and resends.
+    if (sm.getLeafId() === rewound && leaf && leaf !== last.id)
+      await session.navigateTree(leaf).catch(() => {});
+    return undefined;
+  };
+
   const handle = async (msg: ClientMessage) => {
     switch (msg.type) {
       case 'ping':
@@ -572,7 +643,9 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
           throw err;
         }
       case 'user.message': {
-        // `msg.agentId` is ignored: an existing chat keeps its agent (decision 1).
+        // `msg.agentId` is ignored: an existing chat keeps its agent (decision 1). No await
+        // between `registry.get` and `hold`: a policy change (a socket message) cannot run in
+        // between, and a stale session is rebuilt inside `get`.
         const { chatId } = msg;
         owned(chatId);
         const { images, text } = await ingestAttachments(
@@ -601,40 +674,13 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
         return;
       }
       case 'user.retry': {
-        // The ZDR consent and "Yritä uudelleen": the branch goes back to before the last user
-        // message and the same message runs again, so the thread and the model see it once.
-        const { chatId } = msg;
-        owned(chatId);
-        const session = await registry.get(chatId);
-        const last = session.sessionManager
-          .getBranch()
-          .findLast((e) => e.type === 'message' && e.message.role === 'user');
-        if (last?.type !== 'message' || last.message.role !== 'user')
-          return send(socket, errorMsg('bad_message', chatId));
-        // The session keeps masked text and the input hook masks again: send the real text.
-        let down = false;
-        const { text } = await restorer(pseudo, () => {
-          down = true;
-        })(textOf(last.message));
-        if (down) return send(socket, errorMsg('pseudo_down', chatId));
-        const { content } = last.message;
-        const images =
-          typeof content === 'string'
-            ? []
-            : content.flatMap((b) => (b.type === 'image' ? [b] : []));
-        join(chatId, session);
-        // Synchronous with the hold: no other prompt starts between the check and the run.
-        assertIdle(chatId);
-        registry.hold(
-          chatId,
-          session
-            .navigateTree(last.id)
-            .then(() => session.prompt(text, { images }))
-            .catch((err: unknown) => {
-              log.warn({ chatId, err }, 'retry failed');
-              broadcast(rooms, chatId, errorMsg('prompt_failed', chatId));
-            }),
-        );
+        // Every refusal names the chat: the client then keeps its thread as it was.
+        const code = await retry(msg.chatId).catch((err: unknown) => {
+          if (err instanceof NotFound || err instanceof ChatNotFound) return 'not_found' as const;
+          log.warn({ chatId: msg.chatId, err }, 'retry failed');
+          return 'failed' as const;
+        });
+        if (code) send(socket, errorMsg(code, msg.chatId));
         return;
       }
       case 'approval.respond': {
@@ -922,6 +968,30 @@ function forward(
       .then(() => handle(e))
       .catch((err: unknown) => log.warn({ chatId, err }, 'forward'));
   };
+}
+
+const hasToolCall = (m: AgentMessage) =>
+  m.role === 'assistant' && m.content.some((b) => b.type === 'toolCall');
+
+/**
+ * The user entry of the branch's last turn when that turn can run again in place (`user.retry`):
+ * it starts a turn (a steer follows a tool result), and after it come only assistant errors
+ * without tool calls, or nothing yet. A turn with tool calls would run them again.
+ */
+function failedTurn(session: AgentSession): UserEntry | undefined {
+  const messages = session.sessionManager
+    .getBranch()
+    .flatMap((e) => (e.type === 'message' ? [e] : []));
+  const at = messages.findLastIndex((e) => e.message.role === 'user');
+  const last = messages[at];
+  if (!last || last.message.role !== 'user') return undefined;
+  const prev = messages[at - 1]?.message;
+  if (prev && (prev.role === 'toolResult' || hasToolCall(prev))) return undefined;
+  const after = messages.slice(at + 1).map((e) => e.message);
+  if (after.some((m) => m.role !== 'assistant' || hasToolCall(m))) return undefined;
+  const reply = after.at(-1);
+  if (reply?.role === 'assistant' && reply.stopReason !== 'error') return undefined;
+  return last as UserEntry;
 }
 
 /** Sidecar snake_case to protocol camelCase. `lastSeen` is normalised to UTC ISO for zod. */

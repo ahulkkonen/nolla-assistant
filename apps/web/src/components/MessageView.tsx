@@ -307,7 +307,10 @@ type Props = {
   subagents?: SubagentChild[];
   /** User message: sends the edited text as a new message. */
   onEdit?: (text: string) => void;
-  /** Assistant message: resends the previous user message. */
+  /**
+   * Assistant message: sends the previous user message again as a new turn. A failed turn has no
+   * message here; the thread's alert retries it in place (`user.retry`).
+   */
   onRetry?: () => void;
 };
 

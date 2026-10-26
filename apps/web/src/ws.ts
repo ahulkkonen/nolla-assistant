@@ -15,12 +15,23 @@ let stopped = true;
 let pingTimer: ReturnType<typeof setInterval> | undefined;
 let retryTimer: ReturnType<typeof setTimeout> | undefined;
 let createWaiters: Array<(chatId: string) => void> = [];
-/** A data-policy change sent from this client, until its `chat.updated` confirms it. */
-let policyIntent: { chatId: string; dataPolicy: DataPolicy } | null = null;
-// A chat switch drops it: the consent's retry runs only in the chat on screen.
+/**
+ * A data-policy change sent from this client, until its `chat.updated` confirms it. For `open`,
+ * `turnId` is the refused turn's user message: the consent retries that turn and no newer one.
+ */
+let policyIntent: { chatId: string; dataPolicy: DataPolicy; turnId?: string } | null = null;
+/** A `user.retry` sent, until the rerun starts (the local thread rewinds then) or is refused. */
+let retryIntent: { chatId: string; turnId: string } | null = null;
+// A chat switch drops the consent: its retry runs only in the chat on screen.
 useStore.subscribe((s, prev) => {
   if (s.activeChatId !== prev.activeChatId) policyIntent = null;
 });
+
+const lastUser = (chatId: string) => {
+  const messages = useStore.getState().messages[chatId] ?? [];
+  const i = messages.findLastIndex((m) => m.role === 'user');
+  return { messages, i, last: messages[i] };
+};
 
 const defaultUrl = () => `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;
 
@@ -33,6 +44,8 @@ export function connect(to = defaultUrl()) {
 
 export function disconnect() {
   stopped = true;
+  policyIntent = null;
+  retryIntent = null;
   clearTimeout(retryTimer);
   clearInterval(pingTimer);
   queue = [];
@@ -69,6 +82,9 @@ export function createChat(): Promise<string> {
 
 /** Shows the message at once (the server does not echo it) and sends it; creates the chat if needed. */
 export async function sendUserMessage(text: string, attachments: AttachmentRef[] = []) {
+  // A new turn ends a pending consent or retry: neither may act on it.
+  policyIntent = null;
+  retryIntent = null;
   const id = useStore.getState().activeChatId ?? (await createChat());
   useStore.getState().addLocalMessage(id, {
     id: `local-${crypto.randomUUID()}`,
@@ -83,28 +99,43 @@ export async function sendUserMessage(text: string, attachments: AttachmentRef[]
 }
 
 /**
- * "Yritä uudelleen" and the ZDR consent: the last user turn runs again in place, so the thread
- * shows it once. The server rewinds its branch (`user.retry`); a message that never reached the
- * session (`prompt_failed`) is sent again instead.
+ * The failed-reply alert's "Yritä uudelleen" and the ZDR consent. A failed turn without tool
+ * rows runs again in place (`user.retry`), so the thread shows its message once; the thread
+ * rewinds when the server starts the rerun and stays as it is when the server refuses. A
+ * message that never reached the session (`prompt_failed`, the server branch already went back)
+ * or a turn that ran tools (a rerun would run them again) is sent again as a new message.
  */
 export function retryTurn(chatId: string) {
   const st = useStore.getState();
-  const resend = st.failed[chatId] === 'prompt_failed';
-  const messages = st.messages[chatId] ?? [];
-  const i = messages.findLastIndex((m) => m.role === 'user');
-  const last = messages[i];
+  const { messages, i, last } = lastUser(chatId);
   if (!last) return;
+  const inPlace =
+    st.failed[chatId] !== 'prompt_failed' && messages.slice(i + 1).every((m) => !m.tools.length);
+  if (inPlace) {
+    retryIntent = { chatId, turnId: last.id };
+    return send({ type: 'user.retry', chatId });
+  }
   st.rewind(chatId, i + 1);
-  send(
-    resend
-      ? { type: 'user.message', chatId, text: last.text, attachments: last.attachments }
-      : { type: 'user.retry', chatId },
+  send({ type: 'user.message', chatId, text: last.text, attachments: last.attachments });
+}
+
+/** Rewinds the thread on the rerun's first event; a refusal (an error for the chat) keeps it. */
+function settleRetry(msg: ServerMessage) {
+  const intent = retryIntent;
+  if (!intent || !('chatId' in msg) || msg.chatId !== intent.chatId) return;
+  if (msg.type === 'error') retryIntent = null;
+  if (msg.type !== 'agent.status' || msg.state !== 'running') return;
+  retryIntent = null;
+  const at = (useStore.getState().messages[intent.chatId] ?? []).findIndex(
+    (m) => m.id === intent.turnId,
   );
+  if (at >= 0) useStore.getState().rewind(intent.chatId, at + 1);
 }
 
 /** The consent ("open", then the retry) or "Palauta ZDR"; both act on the server's confirmation. */
 export function setDataPolicy(chatId: string, dataPolicy: DataPolicy) {
-  policyIntent = { chatId, dataPolicy };
+  const turnId = dataPolicy === 'open' ? lastUser(chatId).last?.id : undefined;
+  policyIntent = { chatId, dataPolicy, ...(turnId ? { turnId } : {}) };
   send({ type: 'chat.setDataPolicy', chatId, dataPolicy });
 }
 
@@ -118,14 +149,16 @@ function settlePolicy(msg: ServerMessage, was: ModelPolicy | undefined) {
   }
   if (msg.type !== 'chat.updated' || msg.chat.id !== intent.chatId) return;
   const now = msg.chat.modelPolicy;
-  if (was && (was.modelId !== now.modelId || was.reasoning !== now.reasoning)) {
+  // No known policy before (not loaded): this update cannot be told from another one.
+  if (!was || was.modelId !== now.modelId || was.reasoning !== now.reasoning) {
     policyIntent = null;
     return;
   }
-  if (now.dataPolicy !== intent.dataPolicy || was?.dataPolicy === now.dataPolicy) return;
+  if (now.dataPolicy !== intent.dataPolicy || was.dataPolicy === now.dataPolicy) return;
   policyIntent = null;
-  if (intent.dataPolicy === 'open') retryTurn(intent.chatId);
-  else useStore.getState().notify('ZDR palautettu');
+  if (intent.dataPolicy === 'zdr') return useStore.getState().notify('ZDR palautettu');
+  // Only the refused turn runs again: a newer one is the user's own.
+  if (intent.turnId && lastUser(intent.chatId).last?.id === intent.turnId) retryTurn(intent.chatId);
 }
 
 /**
@@ -168,6 +201,7 @@ function open() {
     const was = msg.type === 'chat.updated' ? store.policies[msg.chat.id] : undefined;
     store.apply(msg);
     settlePolicy(msg, was);
+    settleRetry(msg);
     if (msg.type === 'chat.created') {
       const waiter = createWaiters.shift();
       waiter?.(msg.chat.id);
@@ -186,6 +220,9 @@ function open() {
   };
   sock.onclose = () => {
     clearInterval(pingTimer);
+    // The answer to a pending consent or retry may never come; a reconnect starts clean.
+    policyIntent = null;
+    retryIntent = null;
     if (ws !== sock || stopped) return;
     ws = null;
     retryTimer = setTimeout(open, backoff);

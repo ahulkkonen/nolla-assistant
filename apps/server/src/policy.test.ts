@@ -1,15 +1,14 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { createServer } from 'node:http';
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { automationRuns, chats } from '@pa/db';
-import { listenLocal } from '@pa/fake-llm';
 import { startFakeSidecar } from '@pa/pi-ext-pseudo/fake-sidecar';
-import type { ClientMessageInput } from '@pa/protocol';
+import type { AttachmentRef, ClientMessageInput } from '@pa/protocol';
 import { eq } from 'drizzle-orm';
+import sharp from 'sharp';
 import { afterEach, expect, test, vi } from 'vitest';
-import { boot, cleanups, connect, runCleanups } from './test-utils.ts';
+import { api, boot, cleanups, connect, login, runCleanups, sidecarProxy } from './test-utils.ts';
 
 // Phase-10 "Proof that the default stays ZDR-only", claims 1 and 3 to 6, and decision 10.
 afterEach(runCleanups);
@@ -48,7 +47,22 @@ async function start(turns: Parameters<typeof boot>[0], env: Record<string, stri
     await expect(c.next('chat.updated')).rejects.toThrow('bad_message');
     expect(row(chatId)?.dataPolicy).toBe('zdr');
   };
-  return { ...b, srv, c, row, sessionModel, create, refuseOpen };
+  /** A message refused for ZDR, then the consent: the chat is `open` and its turn failed. */
+  const refuseThenOpen = async (chatId: string, text = 'Moi') => {
+    c.send({ type: 'user.message', chatId, text });
+    await expect(c.next('message.final')).rejects.toThrow('zdr_unavailable');
+    await c.idle();
+    c.inbox.length = 0;
+    c.send({ type: 'chat.setDataPolicy', chatId, dataPolicy: 'open' });
+    expect((await c.next('chat.updated')).chat.modelPolicy.dataPolicy).toBe('open');
+  };
+  /** Sends `user.retry` and expects the refusal `code` for this chat. */
+  const refuseRetry = async (chatId: string, code: string) => {
+    c.inbox.length = 0;
+    c.send({ type: 'user.retry', chatId });
+    await expect(c.next('message.final')).rejects.toThrow(`server error: ${code}`);
+  };
+  return { ...b, srv, c, row, sessionModel, create, refuseOpen, refuseThenOpen, refuseRetry };
 }
 
 test('proof 1: chat.create ignores a client dataPolicy; the chat and its session are zdr', {
@@ -159,14 +173,13 @@ test('proofs 3, 4, 6: open needs a recorded refusal, ends with the model; titles
 test('user.retry runs the refused turn again in place: the model and chat.state see it once', {
   timeout: 30_000,
 }, async () => {
-  const { llm, c, create } = await start([REFUSAL, { text: 'Vastaus ilman ZDR:ää.' }, TITLE]);
+  const { llm, c, create, refuseThenOpen, refuseRetry } = await start([
+    REFUSAL,
+    { text: 'Vastaus ilman ZDR:ää.' },
+    TITLE,
+  ]);
   const chat = await create({ modelId: FABLE, reasoning: 'auto' });
-  c.send({ type: 'user.message', chatId: chat.id, text: 'Kerro säästä' });
-  await expect(c.next('message.final')).rejects.toThrow('zdr_unavailable');
-  await c.idle();
-  c.inbox.length = 0;
-  c.send({ type: 'chat.setDataPolicy', chatId: chat.id, dataPolicy: 'open' });
-  await c.next('chat.updated');
+  await refuseThenOpen(chat.id, 'Kerro säästä');
 
   c.send({ type: 'user.retry', chatId: chat.id });
   expect((await c.next('message.final')).message.text).toBe('Vastaus ilman ZDR:ää.');
@@ -180,10 +193,193 @@ test('user.retry runs the refused turn again in place: the model and chat.state 
     ['assistant', 'Vastaus ilman ZDR:ää.'],
   ]);
 
-  // Nothing to run again in a chat without messages.
-  const empty = await create();
-  c.send({ type: 'user.retry', chatId: empty.id });
-  await expect(c.next('message.final')).rejects.toThrow('bad_message');
+  // Nothing to run again in a chat without messages, nor after a reply that did not fail.
+  await refuseRetry((await create()).id, 'bad_message');
+  await refuseRetry(chat.id, 'bad_message');
+});
+
+test('user.retry holds the chat: "Palauta ZDR" during its restore step fails; the rerun stays on open/', {
+  timeout: 40_000,
+}, async () => {
+  const sc = await startFakeSidecar({});
+  cleanups.push(sc.close);
+  const proxy = await sidecarProxy(sc.url);
+  const { llm, c, row, create, refuseThenOpen } = await start(
+    [REFUSAL, { text: 'Uudelleen.' }, TITLE],
+    { PSEUDO_URL: proxy.url },
+  );
+  const chat = await create({ modelId: FABLE, reasoning: 'auto' });
+  await refuseThenOpen(chat.id);
+  // The retry waits in its restore (/unmask) step while "Palauta ZDR" arrives.
+  proxy.delayMs = 500;
+  c.inbox.length = 0;
+  c.send({ type: 'user.retry', chatId: chat.id });
+  await sleep(200);
+  c.send({ type: 'chat.setDataPolicy', chatId: chat.id, dataPolicy: 'zdr' });
+  await expect(c.next('chat.updated')).rejects.toThrow('server error: failed');
+  proxy.delayMs = 0;
+  expect(row(chat.id)?.dataPolicy).toBe('open');
+  expect((await c.next('message.final')).message.text).toBe('Uudelleen.');
+  await c.idle();
+  expect(llm.requests[1]?.body.model).toBe(`open/${FABLE}`);
+  c.inbox.length = 0;
+  c.send({ type: 'chat.setDataPolicy', chatId: chat.id, dataPolicy: 'zdr' });
+  expect((await c.next('chat.updated')).chat.modelPolicy.dataPolicy).toBe('zdr');
+});
+
+test('user.retry of a turn without a reply runs it once (no user, user)', {
+  timeout: 30_000,
+}, async () => {
+  const { llm, srv, c, create } = await start([{ text: 'Eka.' }, { text: 'Toka.' }, TITLE, TITLE]);
+  const chat = await create();
+  c.send({ type: 'user.message', chatId: chat.id, text: 'Eka?' });
+  await c.next('message.final');
+  await c.idle();
+  // As after a crash during the call: the user entry is the leaf, no reply follows it.
+  const session = await srv.registry.get(chat.id);
+  session.sessionManager.appendMessage({
+    role: 'user',
+    content: [{ type: 'text', text: 'Toka?' }],
+    timestamp: Date.now(),
+  });
+  c.send({ type: 'user.retry', chatId: chat.id });
+  expect((await c.next('message.final')).message.text).toBe('Toka.');
+  await c.idle();
+  const sent = llm.requests.filter((r) => r.body.model !== 'zdr/task-small')[1];
+  expect(JSON.stringify(sent?.body.messages).split('Toka?')).toHaveLength(2);
+  c.send({ type: 'chat.open', chatId: chat.id });
+  expect((await c.next('chat.state')).messages.map((m) => [m.role, m.text])).toEqual([
+    ['user', 'Eka?'],
+    ['assistant', 'Eka.'],
+    ['user', 'Toka?'],
+    ['assistant', 'Toka.'],
+  ]);
+});
+
+test('user.retry refuses a turn that ran tools and a steered turn (bad_message)', {
+  timeout: 40_000,
+}, async () => {
+  const fail = { error: { status: 400, message: 'nope' } };
+  const { srv, c, create, refuseRetry } = await start([
+    { toolCalls: [{ name: 'read', args: { path: 'note.txt' } }] },
+    fail,
+    { toolCalls: [{ name: 'write', args: { path: 'x.txt', content: 'x' } }] },
+    fail,
+    TITLE,
+    TITLE,
+  ]);
+  writeFileSync(join(srv.registry.cwd, 'note.txt'), 'hei');
+  // A read, then the failure: a rerun would run the read again.
+  const tools = await create();
+  c.send({ type: 'user.message', chatId: tools.id, text: 'Lue' });
+  expect((await c.next('tool.end')).status).toBe('ok');
+  // The tool-call reply has its final; the failed call after it has none.
+  await expect(c.next('message.final')).resolves.toMatchObject({ type: 'message.final' });
+  await expect(c.next('message.final')).rejects.toThrow('llm_failed');
+  await c.idle();
+  await refuseRetry(tools.id, 'bad_message');
+
+  // A steer that arrives while a write waits for approval: the failed call follows the steer.
+  const steered = await create();
+  c.send({ type: 'user.message', chatId: steered.id, text: 'Kirjoita' });
+  const req = await c.next('approval.request');
+  c.send({ type: 'user.message', chatId: steered.id, text: 'Ohjaus' });
+  await sleep(100);
+  c.send({ type: 'approval.respond', requestId: req.requestId, approve: false });
+  await expect(c.next('message.final')).resolves.toMatchObject({ type: 'message.final' });
+  await expect(c.next('message.final')).rejects.toThrow('llm_failed');
+  await c.idle();
+  const branch = (await srv.registry.get(steered.id)).sessionManager.getBranch();
+  const roles = branch.flatMap((e) => (e.type === 'message' ? [e.message.role] : []));
+  expect(roles.slice(-3)).toEqual(['toolResult', 'user', 'assistant']);
+  await refuseRetry(steered.id, 'bad_message');
+});
+
+test('user.retry with a document and an image: masked in the request and the session, shown once', {
+  timeout: 40_000,
+}, async () => {
+  const sc = await startFakeSidecar({ 'Matti Virtanen': 'Pekka Laaksonen' });
+  cleanups.push(sc.close);
+  const { llm, srv, config, c, create, refuseThenOpen } = await start(
+    [REFUSAL, { text: 'Näen kuvan.' }, TITLE],
+    { PSEUDO_URL: sc.url },
+  );
+  const { cookie } = await login(config.port);
+  const png = await sharp({ create: { width: 4, height: 4, channels: 3, background: '#f00' } })
+    .png()
+    .toBuffer();
+  const form = new FormData();
+  form.append('files', new Blob([new Uint8Array(png)], { type: 'image/png' }), 'dot.png');
+  form.append('files', new Blob(['muistio Matti Virtanen'], { type: 'text/plain' }), 'note.txt');
+  const up = await api(config.port, '/api/files', {
+    method: 'POST',
+    body: form,
+    headers: { cookie },
+  });
+  const { files } = (await up.json()) as { files: AttachmentRef[] };
+  const chat = await create({ modelId: FABLE, reasoning: 'auto' });
+  c.send({
+    type: 'user.message',
+    chatId: chat.id,
+    text: 'Katso Matti Virtanen',
+    attachments: files,
+  });
+  await expect(c.next('message.final')).rejects.toThrow('zdr_unavailable');
+  await c.idle();
+  c.inbox.length = 0;
+  c.send({ type: 'chat.setDataPolicy', chatId: chat.id, dataPolicy: 'open' });
+  await c.next('chat.updated');
+
+  c.send({ type: 'user.retry', chatId: chat.id });
+  expect((await c.next('message.final')).message.text).toBe('Näen kuvan.');
+  await c.idle();
+  const body = llm.requests[1]?.body;
+  expect(body.model).toBe(`open/${FABLE}`);
+  const sent = JSON.stringify(body.messages);
+  expect(sent).not.toContain('Matti Virtanen');
+  expect(sent.split('Katso Pekka Laaksonen')).toHaveLength(2);
+  expect(sent).toContain('[Liite: note.txt]\\nmuistio Pekka Laaksonen');
+  // The memory extension adds a user message of its own; the retried one is there once.
+  const user = body.messages.filter((m: { role: string }) =>
+    JSON.stringify(m).includes('Katso Pekka Laaksonen'),
+  );
+  expect(user).toHaveLength(1);
+  expect(user[0].content.some((p: { type: string }) => p.type === 'image_url')).toBe(true);
+  const file = readdirSync(srv.registry.sessionDir).find((f) => f.includes(chat.id));
+  const jsonl = readFileSync(join(srv.registry.sessionDir, file ?? ''), 'utf8');
+  expect(jsonl).toContain('Pekka Laaksonen');
+  expect(jsonl).not.toContain('Matti Virtanen');
+  c.send({ type: 'chat.open', chatId: chat.id });
+  const users = (await c.next('chat.state')).messages.filter((m) => m.role === 'user');
+  expect(users.map((m) => [m.text, m.attachments.map((a) => a.name)])).toEqual([
+    ['Katso Matti Virtanen', ['dot.png', 'note.txt']],
+  ]);
+});
+
+test('user.retry: a mask failure after the check keeps the old turn (pseudo_down, no call)', {
+  timeout: 40_000,
+}, async () => {
+  const sc = await startFakeSidecar({});
+  cleanups.push(sc.close);
+  const proxy = await sidecarProxy(sc.url);
+  const { llm, c, create, refuseThenOpen } = await start(
+    [REFUSAL, { text: 'Nyt toimii.' }, TITLE],
+    { PSEUDO_URL: proxy.url },
+  );
+  const chat = await create({ modelId: FABLE, reasoning: 'auto' });
+  await refuseThenOpen(chat.id);
+  // /unmask (the check) answers, /mask (the input hook) does not.
+  proxy.fail.add('/mask');
+  c.inbox.length = 0;
+  c.send({ type: 'user.retry', chatId: chat.id });
+  await expect(c.next('message.final')).rejects.toThrow('pseudo_down');
+  expect(llm.requests).toHaveLength(1);
+  // The old turn is back on the branch: the next retry finds it and runs.
+  proxy.fail.clear();
+  c.send({ type: 'user.retry', chatId: chat.id });
+  expect((await c.next('message.final')).message.text).toBe('Nyt toimii.');
+  await c.idle();
+  expect(JSON.stringify(llm.requests[1]?.body.messages).split('"Moi"')).toHaveLength(2);
 });
 
 test('registry.get rebuilds an idle session whose stored policy changed (no stale open session)', {
@@ -266,26 +462,9 @@ test('"Palauta ZDR" during a prompt\'s input hooks waits for the prompt (failed,
   // reports the session idle.
   const sc = await startFakeSidecar({});
   cleanups.push(sc.close);
-  let delayMs = 0;
-  const slow = createServer((req, res) => {
-    const body: Buffer[] = [];
-    req.on('data', (d: Buffer) => body.push(d));
-    req.on('end', async () => {
-      await sleep(delayMs);
-      const { host: _, 'content-length': __, ...headers } = req.headers;
-      const r = await fetch(`${sc.url}${req.url}`, {
-        method: req.method ?? 'GET',
-        headers: headers as Record<string, string>,
-        ...(req.method === 'GET' ? {} : { body: Buffer.concat(body) }),
-      });
-      res.writeHead(r.status, { 'content-type': r.headers.get('content-type') ?? 'text/plain' });
-      res.end(Buffer.from(await r.arrayBuffer()));
-    });
-  });
-  const proxy = await listenLocal(slow);
-  cleanups.push(proxy.close);
+  const proxy = await sidecarProxy(sc.url);
   const { llm, c, row, create } = await start([REFUSAL, { text: 'Kiire.' }], {
-    PSEUDO_URL: proxy.origin,
+    PSEUDO_URL: proxy.url,
   });
   const chat = await create({ modelId: FABLE, reasoning: 'auto' });
   c.send({ type: 'user.message', chatId: chat.id, text: 'Moi' });
@@ -295,7 +474,7 @@ test('"Palauta ZDR" during a prompt\'s input hooks waits for the prompt (failed,
   c.send({ type: 'chat.setDataPolicy', chatId: chat.id, dataPolicy: 'open' });
   expect((await c.next('chat.updated')).chat.modelPolicy.dataPolicy).toBe('open');
 
-  delayMs = 500;
+  proxy.delayMs = 500;
   c.inbox.length = 0;
   c.send({ type: 'user.message', chatId: chat.id, text: 'Kiire' });
   await sleep(200);
@@ -306,7 +485,7 @@ test('"Palauta ZDR" during a prompt\'s input hooks waits for the prompt (failed,
   expect(llm.requests[1]?.body.model).toBe(`open/${FABLE}`);
   await c.idle();
   // Once idle, the restore goes through.
-  delayMs = 0;
+  proxy.delayMs = 0;
   c.inbox.length = 0;
   c.send({ type: 'chat.setDataPolicy', chatId: chat.id, dataPolicy: 'zdr' });
   expect((await c.next('chat.updated')).chat.modelPolicy.dataPolicy).toBe('zdr');

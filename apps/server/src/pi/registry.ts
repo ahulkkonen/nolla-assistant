@@ -104,6 +104,8 @@ export class SessionRegistry {
   private readonly entries = new Map<string, Entry>();
   /** chatId → prompts in flight (see `hold`). */
   private readonly prompting = new Map<string, number>();
+  /** Chats with a queued or running subagent child (its result lands in the parent's branch). */
+  private readonly children = new Set<string>();
   private runtime: Promise<ModelRuntime> | undefined;
   private readonly opts: RegistryOptions;
 
@@ -170,12 +172,16 @@ export class SessionRegistry {
   }
 
   /**
-   * Synchronous, so a check and a row write cannot be split: a held prompt, or a built session
-   * that is not idle (a run, Pi's retry delay, compaction).
+   * Synchronous, so a check and a row write cannot be split: a held prompt, a built session that
+   * is not idle (a run, Pi's retry delay, compaction), or a subagent child that has not ended.
    */
   running(chatId: string): boolean {
     const ready = this.entries.get(chatId)?.ready;
-    return this.prompting.has(chatId) || (ready !== undefined && !ready.isIdle);
+    return (
+      this.prompting.has(chatId) ||
+      this.children.has(chatId) ||
+      (ready !== undefined && !ready.isIdle)
+    );
   }
 
   /** Subscribes once per open session; the listener is removed on eviction and dispose. */
@@ -233,6 +239,7 @@ export class SessionRegistry {
   async drop(chatId: string): Promise<void> {
     const e = this.entries.get(chatId);
     this.entries.delete(chatId);
+    this.children.delete(chatId);
     if (e) await stop(e).catch(() => {});
   }
 
@@ -375,7 +382,12 @@ export class SessionRegistry {
                 approvalAlways: profile.approval.always.filter(
                   (t) => !profile.approval.never.includes(t),
                 ),
-                onState: (children) => withSubagents.onState(chatId, children),
+                onState: (children) => {
+                  if (children.some((c) => c.status === 'queued' || c.status === 'running'))
+                    this.children.add(chatId);
+                  else this.children.delete(chatId);
+                  withSubagents.onState(chatId, children);
+                },
                 ask: this.opts.approval.ask,
                 log: (...args) => withSubagents.log(chatId, ...args),
               }),
