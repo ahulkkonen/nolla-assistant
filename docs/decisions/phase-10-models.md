@@ -423,7 +423,7 @@ The UI follows the design brief in `docs/decisions/phase-9-ui.md`, section 7. Al
 | < 768, started chat | Liitä, agent chip as a 44 px icon button (`Bot` 16) with the name kept as sr-only text, model chip without chevron | mic, send |
 
 - Space check at 390 px: the toolbar has 340 px inside. In a started chat, the other controls and gaps take 200 px. The sum is 44 + 4 + 44 + 4 + 8 + 44 + 8 + 44. That leaves 140 px for the model chip. In an empty chat, the agent chip takes 104 px, which leaves 80 px. "Auto" fits in 80 px.
-- The model chip copies the agent chip: ghost, 32 h (44 on phones), radius full, `--text-ui`. It truncates with an ellipsis at 200 px (desktop) or at the space that is left (phone). The accessible name is "Malli: Auto", from sr-only "Malli: " plus the visible name.
+- The model chip copies the agent chip: ghost, 32 h (44 on phones), radius full, `--text-ui`. It truncates with an ellipsis at 200 px (desktop) or at the space that is left (phone). The accessible name is "Malli: Auto", from an `aria-label` with the full model name.
 - The visible name is the catalog name without the vendor prefix ("Claude Opus 5.5", "Gemini 4 Argon"). A chat with a null `modelId` shows the alias name from `infra/models.json`, for example "Strong (ZDR)".
 - While a run is active, the chip is `aria-disabled` with the tooltip "Malli vaihdetaan, kun vastaus on valmis".
 
@@ -431,7 +431,7 @@ The UI follows the design brief in `docs/decisions/phase-9-ui.md`, section 7. Al
 
 - When `dataPolicy === 'open'`, the chip shows a `Badge` (warning variant, 22 h, `--text-micro`) with the text "Ei ZDR" after the model name.
 - Under 768 px the badge is a 16 px `ShieldOff` icon in `--warning` before the name.
-- The accessible name becomes "Malli: Claude Fable 5.1, ilman ZDR:ää".
+- The accessible name becomes "Malli: Claude Fable 5.1, Ei ZDR".
 - The badge stays visible for the whole time that the chat is open, because the composer is always on screen in the thread.
 
 ### Model menu
@@ -492,6 +492,7 @@ The refusal uses the place and shape of the existing failed-reply alert in `Thre
 1. The allow button has 37 characters. Brief 7.9 caps buttons at 16 characters. The user chose this label.
 2. In a started chat under 768 px, the agent chip shows an icon and keeps its name as sr-only text. Its accessible name "Agentti: Avustaja" does not change.
 3. The model chip has no chevron under 768 px.
+4. The open-policy part of the accessible name is ", Ei ZDR", the text of the badge, and not ", ilman ZDR:ää". The name must contain the visible label (axe `label-content-name-mismatch`).
 
 ## Failure handling
 

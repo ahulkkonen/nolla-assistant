@@ -600,6 +600,43 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
         );
         return;
       }
+      case 'user.retry': {
+        // The ZDR consent and "Yritä uudelleen": the branch goes back to before the last user
+        // message and the same message runs again, so the thread and the model see it once.
+        const { chatId } = msg;
+        owned(chatId);
+        const session = await registry.get(chatId);
+        const last = session.sessionManager
+          .getBranch()
+          .findLast((e) => e.type === 'message' && e.message.role === 'user');
+        if (last?.type !== 'message' || last.message.role !== 'user')
+          return send(socket, errorMsg('bad_message', chatId));
+        // The session keeps masked text and the input hook masks again: send the real text.
+        let down = false;
+        const { text } = await restorer(pseudo, () => {
+          down = true;
+        })(textOf(last.message));
+        if (down) return send(socket, errorMsg('pseudo_down', chatId));
+        const { content } = last.message;
+        const images =
+          typeof content === 'string'
+            ? []
+            : content.flatMap((b) => (b.type === 'image' ? [b] : []));
+        join(chatId, session);
+        // Synchronous with the hold: no other prompt starts between the check and the run.
+        assertIdle(chatId);
+        registry.hold(
+          chatId,
+          session
+            .navigateTree(last.id)
+            .then(() => session.prompt(text, { images }))
+            .catch((err: unknown) => {
+              log.warn({ chatId, err }, 'retry failed');
+              broadcast(rooms, chatId, errorMsg('prompt_failed', chatId));
+            }),
+        );
+        return;
+      }
       case 'approval.respond': {
         if (approvals.respond(msg.requestId, msg.approve)) return;
         const chatId = approvals.resolvedChat(msg.requestId);

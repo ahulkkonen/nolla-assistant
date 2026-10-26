@@ -4,6 +4,7 @@ import type {
   ChatSummary,
   Message,
   ModelChoice,
+  ModelPolicy,
   ServerMessage,
   ToolRow,
   VaultEntity,
@@ -79,7 +80,7 @@ type State = {
   /** Counts error toasts: screens that wait for a server echo also stop waiting on an error. */
   errorCount: number;
   /** A failed reply per chat, shown inline in the thread until the next message. */
-  failed: Record<string, string>;
+  failed: Record<string, FailedCode>;
   /** A user message to open in edit mode (↑ in an empty composer). */
   editMessageId: string | null;
   sidebarOpen: boolean;
@@ -95,10 +96,16 @@ type State = {
   pendingModel: ModelChoice;
   /** Null until the first `models.state`. */
   models: ModelsState | null;
-  /** A ZDR refusal per chat (`zdr_unavailable`), shown inline until consent or a new message. */
-  zdrRefused: Record<string, true>;
-  /** The chat whose last message runs again once `chat.updated` shows `open`. */
-  retryOnOpen: string | null;
+  /**
+   * The model policy of every chat seen (`chat.list`, `chat.created`, `chat.updated`,
+   * `chat.state`), also of chats outside the sidebar list (search hits, the other archive view).
+   */
+  policies: Record<string, ModelPolicy>;
+  /**
+   * A ZDR refusal per chat (`zdr_unavailable`) and the model it was for. The thread shows it while
+   * the chat keeps that model, until consent, a policy change or a new message.
+   */
+  zdrRefused: Record<string, { modelId: ModelPolicy['modelId'] }>;
   /** The composer's model menu (the refusal alert's "Vaihda malli" opens it). */
   modelMenuOpen: boolean;
   /** Open approval requests of every chat, oldest first. */
@@ -148,6 +155,8 @@ type State = {
   setActive(chatId: string | null): void;
   setArchivedView(on: boolean): void;
   addLocalMessage(chatId: string, msg: UiMessage): void;
+  /** Keeps the chat's first `keep` messages and ends the turn (a retry in place). */
+  rewind(chatId: string, keep: number): void;
   pushError(message: string): void;
   notify(message: string): void;
   setSidebarOpen(open: boolean): void;
@@ -232,10 +241,19 @@ const ERROR_TEXT: Record<string, string> = {
 };
 
 /** Inline failed-reply text; the alert's "Yritä uudelleen" button says what to do. */
-const FAILED_TEXT: Record<string, string> = {
+export const FAILED_TEXT = {
   llm_failed: 'Mallin kutsu epäonnistui.',
   prompt_failed: 'Viestin lähetys epäonnistui.',
 };
+type FailedCode = keyof typeof FAILED_TEXT;
+
+/** What a new turn ends in a chat: decided approvals, the memory chip and both inline alerts. */
+const endTurn = (st: State, chatId: string) => ({
+  approvals: st.approvals.filter((a) => a.chatId !== chatId || (!a.expired && !a.denied)),
+  memoryChip: omit(st.memoryChip, chatId),
+  failed: omit(st.failed, chatId),
+  zdrRefused: omit(st.zdrRefused, chatId),
+});
 
 /** Delta annotations are chunk-relative; `offset` is the chunk's start in the message. */
 const shift = (annotations: Annotation[], offset: number) =>
@@ -268,8 +286,8 @@ export const useStore = create<State>()((set, get) => {
     pendingAgentId: 'assistant',
     pendingModel: DEFAULT_MODEL,
     models: null,
+    policies: {},
     zdrRefused: {},
-    retryOnOpen: null,
     modelMenuOpen: false,
     approvals: [],
     subagents: {},
@@ -307,7 +325,14 @@ export const useStore = create<State>()((set, get) => {
         case 'auth.state':
           return set({ auth: msg.authenticated ? 'in' : 'out' });
         case 'chat.list':
-          return set({ chats: sortChats(msg.chats), chatsLoaded: true });
+          return set((st) => ({
+            chats: sortChats(msg.chats),
+            chatsLoaded: true,
+            policies: {
+              ...st.policies,
+              ...Object.fromEntries(msg.chats.map((c) => [c.id, c.modelPolicy])),
+            },
+          }));
         case 'chat.created':
           return set((st) => ({
             chats: sortChats([msg.chat, ...st.chats.filter((c) => c.id !== msg.chat.id)]),
@@ -315,17 +340,23 @@ export const useStore = create<State>()((set, get) => {
             messages: { ...st.messages, [msg.chat.id]: st.messages[msg.chat.id] ?? [] },
             pendingAgentId: 'assistant',
             pendingModel: DEFAULT_MODEL,
+            policies: { ...st.policies, [msg.chat.id]: msg.chat.modelPolicy },
           }));
         case 'chat.updated':
           return set((st) => {
             const rest = st.chats.filter((c) => c.id !== msg.chat.id);
-            const was = st.chats.find((c) => c.id === msg.chat.id)?.modelPolicy;
+            const was = st.policies[msg.chat.id];
             const now = msg.chat.modelPolicy;
-            // A new model or the consent ends the refusal alert.
+            // A new model or level (the server drops the refusal record) or the consent ends the
+            // refusal alert; an unknown previous policy counts as a change.
             const policyChanged =
-              !!was && (was.modelId !== now.modelId || was.dataPolicy !== now.dataPolicy);
+              !was ||
+              was.modelId !== now.modelId ||
+              was.reasoning !== now.reasoning ||
+              was.dataPolicy !== now.dataPolicy;
             return {
               chats: sortChats(msg.chat.archived === st.archivedView ? [msg.chat, ...rest] : rest),
+              policies: { ...st.policies, [msg.chat.id]: now },
               ...(policyChanged ? { zdrRefused: omit(st.zdrRefused, msg.chat.id) } : {}),
             };
           });
@@ -338,6 +369,7 @@ export const useStore = create<State>()((set, get) => {
         case 'chat.state':
           return set((st) => ({
             messages: { ...st.messages, [msg.chat.id]: msg.messages },
+            policies: { ...st.policies, [msg.chat.id]: msg.chat.modelPolicy },
             ...(msg.artifacts ? mergeArtifacts(st, msg.chat.id, msg.artifacts) : {}),
           }));
         case 'artifact.upsert':
@@ -363,6 +395,7 @@ export const useStore = create<State>()((set, get) => {
             memoryChip: omit(st.memoryChip, msg.chatId),
             failed: omit(st.failed, msg.chatId),
             zdrRefused: omit(st.zdrRefused, msg.chatId),
+            policies: omit(st.policies, msg.chatId),
             approvals: st.approvals.filter((a) => a.chatId !== msg.chatId),
             ...(st.activeChatId === msg.chatId
               ? { activeChatId: null, screen: 'chat', scrollTo: null }
@@ -488,12 +521,20 @@ export const useStore = create<State>()((set, get) => {
             if (st.activeChatId && !st.chats.some((c) => c.id === st.activeChatId))
               set({ activeChatId: null, scrollTo: null });
           }
-          // A ZDR refusal in the open chat asks for consent inline (phase-10 UI).
-          if (msg.code === 'zdr_unavailable' && msg.chatId && msg.chatId === get().activeChatId)
-            return set((st) => ({
-              zdrRefused: { ...st.zdrRefused, [msg.chatId as string]: true },
-              errorCount: st.errorCount + 1,
+          // A ZDR refusal asks for consent inline (phase-10 UI), also when the chat opens later;
+          // in a chat in the background a toast says so too.
+          if (msg.code === 'zdr_unavailable' && msg.chatId) {
+            const { chatId } = msg;
+            set((st) => ({
+              zdrRefused: {
+                ...st.zdrRefused,
+                [chatId]: { modelId: st.policies[chatId]?.modelId ?? null },
+              },
             }));
+            if (chatId !== get().activeChatId)
+              return get().pushError(ERROR_TEXT.zdr_unavailable ?? msg.message);
+            return set((st) => ({ errorCount: st.errorCount + 1 }));
+          }
           // A failed reply in the open chat is an inline alert with a retry (brief 7.5).
           if (
             (msg.code === 'llm_failed' || msg.code === 'prompt_failed') &&
@@ -501,7 +542,7 @@ export const useStore = create<State>()((set, get) => {
             msg.chatId === get().activeChatId
           )
             return set((st) => ({
-              failed: { ...st.failed, [msg.chatId as string]: FAILED_TEXT[msg.code] as string },
+              failed: { ...st.failed, [msg.chatId as string]: msg.code as FailedCode },
               errorCount: st.errorCount + 1,
             }));
           return get().pushError(ERROR_TEXT[msg.code] ?? msg.message);
@@ -550,11 +591,13 @@ export const useStore = create<State>()((set, get) => {
     setArchivedView: (archivedView) => set({ archivedView }),
     addLocalMessage: (chatId, m) =>
       set((st) => ({
-        approvals: st.approvals.filter((a) => a.chatId !== chatId || (!a.expired && !a.denied)),
-        memoryChip: omit(st.memoryChip, chatId),
-        failed: omit(st.failed, chatId),
-        zdrRefused: omit(st.zdrRefused, chatId),
+        ...endTurn(st, chatId),
         messages: { ...st.messages, [chatId]: [...(st.messages[chatId] ?? []), m] },
+      })),
+    rewind: (chatId, keep) =>
+      set((st) => ({
+        ...endTurn(st, chatId),
+        messages: { ...st.messages, [chatId]: (st.messages[chatId] ?? []).slice(0, keep) },
       })),
     // Toasts (brief 7.5): 4 s, errors 6 s with a close button.
     pushError(message) {

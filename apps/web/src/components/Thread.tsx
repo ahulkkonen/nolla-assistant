@@ -3,13 +3,13 @@ import { AlertCircle, ArrowDown, MessageSquare, ShieldAlert } from 'lucide-react
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { type UiMessage, useStore } from '../store.ts';
-import { openChat, send, sendUserMessage } from '../ws.ts';
+import { FAILED_TEXT, type UiMessage, useStore } from '../store.ts';
+import { useModel } from '../useModel.ts';
+import { openChat, retryTurn, sendUserMessage, setDataPolicy } from '../ws.ts';
 import { ApprovalCard } from './ApprovalCard.tsx';
 import { IconButton } from './IconButton.tsx';
 import { MemoryChipRow } from './MemoryChipRow.tsx';
 import { MessageView } from './MessageView.tsx';
-import { useModel } from './ModelPicker.tsx';
 import { UNTITLED } from './Sidebar.tsx';
 import { SubagentRow } from './SubagentRow.tsx';
 
@@ -66,9 +66,10 @@ export function Thread() {
   const memoryChip = useStore((s) => (chatId ? s.memoryChip[chatId] : undefined));
   const subagents = useStore((s) => (chatId ? s.subagents[chatId] : undefined)) ?? EMPTY;
   const failed = useStore((s) => (chatId ? s.failed[chatId] : undefined));
-  const refused = useStore((s) => (chatId ? !!s.zdrRefused[chatId] : false));
-  const retryOnOpen = useStore((s) => s.retryOnOpen);
+  const refusal = useStore((s) => (chatId ? s.zdrRefused[chatId] : undefined));
   const { name: modelName, policy } = useModel();
+  // Only while the chat keeps the refused model: the name in the alert is that model's.
+  const refused = refusal?.modelId === policy.modelId;
   // Filtered here, not in the selector: a new array per call would re-render forever.
   const allApprovals = useStore((s) => s.approvals);
   // Open requests only: a decided one is shown by its tool row.
@@ -151,26 +152,9 @@ export function Thread() {
     </>
   );
 
-  /** Consent for this chat; the last message runs again once `chat.updated` shows `open`. */
-  const allowOpen = () => {
-    if (!chatId) return;
-    useStore.setState({ retryOnOpen: chatId });
-    send({ type: 'chat.setDataPolicy', chatId, dataPolicy: 'open' });
-  };
-  useEffect(() => {
-    if (!chatId || retryOnOpen !== chatId || policy.dataPolicy !== 'open') return;
-    useStore.setState({ retryOnOpen: null });
-    const prev = previousUser(messages, messages.length);
-    if (prev) void sendUserMessage(prev.text, prev.attachments);
-  }, [chatId, retryOnOpen, policy.dataPolicy, messages]);
   useEffect(() => {
     if (refused) announce('Malli ei tue ZDR:ää', true);
   }, [refused]);
-
-  const retryLast = () => {
-    const prev = previousUser(messages, messages.length);
-    if (prev) void sendUserMessage(prev.text, prev.attachments);
-  };
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
@@ -217,7 +201,13 @@ export function Thread() {
                           ? { onEdit: (text: string) => void sendUserMessage(text) }
                           : {})}
                         {...(prev
-                          ? { onRetry: () => void sendUserMessage(prev.text, prev.attachments) }
+                          ? {
+                              // The latest reply runs again in place; an older one as a new message.
+                              onRetry: () =>
+                                chatId && i === lastAssistant && lastAssistant > lastUser
+                                  ? retryTurn(chatId)
+                                  : void sendUserMessage(prev.text, prev.attachments),
+                            }
                           : {})}
                       />
                     </div>
@@ -265,8 +255,8 @@ export function Thread() {
               className="flex flex-wrap items-center gap-3 rounded-lg bg-destructive-subtle px-4 py-3 text-body text-foreground"
             >
               <AlertCircle size={16} className="shrink-0 text-destructive" />
-              <span className="min-w-0 flex-1">{failed}</span>
-              <Button variant="outline" size="sm" onClick={retryLast}>
+              <span className="min-w-0 flex-1">{FAILED_TEXT[failed]}</span>
+              <Button variant="outline" size="sm" onClick={() => chatId && retryTurn(chatId)}>
                 Yritä uudelleen
               </Button>
             </div>
@@ -290,7 +280,7 @@ export function Thread() {
                 </div>
               </div>
               <div className="flex flex-wrap gap-2 pl-7 max-md:flex-col max-md:pl-0">
-                <Button variant="outline" onClick={allowOpen}>
+                <Button variant="outline" onClick={() => chatId && setDataPolicy(chatId, 'open')}>
                   Salli ilman ZDR:ää tässä keskustelussa
                 </Button>
                 <Button variant="ghost" onClick={() => useStore.setState({ modelMenuOpen: true })}>

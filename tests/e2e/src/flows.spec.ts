@@ -345,6 +345,11 @@ test('model policy: a favourite without ZDR is refused, allowed for the chat, th
   const catalog = page.getByRole('dialog', { name: 'Kaikki mallit' });
   await catalog.getByRole('button', { name: 'Lisää suosikkeihin: Claude Fable 5.1' }).click();
   await expect(catalog.getByRole('heading', { name: 'Suosikit' })).toBeVisible();
+  // Listed once; the star keeps the focus when its row moves to Suosikit.
+  await expect(catalog.getByRole('button', { name: /: Claude Fable 5\.1$/ })).toHaveCount(1);
+  await expect(
+    catalog.getByRole('button', { name: 'Poista suosikeista: Claude Fable 5.1' }),
+  ).toBeFocused();
   await page.keyboard.press('Escape');
   await chip.click();
   await page.getByRole('menuitemradio', { name: /^Claude Fable 5\.1/ }).click();
@@ -356,21 +361,30 @@ test('model policy: a favourite without ZDR is refused, allowed for the chat, th
   await expect(alert).toBeVisible();
   expect(app.llm.requests.at(-1)?.body.model).toBe('zdr/anthropic/claude-fable-5.1');
 
-  // 2. Consent: the message runs again on the open route; the chip shows the badge.
+  // A chat switch keeps the refusal: the alert is back when the chat opens again.
+  await page.getByRole('button', { name: 'Uusi keskustelu' }).first().click();
+  await expect(alert).toHaveCount(0);
+  await page.locator('nav li > button', { hasText: 'Hei Fable' }).click();
+  await expect(alert).toBeVisible();
+
+  // 2. Consent: the same turn runs again on the open route, in place; the chip shows the badge.
   await alert.getByRole('button', { name: 'Salli ilman ZDR:ää tässä keskustelussa' }).click();
   await expect(page.locator('.md').last()).toHaveText('Vastaus ilman ZDR:ää.');
   await expect(alert).toHaveCount(0);
   await expect(chip).toHaveAccessibleName('Malli: Claude Fable 5.1, Ei ZDR');
   await expect(page.getByText('Ei ZDR', { exact: true })).toBeVisible();
-  expect(app.llm.requests.some((r) => r.body.model === 'open/anthropic/claude-fable-5.1')).toBe(
-    true,
-  );
+  const thread = page.getByRole('region', { name: 'Keskustelu' });
+  await expect(thread.getByText('Hei Fable', { exact: true })).toHaveCount(1);
+  const open = app.llm.requests.filter((r) => r.body.model === 'open/anthropic/claude-fable-5.1');
+  expect(open).toHaveLength(1);
+  expect(JSON.stringify(open[0]?.body.messages).split('Hei Fable')).toHaveLength(2);
 
   // 3. "Palauta ZDR" ends the consent: the badge goes.
   await chip.click();
   await page.getByRole('menuitem', { name: 'Palauta ZDR' }).click();
   await expect(chip).toHaveAccessibleName('Malli: Claude Fable 5.1');
   await expect(page.getByText('Ei ZDR', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('ZDR palautettu')).toBeVisible();
 });
 
 test('agent picker: a new chat is created with the picked agent', async ({ app, page }) => {

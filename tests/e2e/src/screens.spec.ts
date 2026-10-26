@@ -105,13 +105,26 @@ const shot = async (page: Page, screen: string, w: number, scheme: string) => {
   await axe(page, `${screen}-${w}-${scheme}`);
 };
 
-/** Opens the composer's model menu (phase-10). */
+/** Opens the composer's model menu (phase-10): a dropdown at ≥ 768, a bottom sheet on phones. */
 const modelMenu = (page: Page) => page.getByRole('button', { name: /^Malli: / }).click();
 
+/** A control of the model menu: a menu item, or a sheet's button or radio on phones. */
+const menuControl = (page: Page, w: number, kind: 'item' | 'radio', name: string | RegExp) =>
+  page.getByRole(
+    w < 768
+      ? kind === 'item'
+        ? 'button'
+        : 'radio'
+      : kind === 'item'
+        ? 'menuitem'
+        : 'menuitemradio',
+    { name },
+  );
+
 /** Picks a model for the chat from "Kaikki mallit". */
-const pickModel = async (page: Page, name: string) => {
+const pickModel = async (page: Page, w: number, name: string) => {
   await modelMenu(page);
-  await page.getByRole('menuitem', { name: 'Kaikki mallit…' }).click();
+  await menuControl(page, w, 'item', 'Kaikki mallit…').click();
   const catalog = page.getByRole('dialog', { name: 'Kaikki mallit' });
   await catalog.getByRole('button', { name: new RegExp(`^${name.replace(/\./g, '\\.')}`) }).click();
   await expect(catalog).toHaveCount(0);
@@ -316,25 +329,29 @@ for (const scheme of ['light', 'dark'] as const) {
       test('model-menu', async ({ app, page }) => {
         await app.login(page);
         await modelMenu(page);
-        await expect(page.getByRole('menuitem', { name: 'Kaikki mallit…' })).toBeVisible();
+        await expect(menuControl(page, vp.width, 'item', 'Kaikki mallit…')).toBeVisible();
         await shot(page, 'model-menu', vp.width, scheme);
       });
 
       test('model-thinking', async ({ app, page }) => {
         await app.login(page);
-        await pickModel(page, 'Claude Opus 5.5');
+        await pickModel(page, vp.width, 'Claude Opus 5.5');
         await modelMenu(page);
-        await expect(page.getByRole('menuitemradio', { name: /^Maksimi/ })).toBeVisible();
+        // ≥ 768 the levels are a submenu; on phones the sheet lists them under "Ajattelu".
+        if (vp.width >= 768) await page.getByRole('menuitem', { name: /^Ajattelu/ }).click();
+        await expect(menuControl(page, vp.width, 'radio', /^Maksimi/)).toBeVisible();
+        await expect(menuControl(page, vp.width, 'radio', /^Matala/)).toBeInViewport();
         await shot(page, 'model-thinking', vp.width, scheme);
       });
 
       test('model-catalog', async ({ app, page }) => {
         await app.login(page);
         await modelMenu(page);
-        await page.getByRole('menuitem', { name: 'Kaikki mallit…' }).click();
+        await menuControl(page, vp.width, 'item', 'Kaikki mallit…').click();
         const catalog = page.getByRole('dialog', { name: 'Kaikki mallit' });
         await catalog.getByRole('button', { name: 'Lisää suosikkeihin: Claude Fable 5.1' }).click();
         await expect(catalog.getByRole('heading', { name: 'Suosikit' })).toBeVisible();
+        await page.mouse.move(vp.width - 8, vp.height - 8);
         await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
         await shot(page, 'model-catalog', vp.width, scheme);
       });
@@ -342,7 +359,7 @@ for (const scheme of ['light', 'dark'] as const) {
       test('zdr-refusal', async ({ app, page }) => {
         app.llm.push(REFUSAL);
         await app.login(page);
-        await pickModel(page, 'Claude Fable 5.1');
+        await pickModel(page, vp.width, 'Claude Fable 5.1');
         await send(page, 'Hei Fable');
         await expect(
           page.getByRole('alert').filter({ hasText: 'ei ole ZDR-reittiä' }),
@@ -355,7 +372,7 @@ for (const scheme of ['light', 'dark'] as const) {
         app.llm.push(REFUSAL);
         app.llm.push({ match: /^Hei Fable/, text: 'Vastaus ilman ZDR:ää.' });
         await app.login(page);
-        await pickModel(page, 'Claude Fable 5.1');
+        await pickModel(page, vp.width, 'Claude Fable 5.1');
         await send(page, 'Hei Fable');
         await page.getByRole('button', { name: 'Salli ilman ZDR:ää tässä keskustelussa' }).click();
         await expect(page.locator('.md').last()).toHaveText('Vastaus ilman ZDR:ää.');

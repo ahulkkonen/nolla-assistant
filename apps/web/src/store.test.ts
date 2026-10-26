@@ -76,7 +76,7 @@ describe('store reducers', () => {
     expect(useStore.getState().errorCount).toBe(before + 1);
     useStore.getState().setActive('c1');
     useStore.getState().apply({ type: 'error', code: 'llm_failed', message: 'x', chatId: 'c1' });
-    expect(useStore.getState().failed.c1).toBe('Mallin kutsu epäonnistui.');
+    expect(useStore.getState().failed.c1).toBe('llm_failed');
     useStore.getState().addLocalMessage('c1', {
       id: 'm1',
       role: 'user',
@@ -87,6 +87,47 @@ describe('store reducers', () => {
       tools: [],
     } as never);
     expect(useStore.getState().failed.c1).toBeUndefined();
+  });
+
+  it('records a ZDR refusal with its model in any chat; a policy change or a rewind ends it', () => {
+    const { apply } = useStore.getState();
+    const fable = {
+      modelId: 'anthropic/claude-fable-5.1',
+      reasoning: 'auto',
+      dataPolicy: 'zdr',
+    } as const;
+    apply({
+      type: 'chat.list',
+      chats: [{ ...chat('bg', false, '2026-01-01T00:00:00.000Z'), modelPolicy: fable }],
+    });
+    useStore.getState().setActive('other');
+    apply({ type: 'error', code: 'zdr_unavailable', message: 'x', chatId: 'bg' });
+    expect(useStore.getState().zdrRefused.bg).toEqual({ modelId: fable.modelId });
+    // Only the level changes: the server drops its refusal record, so the alert goes too.
+    const updated = (reasoning: 'auto' | 'high') =>
+      apply({
+        type: 'chat.updated',
+        chat: {
+          ...chat('bg', false, '2026-01-01T00:00:00.000Z'),
+          modelPolicy: { ...fable, reasoning },
+        },
+      });
+    updated('auto');
+    expect(useStore.getState().zdrRefused.bg).toBeDefined();
+    updated('high');
+    expect(useStore.getState().zdrRefused.bg).toBeUndefined();
+
+    apply({ type: 'error', code: 'zdr_unavailable', message: 'x', chatId: 'bg' });
+    const m = (id: string, role: 'user' | 'assistant') =>
+      ({ id, role, text: id, annotations: [], attachments: [], tools: [], createdAt: '' }) as never;
+    useStore.setState({
+      messages: {
+        bg: [m('u1', 'user'), m('a1', 'assistant'), m('u2', 'user'), m('a2', 'assistant')],
+      },
+    });
+    useStore.getState().rewind('bg', 3);
+    expect(useStore.getState().messages.bg?.map((x) => x.id)).toEqual(['u1', 'a1', 'u2']);
+    expect(useStore.getState().zdrRefused.bg).toBeUndefined();
   });
 
   it('keeps approval cards until answered, resolved or the chat goes idle', () => {

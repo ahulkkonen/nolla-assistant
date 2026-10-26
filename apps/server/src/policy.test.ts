@@ -156,6 +156,36 @@ test('proofs 3, 4, 6: open needs a recorded refusal, ends with the model; titles
   await refuseOpen(chat.id);
 });
 
+test('user.retry runs the refused turn again in place: the model and chat.state see it once', {
+  timeout: 30_000,
+}, async () => {
+  const { llm, c, create } = await start([REFUSAL, { text: 'Vastaus ilman ZDR:ää.' }, TITLE]);
+  const chat = await create({ modelId: FABLE, reasoning: 'auto' });
+  c.send({ type: 'user.message', chatId: chat.id, text: 'Kerro säästä' });
+  await expect(c.next('message.final')).rejects.toThrow('zdr_unavailable');
+  await c.idle();
+  c.inbox.length = 0;
+  c.send({ type: 'chat.setDataPolicy', chatId: chat.id, dataPolicy: 'open' });
+  await c.next('chat.updated');
+
+  c.send({ type: 'user.retry', chatId: chat.id });
+  expect((await c.next('message.final')).message.text).toBe('Vastaus ilman ZDR:ää.');
+  await c.idle();
+  expect(llm.requests[1]?.body.model).toBe(`open/${FABLE}`);
+  expect(JSON.stringify(llm.requests[1]?.body.messages).split('Kerro säästä')).toHaveLength(2);
+  c.send({ type: 'chat.open', chatId: chat.id });
+  const { messages } = await c.next('chat.state');
+  expect(messages.map((m) => [m.role, m.text])).toEqual([
+    ['user', 'Kerro säästä'],
+    ['assistant', 'Vastaus ilman ZDR:ää.'],
+  ]);
+
+  // Nothing to run again in a chat without messages.
+  const empty = await create();
+  c.send({ type: 'user.retry', chatId: empty.id });
+  await expect(c.next('message.final')).rejects.toThrow('bad_message');
+});
+
 test('registry.get rebuilds an idle session whose stored policy changed (no stale open session)', {
   timeout: 30_000,
 }, async () => {

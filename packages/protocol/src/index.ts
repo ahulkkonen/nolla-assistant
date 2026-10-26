@@ -248,6 +248,8 @@ export const ClientMessage = z.discriminatedUnion('type', [
     attachments: z.array(AttachmentRef).max(20).default([]),
     agentId: id64.optional(),
   }),
+  /** Runs the chat's last user turn again in place: the server rewinds the branch to before it. */
+  z.object({ type: z.literal('user.retry'), chatId: id64 }),
   z.object({ type: z.literal('user.stop'), chatId: id64 }),
   z.object({ type: z.literal('approval.respond'), requestId: id64, approve: z.boolean() }),
   z.object({ type: z.literal('vault.list') }),

@@ -1,4 +1,10 @@
-import { type AttachmentRef, type ClientMessageInput, ServerMessage } from '@pa/protocol';
+import {
+  type AttachmentRef,
+  type ClientMessageInput,
+  type DataPolicy,
+  type ModelPolicy,
+  ServerMessage,
+} from '@pa/protocol';
 import { useStore } from './store.ts';
 
 let ws: WebSocket | null = null;
@@ -9,6 +15,12 @@ let stopped = true;
 let pingTimer: ReturnType<typeof setInterval> | undefined;
 let retryTimer: ReturnType<typeof setTimeout> | undefined;
 let createWaiters: Array<(chatId: string) => void> = [];
+/** A data-policy change sent from this client, until its `chat.updated` confirms it. */
+let policyIntent: { chatId: string; dataPolicy: DataPolicy } | null = null;
+// A chat switch drops it: the consent's retry runs only in the chat on screen.
+useStore.subscribe((s, prev) => {
+  if (s.activeChatId !== prev.activeChatId) policyIntent = null;
+});
 
 const defaultUrl = () => `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;
 
@@ -71,6 +83,52 @@ export async function sendUserMessage(text: string, attachments: AttachmentRef[]
 }
 
 /**
+ * "Yritä uudelleen" and the ZDR consent: the last user turn runs again in place, so the thread
+ * shows it once. The server rewinds its branch (`user.retry`); a message that never reached the
+ * session (`prompt_failed`) is sent again instead.
+ */
+export function retryTurn(chatId: string) {
+  const st = useStore.getState();
+  const resend = st.failed[chatId] === 'prompt_failed';
+  const messages = st.messages[chatId] ?? [];
+  const i = messages.findLastIndex((m) => m.role === 'user');
+  const last = messages[i];
+  if (!last) return;
+  st.rewind(chatId, i + 1);
+  send(
+    resend
+      ? { type: 'user.message', chatId, text: last.text, attachments: last.attachments }
+      : { type: 'user.retry', chatId },
+  );
+}
+
+/** The consent ("open", then the retry) or "Palauta ZDR"; both act on the server's confirmation. */
+export function setDataPolicy(chatId: string, dataPolicy: DataPolicy) {
+  policyIntent = { chatId, dataPolicy };
+  send({ type: 'chat.setDataPolicy', chatId, dataPolicy });
+}
+
+/** Acts once on the `chat.updated` that confirms the intent; a model change or an error drops it. */
+function settlePolicy(msg: ServerMessage, was: ModelPolicy | undefined) {
+  const intent = policyIntent;
+  if (!intent) return;
+  if (msg.type === 'error') {
+    if (!msg.chatId || msg.chatId === intent.chatId) policyIntent = null;
+    return;
+  }
+  if (msg.type !== 'chat.updated' || msg.chat.id !== intent.chatId) return;
+  const now = msg.chat.modelPolicy;
+  if (was && (was.modelId !== now.modelId || was.reasoning !== now.reasoning)) {
+    policyIntent = null;
+    return;
+  }
+  if (now.dataPolicy !== intent.dataPolicy || was?.dataPolicy === now.dataPolicy) return;
+  policyIntent = null;
+  if (intent.dataPolicy === 'open') retryTurn(intent.chatId);
+  else useStore.getState().notify('ZDR palautettu');
+}
+
+/**
  * Tells the server which chat is in the foreground (push skips it); null when hidden. Never
  * queued: a stale focus must not arrive late, and every (re)connect reports it after auth.
  */
@@ -107,7 +165,9 @@ function open() {
     if (!parsed.success) return;
     const msg = parsed.data;
     const store = useStore.getState();
+    const was = msg.type === 'chat.updated' ? store.policies[msg.chat.id] : undefined;
     store.apply(msg);
+    settlePolicy(msg, was);
     if (msg.type === 'chat.created') {
       const waiter = createWaiters.shift();
       waiter?.(msg.chat.id);

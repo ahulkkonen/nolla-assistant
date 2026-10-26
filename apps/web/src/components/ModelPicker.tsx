@@ -1,6 +1,15 @@
-import type { CatalogModel, ModelChoice, ReasoningEffort } from '@pa/protocol';
-import { ChevronDown, Search, ShieldCheck, ShieldOff, Star } from 'lucide-react';
-import { type KeyboardEvent, useRef, useState } from 'react';
+import type { CatalogModel, ModelChoice } from '@pa/protocol';
+import { Check, ChevronDown, Search, ShieldCheck, ShieldOff, Star } from 'lucide-react';
+import {
+  type KeyboardEvent,
+  type ReactNode,
+  useDeferredValue,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
@@ -9,35 +18,23 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuPortal,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
 import { useMobile } from '../media.ts';
 import { useStore } from '../store.ts';
-import { send } from '../ws.ts';
-import { IconButton, Tip } from './IconButton.tsx';
-
-/** Thinking levels in Finnish (docs/decisions/phase-10-models.md, UI). */
-export const EFFORT_LABEL: Record<'auto' | ReasoningEffort, string> = {
-  auto: 'Automaattinen',
-  max: 'Maksimi',
-  xhigh: 'Erittäin korkea',
-  high: 'Korkea',
-  medium: 'Keskitaso',
-  low: 'Matala',
-  minimal: 'Minimaalinen',
-  none: 'Pois',
-};
-
-/** The alias of an agent profile as infra/models.json names it: `zdr/strong` → "Strong (ZDR)". */
-const aliasName = (alias: string) => {
-  const base = alias.replace(/^zdr\//, '').replace(/-/g, ' ');
-  return `${base.charAt(0).toUpperCase()}${base.slice(1)} (ZDR)`;
-};
+import { aliasName, EFFORT_LABEL, shortName, useModel } from '../useModel.ts';
+import { send, setDataPolicy } from '../ws.ts';
+import { Tip } from './IconButton.tsx';
 
 /** "1 M", "200 k": a context length. */
 const tokens = (n: number) =>
@@ -46,37 +43,9 @@ const tokens = (n: number) =>
 const price = (m: CatalogModel) =>
   `${m.price.input.toFixed(2).replace('.', ',')} / ${m.price.output.toFixed(2).replace('.', ',')} $`;
 
-/**
- * The model of the open chat (or the new chat's pending choice): its policy, the catalog entry
- * it resolves to, and its display name.
- */
-export function useModel() {
-  const chatId = useStore((s) => s.activeChatId);
-  const chat = useStore((s) => s.chats.find((c) => c.id === s.activeChatId));
-  const pending = useStore((s) => s.pendingModel);
-  const models = useStore((s) => s.models);
-  const agentModel = useStore(
-    (s) => s.agents.find((a) => a.id === (chat?.agentId ?? s.pendingAgentId))?.model,
-  );
-  const running = useStore((s) => (chatId ? s.agentStatus[chatId] === 'running' : false));
-  const policy = chat?.modelPolicy ?? { ...pending, dataPolicy: 'zdr' as const };
-  const id = policy.modelId === 'auto' ? models?.auto : policy.modelId;
-  const entry = id ? models?.catalog.find((m) => m.id === id) : undefined;
-  const name =
-    policy.modelId === 'auto'
-      ? 'Auto'
-      : policy.modelId === null
-        ? aliasName(agentModel ?? 'zdr/strong')
-        : (entry?.name ?? policy.modelId);
-  /** Sets the model or the level: the pending choice in a new chat, `chat.setModel` after. */
-  const choose = (choice: ModelChoice) => {
-    if (chatId && chat) send({ type: 'chat.setModel', chatId, ...choice });
-    else useStore.setState({ pendingModel: choice });
-  };
-  return { chatId, policy, entry, name, models, agentModel, running, choose };
-}
-
 const ALIAS = '__alias__';
+
+type Option = { value: string; title: string; meta?: string | undefined };
 
 /** Composer chip and menu (phase-10 UI): Auto, favourites, thinking level, the open policy. */
 export function ModelPicker() {
@@ -86,10 +55,18 @@ export function ModelPicker() {
   const [catalogOpen, setCatalogOpen] = useState(false);
   const mobile = useMobile();
   const isOpen = policy.dataPolicy === 'open';
+
+  // A run disables the chip: nothing may pop open again when it ends.
+  useEffect(() => {
+    if (!running) return;
+    setCatalogOpen(false);
+    useStore.setState({ modelMenuOpen: false });
+  }, [running]);
+
   const label = (
     <>
       {isOpen && mobile && <ShieldOff size={16} className="shrink-0 text-warning" />}
-      <span className="max-w-[200px] truncate">{name}</span>
+      <span className="max-w-[200px] truncate">{mobile ? shortName(name) : name}</span>
       {/* The space keeps "5.1 Ei ZDR" apart in the visible text that axe compares. */}
       {isOpen && !mobile && ' '}
       {isOpen && !mobile && (
@@ -99,14 +76,71 @@ export function ModelPicker() {
       )}
     </>
   );
-  // Truncates: `shrink` beats the kit button's `shrink-0`.
   // The whole name as one label (sr-only parts inside a flex button gain stray spaces). It ends
   // with the badge's own text, so the name contains the visible label (axe).
   const ariaLabel = `Malli: ${name}${isOpen ? ', Ei ZDR' : ''}`;
-  const chip = 'h-8 min-w-0 shrink rounded-full px-3 font-normal max-md:h-11';
+  // Truncates: `shrink` beats the kit button's `shrink-0`. Phones: a fill, as there is no chevron.
+  const chip = 'h-8 min-w-0 shrink rounded-full px-3 font-normal max-md:h-11 max-md:bg-secondary';
 
+  const catalog = models?.catalog ?? [];
+  const favorites = (models?.favorites ?? []).filter((id) => id !== models?.auto);
+  const byId = (id: string) => catalog.find((m) => m.id === id);
+  const noZdr = (m: CatalogModel | undefined) => (m && !m.zdr ? 'Ei ZDR-reittiä' : undefined);
+  const extra =
+    policy.modelId && policy.modelId !== 'auto' && !favorites.includes(policy.modelId)
+      ? policy.modelId
+      : undefined;
+  const modelOptions: Option[] = [
+    { value: 'auto', title: 'Auto', meta: byId(models?.auto ?? '')?.name ?? models?.auto },
+    ...favorites.map((id) => ({ value: id, title: byId(id)?.name ?? id, meta: noZdr(byId(id)) })),
+    ...(extra ? [{ value: extra, title: entry?.name ?? extra, meta: noZdr(entry) }] : []),
+    ...(policy.modelId === null
+      ? [{ value: ALIAS, title: 'Agentin oletus', meta: aliasName(agentModel ?? '') }]
+      : []),
+  ];
+  const efforts = entry?.reasoning;
+  const effortOptions: Option[] = efforts
+    ? [
+        { value: 'auto', title: EFFORT_LABEL.auto, meta: EFFORT_LABEL[efforts.recommended] },
+        ...efforts.efforts
+          .filter((e) => !(efforts.mandatory && e === 'none'))
+          .map((e) => ({ value: e, title: EFFORT_LABEL[e] })),
+      ]
+    : [];
+  // A stored level the model no longer offers counts as Auto (the server resolves it so too).
+  const effort =
+    policy.reasoning !== 'auto' && efforts?.efforts.includes(policy.reasoning)
+      ? policy.reasoning
+      : 'auto';
+  const effortMeta =
+    effort === 'auto' && efforts
+      ? `${EFFORT_LABEL.auto} · ${EFFORT_LABEL[efforts.recommended]}`
+      : EFFORT_LABEL[effort];
+
+  const pickModel = (value: string) => {
+    if (value === ALIAS) return;
+    // A new model starts on its own recommended level.
+    choose({ modelId: value as ModelChoice['modelId'], reasoning: 'auto' });
+  };
+  const pickEffort = (value: string) =>
+    policy.modelId !== null &&
+    choose({ modelId: policy.modelId, reasoning: value as ModelChoice['reasoning'] });
+  const openCatalog = () => {
+    setOpen(false);
+    setCatalogOpen(true);
+  };
+  const restore = () => chatId && setDataPolicy(chatId, 'zdr');
+  const openNote = 'Tämä keskustelu sallii reitit ilman ZDR:ää.';
+
+  const radio = (o: Option) => (
+    <DropdownMenuRadioItem key={o.value} value={o.value} className="py-2">
+      <OptionText o={o} />
+    </DropdownMenuRadioItem>
+  );
+
+  let control: ReactNode;
   if (running)
-    return (
+    control = (
       <Tip label="Malli vaihdetaan, kun vastaus on valmis">
         <Button
           variant="ghost"
@@ -121,39 +155,80 @@ export function ModelPicker() {
         </Button>
       </Tip>
     );
-
-  const catalog = models?.catalog ?? [];
-  const favorites = (models?.favorites ?? []).filter((id) => id !== models?.auto);
-  const extra =
-    policy.modelId &&
-    policy.modelId !== 'auto' &&
-    !favorites.includes(policy.modelId) &&
-    policy.modelId;
-  const autoEntry = catalog.find((m) => m.id === models?.auto);
-  const model = (id: string) => catalog.find((m) => m.id === id);
-  const efforts = entry?.reasoning;
-  const pick = (value: string) => {
-    if (value === ALIAS) return;
-    // A new model starts on its own recommended level.
-    choose({ modelId: value as ModelChoice['modelId'], reasoning: 'auto' });
-  };
-  const restore = () => {
-    if (!chatId) return;
-    send({ type: 'chat.setDataPolicy', chatId, dataPolicy: 'zdr' });
-    useStore.getState().notify('ZDR palautettu');
-  };
-
-  const item = (value: string, title: string, meta?: string) => (
-    <DropdownMenuRadioItem key={value} value={value} className="py-2">
-      <span className="flex min-w-0 flex-col">
-        <span className="truncate">{title}</span>
-        {meta && <span className="truncate text-meta text-muted-foreground">{meta}</span>}
-      </span>
-    </DropdownMenuRadioItem>
-  );
-
-  return (
-    <>
+  else if (mobile)
+    // Phones: a bottom sheet, so every level fits without a scroll inside a menu.
+    control = (
+      <>
+        <Button
+          variant="ghost"
+          aria-label={ariaLabel}
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          onClick={() => setOpen(true)}
+          className={cn(chip, 'text-muted-foreground hover:text-foreground')}
+        >
+          {label}
+        </Button>
+        <Sheet open={open} onOpenChange={setOpen}>
+          <SheetContent
+            side="bottom"
+            showCloseButton={false}
+            className="max-h-[85dvh] gap-1 overflow-y-auto rounded-t-xl px-2 pt-2 pb-[max(env(safe-area-inset-bottom),8px)]"
+          >
+            <SheetTitle className="sr-only">Mallin valinta</SheetTitle>
+            <SheetDescription className="sr-only">
+              Valitse keskustelun malli ja ajattelun taso
+            </SheetDescription>
+            <Choices
+              label="Malli"
+              options={modelOptions}
+              value={policy.modelId ?? ALIAS}
+              onPick={(v) => {
+                setOpen(false);
+                pickModel(v);
+              }}
+            />
+            <Button
+              variant="ghost"
+              className="h-11 justify-start gap-3 font-normal"
+              onClick={openCatalog}
+            >
+              <Search size={16} className="text-muted-foreground" />
+              Kaikki mallit…
+            </Button>
+            {efforts && (
+              <Choices
+                label="Ajattelu"
+                options={effortOptions}
+                value={effort}
+                onPick={(v) => {
+                  setOpen(false);
+                  pickEffort(v);
+                }}
+              />
+            )}
+            {isOpen && (
+              <>
+                <p className="px-3 pt-2 text-meta text-muted-foreground">{openNote}</p>
+                <Button
+                  variant="ghost"
+                  className="h-11 justify-start gap-3 font-normal"
+                  onClick={() => {
+                    setOpen(false);
+                    restore();
+                  }}
+                >
+                  <ShieldCheck size={16} className="text-muted-foreground" />
+                  Palauta ZDR
+                </Button>
+              </>
+            )}
+          </SheetContent>
+        </Sheet>
+      </>
+    );
+  else
+    control = (
       <DropdownMenu modal={false} open={open} onOpenChange={setOpen}>
         <DropdownMenuTrigger asChild>
           <Button
@@ -162,65 +237,40 @@ export function ModelPicker() {
             className={cn(chip, 'text-muted-foreground hover:text-foreground')}
           >
             {label}
-            {!mobile && <ChevronDown size={16} className="shrink-0" />}
+            <ChevronDown size={16} className="shrink-0" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent
-          side="top"
-          align="start"
-          collisionPadding={8}
-          className="w-[min(300px,calc(100vw-32px))]"
-        >
+        <DropdownMenuContent side="top" align="start" collisionPadding={8} className="w-[300px]">
           <DropdownMenuLabel className="text-micro text-muted-foreground">Malli</DropdownMenuLabel>
-          <DropdownMenuRadioGroup
-            value={policy.modelId === null ? ALIAS : policy.modelId}
-            onValueChange={pick}
-          >
-            {item('auto', 'Auto', autoEntry?.name ?? models?.auto)}
-            {favorites.map((id) => {
-              const m = model(id);
-              return item(id, m?.name ?? id, m && !m.zdr ? 'Ei ZDR-reittiä' : undefined);
-            })}
-            {extra &&
-              item(extra, entry?.name ?? extra, entry && !entry.zdr ? 'Ei ZDR-reittiä' : undefined)}
-            {policy.modelId === null && item(ALIAS, 'Agentin oletus', aliasName(agentModel ?? ''))}
+          <DropdownMenuRadioGroup value={policy.modelId ?? ALIAS} onValueChange={pickModel}>
+            {modelOptions.map(radio)}
           </DropdownMenuRadioGroup>
-          <DropdownMenuItem
-            onSelect={() => {
-              setOpen(false);
-              setCatalogOpen(true);
-            }}
-          >
+          <DropdownMenuItem onSelect={openCatalog}>
             <Search size={16} className="text-muted-foreground" />
             Kaikki mallit…
           </DropdownMenuItem>
           {efforts && (
             <>
               <DropdownMenuSeparator />
-              <DropdownMenuLabel className="text-micro text-muted-foreground">
-                Ajattelu
-              </DropdownMenuLabel>
-              <DropdownMenuRadioGroup
-                value={policy.reasoning}
-                onValueChange={(reasoning) =>
-                  policy.modelId !== null &&
-                  choose({
-                    modelId: policy.modelId,
-                    reasoning: reasoning as ModelChoice['reasoning'],
-                  })
-                }
-              >
-                {item('auto', EFFORT_LABEL.auto, EFFORT_LABEL[efforts.recommended])}
-                {efforts.efforts.map((e) => item(e, EFFORT_LABEL[e]))}
-              </DropdownMenuRadioGroup>
+              {/* A submenu: the levels never push the menu past the viewport. */}
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger className="py-2">
+                  <OptionText o={{ value: 'effort', title: 'Ajattelu', meta: effortMeta }} />
+                </DropdownMenuSubTrigger>
+                <DropdownMenuPortal>
+                  <DropdownMenuSubContent sideOffset={4} collisionPadding={8} className="w-[220px]">
+                    <DropdownMenuRadioGroup value={effort} onValueChange={pickEffort}>
+                      {effortOptions.map(radio)}
+                    </DropdownMenuRadioGroup>
+                  </DropdownMenuSubContent>
+                </DropdownMenuPortal>
+              </DropdownMenuSub>
             </>
           )}
           {isOpen && (
             <>
               <DropdownMenuSeparator />
-              <p className="px-2 py-1.5 text-meta text-muted-foreground">
-                Tämä keskustelu sallii reitit ilman ZDR:ää.
-              </p>
+              <p className="px-2 py-1.5 text-meta text-muted-foreground">{openNote}</p>
               <DropdownMenuItem onSelect={restore}>
                 <ShieldCheck size={16} className="text-muted-foreground" />
                 Palauta ZDR
@@ -229,6 +279,11 @@ export function ModelPicker() {
           )}
         </DropdownMenuContent>
       </DropdownMenu>
+    );
+
+  return (
+    <>
+      {control}
       <CatalogDialog
         open={catalogOpen}
         onOpenChange={setCatalogOpen}
@@ -241,9 +296,54 @@ export function ModelPicker() {
   );
 }
 
+function OptionText({ o }: { o: Option }) {
+  return (
+    <span className="flex min-w-0 flex-1 flex-col">
+      <span className="truncate">{o.title}</span>
+      {o.meta && <span className="truncate text-meta text-muted-foreground">{o.meta}</span>}
+    </span>
+  );
+}
+
+/** One section of the phone sheet: a radio group of 44 px rows with a check on the current one. */
+function Choices({
+  label,
+  options,
+  value,
+  onPick,
+}: {
+  label: string;
+  options: Option[];
+  value: string;
+  onPick: (value: string) => void;
+}) {
+  const id = useId();
+  return (
+    <div role="radiogroup" aria-labelledby={id} className="flex flex-col">
+      <p id={id} className="px-3 pt-2 pb-1 text-micro text-muted-foreground">
+        {label}
+      </p>
+      {options.map((o) => (
+        <button
+          key={o.value}
+          type="button"
+          role="radio"
+          aria-checked={o.value === value}
+          onClick={() => onPick(o.value)}
+          className="flex min-h-11 items-center gap-3 rounded-md px-3 py-1 text-left text-ui hover:bg-accent focus-visible:bg-accent focus-visible:outline-none"
+        >
+          <OptionText o={o} />
+          {o.value === value && <Check size={16} className="shrink-0" />}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /**
  * "Kaikki mallit" (phase-10 UI): search, favourites first, a star per row. A plain list, not
- * cmdk: a star button inside a cmdk option would nest interactive controls (axe).
+ * cmdk: a star button inside a cmdk option would nest interactive controls (axe). The list is one
+ * tab stop: ↑↓ move between rows, ←→ between a row and its star.
  */
 function CatalogDialog({
   open,
@@ -256,35 +356,65 @@ function CatalogDialog({
 }) {
   const models = useStore((s) => s.models);
   const [q, setQ] = useState('');
-  const list = useRef<HTMLDivElement>(null);
-  const needle = q.trim().toLowerCase();
-  const catalog = (models?.catalog ?? []).filter(
+  // Typing stays quick with a few hundred rows: the list follows a step behind.
+  const needle = useDeferredValue(q).trim().toLowerCase();
+  const favs = useMemo(() => new Set(models?.favorites), [models]);
+  const shown = (models?.catalog ?? []).filter(
     (m) => !needle || m.name.toLowerCase().includes(needle) || m.id.includes(needle),
   );
-  const favs = models?.favorites ?? [];
-  const favorites = catalog.filter((m) => favs.includes(m.id));
+  const favorites = shown.filter((m) => favs.has(m.id));
+  const others = shown.filter((m) => !favs.has(m.id));
+  const order = [...favorites, ...others].map((m) => m.id);
+  const [cursor, setCursor] = useState<string | null>(null);
+  const list = useRef<HTMLDivElement>(null);
+  /** The star to focus again once its row has moved to the other section. */
+  const refocus = useRef<string | null>(null);
 
-  /** ↑↓ move between the rows' select buttons; from the field, ↓ enters the list. */
-  const move = (e: KeyboardEvent, from: HTMLElement | null) => {
-    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
-    const rows = [...(list.current?.querySelectorAll<HTMLElement>('[data-model-row]') ?? [])];
-    if (!rows.length) return;
+  // Cells are `<id>:pick` and `<id>:star` (ids never hold a colon). One of them is the tab stop.
+  const cell = (id: string, col: 'pick' | 'star') => `${id}:${col}`;
+  const active = cursor && order.includes(cursor.split(':')[0] ?? '') ? cursor : null;
+  const tabStop = active ?? (order[0] ? cell(order[0], 'pick') : null);
+  const focusCell = (c: string) =>
+    list.current?.querySelector<HTMLElement>(`[data-cell="${CSS.escape(c)}"]`)?.focus();
+
+  useEffect(() => {
+    if (!models || !refocus.current) return;
+    focusCell(refocus.current);
+    refocus.current = null;
+  }, [models]);
+
+  const onListKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    const at = (e.target as HTMLElement).dataset.cell;
+    if (!at) return;
+    const [id = '', col = 'pick'] = at.split(':') as [string, 'pick' | 'star'];
+    const i = order.indexOf(id);
+    let next: string | undefined;
+    if (e.key === 'ArrowDown') next = order[i + 1] && cell(order[i + 1] as string, col);
+    else if (e.key === 'ArrowUp') {
+      if (i === 0) {
+        e.preventDefault();
+        document.getElementById('model-search')?.focus();
+        return;
+      }
+      next = cell(order[i - 1] as string, col);
+    } else if (e.key === 'ArrowRight') next = cell(id, 'star');
+    else if (e.key === 'ArrowLeft') next = cell(id, 'pick');
+    else return;
     e.preventDefault();
-    const at = from ? rows.indexOf(from) : -1;
-    const next = e.key === 'ArrowDown' ? Math.min(at + 1, rows.length - 1) : at - 1;
-    if (next < 0) document.getElementById('model-search')?.focus();
-    else rows[next]?.focus();
+    if (next) focusCell(next);
   };
 
   const row = (m: CatalogModel) => {
-    const fav = favs.includes(m.id);
+    const fav = favs.has(m.id);
+    const pick = cell(m.id, 'pick');
+    const star = cell(m.id, 'star');
     return (
       <li key={m.id} className="flex items-center gap-2 rounded-md pr-1 hover:bg-accent">
         <button
           type="button"
-          data-model-row
+          data-cell={pick}
+          tabIndex={tabStop === pick ? 0 : -1}
           onClick={() => onPick(m.id)}
-          onKeyDown={(e) => move(e, e.currentTarget)}
           className="flex min-h-11 min-w-0 flex-1 flex-col justify-center rounded-md px-3 py-1 text-left"
         >
           <span className="truncate text-ui">{m.name}</span>
@@ -295,14 +425,23 @@ function CatalogDialog({
           </span>
         </button>
         {!m.zdr && <Badge variant="warning">Ei ZDR</Badge>}
-        <IconButton
-          label={`${fav ? 'Poista suosikeista' : 'Lisää suosikkeihin'}: ${m.name}`}
+        {/* No tooltip per row: the label names the model, and a few hundred tooltips cost. */}
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          data-cell={star}
+          tabIndex={tabStop === star ? 0 : -1}
+          aria-label={`${fav ? 'Poista suosikeista' : 'Lisää suosikkeihin'}: ${m.name}`}
           aria-pressed={fav}
-          className="size-7"
-          onClick={() => send({ type: 'models.favorite', modelId: m.id, favorite: !fav })}
+          className="size-7 text-muted-foreground hover:text-foreground"
+          onClick={() => {
+            refocus.current = star;
+            send({ type: 'models.favorite', modelId: m.id, favorite: !fav });
+          }}
         >
           <Star size={16} className={cn(fav && 'fill-current text-warning')} />
-        </IconButton>
+        </Button>
       </li>
     );
   };
@@ -312,7 +451,10 @@ function CatalogDialog({
       open={open}
       onOpenChange={(o) => {
         onOpenChange(o);
-        if (!o) setQ('');
+        if (!o) {
+          setQ('');
+          setCursor(null);
+        }
       }}
     >
       {/* The palette's frame (brief 7.5): 560 wide, top at 15vh, radius 12; phones inset 8. */}
@@ -330,7 +472,11 @@ function CatalogDialog({
             id="model-search"
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            onKeyDown={(e) => move(e, null)}
+            onKeyDown={(e) => {
+              if (e.key !== 'ArrowDown' || !tabStop) return;
+              e.preventDefault();
+              focusCell(tabStop);
+            }}
             placeholder="Hae malleja"
             aria-label="Hae malleja"
             className="h-full border-0 bg-transparent px-0 focus-visible:ring-0"
@@ -338,13 +484,18 @@ function CatalogDialog({
         </div>
         <div
           ref={list}
+          onKeyDown={onListKey}
+          onFocus={(e) => {
+            const at = (e.target as HTMLElement).dataset.cell;
+            if (at) setCursor(at);
+          }}
           className="max-h-[min(60dvh,420px)] overflow-y-auto p-2 max-md:max-h-[50dvh]"
         >
           {!models?.catalog.length ? (
             <p className="px-3 py-6 text-center text-meta text-muted-foreground">
               Mallilista ei ole saatavilla. Yritä myöhemmin.
             </p>
-          ) : !catalog.length ? (
+          ) : !shown.length ? (
             <p className="px-3 py-6 text-center text-meta text-muted-foreground">
               Ei tuloksia haulle ”{q.trim()}”
             </p>
@@ -361,12 +512,14 @@ function CatalogDialog({
                   <ul>{favorites.map(row)}</ul>
                 </section>
               )}
-              <section aria-labelledby="models-all">
-                <h3 id="models-all" className="px-3 pt-2 pb-1 text-micro text-muted-foreground">
-                  Kaikki mallit
-                </h3>
-                <ul>{catalog.map(row)}</ul>
-              </section>
+              {others.length > 0 && (
+                <section aria-labelledby="models-all">
+                  <h3 id="models-all" className="px-3 pt-2 pb-1 text-micro text-muted-foreground">
+                    Kaikki mallit
+                  </h3>
+                  <ul>{others.map(row)}</ul>
+                </section>
+              )}
             </>
           )}
         </div>
