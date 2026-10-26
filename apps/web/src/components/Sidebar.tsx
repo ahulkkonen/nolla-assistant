@@ -1,4 +1,4 @@
-import { type ChatSummary, formatCost, formatTokens } from '@pa/protocol';
+import type { ChatSummary } from '@pa/protocol';
 import {
   Archive,
   ArchiveRestore,
@@ -29,6 +29,7 @@ import { openChat, runSearch, send } from '../ws.ts';
 import { type Action, ActionMenu, ActionRow } from './Actions.tsx';
 import { ConfirmDialog } from './ConfirmDialog.tsx';
 import { IconButton, Tip } from './IconButton.tsx';
+import { chatTotal } from './MessageMeta.tsx';
 import { SKELETON_WIDTHS, useSlow } from './Page.tsx';
 import { SettingsButton } from './SettingsDialog.tsx';
 
@@ -128,7 +129,7 @@ function ChatRow({
   // The chat's cost at the end of its menu (phase 13); none before the first tokens.
   const rate = cacheRate(chat.usage);
   const note = chat.usage?.tokens
-    ? `${formatCost(chat.usage.costUsd, fx, { reply: true })} · ${formatTokens(chat.usage.tokens)}${rate ? ` · välimuisti ${rate}` : ''}`
+    ? `${chatTotal(chat.usage, fx)}${rate ? ` · välimuisti ${rate}` : ''}`
     : undefined;
 
   return (

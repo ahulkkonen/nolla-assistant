@@ -761,6 +761,8 @@ test.describe('thread depth', () => {
     await expect(reply.getByText('0,012 €')).toBeVisible();
     // Phase 16: the prompt cache hit rate, here and in the menu.
     await expect(reply.getByText('3,4 k tokenia · välimuisti 82 %')).toBeVisible();
+    // The desktop header shows the chat's total (phase 16).
+    await expect(page.locator('main header').getByText('0,012 € · 3,4 k tokenia')).toBeVisible();
     const row = page.locator('nav li', { hasText: 'Kasvimaa' });
     await row.hover();
     await row.getByRole('button', { name: 'Lisää: Kasvimaa' }).click();

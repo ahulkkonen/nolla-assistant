@@ -509,6 +509,10 @@ export const useStore = create<State>()((set, get) => {
             });
             return {
               messages: { ...st.messages, [msg.chat.id]: [...kept, ...local] },
+              // The open chat's totals (the desktop header) are fresh on every open.
+              chats: st.chats.map((c) =>
+                c.id === msg.chat.id ? { ...c, usage: msg.chat.usage } : c,
+              ),
               policies: { ...st.policies, [msg.chat.id]: msg.chat.modelPolicy },
               forkedFrom: { ...st.forkedFrom, [msg.chat.id]: msg.forkedFrom ?? null },
               ...(mine ? { pendingFork: null, activeChatId: msg.chat.id, screen: 'chat' } : {}),

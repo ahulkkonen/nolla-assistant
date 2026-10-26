@@ -253,6 +253,39 @@ for (const scheme of ['light', 'dark'] as const) {
         await shot(page, 'artifact-panel', vp.width, scheme);
       });
 
+      test('chat-header', async ({ app, page }) => {
+        test.skip(vp.width === 390, 'Phones keep the cost in the chat menu.');
+        // A long title beside the cost, with the artifact panel open (thread area 528 at 1024).
+        app.llm.push(THINKING_TURN);
+        app.llm.push(
+          titleTurn(
+            'Kasvimaan aloitus keväällä ja syksyllä: maan muokkaus, kylvöt ja kastelu',
+            'Käyttäjä kysyi kasvimaasta.',
+          ),
+        );
+        app.llm.push({ text: HTML_REPLY });
+        await app.login(page);
+        await sendMessage(page, 'Milloin kasvimaa kannattaa aloittaa?');
+        await expect(page.locator('.md').last()).toHaveText(THINKING_TURN.text, {
+          timeout: 15_000,
+        });
+        const header = page.locator('main header');
+        await expect(header.getByRole('heading', { name: /^Kasvimaan aloitus/ })).toBeVisible();
+        await sendMessage(page, 'Tee sivu');
+        await expect(
+          page
+            .getByRole('complementary', { name: 'Artefaktit' })
+            .locator('iframe')
+            .contentFrame()
+            .getByRole('heading', { name: 'Hei artefakti' }),
+        ).toBeVisible();
+        const cost = header.getByText(/tokenia$/);
+        await expect(cost).toBeVisible();
+        await cost.hover();
+        await expect(page.getByRole('tooltip')).toContainText('Välimuisti');
+        await shot(page, 'chat-header', vp.width, scheme);
+      });
+
       test('palette', async ({ app, page }) => {
         await app.login(page);
         await page.keyboard.press('ControlOrMeta+k');

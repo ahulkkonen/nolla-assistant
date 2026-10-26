@@ -17,6 +17,7 @@ import { FILES_TITLE, FilesScreen } from './components/FilesScreen.tsx';
 import { IconButton } from './components/IconButton.tsx';
 import { Login } from './components/Login.tsx';
 import { MEMORY_TITLE, MemoryScreen } from './components/MemoryScreen.tsx';
+import { ChatCost } from './components/MessageMeta.tsx';
 import { SEARCH_TITLE, SearchScreen } from './components/SearchScreen.tsx';
 import { SettingsDialog } from './components/SettingsDialog.tsx';
 import { ShortcutsDialog } from './components/ShortcutsDialog.tsx';
@@ -202,6 +203,12 @@ function Shell() {
             <IconButton label={UNTITLED} onClick={() => useStore.getState().setActive(null)}>
               <SquarePen size={20} className="size-5" />
             </IconButton>
+          </header>
+        ) : screen === 'chat' && !empty ? (
+          // Desktop chat header (phase 16): the title, and the chat's cost at the right.
+          <header className="z-(--z-header) flex h-12 shrink-0 items-center gap-4 px-4">
+            <h1 className="min-w-0 flex-1 truncate text-ui font-medium">{title}</h1>
+            <ChatCost />
           </header>
         ) : (
           screen === 'chat' && <h1 className="sr-only">{title}</h1>

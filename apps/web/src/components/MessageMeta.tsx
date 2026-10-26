@@ -1,4 +1,10 @@
-import { type CallUsage, type FxRate, formatCost, formatTokens } from '@pa/protocol';
+import {
+  type CallUsage,
+  type ChatUsage,
+  type FxRate,
+  formatCost,
+  formatTokens,
+} from '@pa/protocol';
 import { useStore } from '../store.ts';
 import { cacheRate, fullTime, messageTime, tokensOf } from '../thread.ts';
 import { modelLabel } from '../useModel.ts';
@@ -79,5 +85,50 @@ export function MessageMeta({
         </>
       )}
     </span>
+  );
+}
+
+/** A chat's totals, "0,42 € · 18 k tokenia": the chat menu line and the desktop header. */
+export const chatTotal = (u: ChatUsage, fx: FxRate | null) =>
+  `${formatCost(u.costUsd, fx, { reply: true })} · ${formatTokens(u.tokens)}`;
+
+/**
+ * The open chat's cost in the desktop header (phase 16), from `ChatSummary.usage`, which
+ * `chat.state` and `chat.updated` refresh. The tooltip gives the token parts and the cache rate.
+ */
+export function ChatCost() {
+  const usage = useStore((s) => s.chats.find((c) => c.id === s.activeChatId)?.usage);
+  const fx = useStore((s) => s.fx);
+  if (!usage?.tokens) return null;
+  const rate = cacheRate(usage);
+  return (
+    <Tip
+      label={
+        <>
+          {usage.input !== undefined && (
+            <>
+              Syöte {count.format(usage.input)} · välimuistista {count.format(usage.cacheRead ?? 0)}{' '}
+              · välimuistiin {count.format(usage.cacheWrite ?? 0)} · tuloste{' '}
+              {count.format(usage.output ?? 0)}
+              <br />
+            </>
+          )}
+          {rate && (
+            <>
+              Välimuisti {rate}
+              <br />
+            </>
+          )}
+          {fx ? 'Euroina EKP:n kurssilla' : 'Dollareina: euromuunnos ei ole saatavilla'}
+        </>
+      }
+    >
+      <span
+        tabIndex={0}
+        className="shrink-0 rounded-xs text-meta whitespace-nowrap text-muted-foreground tabular-nums"
+      >
+        {chatTotal(usage, fx)}
+      </span>
+    </Tip>
   );
 }
