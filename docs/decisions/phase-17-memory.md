@@ -577,31 +577,82 @@ Gate results:
 
 - `pnpm typecheck` and `pnpm lint` pass. The lint warning is the old 16 MB tokenizer file in
   `tests/masked-only/models`.
-- Unit suites: server 183 passed and 1 skipped (29 files), db 1, protocol 41, pi-ext-memory 12,
-  pi-ext-pseudo 18.
+- Unit suites after the review fixes: server 189 passed and 1 skipped (29 files), db 2,
+  protocol 41, pi-ext-memory 12, pi-ext-pseudo 18.
 - e2e `-g "muisti|memory|Muisti"`: 24 passed, 12 skipped. The skipped tests are the three
   consolidation screens at four viewports (decision 29 retired the proposal; W1 replaces them).
   The agent-write flows now write to USER.md, because target `memory` writes claims.
 - Restore drill: not run in this phase (no MinIO session). Gate item 4 is open.
 
-Eval (100 questions, real `pseudo-svc` in a throwaway container with a fresh vault, local e5):
+Eval (100 questions, real `pseudo-svc` in a throwaway container with a fresh vault, local e5).
+The runner plays the timeline: each chat is indexed and mined on its day, and each question sees
+only the chats up to its `askedDaysAgo` (11 questions are asked in the past, so the answer is the
+state of that day). Recall@5 counts the top 5 of the union in the order the model reads it: the
+per-turn block, then the `recall` chunks, then the `recall` claims. "Recall@5 or profile" also
+counts a gold message that is the evidence of a claim in MEMORY.md, which is always injected.
 
 | Metric | Baseline (`--no-claims`) | Gold claims (`--claims-from gold`) |
 | --- | --- | --- |
-| Evidence Recall@5, total | 0.765 | 0.847 |
-| single-session user | 0.900 | 0.900 |
-| multi-session | 0.650 | 0.750 |
-| knowledge update | 0.667 | 0.733 |
-| temporal | 0.867 | 0.933 |
-| preference | 0.733 | 0.933 |
-| Block tokens, mean and p95 (3 chars per token) | 0 / 0 | 83 / 189 |
+| Evidence Recall@5, total | 0.741 | 0.741 |
+| Recall@5 or profile, total | 0.741 | 0.965 |
+| single-session user (R@5 / or profile) | 0.900 / 0.900 | 0.900 / 0.900 |
+| multi-session | 0.650 / 0.650 | 0.650 / 1.000 |
+| knowledge update | 0.600 / 0.600 | 0.600 / 1.000 |
+| temporal | 0.867 / 0.867 | 0.867 / 0.933 |
+| preference | 0.667 / 0.667 | 0.667 / 1.000 |
+| Block tokens, mean and p95 (3 chars per token) | 0 / 0 | 0 / 0 |
 | QA accuracy, claim precision, extraction cost | not measured | not measured |
+
+All 50 gold claims fit in the 2,500-char MEMORY.md, so the per-turn block stays empty and the
+claims reach the model through the profile. The knowledge-update figure with the profile is an
+upper bound: gold mode has no supersession, so the old and the new claim are both in the profile.
 
 The LiteLLM key for OpenRouter has expired (`401 API key expired` from the local stack), so no
 model call ran. The real-extraction run (`node src/run.ts` without flags) and the QA accuracy stay
-open until the key is renewed. The gold-claims run is a retrieval upper bound. It has no
-extraction and no supersession. Gate item 3 (QA accuracy on knowledge update and preference) is
-therefore open.
+open until the key is renewed. Gate item 3 is open.
+
+Review fixes (2026-10-26, after S4):
+
+1. Dedupe covers every status: a new claim that repeats a rejected or superseded claim (same
+   normalised text, or a vector within 0.05) is not written; one that repeats an open claim is a
+   confirm. The `memory` tool `add` uses the same check.
+2. An `unresolved` form without a `path` drops the whole reply.
+3. Each window writes its claims, confirms, supersede proposals and the read marker in one
+   transaction.
+4. The sweep stores the chat's `updatedAt` from the start of the run as `claimsAt`, so a message
+   sent during the call makes the chat due again. A failed chat gets `claimsRetryAt` = now + 30
+   minutes and the sweep goes on; chats go oldest first.
+5. The tail goes in windows of 24,000 chars back to `claimsThrough`, at most 10 windows per run
+   (older windows are skipped and the count is logged). A marker that is not on the branch any
+   more (an edit or a retry) is logged once and the chat is marked read up to its last message.
+   `chat.fork` copies the marker (the last copied message) and the `tainted` flag.
+6. The reply envelope only checks arrays; each item is parsed on its own and a bad item drops only
+   itself. The repair retry runs only when the reply is not a JSON object of arrays.
+7. Supersede proposals are evidence rows with `stance: contradicts` and the new columns
+   `supersededBy`, `reason` and `validTo` (migration `0010_brief_goblin_queen`). A new claim can
+   supersede several claims; accept closes each with its own `validTo`, else the new claim's
+   `validFrom`, else the accept day.
+8. The per-turn query is the prompt without attachments, cut to 2,000 chars.
+9. Closed claims keep their FTS and vector rows (dedupe needs them). Every retrieval list filters by
+   status before its cut, and the vector list reads the user's whole index (brute force; a
+   `ponytail` comment names the 50k-row ceiling).
+10. Migration 0010 sets `claimsAt = updatedAt` on every existing chat: chats from before phase 17
+    are not mined (no historical backlog). It sets `fromAutomation` on the chats it can tell
+    apart: the last chat of each automation and the chats in the "Automaatiot" topic.
+11. MEMORY.md is regenerated after every accept, reject of an auto claim, update, expiry, tool write
+    and import, not only on Monday. `inProfile` is set only after the file write.
+12. `chats.tainted` never resets. A chat that once had untrusted input never auto-activates a claim
+    again (conservative, by design).
+13. A tainted `remove` waits in `memoryPending`, so no claim holds the fact to forget. `replace`
+    closes and adds in one transaction.
+14. `validTo` must be a real calendar date (`isClaimDay` in the protocol). A past `validTo` on
+    accept or update answers `invalid`. An edited text is embedded before the transaction that
+    writes it.
+15. `memory.edit` with target `memory` answers `memory_generated`; USER.md stays editable. The
+    consolidation proposal code is gone; `memory.consolidation.resolve` answers `not_implemented`
+    until W1 drops it from the web and the protocol.
+16. The extension reads the injected claim ids from the branch each turn.
+17. `recall` shows the newest supporting quote first and a contradicting quote as `Vastaan: "…"`.
 
 Deviations from the decisions:
 

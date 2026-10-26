@@ -1,6 +1,6 @@
 {
   "date": "2026-10-26",
-  "commit": "d1c7ace",
+  "commit": "2020daa",
   "mode": "claims",
   "models": {
     "answer": "zdr/fast",
@@ -9,26 +9,35 @@
   },
   "llmError": "fetch failed",
   "recallAt5": {
-    "total": 0.847,
+    "total": 0.741,
+    "temporal": 0.867,
+    "knowledge_update": 0.6,
     "single_session_user": 0.9,
-    "multi_session": 0.75,
-    "knowledge_update": 0.733,
+    "multi_session": 0.65,
+    "preference": 0.667,
+    "abstention": null
+  },
+  "recallOrProfile": {
+    "total": 0.965,
     "temporal": 0.933,
-    "preference": 0.933,
+    "knowledge_update": 1,
+    "single_session_user": 0.9,
+    "multi_session": 1,
+    "preference": 1,
     "abstention": null
   },
   "qaAccuracy": {
     "total": null,
+    "temporal": null,
+    "knowledge_update": null,
     "single_session_user": null,
     "multi_session": null,
-    "knowledge_update": null,
-    "temporal": null,
     "preference": null,
     "abstention": null
   },
   "blockTokens": {
-    "mean": 83,
-    "p95": 189
+    "mean": 0,
+    "p95": 0
   },
   "claimsFrom": "gold",
   "claimPrecision": null,
@@ -38,702 +47,902 @@
   },
   "rows": [
     {
-      "id": "q001",
-      "category": "single_session_user",
+      "id": "q063",
+      "category": "temporal",
+      "askedDaysAgo": 60,
       "recallHit": true,
-      "correct": null,
-      "blockChars": 212
-    },
-    {
-      "id": "q002",
-      "category": "single_session_user",
-      "recallHit": true,
-      "correct": null,
-      "blockChars": 212
-    },
-    {
-      "id": "q003",
-      "category": "single_session_user",
-      "recallHit": false,
-      "correct": null,
-      "blockChars": 246
-    },
-    {
-      "id": "q004",
-      "category": "single_session_user",
-      "recallHit": true,
-      "correct": null,
-      "blockChars": 339
-    },
-    {
-      "id": "q005",
-      "category": "single_session_user",
-      "recallHit": true,
-      "correct": null,
-      "blockChars": 385
-    },
-    {
-      "id": "q006",
-      "category": "single_session_user",
-      "recallHit": true,
-      "correct": null,
-      "blockChars": 357
-    },
-    {
-      "id": "q007",
-      "category": "single_session_user",
-      "recallHit": true,
-      "correct": null,
-      "blockChars": 253
-    },
-    {
-      "id": "q008",
-      "category": "single_session_user",
-      "recallHit": true,
-      "correct": null,
-      "blockChars": 314
-    },
-    {
-      "id": "q009",
-      "category": "single_session_user",
-      "recallHit": true,
+      "profileHit": true,
       "correct": null,
       "blockChars": 0
     },
     {
-      "id": "q010",
-      "category": "single_session_user",
+      "id": "q067",
+      "category": "temporal",
+      "askedDaysAgo": 55,
       "recallHit": true,
-      "correct": null,
-      "blockChars": 195
-    },
-    {
-      "id": "q011",
-      "category": "single_session_user",
-      "recallHit": true,
+      "profileHit": true,
       "correct": null,
       "blockChars": 0
-    },
-    {
-      "id": "q012",
-      "category": "single_session_user",
-      "recallHit": true,
-      "correct": null,
-      "blockChars": 0
-    },
-    {
-      "id": "q013",
-      "category": "single_session_user",
-      "recallHit": true,
-      "correct": null,
-      "blockChars": 186
-    },
-    {
-      "id": "q014",
-      "category": "single_session_user",
-      "recallHit": true,
-      "correct": null,
-      "blockChars": 178
-    },
-    {
-      "id": "q015",
-      "category": "single_session_user",
-      "recallHit": true,
-      "correct": null,
-      "blockChars": 484
-    },
-    {
-      "id": "q016",
-      "category": "single_session_user",
-      "recallHit": true,
-      "correct": null,
-      "blockChars": 474
-    },
-    {
-      "id": "q017",
-      "category": "single_session_user",
-      "recallHit": true,
-      "correct": null,
-      "blockChars": 272
-    },
-    {
-      "id": "q018",
-      "category": "single_session_user",
-      "recallHit": true,
-      "correct": null,
-      "blockChars": 272
-    },
-    {
-      "id": "q019",
-      "category": "single_session_user",
-      "recallHit": true,
-      "correct": null,
-      "blockChars": 280
-    },
-    {
-      "id": "q020",
-      "category": "single_session_user",
-      "recallHit": false,
-      "correct": null,
-      "blockChars": 318
-    },
-    {
-      "id": "q021",
-      "category": "multi_session",
-      "recallHit": false,
-      "correct": null,
-      "blockChars": 266
-    },
-    {
-      "id": "q022",
-      "category": "multi_session",
-      "recallHit": true,
-      "correct": null,
-      "blockChars": 308
-    },
-    {
-      "id": "q023",
-      "category": "multi_session",
-      "recallHit": true,
-      "correct": null,
-      "blockChars": 457
-    },
-    {
-      "id": "q024",
-      "category": "multi_session",
-      "recallHit": false,
-      "correct": null,
-      "blockChars": 394
-    },
-    {
-      "id": "q025",
-      "category": "multi_session",
-      "recallHit": false,
-      "correct": null,
-      "blockChars": 0
-    },
-    {
-      "id": "q026",
-      "category": "multi_session",
-      "recallHit": true,
-      "correct": null,
-      "blockChars": 307
-    },
-    {
-      "id": "q027",
-      "category": "multi_session",
-      "recallHit": true,
-      "correct": null,
-      "blockChars": 183
-    },
-    {
-      "id": "q028",
-      "category": "multi_session",
-      "recallHit": true,
-      "correct": null,
-      "blockChars": 0
-    },
-    {
-      "id": "q029",
-      "category": "multi_session",
-      "recallHit": true,
-      "correct": null,
-      "blockChars": 605
-    },
-    {
-      "id": "q030",
-      "category": "multi_session",
-      "recallHit": true,
-      "correct": null,
-      "blockChars": 308
-    },
-    {
-      "id": "q031",
-      "category": "multi_session",
-      "recallHit": true,
-      "correct": null,
-      "blockChars": 0
-    },
-    {
-      "id": "q032",
-      "category": "multi_session",
-      "recallHit": true,
-      "correct": null,
-      "blockChars": 383
-    },
-    {
-      "id": "q033",
-      "category": "multi_session",
-      "recallHit": true,
-      "correct": null,
-      "blockChars": 189
-    },
-    {
-      "id": "q034",
-      "category": "multi_session",
-      "recallHit": true,
-      "correct": null,
-      "blockChars": 383
-    },
-    {
-      "id": "q035",
-      "category": "multi_session",
-      "recallHit": true,
-      "correct": null,
-      "blockChars": 195
-    },
-    {
-      "id": "q036",
-      "category": "multi_session",
-      "recallHit": false,
-      "correct": null,
-      "blockChars": 0
-    },
-    {
-      "id": "q037",
-      "category": "multi_session",
-      "recallHit": false,
-      "correct": null,
-      "blockChars": 0
-    },
-    {
-      "id": "q038",
-      "category": "multi_session",
-      "recallHit": true,
-      "correct": null,
-      "blockChars": 0
-    },
-    {
-      "id": "q039",
-      "category": "multi_session",
-      "recallHit": true,
-      "correct": null,
-      "blockChars": 326
-    },
-    {
-      "id": "q040",
-      "category": "multi_session",
-      "recallHit": true,
-      "correct": null,
-      "blockChars": 318
     },
     {
       "id": "q041",
       "category": "knowledge_update",
+      "askedDaysAgo": 50,
       "recallHit": true,
+      "profileHit": true,
       "correct": null,
-      "blockChars": 207
+      "blockChars": 0
     },
     {
-      "id": "q042",
+      "id": "q051",
       "category": "knowledge_update",
+      "askedDaysAgo": 40,
       "recallHit": true,
+      "profileHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q060",
+      "category": "temporal",
+      "askedDaysAgo": 40,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q048",
+      "category": "knowledge_update",
+      "askedDaysAgo": 30,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q052",
+      "category": "knowledge_update",
+      "askedDaysAgo": 30,
+      "recallHit": true,
+      "profileHit": true,
       "correct": null,
       "blockChars": 0
     },
     {
       "id": "q043",
       "category": "knowledge_update",
-      "recallHit": true,
+      "askedDaysAgo": 28,
+      "recallHit": false,
+      "profileHit": true,
       "correct": null,
       "blockChars": 0
     },
     {
-      "id": "q044",
+      "id": "q047",
       "category": "knowledge_update",
-      "recallHit": true,
-      "correct": null,
-      "blockChars": 192
-    },
-    {
-      "id": "q045",
-      "category": "knowledge_update",
-      "recallHit": true,
+      "askedDaysAgo": 10,
+      "recallHit": false,
+      "profileHit": true,
       "correct": null,
       "blockChars": 0
     },
     {
       "id": "q046",
       "category": "knowledge_update",
+      "askedDaysAgo": 8,
       "recallHit": true,
-      "correct": null,
-      "blockChars": 282
-    },
-    {
-      "id": "q047",
-      "category": "knowledge_update",
-      "recallHit": true,
-      "correct": null,
-      "blockChars": 625
-    },
-    {
-      "id": "q048",
-      "category": "knowledge_update",
-      "recallHit": true,
-      "correct": null,
-      "blockChars": 378
-    },
-    {
-      "id": "q049",
-      "category": "knowledge_update",
-      "recallHit": false,
-      "correct": null,
-      "blockChars": 0
-    },
-    {
-      "id": "q050",
-      "category": "knowledge_update",
-      "recallHit": false,
-      "correct": null,
-      "blockChars": 301
-    },
-    {
-      "id": "q051",
-      "category": "knowledge_update",
-      "recallHit": true,
-      "correct": null,
-      "blockChars": 296
-    },
-    {
-      "id": "q052",
-      "category": "knowledge_update",
-      "recallHit": true,
-      "correct": null,
-      "blockChars": 0
-    },
-    {
-      "id": "q053",
-      "category": "knowledge_update",
-      "recallHit": false,
-      "correct": null,
-      "blockChars": 0
-    },
-    {
-      "id": "q054",
-      "category": "knowledge_update",
-      "recallHit": false,
-      "correct": null,
-      "blockChars": 333
-    },
-    {
-      "id": "q055",
-      "category": "knowledge_update",
-      "recallHit": true,
-      "correct": null,
-      "blockChars": 296
-    },
-    {
-      "id": "q056",
-      "category": "temporal",
-      "recallHit": true,
-      "correct": null,
-      "blockChars": 567
-    },
-    {
-      "id": "q057",
-      "category": "temporal",
-      "recallHit": true,
-      "correct": null,
-      "blockChars": 187
-    },
-    {
-      "id": "q058",
-      "category": "temporal",
-      "recallHit": true,
-      "correct": null,
-      "blockChars": 185
-    },
-    {
-      "id": "q059",
-      "category": "temporal",
-      "recallHit": true,
-      "correct": null,
-      "blockChars": 195
-    },
-    {
-      "id": "q060",
-      "category": "temporal",
-      "recallHit": true,
+      "profileHit": true,
       "correct": null,
       "blockChars": 0
     },
     {
       "id": "q061",
       "category": "temporal",
+      "askedDaysAgo": 4,
       "recallHit": true,
+      "profileHit": true,
       "correct": null,
-      "blockChars": 190
+      "blockChars": 0
+    },
+    {
+      "id": "q001",
+      "category": "single_session_user",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q002",
+      "category": "single_session_user",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q003",
+      "category": "single_session_user",
+      "askedDaysAgo": 0,
+      "recallHit": false,
+      "profileHit": false,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q004",
+      "category": "single_session_user",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q005",
+      "category": "single_session_user",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q006",
+      "category": "single_session_user",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q007",
+      "category": "single_session_user",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q008",
+      "category": "single_session_user",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q009",
+      "category": "single_session_user",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q010",
+      "category": "single_session_user",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q011",
+      "category": "single_session_user",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q012",
+      "category": "single_session_user",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q013",
+      "category": "single_session_user",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q014",
+      "category": "single_session_user",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q015",
+      "category": "single_session_user",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q016",
+      "category": "single_session_user",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q017",
+      "category": "single_session_user",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q018",
+      "category": "single_session_user",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q019",
+      "category": "single_session_user",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q020",
+      "category": "single_session_user",
+      "askedDaysAgo": 0,
+      "recallHit": false,
+      "profileHit": false,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q021",
+      "category": "multi_session",
+      "askedDaysAgo": 0,
+      "recallHit": false,
+      "profileHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q022",
+      "category": "multi_session",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q023",
+      "category": "multi_session",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q024",
+      "category": "multi_session",
+      "askedDaysAgo": 0,
+      "recallHit": false,
+      "profileHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q025",
+      "category": "multi_session",
+      "askedDaysAgo": 0,
+      "recallHit": false,
+      "profileHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q026",
+      "category": "multi_session",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q027",
+      "category": "multi_session",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q028",
+      "category": "multi_session",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q029",
+      "category": "multi_session",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q030",
+      "category": "multi_session",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q031",
+      "category": "multi_session",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q032",
+      "category": "multi_session",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q033",
+      "category": "multi_session",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q034",
+      "category": "multi_session",
+      "askedDaysAgo": 0,
+      "recallHit": false,
+      "profileHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q035",
+      "category": "multi_session",
+      "askedDaysAgo": 0,
+      "recallHit": false,
+      "profileHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q036",
+      "category": "multi_session",
+      "askedDaysAgo": 0,
+      "recallHit": false,
+      "profileHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q037",
+      "category": "multi_session",
+      "askedDaysAgo": 0,
+      "recallHit": false,
+      "profileHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q038",
+      "category": "multi_session",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q039",
+      "category": "multi_session",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q040",
+      "category": "multi_session",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q042",
+      "category": "knowledge_update",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q044",
+      "category": "knowledge_update",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q045",
+      "category": "knowledge_update",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q049",
+      "category": "knowledge_update",
+      "askedDaysAgo": 0,
+      "recallHit": false,
+      "profileHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q050",
+      "category": "knowledge_update",
+      "askedDaysAgo": 0,
+      "recallHit": false,
+      "profileHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q053",
+      "category": "knowledge_update",
+      "askedDaysAgo": 0,
+      "recallHit": false,
+      "profileHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q054",
+      "category": "knowledge_update",
+      "askedDaysAgo": 0,
+      "recallHit": false,
+      "profileHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q055",
+      "category": "knowledge_update",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q056",
+      "category": "temporal",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q057",
+      "category": "temporal",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q058",
+      "category": "temporal",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q059",
+      "category": "temporal",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": null,
+      "blockChars": 0
     },
     {
       "id": "q062",
       "category": "temporal",
-      "recallHit": true,
+      "askedDaysAgo": 0,
+      "recallHit": false,
+      "profileHit": true,
       "correct": null,
-      "blockChars": 272
-    },
-    {
-      "id": "q063",
-      "category": "temporal",
-      "recallHit": true,
-      "correct": null,
-      "blockChars": 440
+      "blockChars": 0
     },
     {
       "id": "q064",
       "category": "temporal",
+      "askedDaysAgo": 0,
       "recallHit": true,
+      "profileHit": true,
       "correct": null,
-      "blockChars": 350
+      "blockChars": 0
     },
     {
       "id": "q065",
       "category": "temporal",
+      "askedDaysAgo": 0,
       "recallHit": true,
+      "profileHit": true,
       "correct": null,
-      "blockChars": 613
+      "blockChars": 0
     },
     {
       "id": "q066",
       "category": "temporal",
+      "askedDaysAgo": 0,
       "recallHit": false,
+      "profileHit": false,
       "correct": null,
-      "blockChars": 456
-    },
-    {
-      "id": "q067",
-      "category": "temporal",
-      "recallHit": true,
-      "correct": null,
-      "blockChars": 283
+      "blockChars": 0
     },
     {
       "id": "q068",
       "category": "temporal",
+      "askedDaysAgo": 0,
       "recallHit": true,
+      "profileHit": true,
       "correct": null,
-      "blockChars": 489
+      "blockChars": 0
     },
     {
       "id": "q069",
       "category": "temporal",
+      "askedDaysAgo": 0,
       "recallHit": true,
+      "profileHit": true,
       "correct": null,
-      "blockChars": 640
+      "blockChars": 0
     },
     {
       "id": "q070",
       "category": "temporal",
+      "askedDaysAgo": 0,
       "recallHit": true,
+      "profileHit": true,
       "correct": null,
-      "blockChars": 554
+      "blockChars": 0
     },
     {
       "id": "q071",
       "category": "preference",
-      "recallHit": true,
+      "askedDaysAgo": 0,
+      "recallHit": false,
+      "profileHit": true,
       "correct": null,
-      "blockChars": 550
+      "blockChars": 0
     },
     {
       "id": "q072",
       "category": "preference",
+      "askedDaysAgo": 0,
       "recallHit": true,
+      "profileHit": true,
       "correct": null,
-      "blockChars": 550
+      "blockChars": 0
     },
     {
       "id": "q073",
       "category": "preference",
+      "askedDaysAgo": 0,
       "recallHit": true,
+      "profileHit": true,
       "correct": null,
-      "blockChars": 550
+      "blockChars": 0
     },
     {
       "id": "q074",
       "category": "preference",
+      "askedDaysAgo": 0,
       "recallHit": true,
+      "profileHit": true,
       "correct": null,
-      "blockChars": 512
+      "blockChars": 0
     },
     {
       "id": "q075",
       "category": "preference",
-      "recallHit": true,
+      "askedDaysAgo": 0,
+      "recallHit": false,
+      "profileHit": true,
       "correct": null,
-      "blockChars": 550
+      "blockChars": 0
     },
     {
       "id": "q076",
       "category": "preference",
+      "askedDaysAgo": 0,
       "recallHit": true,
+      "profileHit": true,
       "correct": null,
-      "blockChars": 393
+      "blockChars": 0
     },
     {
       "id": "q077",
       "category": "preference",
+      "askedDaysAgo": 0,
       "recallHit": true,
+      "profileHit": true,
       "correct": null,
-      "blockChars": 318
+      "blockChars": 0
     },
     {
       "id": "q078",
       "category": "preference",
+      "askedDaysAgo": 0,
       "recallHit": false,
+      "profileHit": true,
       "correct": null,
-      "blockChars": 190
+      "blockChars": 0
     },
     {
       "id": "q079",
       "category": "preference",
+      "askedDaysAgo": 0,
       "recallHit": true,
+      "profileHit": true,
       "correct": null,
       "blockChars": 0
     },
     {
       "id": "q080",
       "category": "preference",
-      "recallHit": true,
+      "askedDaysAgo": 0,
+      "recallHit": false,
+      "profileHit": true,
       "correct": null,
-      "blockChars": 550
+      "blockChars": 0
     },
     {
       "id": "q081",
       "category": "preference",
-      "recallHit": true,
+      "askedDaysAgo": 0,
+      "recallHit": false,
+      "profileHit": true,
       "correct": null,
-      "blockChars": 350
+      "blockChars": 0
     },
     {
       "id": "q082",
       "category": "preference",
+      "askedDaysAgo": 0,
       "recallHit": true,
+      "profileHit": true,
       "correct": null,
-      "blockChars": 556
+      "blockChars": 0
     },
     {
       "id": "q083",
       "category": "preference",
+      "askedDaysAgo": 0,
       "recallHit": true,
+      "profileHit": true,
       "correct": null,
-      "blockChars": 541
+      "blockChars": 0
     },
     {
       "id": "q084",
       "category": "preference",
+      "askedDaysAgo": 0,
       "recallHit": true,
+      "profileHit": true,
       "correct": null,
-      "blockChars": 269
+      "blockChars": 0
     },
     {
       "id": "q085",
       "category": "preference",
+      "askedDaysAgo": 0,
       "recallHit": true,
+      "profileHit": true,
       "correct": null,
-      "blockChars": 561
+      "blockChars": 0
     },
     {
       "id": "q086",
       "category": "abstention",
+      "askedDaysAgo": 0,
       "recallHit": null,
+      "profileHit": null,
       "correct": null,
       "blockChars": 0
     },
     {
       "id": "q087",
       "category": "abstention",
+      "askedDaysAgo": 0,
       "recallHit": null,
+      "profileHit": null,
       "correct": null,
-      "blockChars": 216
+      "blockChars": 0
     },
     {
       "id": "q088",
       "category": "abstention",
+      "askedDaysAgo": 0,
       "recallHit": null,
+      "profileHit": null,
       "correct": null,
       "blockChars": 0
     },
     {
       "id": "q089",
       "category": "abstention",
+      "askedDaysAgo": 0,
       "recallHit": null,
+      "profileHit": null,
       "correct": null,
       "blockChars": 0
     },
     {
       "id": "q090",
       "category": "abstention",
+      "askedDaysAgo": 0,
       "recallHit": null,
+      "profileHit": null,
       "correct": null,
       "blockChars": 0
     },
     {
       "id": "q091",
       "category": "abstention",
+      "askedDaysAgo": 0,
       "recallHit": null,
+      "profileHit": null,
       "correct": null,
       "blockChars": 0
     },
     {
       "id": "q092",
       "category": "abstention",
+      "askedDaysAgo": 0,
       "recallHit": null,
+      "profileHit": null,
       "correct": null,
       "blockChars": 0
     },
     {
       "id": "q093",
       "category": "abstention",
+      "askedDaysAgo": 0,
       "recallHit": null,
+      "profileHit": null,
       "correct": null,
-      "blockChars": 195
+      "blockChars": 0
     },
     {
       "id": "q094",
       "category": "abstention",
+      "askedDaysAgo": 0,
       "recallHit": null,
+      "profileHit": null,
       "correct": null,
       "blockChars": 0
     },
     {
       "id": "q095",
       "category": "abstention",
+      "askedDaysAgo": 0,
       "recallHit": null,
+      "profileHit": null,
       "correct": null,
       "blockChars": 0
     },
     {
       "id": "q096",
       "category": "abstention",
+      "askedDaysAgo": 0,
       "recallHit": null,
+      "profileHit": null,
       "correct": null,
       "blockChars": 0
     },
     {
       "id": "q097",
       "category": "abstention",
+      "askedDaysAgo": 0,
       "recallHit": null,
+      "profileHit": null,
       "correct": null,
       "blockChars": 0
     },
     {
       "id": "q098",
       "category": "abstention",
+      "askedDaysAgo": 0,
       "recallHit": null,
+      "profileHit": null,
       "correct": null,
       "blockChars": 0
     },
     {
       "id": "q099",
       "category": "abstention",
+      "askedDaysAgo": 0,
       "recallHit": null,
+      "profileHit": null,
       "correct": null,
       "blockChars": 0
     },
     {
       "id": "q100",
       "category": "abstention",
+      "askedDaysAgo": 0,
       "recallHit": null,
+      "profileHit": null,
       "correct": null,
       "blockChars": 0
     }

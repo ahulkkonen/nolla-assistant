@@ -17,7 +17,7 @@ import { claimStore } from '@pa/server/src/claims.ts';
 import { memoryStore } from '@pa/server/src/memory.ts';
 import { indexChat, indexIdle, search } from '@pa/server/src/search.ts';
 import { taskSmall } from '@pa/server/src/topics.ts';
-import { eq, inArray } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
 
 type Chat = {
@@ -32,6 +32,8 @@ type Question = {
   answer: string;
   evidence: string[];
   abstain: boolean;
+  /** The day the question is asked, in days before now: it sees only the chats up to then. */
+  askedDaysAgo: number;
 };
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -63,11 +65,64 @@ const dataDir = mkdtempSync(join(tmpdir(), 'pa-memory-eval-'));
 const { db, sqlite } = openDb(join(dataDir, 'app.db'));
 const mask = async (session: string, t: string) => (t ? (await pseudo.mask(session, t)).masked : t);
 
-// 1. Vault and chats: masked transcripts indexed as the server does.
+const usage = { calls: 0, costUsd: 0 };
+const onUsage = Object.assign((_at: unknown, u: { costUsd?: number } | undefined) => {
+  usage.calls++;
+  usage.costUsd += u?.costUsd ?? 0;
+}, {});
+
+// 1. LiteLLM probe: extraction and the QA metrics need a working model.
+const answerAsk = taskSmall(litellmUrl, litellmKey, onUsage, 'zdr/fast');
+const judgeAsk = taskSmall(litellmUrl, litellmKey, onUsage);
+let llmError: string | null = null;
+try {
+  await answerAsk(z.object({ ok: z.boolean() }), [
+    { role: 'user', content: 'Vastaa JSONilla {"ok": true}.' },
+  ]);
+} catch (err) {
+  llmError = err instanceof Error ? err.message : 'unknown';
+}
+
+// 2. Claims (phase 17): extracted with the real `zdr/task-small`, or with `--claims-from gold`
+// the gold claims (a retrieval upper bound: no extraction, no supersession).
+const claimsFrom = args.includes('--claims-from')
+  ? args[args.indexOf('--claims-from') + 1]
+  : 'extract';
+if (!noClaims && claimsFrom !== 'gold' && llmError)
+  throw new Error(`extraction needs LiteLLM: ${llmError}`);
+const extraction = { calls: 0, costUsd: 0 };
+const store = noClaims
+  ? undefined
+  : claimStore({
+      db,
+      userId: USER,
+      warn: () => {},
+      pseudo,
+      ask: taskSmall(litellmUrl, litellmKey, (_at, u) => {
+        extraction.calls++;
+        extraction.costUsd += u?.costUsd ?? 0;
+      }),
+    });
+const memory = memoryStore({
+  db,
+  dataDir,
+  userId: USER,
+  pseudo,
+  warn: () => {},
+  sendAll: () => {},
+  claims: store,
+});
+const gold = readFileSync(join(root, 'fixtures/gold-claims.jsonl'), 'utf8')
+  .trim()
+  .split('\n')
+  .map((l) => JSON.parse(l) as { chat: string; kind: ClaimKind; text: string; message: number });
+
+// 3. Timeline: each chat is indexed (and mined) on its day; a question sees only the chats from
+// before its `askedDaysAgo`.
 await pseudo.vaultSeed(seed);
-const masked = new Map<string, { id: string; role: 'user' | 'assistant'; text: string }[]>();
-for (const c of chatList) {
-  const at = new Date(Date.now() - c.daysAgo * DAY).toISOString();
+const dayOf = (daysAgo: number) => new Date(Date.now() - daysAgo * DAY).toISOString();
+const ingest = async (c: Chat) => {
+  const at = dayOf(c.daysAgo);
   db.insert(chats)
     .values({
       id: c.id,
@@ -80,67 +135,12 @@ for (const c of chatList) {
   const msgs = [];
   for (const [i, m] of c.messages.entries())
     msgs.push({ id: `${c.id}:${i}`, role: m.role, text: await mask(c.id, m.text) });
-  masked.set(c.id, msgs);
   await indexChat(db, USER, c.id, msgs);
-}
-await indexIdle();
-
-const usage = { calls: 0, costUsd: 0 };
-const onUsage = Object.assign((_at: unknown, u: { costUsd?: number } | undefined) => {
-  usage.calls++;
-  usage.costUsd += u?.costUsd ?? 0;
-}, {});
-const memory = memoryStore({
-  db,
-  dataDir,
-  userId: USER,
-  pseudo,
-  warn: () => {},
-  sendAll: () => {},
-});
-
-// 2. LiteLLM probe: extraction and the QA metrics need a working model.
-const answerAsk = taskSmall(litellmUrl, litellmKey, onUsage, 'zdr/fast');
-const judgeAsk = taskSmall(litellmUrl, litellmKey, onUsage);
-let llmError: string | null = null;
-try {
-  await answerAsk(z.object({ ok: z.boolean() }), [
-    { role: 'user', content: 'Vastaa JSONilla {"ok": true}.' },
-  ]);
-} catch (err) {
-  llmError = err instanceof Error ? err.message : 'unknown';
-}
-
-// 3. Claims (phase 17): extracted with the real `zdr/task-small`, or with `--claims-from gold`
-// the gold claims (a retrieval upper bound: no extraction, no supersession).
-const claimsFrom = args.includes('--claims-from')
-  ? args[args.indexOf('--claims-from') + 1]
-  : 'extract';
-type ClaimHits = { block: string; evidence: string[] };
-let claimsFor: (q: string) => Promise<ClaimHits> = async () => ({ block: '', evidence: [] });
-const extraction = { calls: 0, costUsd: 0 };
-let claimPrecision: number | null = null;
-if (!noClaims) {
-  const store = claimStore({
-    db,
-    userId: USER,
-    warn: () => {},
-    pseudo,
-    ask: taskSmall(litellmUrl, litellmKey, (_at, u) => {
-      extraction.calls++;
-      extraction.costUsd += u?.costUsd ?? 0;
-    }),
-  });
+  await indexIdle();
+  if (!store) return;
   if (claimsFrom === 'gold') {
-    const gold = readFileSync(join(root, 'fixtures/gold-claims.jsonl'), 'utf8')
-      .trim()
-      .split('\n')
-      .map(
-        (l) => JSON.parse(l) as { chat: string; kind: ClaimKind; text: string; message: number },
-      );
-    for (const g of gold) {
-      const chat = chatList.find((c) => c.id === g.chat) as Chat;
-      const { spans } = await pseudo.mask(g.chat, g.text);
+    for (const g of gold.filter((x) => x.chat === c.id)) {
+      const { spans } = await pseudo.mask(c.id, g.text);
       await store.add([
         {
           claim: {
@@ -149,14 +149,14 @@ if (!noClaims) {
             confidence: 0.9,
             status: 'active',
             activatedBy: 'user',
-            sourceChatId: g.chat,
-            validFrom: new Date(Date.now() - chat.daysAgo * DAY).toISOString().slice(0, 10),
+            sourceChatId: c.id,
+            validFrom: at.slice(0, 10),
           },
           evidence: [
             {
-              chatId: g.chat,
-              messageId: `${g.chat}:${g.message}`,
-              quote: chat.messages[g.message]?.text.slice(0, 300) ?? '',
+              chatId: c.id,
+              messageId: `${c.id}:${g.message}`,
+              quote: c.messages[g.message]?.text.slice(0, 300) ?? '',
               stance: 'supports',
             },
           ],
@@ -164,38 +164,34 @@ if (!noClaims) {
         },
       ]);
     }
-  } else {
-    if (llmError) throw new Error(`extraction needs LiteLLM: ${llmError}`);
-    for (const c of [...chatList].sort((a, b) => b.daysAgo - a.daysAgo)) {
-      const date = new Date(Date.now() - c.daysAgo * DAY).toISOString().slice(0, 10);
-      await store.extract(c.id, masked.get(c.id) ?? [], { through: null, tainted: false, date });
-    }
-    // Eval mode: every proposal is accepted (a supersede closes the old claim).
-    const proposed = db.select().from(claims).where(eq(claims.status, 'proposed')).all();
-    for (const p of proposed.sort((a, b) => a.id - b.id)) await store.review(p.id, 'accept');
-    claimPrecision = await precision(
-      db
-        .select()
-        .from(claims)
-        .all()
-        .map((c) => c.text),
-    );
+    return;
   }
-  await memory.consolidate();
-  claimsFor = async (q) => {
-    const maskedQ = await mask(`eval:q`, q);
-    const r = await store.relevant(maskedQ, []);
-    const top = (await store.rank(q, [], ['active', 'superseded'])).slice(0, 3).map((c) => c.id);
-    const ids = [...new Set([...r.ids, ...top])];
-    const ev = ids.length
-      ? db.select().from(evidence).where(inArray(evidence.claimId, ids)).all()
-      : [];
-    return {
-      block: r.lines.length ? `${CLAIMS_HEADER}\n${r.lines.join('\n')}` : '',
-      evidence: ev.map((e) => e.messageId ?? ''),
-    };
+  await store.extract(c.id, msgs, { through: null, tainted: false, date: at.slice(0, 10) });
+  // Eval mode: every proposal is accepted (a supersede closes the old claims).
+  const proposed = db.select().from(claims).where(eq(claims.status, 'proposed')).all();
+  for (const p of proposed.sort((a, b) => a.id - b.id)) await store.review(p.id, 'accept');
+};
+
+type Item = { key: string; messages: string[] };
+const evidenceOf = (ids: number[]): Item[] =>
+  ids.map((id) => ({
+    key: `claim:${id}`,
+    messages: db
+      .select()
+      .from(evidence)
+      .where(and(eq(evidence.claimId, id), eq(evidence.stance, 'supports')))
+      .all()
+      .map((e) => e.messageId ?? ''),
+  }));
+/** The per-turn block and its claims (the injection path, with entity ids from the prompt). */
+const blockFor = async (q: string) => {
+  if (!store) return { block: '', items: [] as Item[] };
+  const r = await store.relevant(await mask('eval:q', q), []);
+  return {
+    block: r.lines.length ? `${CLAIMS_HEADER}\n${r.lines.join('\n')}` : '',
+    items: evidenceOf(r.ids),
   };
-}
+};
 
 /** Share of extracted claims that the masked judge matches to a gold claim. */
 async function precision(texts: string[]) {
@@ -228,27 +224,63 @@ const JUDGE = `Arvioi, vastaako vastaus oikeaa vastausta sisällöltään. "En t
 type Row = {
   id: string;
   category: string;
+  askedDaysAgo: number;
   recallHit: boolean | null;
+  /** A gold message is the evidence of a claim in MEMORY.md (always injected). */
+  profileHit: boolean | null;
   correct: boolean | null;
   blockChars: number;
 };
 const rows: Row[] = [];
-const profile = `## Käyttäjä\n${memory.read('user')}\n\n## Muisti\n${memory.read('memory')}`;
-for (const q of questions) {
+const timeline = [...chatList].sort((a, b) => b.daysAgo - a.daysAgo);
+let next = 0;
+for (const q of [...questions].sort((a, b) => b.askedDaysAgo - a.askedDaysAgo)) {
+  let fresh = false;
+  while (next < timeline.length && (timeline[next] as Chat).daysAgo >= q.askedDaysAgo) {
+    await ingest(timeline[next++] as Chat);
+    fresh = true;
+  }
+  if (fresh && store) await memory.consolidate();
+  const block = await blockFor(q.question);
   const hits = await search(db, USER, q.question, 5, pseudo);
   const snippets = await memory.recall(q.question, {});
-  const claims = await claimsFor(q.question);
-  const found = new Set([...hits.map((h) => h.messageId ?? ''), ...claims.evidence]);
+  const recalled = store ? evidenceOf((await store.recallRanked(q.question)).map((c) => c.id)) : [];
+  // Recall@5: the top 5 of the union, in the order the model reads it (block, then recall).
+  const union: Item[] = [];
+  for (const it of [
+    ...block.items,
+    ...hits.map((h) => ({ key: `chunk:${h.messageId}`, messages: [h.messageId ?? ''] })),
+    ...recalled,
+  ])
+    if (!union.some((u) => u.key === it.key)) union.push(it);
+  const found = new Set(union.slice(0, 5).flatMap((u) => u.messages));
   const recallHit = q.evidence.length ? q.evidence.some((e) => found.has(e)) : null;
+  const inProfile = new Set(
+    evidenceOf(
+      db
+        .select({ id: claims.id })
+        .from(claims)
+        .where(eq(claims.inProfile, true))
+        .all()
+        .map((c) => c.id),
+    ).flatMap((i) => i.messages),
+  );
+  const profileHit = q.evidence.length
+    ? recallHit || q.evidence.some((e) => inProfile.has(e))
+    : null;
   let correct: boolean | null = null;
   if (!llmError) {
+    const profile = `## Käyttäjä\n${memory.read('user')}\n\n## Muisti\n${memory.read('memory')}`;
     const context = await mask(
       `eval:${q.id}`,
-      `${profile}\n\n${claims.block}\n\nHaku:\n${snippets.map((s) => `- ${s.snippet}`).join('\n')}`,
+      `${profile}\n\n${block.block}\n\nHaku:\n${snippets.map((s) => `- ${s.snippet}`).join('\n')}`,
     );
     const a = await answerAsk(z.object({ answer: z.string() }), [
       { role: 'system', content: ANSWER },
-      { role: 'user', content: `${context}\n\nKysymys: ${await mask(`eval:${q.id}`, q.question)}` },
+      {
+        role: 'user',
+        content: `Päivämäärä: ${dayOf(q.askedDaysAgo).slice(0, 10)}\n\n${context}\n\nKysymys: ${await mask(`eval:${q.id}`, q.question)}`,
+      },
     ]);
     const j = await judgeAsk(z.object({ correct: z.boolean() }), [
       { role: 'system', content: JUDGE },
@@ -265,11 +297,23 @@ for (const q of questions) {
   rows.push({
     id: q.id,
     category: q.category,
+    askedDaysAgo: q.askedDaysAgo,
     recallHit,
+    profileHit,
     correct,
-    blockChars: claims.block.length,
+    blockChars: block.block.length,
   });
 }
+const claimPrecision =
+  store && claimsFrom !== 'gold'
+    ? await precision(
+        db
+          .select()
+          .from(claims)
+          .all()
+          .map((c) => c.text),
+      )
+    : null;
 memory.close();
 
 // 4. Metrics.
@@ -291,6 +335,16 @@ const result = {
       categories.map((c) => [
         c,
         rate(rows.filter((r) => r.category === c).map((r) => r.recallHit)),
+      ]),
+    ),
+  },
+  /** Recall@5 or a hit in MEMORY.md. */
+  recallOrProfile: {
+    total: rate(rows.map((r) => r.profileHit)),
+    ...Object.fromEntries(
+      categories.map((c) => [
+        c,
+        rate(rows.filter((r) => r.category === c).map((r) => r.profileHit)),
       ]),
     ),
   },

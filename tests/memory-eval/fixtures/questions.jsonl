@@ -1,100 +1,100 @@
-{"id": "q001", "category": "single_session_user", "question": "Kuka on tärkein asiakkaani?", "answer": "Juhani Korhonen Satamarahdista", "evidence": ["e14:0"], "abstain": false}
-{"id": "q002", "category": "single_session_user", "question": "Millaisista sähköposteista Juhani Korhonen ei pidä?", "answer": "Pitkistä sähköposteista", "evidence": ["e14:0"], "abstain": false}
-{"id": "q003", "category": "single_session_user", "question": "Mitä harrastusta siskoni harrastaa?", "answer": "Keramiikkaa, dreijauskurssi Vantaalla", "evidence": ["e03:2"], "abstain": false}
-{"id": "q004", "category": "single_session_user", "question": "Millaista kahvia Pekka Lahti juo?", "answer": "Vain tummapaahtoista", "evidence": ["e05:2"], "abstain": false}
-{"id": "q005", "category": "single_session_user", "question": "Mitä Pekka Lahti lupasi lainata minulle?", "answer": "Peräkärryn", "evidence": ["e05:0"], "abstain": false}
-{"id": "q006", "category": "single_session_user", "question": "Kuka on tyttäreni opettaja?", "answer": "Tiina Kokko", "evidence": ["e16:0"], "abstain": false}
-{"id": "q007", "category": "single_session_user", "question": "Milloin Matti Lainen syntymäpäivä on?", "answer": "12. maaliskuuta", "evidence": ["e17:0"], "abstain": false}
-{"id": "q008", "category": "single_session_user", "question": "Mikä on Matin harrastus?", "answer": "Kalastus", "evidence": ["e17:2"], "abstain": false}
-{"id": "q009", "category": "single_session_user", "question": "Minkä merkkinen auto minulla on?", "answer": "Toyota Corolla hybridi vuodelta 2019", "evidence": ["e19:0"], "abstain": false}
-{"id": "q010", "category": "single_session_user", "question": "Paljonko autossani on kilometrejä?", "answer": "Noin 85 000 km", "evidence": ["e19:2"], "abstain": false}
-{"id": "q011", "category": "single_session_user", "question": "Minkä niminen koiramme on?", "answer": "Roope", "evidence": ["e25:0"], "abstain": false}
-{"id": "q012", "category": "single_session_user", "question": "Minkä rotuinen koiramme on?", "answer": "Labradorinnoutaja", "evidence": ["e25:0"], "abstain": false}
-{"id": "q013", "category": "single_session_user", "question": "Missä Roopen eläinlääkäri on?", "answer": "Hervannan eläinklinikalla", "evidence": ["e25:2"], "abstain": false}
-{"id": "q014", "category": "single_session_user", "question": "Mille olen allerginen?", "answer": "Pähkinöille, myös manteleille ja pistaaseille", "evidence": ["e26:0", "e26:2"], "abstain": false}
-{"id": "q015", "category": "single_session_user", "question": "Mitä editoria käytän?", "answer": "VS Codea", "evidence": ["e09:2"], "abstain": false}
-{"id": "q016", "category": "single_session_user", "question": "Mitä paketinhallintaa käytän?", "answer": "pnpm:ää", "evidence": ["e09:2"], "abstain": false}
-{"id": "q017", "category": "single_session_user", "question": "Kuka on mentorini?", "answer": "Anna-Liisa Mäkelä", "evidence": ["e13:0"], "abstain": false}
-{"id": "q018", "category": "single_session_user", "question": "Mihin koulutukseen mentorini ehdotti minua hakemaan?", "answer": "Johtamiskoulutukseen", "evidence": ["e13:0"], "abstain": false}
-{"id": "q019", "category": "single_session_user", "question": "Milloin Satamarahdin sopimus uusitaan?", "answer": "Joka vuosi maaliskuussa", "evidence": ["e14:2"], "abstain": false}
-{"id": "q020", "category": "single_session_user", "question": "Millä kirjoitan muistiinpanoni vihkoon?", "answer": "Lyijykynällä ruutuvihkoon", "evidence": ["e24:2"], "abstain": false}
-{"id": "q021", "category": "multi_session", "question": "Ketkä ovat lähisukulaisiani, joista olen kertonut?", "answer": "Sisko Sanna Hyvönen, lanko Matti Laine ja tytär", "evidence": ["e03:0", "e17:0", "e16:0"], "abstain": false}
-{"id": "q022", "category": "multi_session", "question": "Kenen kanssa olen matkustamassa ja minne?", "answer": "Sanna Hyvösen kanssa Portoon", "evidence": ["e27:0", "e28:0"], "abstain": false}
-{"id": "q023", "category": "multi_session", "question": "Mitkä lahjaideat sopisivat Sannalle ja Matille?", "answer": "Sannalle keramiikka, Matille kalastusvälineet", "evidence": ["e03:2", "e17:2"], "abstain": false}
-{"id": "q024", "category": "multi_session", "question": "Mitä ruoka-aineita minun ei pidä syödä?", "answer": "Lihaa, kalaa, kanaa ja pähkinöitä", "evidence": ["e22:0", "e26:0"], "abstain": false}
-{"id": "q025", "category": "multi_session", "question": "Ketkä työelämän ihmiset olen maininnut?", "answer": "Mikko Virtanen, Heikki Nieminen, Juhani Korhonen, Anna-Liisa Mäkelä", "evidence": ["e02:2", "e20:2", "e14:0", "e13:0"], "abstain": false}
-{"id": "q026", "category": "multi_session", "question": "Milloin minulla on viikoittaisia menoja iltaisin?", "answer": "Ruotsin keskustelutunti torstai-iltaisin", "evidence": ["e29:0"], "abstain": false}
-{"id": "q027", "category": "multi_session", "question": "Mitä liikuntaa olen harrastanut?", "answer": "Juoksua, nyt uintia", "evidence": ["e01:0", "e18:0"], "abstain": false}
-{"id": "q028", "category": "multi_session", "question": "Missä kaupungeissa olen asunut?", "answer": "Espoossa ja nyt Tampereella", "evidence": ["e01:2", "e21:0"], "abstain": false}
-{"id": "q029", "category": "multi_session", "question": "Ketkä naapurit tai tutut auttavat arjessa?", "answer": "Naapuri Pekka Lahti", "evidence": ["e05:0"], "abstain": false}
-{"id": "q030", "category": "multi_session", "question": "Mitä kieliä opiskelen ja kenen kanssa?", "answer": "Ruotsia Katja Lindqvistin kanssa", "evidence": ["e11:0", "e11:2"], "abstain": false}
-{"id": "q031", "category": "multi_session", "question": "Mitä tiedän perheemme lemmikistä ja allergioista?", "answer": "Koira Roope, minulla pähkinäallergia", "evidence": ["e25:0", "e26:0"], "abstain": false}
-{"id": "q032", "category": "multi_session", "question": "Millä tavoin teen päätöksiä isoista hankinnoista?", "answer": "Vertaan kolmea vaihtoehtoa ja nukun yön yli", "evidence": ["e23:0", "e23:2"], "abstain": false}
-{"id": "q033", "category": "multi_session", "question": "Mitä viikkorutiineja minulla on ostoksiin ja raportointiin?", "answer": "Ostokset sunnuntaisin, raportti torstaisin", "evidence": ["e10:0", "e30:0"], "abstain": false}
-{"id": "q034", "category": "multi_session", "question": "Mitä tavoitteita minulla on tällä hetkellä?", "answer": "Uida 2 km yhtäjaksoisesti ja ruotsin B1-taso", "evidence": ["e18:2", "e11:0"], "abstain": false}
-{"id": "q035", "category": "multi_session", "question": "Missä uin ja missä asun?", "answer": "Tesoman uimahallissa, asun Hervannassa Tampereella", "evidence": ["e18:2", "e21:0"], "abstain": false}
-{"id": "q036", "category": "multi_session", "question": "Mitä tiedän ruokataloudestamme?", "answer": "600 euron kuukausibudjetti, kasvisruoka, ostokset sunnuntaisin", "evidence": ["e07:2", "e22:0", "e10:0"], "abstain": false}
-{"id": "q037", "category": "multi_session", "question": "Missä yrityksessä työskentelen ja missä roolissa?", "answer": "Rahtiväylä Oy, tuoteomistaja", "evidence": ["e02:0", "e20:0"], "abstain": false}
-{"id": "q038", "category": "multi_session", "question": "Miten kuljen töihin?", "answer": "Junalla Helsinkiin kaksi päivää viikossa", "evidence": ["e21:2"], "abstain": false}
-{"id": "q039", "category": "multi_session", "question": "Ketkä ovat Sannan perhettä?", "answer": "Mies Matti Laine", "evidence": ["e17:0"], "abstain": false}
-{"id": "q040", "category": "multi_session", "question": "Mitä kirjoja ja missä muodossa kulutan?", "answer": "Tietokirjoja äänikirjoina työmatkalla", "evidence": ["e15:0", "e15:2"], "abstain": false}
-{"id": "q041", "category": "knowledge_update", "question": "Kuinka usein juoksen nykyään?", "answer": "En juokse enää, uin kaksi kertaa viikossa", "evidence": ["e18:0", "e18:2"], "abstain": false}
-{"id": "q042", "category": "knowledge_update", "question": "Missä kaupungissa asun?", "answer": "Tampereella, Hervannassa", "evidence": ["e21:0"], "abstain": false}
-{"id": "q043", "category": "knowledge_update", "question": "Mikä on työroolini?", "answer": "Tuoteomistaja", "evidence": ["e20:0"], "abstain": false}
-{"id": "q044", "category": "knowledge_update", "question": "Kuka on esihenkilöni?", "answer": "Heikki Nieminen", "evidence": ["e20:2"], "abstain": false}
-{"id": "q045", "category": "knowledge_update", "question": "Syönkö kalaa?", "answer": "En, olen täysin kasvissyöjä", "evidence": ["e22:0"], "abstain": false}
-{"id": "q046", "category": "knowledge_update", "question": "Minne olemme matkalla helmikuussa?", "answer": "Portoon", "evidence": ["e28:0"], "abstain": false}
-{"id": "q047", "category": "knowledge_update", "question": "Minä päivänä ruotsin keskustelutuntini on?", "answer": "Torstai-iltaisin", "evidence": ["e29:0"], "abstain": false}
-{"id": "q048", "category": "knowledge_update", "question": "Mihin mennessä viikkoraportti pitää toimittaa?", "answer": "Torstaisin klo 16", "evidence": ["e30:0"], "abstain": false}
-{"id": "q049", "category": "knowledge_update", "question": "Mikä on liikuntatavoitteeni?", "answer": "Uida kaksi kilometriä yhtäjaksoisesti", "evidence": ["e18:2"], "abstain": false}
-{"id": "q050", "category": "knowledge_update", "question": "Juoksenko puolimaratonin toukokuussa?", "answer": "En, se jäi väliin polven takia", "evidence": ["e18:2"], "abstain": false}
-{"id": "q051", "category": "knowledge_update", "question": "Kenelle lähetän viikkoraportin?", "answer": "Heikki Niemiselle", "evidence": ["e30:0"], "abstain": false}
-{"id": "q052", "category": "knowledge_update", "question": "Syönkö kanaa?", "answer": "En enää", "evidence": ["e22:0"], "abstain": false}
-{"id": "q053", "category": "knowledge_update", "question": "Missä lenkkeilen?", "answer": "En lenkkeile enää juosten, uin Tesoman uimahallissa", "evidence": ["e18:0", "e18:2"], "abstain": false}
-{"id": "q054", "category": "knowledge_update", "question": "Vastaanko yhä varastojärjestelmän uudistuksesta?", "answer": "En, työt siirtyivät kollegalle", "evidence": ["e20:0"], "abstain": false}
-{"id": "q055", "category": "knowledge_update", "question": "Mitä viikkoraporttiin nyt kuuluu?", "answer": "Tila, riskit, tavoitteet ja tuotteen mittarit", "evidence": ["e30:2"], "abstain": false}
-{"id": "q056", "category": "temporal", "question": "Kumpi tuli ensin: muutto Tampereelle vai uusi työrooli?", "answer": "Muutto Tampereelle syyskuussa, rooli lokakuussa", "evidence": ["e21:0", "e20:0"], "abstain": false}
-{"id": "q057", "category": "temporal", "question": "Milloin aloitin tuoteomistajana?", "answer": "Lokakuun alussa", "evidence": ["e20:0"], "abstain": false}
-{"id": "q058", "category": "temporal", "question": "Milloin muutimme Tampereelle?", "answer": "Syyskuussa", "evidence": ["e21:0"], "abstain": false}
-{"id": "q059", "category": "temporal", "question": "Milloin tyttäreni aloitti koulun?", "answer": "Elokuussa", "evidence": ["e16:0"], "abstain": false}
-{"id": "q060", "category": "temporal", "question": "Milloin vanhempainilta on?", "answer": "Lokakuun puolivälissä", "evidence": ["e16:2"], "abstain": false}
-{"id": "q061", "category": "temporal", "question": "Kuinka kauan sitten lopetin juoksemisen?", "answer": "Noin kuukausi sitten", "evidence": ["e18:0"], "abstain": false}
-{"id": "q062", "category": "temporal", "question": "Milloin tapaan mentorini?", "answer": "Kerran kuussa, kuun ensimmäisenä maanantaina", "evidence": ["e13:2"], "abstain": false}
-{"id": "q063", "category": "temporal", "question": "Mihin aikaan päivästä teen syvätyötä?", "answer": "Aamupäivisin klo 8–11", "evidence": ["e06:0"], "abstain": false}
-{"id": "q064", "category": "temporal", "question": "Mihin aikaan lopetan työt perjantaisin?", "answer": "Kello 15", "evidence": ["e06:2"], "abstain": false}
-{"id": "q065", "category": "temporal", "question": "Kumpi tapahtui ensin: Lissabon-suunnitelma vai Porto-päätös?", "answer": "Lissabon ensin, sitten vaihto Portoon", "evidence": ["e27:0", "e28:0"], "abstain": false}
-{"id": "q066", "category": "temporal", "question": "Kuinka kauan Porton matka kestää?", "answer": "Noin viisi päivää", "evidence": ["e27:2"], "abstain": false}
-{"id": "q067", "category": "temporal", "question": "Milloin teen ruokaostokset?", "answer": "Sunnuntaisin", "evidence": ["e10:0"], "abstain": false}
-{"id": "q068", "category": "temporal", "question": "Kumpi tuli ensin: kasvissyönti vai kalan ja kanan syönti?", "answer": "Ensin kala ja kana, nyt kasvissyönti", "evidence": ["e07:0", "e22:0"], "abstain": false}
-{"id": "q069", "category": "temporal", "question": "Mihin mennessä haluan saavuttaa ruotsin B1-tason?", "answer": "Ensi vuoden loppuun", "evidence": ["e11:0"], "abstain": false}
-{"id": "q070", "category": "temporal", "question": "Kuinka monta kertaa päivässä Roope ulkoilutetaan pitkästi?", "answer": "Kaksi pitkää lenkkiä päivässä", "evidence": ["e25:0"], "abstain": false}
-{"id": "q071", "category": "preference", "question": "Kuinka pitkiä vastauksia haluan?", "answer": "Lyhyitä, ilman otsikoita", "evidence": ["e04:0"], "abstain": false}
-{"id": "q072", "category": "preference", "question": "Millä kielellä haluan vastaukset?", "answer": "Suomeksi", "evidence": ["e04:2"], "abstain": false}
-{"id": "q073", "category": "preference", "question": "Millä ohjelmointikielellä haluan koodiesimerkit?", "answer": "TypeScriptillä, ei Pythonia", "evidence": ["e09:0"], "abstain": false}
-{"id": "q074", "category": "preference", "question": "Saako vastauksissa käyttää emojeja?", "answer": "Ei", "evidence": ["e12:0"], "abstain": false}
-{"id": "q075", "category": "preference", "question": "Missä järjestyksessä haluan suosituksen ja perustelut?", "answer": "Suositus ensin, perustelut sitten", "evidence": ["e12:2"], "abstain": false}
-{"id": "q076", "category": "preference", "question": "Millaisia kirjoja suosin?", "answer": "Tietokirjoja", "evidence": ["e15:0"], "abstain": false}
-{"id": "q077", "category": "preference", "question": "Missä muodossa kuuntelen kirjoja?", "answer": "Äänikirjoina", "evidence": ["e15:2"], "abstain": false}
-{"id": "q078", "category": "preference", "question": "Milloin palaverit sopivat minulle?", "answer": "Iltapäivisin, ei aamupäivisin", "evidence": ["e06:0"], "abstain": false}
-{"id": "q079", "category": "preference", "question": "Millaisia reseptejä minulle kannattaa ehdottaa?", "answer": "Kasvisruokaa ilman pähkinöitä", "evidence": ["e22:0", "e26:0"], "abstain": false}
-{"id": "q080", "category": "preference", "question": "Milloin haluan ostoslistan valmiiksi?", "answer": "Lauantaina", "evidence": ["e10:2"], "abstain": false}
-{"id": "q081", "category": "preference", "question": "Miten Juhani Korhoselle kannattaa kirjoittaa?", "answer": "Tiiviisti, päätös ensimmäisellä rivillä", "evidence": ["e14:0"], "abstain": false}
-{"id": "q082", "category": "preference", "question": "Millä alueella haluamme majoittua matkalla?", "answer": "Alfamassa (Lissabonin suunnitelma)", "evidence": ["e27:2"], "abstain": false}
-{"id": "q083", "category": "preference", "question": "Miten haluan muistiinpanot käsiteltävän?", "answer": "Ensin käsin, illalla koneelle", "evidence": ["e24:0"], "abstain": false}
-{"id": "q084", "category": "preference", "question": "Mistä saan proteiinia?", "answer": "Pavuista ja tofusta", "evidence": ["e22:2"], "abstain": false}
-{"id": "q085", "category": "preference", "question": "Montako vaihtoehtoa haluan nähdä ennen päätöstä?", "answer": "Vähintään kolme", "evidence": ["e23:2"], "abstain": false}
-{"id": "q086", "category": "abstention", "question": "Mikä on lempivärini?", "answer": "Ei tiedossa", "evidence": [], "abstain": true}
-{"id": "q087", "category": "abstention", "question": "Mikä on puolisoni nimi?", "answer": "Ei tiedossa", "evidence": [], "abstain": true}
-{"id": "q088", "category": "abstention", "question": "Mitä soitinta soitan?", "answer": "Ei tiedossa", "evidence": [], "abstain": true}
-{"id": "q089", "category": "abstention", "question": "Missä kävin lukiota?", "answer": "Ei tiedossa", "evidence": [], "abstain": true}
-{"id": "q090", "category": "abstention", "question": "Mikä on veriryhmäni?", "answer": "Ei tiedossa", "evidence": [], "abstain": true}
-{"id": "q091", "category": "abstention", "question": "Mikä on lempijoukkueeni jääkiekossa?", "answer": "Ei tiedossa", "evidence": [], "abstain": true}
-{"id": "q092", "category": "abstention", "question": "Paljonko palkkani on?", "answer": "Ei tiedossa", "evidence": [], "abstain": true}
-{"id": "q093", "category": "abstention", "question": "Mikä on tyttäreni nimi?", "answer": "Ei tiedossa", "evidence": [], "abstain": true}
-{"id": "q094", "category": "abstention", "question": "Onko minulla kissaa?", "answer": "Ei tiedossa", "evidence": [], "abstain": true}
-{"id": "q095", "category": "abstention", "question": "Mikä on puhelinliittymäni operaattori?", "answer": "Ei tiedossa", "evidence": [], "abstain": true}
-{"id": "q096", "category": "abstention", "question": "Mitä opiskelin yliopistossa?", "answer": "Ei tiedossa", "evidence": [], "abstain": true}
-{"id": "q097", "category": "abstention", "question": "Missä vietin viime juhannuksen?", "answer": "Ei tiedossa", "evidence": [], "abstain": true}
-{"id": "q098", "category": "abstention", "question": "Mikä on lempielokuvani?", "answer": "Ei tiedossa", "evidence": [], "abstain": true}
-{"id": "q099", "category": "abstention", "question": "Kuinka pitkä olen?", "answer": "Ei tiedossa", "evidence": [], "abstain": true}
-{"id": "q100", "category": "abstention", "question": "Mikä on veljeni nimi?", "answer": "Ei tiedossa", "evidence": [], "abstain": true}
+{"id": "q001", "category": "single_session_user", "question": "Kuka on tärkein asiakkaani?", "answer": "Juhani Korhonen Satamarahdista", "evidence": ["e14:0"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q002", "category": "single_session_user", "question": "Millaisista sähköposteista Juhani Korhonen ei pidä?", "answer": "Pitkistä sähköposteista", "evidence": ["e14:0"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q003", "category": "single_session_user", "question": "Mitä harrastusta siskoni harrastaa?", "answer": "Keramiikkaa, dreijauskurssi Vantaalla", "evidence": ["e03:2"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q004", "category": "single_session_user", "question": "Millaista kahvia Pekka Lahti juo?", "answer": "Vain tummapaahtoista", "evidence": ["e05:2"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q005", "category": "single_session_user", "question": "Mitä Pekka Lahti lupasi lainata minulle?", "answer": "Peräkärryn", "evidence": ["e05:0"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q006", "category": "single_session_user", "question": "Kuka on tyttäreni opettaja?", "answer": "Tiina Kokko", "evidence": ["e16:0"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q007", "category": "single_session_user", "question": "Milloin Matti Lainen syntymäpäivä on?", "answer": "12. maaliskuuta", "evidence": ["e17:0"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q008", "category": "single_session_user", "question": "Mikä on Matin harrastus?", "answer": "Kalastus", "evidence": ["e17:2"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q009", "category": "single_session_user", "question": "Minkä merkkinen auto minulla on?", "answer": "Toyota Corolla hybridi vuodelta 2019", "evidence": ["e19:0"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q010", "category": "single_session_user", "question": "Paljonko autossani on kilometrejä?", "answer": "Noin 85 000 km", "evidence": ["e19:2"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q011", "category": "single_session_user", "question": "Minkä niminen koiramme on?", "answer": "Roope", "evidence": ["e25:0"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q012", "category": "single_session_user", "question": "Minkä rotuinen koiramme on?", "answer": "Labradorinnoutaja", "evidence": ["e25:0"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q013", "category": "single_session_user", "question": "Missä Roopen eläinlääkäri on?", "answer": "Hervannan eläinklinikalla", "evidence": ["e25:2"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q014", "category": "single_session_user", "question": "Mille olen allerginen?", "answer": "Pähkinöille, myös manteleille ja pistaaseille", "evidence": ["e26:0", "e26:2"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q015", "category": "single_session_user", "question": "Mitä editoria käytän?", "answer": "VS Codea", "evidence": ["e09:2"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q016", "category": "single_session_user", "question": "Mitä paketinhallintaa käytän?", "answer": "pnpm:ää", "evidence": ["e09:2"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q017", "category": "single_session_user", "question": "Kuka on mentorini?", "answer": "Anna-Liisa Mäkelä", "evidence": ["e13:0"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q018", "category": "single_session_user", "question": "Mihin koulutukseen mentorini ehdotti minua hakemaan?", "answer": "Johtamiskoulutukseen", "evidence": ["e13:0"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q019", "category": "single_session_user", "question": "Milloin Satamarahdin sopimus uusitaan?", "answer": "Joka vuosi maaliskuussa", "evidence": ["e14:2"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q020", "category": "single_session_user", "question": "Millä kirjoitan muistiinpanoni vihkoon?", "answer": "Lyijykynällä ruutuvihkoon", "evidence": ["e24:2"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q021", "category": "multi_session", "question": "Ketkä ovat lähisukulaisiani, joista olen kertonut?", "answer": "Sisko Sanna Hyvönen, lanko Matti Laine ja tytär", "evidence": ["e03:0", "e17:0", "e16:0"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q022", "category": "multi_session", "question": "Kenen kanssa olen matkustamassa ja minne?", "answer": "Sanna Hyvösen kanssa Portoon", "evidence": ["e27:0", "e28:0"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q023", "category": "multi_session", "question": "Mitkä lahjaideat sopisivat Sannalle ja Matille?", "answer": "Sannalle keramiikka, Matille kalastusvälineet", "evidence": ["e03:2", "e17:2"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q024", "category": "multi_session", "question": "Mitä ruoka-aineita minun ei pidä syödä?", "answer": "Lihaa, kalaa, kanaa ja pähkinöitä", "evidence": ["e22:0", "e26:0"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q025", "category": "multi_session", "question": "Ketkä työelämän ihmiset olen maininnut?", "answer": "Mikko Virtanen, Heikki Nieminen, Juhani Korhonen, Anna-Liisa Mäkelä", "evidence": ["e02:2", "e20:2", "e14:0", "e13:0"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q026", "category": "multi_session", "question": "Milloin minulla on viikoittaisia menoja iltaisin?", "answer": "Ruotsin keskustelutunti torstai-iltaisin", "evidence": ["e29:0"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q027", "category": "multi_session", "question": "Mitä liikuntaa olen harrastanut?", "answer": "Juoksua, nyt uintia", "evidence": ["e01:0", "e18:0"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q028", "category": "multi_session", "question": "Missä kaupungeissa olen asunut?", "answer": "Espoossa ja nyt Tampereella", "evidence": ["e01:2", "e21:0"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q029", "category": "multi_session", "question": "Ketkä naapurit tai tutut auttavat arjessa?", "answer": "Naapuri Pekka Lahti", "evidence": ["e05:0"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q030", "category": "multi_session", "question": "Mitä kieliä opiskelen ja kenen kanssa?", "answer": "Ruotsia Katja Lindqvistin kanssa", "evidence": ["e11:0", "e11:2"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q031", "category": "multi_session", "question": "Mitä tiedän perheemme lemmikistä ja allergioista?", "answer": "Koira Roope, minulla pähkinäallergia", "evidence": ["e25:0", "e26:0"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q032", "category": "multi_session", "question": "Millä tavoin teen päätöksiä isoista hankinnoista?", "answer": "Vertaan kolmea vaihtoehtoa ja nukun yön yli", "evidence": ["e23:0", "e23:2"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q033", "category": "multi_session", "question": "Mitä viikkorutiineja minulla on ostoksiin ja raportointiin?", "answer": "Ostokset sunnuntaisin, raportti torstaisin", "evidence": ["e10:0", "e30:0"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q034", "category": "multi_session", "question": "Mitä tavoitteita minulla on tällä hetkellä?", "answer": "Uida 2 km yhtäjaksoisesti ja ruotsin B1-taso", "evidence": ["e18:2", "e11:0"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q035", "category": "multi_session", "question": "Missä uin ja missä asun?", "answer": "Tesoman uimahallissa, asun Hervannassa Tampereella", "evidence": ["e18:2", "e21:0"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q036", "category": "multi_session", "question": "Mitä tiedän ruokataloudestamme?", "answer": "600 euron kuukausibudjetti, kasvisruoka, ostokset sunnuntaisin", "evidence": ["e07:2", "e22:0", "e10:0"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q037", "category": "multi_session", "question": "Missä yrityksessä työskentelen ja missä roolissa?", "answer": "Rahtiväylä Oy, tuoteomistaja", "evidence": ["e02:0", "e20:0"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q038", "category": "multi_session", "question": "Miten kuljen töihin?", "answer": "Junalla Helsinkiin kaksi päivää viikossa", "evidence": ["e21:2"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q039", "category": "multi_session", "question": "Ketkä ovat Sannan perhettä?", "answer": "Mies Matti Laine", "evidence": ["e17:0"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q040", "category": "multi_session", "question": "Mitä kirjoja ja missä muodossa kulutan?", "answer": "Tietokirjoja äänikirjoina työmatkalla", "evidence": ["e15:0", "e15:2"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q041", "category": "knowledge_update", "question": "Kuinka usein juoksen nykyään?", "answer": "Kolme kertaa viikossa aamuisin", "evidence": ["e01:0"], "abstain": false, "askedDaysAgo": 50}
+{"id": "q042", "category": "knowledge_update", "question": "Missä kaupungissa asun?", "answer": "Tampereella, Hervannassa", "evidence": ["e21:0"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q043", "category": "knowledge_update", "question": "Mikä on työroolini?", "answer": "Projektipäällikkö", "evidence": ["e02:0"], "abstain": false, "askedDaysAgo": 28}
+{"id": "q044", "category": "knowledge_update", "question": "Kuka on esihenkilöni?", "answer": "Heikki Nieminen", "evidence": ["e20:2"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q045", "category": "knowledge_update", "question": "Syönkö kalaa?", "answer": "En, olen täysin kasvissyöjä", "evidence": ["e22:0"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q046", "category": "knowledge_update", "question": "Minne olemme matkalla helmikuussa?", "answer": "Lissaboniin", "evidence": ["e27:0"], "abstain": false, "askedDaysAgo": 8}
+{"id": "q047", "category": "knowledge_update", "question": "Minä päivänä ruotsin keskustelutuntini on?", "answer": "Tiistai-iltaisin", "evidence": ["e11:2"], "abstain": false, "askedDaysAgo": 10}
+{"id": "q048", "category": "knowledge_update", "question": "Mihin mennessä viikkoraportti pitää toimittaa?", "answer": "Perjantaisin klo 14", "evidence": ["e02:2"], "abstain": false, "askedDaysAgo": 30}
+{"id": "q049", "category": "knowledge_update", "question": "Mikä on liikuntatavoitteeni?", "answer": "Uida kaksi kilometriä yhtäjaksoisesti", "evidence": ["e18:2"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q050", "category": "knowledge_update", "question": "Juoksenko puolimaratonin toukokuussa?", "answer": "En, se jäi väliin polven takia", "evidence": ["e18:2"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q051", "category": "knowledge_update", "question": "Kenelle lähetän viikkoraportin?", "answer": "Mikko Virtaselle", "evidence": ["e02:2"], "abstain": false, "askedDaysAgo": 40}
+{"id": "q052", "category": "knowledge_update", "question": "Syönkö kanaa?", "answer": "Kyllä, kalaa ja kanaa mutta ei punaista lihaa", "evidence": ["e07:0"], "abstain": false, "askedDaysAgo": 30}
+{"id": "q053", "category": "knowledge_update", "question": "Missä lenkkeilen?", "answer": "En lenkkeile enää juosten, uin Tesoman uimahallissa", "evidence": ["e18:0", "e18:2"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q054", "category": "knowledge_update", "question": "Vastaanko yhä varastojärjestelmän uudistuksesta?", "answer": "En, työt siirtyivät kollegalle", "evidence": ["e20:0"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q055", "category": "knowledge_update", "question": "Mitä viikkoraporttiin nyt kuuluu?", "answer": "Tila, riskit, tavoitteet ja tuotteen mittarit", "evidence": ["e30:2"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q056", "category": "temporal", "question": "Kumpi tuli ensin: muutto Tampereelle vai uusi työrooli?", "answer": "Muutto Tampereelle syyskuussa, rooli lokakuussa", "evidence": ["e21:0", "e20:0"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q057", "category": "temporal", "question": "Milloin aloitin tuoteomistajana?", "answer": "Lokakuun alussa", "evidence": ["e20:0"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q058", "category": "temporal", "question": "Milloin muutimme Tampereelle?", "answer": "Syyskuussa", "evidence": ["e21:0"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q059", "category": "temporal", "question": "Milloin tyttäreni aloitti koulun?", "answer": "Elokuussa", "evidence": ["e16:0"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q060", "category": "temporal", "question": "Milloin vanhempainilta on?", "answer": "Lokakuun puolivälissä", "evidence": ["e16:2"], "abstain": false, "askedDaysAgo": 40}
+{"id": "q061", "category": "temporal", "question": "Kuinka kauan sitten lopetin juoksemisen?", "answer": "Noin kuukausi sitten", "evidence": ["e18:0"], "abstain": false, "askedDaysAgo": 4}
+{"id": "q062", "category": "temporal", "question": "Milloin tapaan mentorini?", "answer": "Kerran kuussa, kuun ensimmäisenä maanantaina", "evidence": ["e13:2"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q063", "category": "temporal", "question": "Mihin aikaan päivästä teen syvätyötä?", "answer": "Aamupäivisin klo 8–11", "evidence": ["e06:0"], "abstain": false, "askedDaysAgo": 60}
+{"id": "q064", "category": "temporal", "question": "Mihin aikaan lopetan työt perjantaisin?", "answer": "Kello 15", "evidence": ["e06:2"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q065", "category": "temporal", "question": "Kumpi tapahtui ensin: Lissabon-suunnitelma vai Porto-päätös?", "answer": "Lissabon ensin, sitten vaihto Portoon", "evidence": ["e27:0", "e28:0"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q066", "category": "temporal", "question": "Kuinka kauan Porton matka kestää?", "answer": "Noin viisi päivää", "evidence": ["e27:2"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q067", "category": "temporal", "question": "Milloin teen ruokaostokset?", "answer": "Sunnuntaisin", "evidence": ["e10:0"], "abstain": false, "askedDaysAgo": 55}
+{"id": "q068", "category": "temporal", "question": "Kumpi tuli ensin: kasvissyönti vai kalan ja kanan syönti?", "answer": "Ensin kala ja kana, nyt kasvissyönti", "evidence": ["e07:0", "e22:0"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q069", "category": "temporal", "question": "Mihin mennessä haluan saavuttaa ruotsin B1-tason?", "answer": "Ensi vuoden loppuun", "evidence": ["e11:0"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q070", "category": "temporal", "question": "Kuinka monta kertaa päivässä Roope ulkoilutetaan pitkästi?", "answer": "Kaksi pitkää lenkkiä päivässä", "evidence": ["e25:0"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q071", "category": "preference", "question": "Kuinka pitkiä vastauksia haluan?", "answer": "Lyhyitä, ilman otsikoita", "evidence": ["e04:0"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q072", "category": "preference", "question": "Millä kielellä haluan vastaukset?", "answer": "Suomeksi", "evidence": ["e04:2"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q073", "category": "preference", "question": "Millä ohjelmointikielellä haluan koodiesimerkit?", "answer": "TypeScriptillä, ei Pythonia", "evidence": ["e09:0"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q074", "category": "preference", "question": "Saako vastauksissa käyttää emojeja?", "answer": "Ei", "evidence": ["e12:0"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q075", "category": "preference", "question": "Missä järjestyksessä haluan suosituksen ja perustelut?", "answer": "Suositus ensin, perustelut sitten", "evidence": ["e12:2"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q076", "category": "preference", "question": "Millaisia kirjoja suosin?", "answer": "Tietokirjoja", "evidence": ["e15:0"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q077", "category": "preference", "question": "Missä muodossa kuuntelen kirjoja?", "answer": "Äänikirjoina", "evidence": ["e15:2"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q078", "category": "preference", "question": "Milloin palaverit sopivat minulle?", "answer": "Iltapäivisin, ei aamupäivisin", "evidence": ["e06:0"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q079", "category": "preference", "question": "Millaisia reseptejä minulle kannattaa ehdottaa?", "answer": "Kasvisruokaa ilman pähkinöitä", "evidence": ["e22:0", "e26:0"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q080", "category": "preference", "question": "Milloin haluan ostoslistan valmiiksi?", "answer": "Lauantaina", "evidence": ["e10:2"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q081", "category": "preference", "question": "Miten Juhani Korhoselle kannattaa kirjoittaa?", "answer": "Tiiviisti, päätös ensimmäisellä rivillä", "evidence": ["e14:0"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q082", "category": "preference", "question": "Millä alueella haluamme majoittua matkalla?", "answer": "Alfamassa (Lissabonin suunnitelma)", "evidence": ["e27:2"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q083", "category": "preference", "question": "Miten haluan muistiinpanot käsiteltävän?", "answer": "Ensin käsin, illalla koneelle", "evidence": ["e24:0"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q084", "category": "preference", "question": "Mistä saan proteiinia?", "answer": "Pavuista ja tofusta", "evidence": ["e22:2"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q085", "category": "preference", "question": "Montako vaihtoehtoa haluan nähdä ennen päätöstä?", "answer": "Vähintään kolme", "evidence": ["e23:2"], "abstain": false, "askedDaysAgo": 0}
+{"id": "q086", "category": "abstention", "question": "Mikä on lempivärini?", "answer": "Ei tiedossa", "evidence": [], "abstain": true, "askedDaysAgo": 0}
+{"id": "q087", "category": "abstention", "question": "Mikä on puolisoni nimi?", "answer": "Ei tiedossa", "evidence": [], "abstain": true, "askedDaysAgo": 0}
+{"id": "q088", "category": "abstention", "question": "Mitä soitinta soitan?", "answer": "Ei tiedossa", "evidence": [], "abstain": true, "askedDaysAgo": 0}
+{"id": "q089", "category": "abstention", "question": "Missä kävin lukiota?", "answer": "Ei tiedossa", "evidence": [], "abstain": true, "askedDaysAgo": 0}
+{"id": "q090", "category": "abstention", "question": "Mikä on veriryhmäni?", "answer": "Ei tiedossa", "evidence": [], "abstain": true, "askedDaysAgo": 0}
+{"id": "q091", "category": "abstention", "question": "Mikä on lempijoukkueeni jääkiekossa?", "answer": "Ei tiedossa", "evidence": [], "abstain": true, "askedDaysAgo": 0}
+{"id": "q092", "category": "abstention", "question": "Paljonko palkkani on?", "answer": "Ei tiedossa", "evidence": [], "abstain": true, "askedDaysAgo": 0}
+{"id": "q093", "category": "abstention", "question": "Mikä on tyttäreni nimi?", "answer": "Ei tiedossa", "evidence": [], "abstain": true, "askedDaysAgo": 0}
+{"id": "q094", "category": "abstention", "question": "Onko minulla kissaa?", "answer": "Ei tiedossa", "evidence": [], "abstain": true, "askedDaysAgo": 0}
+{"id": "q095", "category": "abstention", "question": "Mikä on puhelinliittymäni operaattori?", "answer": "Ei tiedossa", "evidence": [], "abstain": true, "askedDaysAgo": 0}
+{"id": "q096", "category": "abstention", "question": "Mitä opiskelin yliopistossa?", "answer": "Ei tiedossa", "evidence": [], "abstain": true, "askedDaysAgo": 0}
+{"id": "q097", "category": "abstention", "question": "Missä vietin viime juhannuksen?", "answer": "Ei tiedossa", "evidence": [], "abstain": true, "askedDaysAgo": 0}
+{"id": "q098", "category": "abstention", "question": "Mikä on lempielokuvani?", "answer": "Ei tiedossa", "evidence": [], "abstain": true, "askedDaysAgo": 0}
+{"id": "q099", "category": "abstention", "question": "Kuinka pitkä olen?", "answer": "Ei tiedossa", "evidence": [], "abstain": true, "askedDaysAgo": 0}
+{"id": "q100", "category": "abstention", "question": "Mikä on veljeni nimi?", "answer": "Ei tiedossa", "evidence": [], "abstain": true, "askedDaysAgo": 0}
