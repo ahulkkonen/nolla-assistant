@@ -22,8 +22,13 @@ afterEach(async () => {
   for (const c of closers.splice(0)) await c();
 });
 
-async function boot(turns: FakeTurn[], extra: ExtensionFactory[] = [], tools?: string[]) {
-  const sc = await startFakeSidecar(DICT);
+async function boot(
+  turns: FakeTurn[],
+  extra: ExtensionFactory[] = [],
+  tools?: string[],
+  learn = false,
+) {
+  const sc = await startFakeSidecar({ ...DICT }, { learn });
   closers.push(sc.close);
   const logs: { level: string; msg: string; data?: any }[] = [];
   const ext = pseudoExtension({
@@ -171,7 +176,7 @@ test('context_with_system scans JSON incrementally, tool call arguments included
   expect(scans[0].map((m: { role: string }) => m.role)).toEqual(['system', 'user']);
   // Third request: only the last assistant reply and the new user message are new.
   expect(scans[2].map((m: { role: string }) => m.role)).toEqual(['assistant', 'user']);
-  expect(JSON.parse(scans[1][0].content).content).toEqual(expect.any(Array));
+  expect(scans[1][0].content.content).toEqual(expect.any(Array));
   noReal(JSON.stringify(llm.requests[2]?.body));
 });
 
@@ -193,6 +198,49 @@ test('context_with_system masks a leaked real value and logs it', async () => {
   noReal(JSON.stringify(logs));
 });
 
+test('a surrogate the model echoes keeps its surrogate through every hook', async () => {
+  // `learn` gives every unknown "Name Surname" a new surrogate, so a re-masked echo would show.
+  const { llm, logs, cwd, session } = await boot(
+    [
+      { toolCalls: [{ name: 'write', args: { path: 'a.txt', content: 'Pekka Laaksonen' } }] },
+      { toolCalls: [{ name: 'read', args: { path: 'a.txt' } }] },
+      { text: 'Tiedostossa lukee Pekka Laaksonen.' },
+      { text: 'ok' },
+    ],
+    [],
+    undefined,
+    true,
+  );
+  await session.prompt('kirjoita Matti Virtanen tiedostoon');
+  await session.prompt('Kenen nimi siinä oli?');
+  expect(readFileSync(join(cwd, 'a.txt'), 'utf8')).toBe('Matti Virtanen'); // tool_call restores
+  const tools = (llm.requests[2]?.body as { messages: { role: string }[] }).messages;
+  expect(JSON.stringify(tools.filter((m) => m.role === 'tool'))).toContain('Pekka Laaksonen'); // tool_result
+  const last = JSON.stringify(llm.requests[3]?.body); // input, scan of the model's own turns
+  expect(last).toContain('Tiedostossa lukee Pekka Laaksonen.');
+  expect(last).not.toContain('Testi');
+  noReal(last);
+  expect(logs.filter((l) => l.msg === 'pseudo leak')).toEqual([]);
+});
+
+test('context_with_system fails closed when /scan fails, then recovers', async () => {
+  const { llm, sc, logs, session } = await boot([{ text: 'a' }, { text: 'b' }]);
+  sc.state.scanFail = true;
+  await session.prompt('Muista Matti Virtanen');
+  expect(llm.requests).toHaveLength(0);
+  expect(logs).toContainEqual({
+    level: 'warn',
+    msg: 'pseudo_down',
+    data: { hook: 'context_with_system', error: 'PseudoDownError' },
+  });
+  sc.state.scanFail = false; // nothing bad was cached: the next turn scans and runs
+  await session.prompt('Kuka se oli?');
+  expect(llm.requests).toHaveLength(1);
+  const body = JSON.stringify(llm.requests[0]?.body);
+  expect(body).toContain('Pekka Laaksonen');
+  noReal(body);
+});
+
 test('sidecar down: input handled, no model request', async () => {
   const { llm, sc, logs, session, sessionManager } = await boot([{ text: 'ok' }]);
   await sc.close();
@@ -206,14 +254,24 @@ test('sidecar down: input handled, no model request', async () => {
 
 test('sidecar down: tool call blocked with pseudo_down', async () => {
   let close = async () => {};
-  // Runs after the pseudo input handler, so input is masked and then the sidecar goes away.
-  const kill: ExtensionFactory = (pi) => void pi.on('input', async () => void (await close()));
-  const { llm, sc, cwd, session } = await boot(
+  // Input and the first scan pass; the sidecar goes away once the model has answered.
+  const kill: ExtensionFactory = (pi) =>
+    void pi.on(
+      'message_end',
+      async (e) => void (e.message.role === 'assistant' && (await close())),
+    );
+  const { llm, sc, cwd, session, sessionManager } = await boot(
     [{ toolCalls: [{ name: 'write', args: { path: 'out.txt', content: 'x' } }] }, { text: 'done' }],
     [kill],
   );
   close = sc.close;
   await session.prompt('Kirjoita');
   expect(existsSync(join(cwd, 'out.txt'))).toBe(false);
-  expect(toolMessageContent(llm.requests[1]?.body)).toContain('pseudo_down');
+  const results = sessionManager
+    .getEntries()
+    .flatMap((e) =>
+      e.type === 'message' && e.message.role === 'toolResult' ? [JSON.stringify(e.message)] : [],
+    );
+  expect(results.join()).toContain('pseudo_down');
+  expect(llm.requests).toHaveLength(1); // the scan before the next request fails closed too
 });

@@ -44,7 +44,7 @@ adessive,inflected :: Oliko {{Juhani Korhosella|P|Juhani Korhonen||adessiivi}} v
 abessive,inflected :: Kokous pidettiin tällä kertaa {{Virtasetta|P|Virtanen|Mikko Virtanen|abessiivi}}, joten isoja päätöksiä ei tehty.
 abessive,inflected,first-name-only :: {{Matti Laine|P|Matti Laine||nominatiivi}} on ensi viikon lomalla. Pärjäättekö te viikon {{Matitta|P|Matti|Matti Laine|abessiivi, tt > t; viittaa edellisen lauseen Matti Laineeseen}}?
 comitative,inflected,first-name-only :: {{Heikki Nieminen|P}} ja {{Päivi Järvinen|P}} asuvat naapurissa. {{Päivi|P|Päivi|Päivi Järvinen|etunimi; viittaa edellisen lauseen Päivi Järviseen}} tuli eilen grillijuhliin {{Heikkeineen|P|Heikki|Heikki Nieminen|komitatiivi; viittaa edellisen lauseen Heikki Nieminen}} ja toi perunasalaattia.
-comitative,inflected,first-name-only :: {{Ville Heikkinen|P}} ja {{Laura Hämäläinen|P}} muuttivat yhteen keväällä. {{Laura|P|Laura|Laura Hämäläinen|etunimi; viittaa edellisen lauseen Laura Hämäläiseen}} saapui sukujuhliin {{Villeineen|P|Ville|Ville Heikkinen|komitatiivi; viittaa edellisen lauseen Ville Heikkiseen}}, ja mummo ilahtui kovasti.
+comitative,inflected,first-name-only :: {{Ville Heikkinen|P}} ja {{Tiina Hämäläinen|P}} muuttivat yhteen keväällä. {{Tiina|P|Tiina|Tiina Hämäläinen|etunimi; viittaa edellisen lauseen Tiina Hämäläiseen}} saapui sukujuhliin {{Villeineen|P|Ville|Ville Heikkinen|komitatiivi; viittaa edellisen lauseen Ville Heikkiseen}}, ja mummo ilahtui kovasti.
 instructive,inflected :: Juhannus vietetään taas kaikin {{Korhosin|P|Korhonen|Juhani Korhonen|instruktiivi monikko, leikillinen}}, eli myös {{Juhani Korhonen|P}} veljineen tulee.
 instructive,inflected,genitive :: Mökkitalkoisiin mennään tänä vuonna vain kaksin {{Virtasin|P|Virtanen|Mikko Virtanen|instruktiivi monikko, leikillinen}}, koska {{Mikko Virtasen|P|Mikko Virtanen||genetiivi}} veli on reissussa.
 accusative :: Kutsuin {{Mikko Virtasen|P|Mikko Virtanen||akkusatiivi}} lauantaina saunailtaan.
@@ -324,7 +324,7 @@ english-mixed,genitive :: Forwarding this: {{Juhani Korhosen|P|Juhani Korhonen||
 english-mixed,allative :: Reminder to self: maksa {{Tiina Kokolle|P|Tiina Kokko||allatiivi}} 30 € konserttilipusta, IBAN {{FI2039588718033401|I}}.
 english-mixed,iban-foreign,iban-spaced :: The Airbnb host in Berlin asked for payment to {{DE35 3704 0044 5242 7316 72|I}}, onko tämä turvallista?
 english-mixed,allative,place-vs-surname :: Deadline moved, {{Pekka Lahti|P}} said it's fine, mutta {{Jarmo Turkalle|P|Jarmo Turkka||allatiivi}} pitää vielä kertoa.
-english-mixed,multi-entity :: Shipping address: {{Aleksanterinkatu 17 C 9|A}}, {{00100 Helsinki|Z}}, Finland. Recipient: {{Laura Hämäläinen|P}}, {{+358 41 702 3381|T}}.
+english-mixed,multi-entity :: Shipping address: {{Aleksanterinkatu 17 C 9|A}}, {{00100 Helsinki|Z}}, Finland. Recipient: {{Tiina Hämäläinen|P}}, {{+358 41 702 3381|T}}.
 english-mixed,ablative,double-surname :: Summarise this email from {{Riikka Virtanen-Koskiselta|P|Riikka Virtanen-Koskinen||ablatiivi}}: hän pyytää siirtämään katselmuksen perjantaille.
 # --- code snippets with a Finnish name in a string literal
 code-snippet :: const user = { name: "{{Mikko Virtanen|P}}", city: "Espoo", active: true };
@@ -332,6 +332,19 @@ code-snippet,compound-name :: customer = "{{Anna-Liisa Mäkelä|P}}"\nprint(f"He
 code-snippet,email :: INSERT INTO asiakas (nimi, email) VALUES ('{{Ville Heikkinen|P}}', '{{ville.heikkinen@example.com|E}}');
 code-snippet,allative :: expect(allative("{{Virtanen|P|Virtanen|Mikko Virtanen|testisyöte}}")).toBe("{{Virtaselle|P|Virtanen|Mikko Virtanen|allatiivi}}");
 code-snippet,allative,swedish-finnish :: log.info("Lähetetään muistutus: %s", "{{Katja Lindqvistille|P|Katja Lindqvist||allatiivi}}")
+# --- lower-case names, as typed on a phone (the first line is the 2026-10-25 incident sentence)
+lowercase,genitive,inflected :: {{tiina ekolan|P|Tiina Ekola||genetiivi, pienet kirjaimet}} kanssa
+lowercase,partitive,inflected :: en ole nähnyt {{tiina ekolaa|P|Tiina Ekola||partitiivi, pienet kirjaimet}} koko viikkona
+lowercase,illative,inflected :: luotan {{tiina ekolaan|P|Tiina Ekola||illatiivi, pienet kirjaimet}} tässä asiassa
+lowercase,allative,inflected,first-name-only :: soitin eilen {{tiinalle|P|Tiina|Tiina Ekola|allatiivi, pelkkä etunimi}} ja sovittiin palaveri
+lowercase,genitive,inflected,first-name-only :: {{juhanin|P|Juhani|Juhani Korhonen|genetiivi, pelkkä etunimi}} auto on taas korjaamolla
+lowercase,genitive,inflected :: {{mikko virtasen|P|Mikko Virtanen||genetiivi, pienet kirjaimet}} kanssa sovittiin huomisesta
+lowercase,allative,inflected :: laita viesti {{virtaselle|P|Virtanen|Mikko Virtanen|allatiivi, pelkkä sukunimi}} vielä tänään
+lowercase,adessive,inflected :: kävin eilen {{korhosella|P|Korhonen|Juhani Korhonen|adessiivi, pelkkä sukunimi}} kahvilla
+lowercase,nominative :: {{sanna hyvönen|P|Sanna Hyvönen||nominatiivi, pienet kirjaimet}} tulee huomenna käymään
+lowercase,no-pii :: toivo on hyvä asia, ja onni potkaisi viime viikolla
+lowercase,no-pii :: satu kertoi sadun, ja meri oli tyyni koko illan
+lowercase,no-pii :: aino kerta kun se toimi oli max kaksi viikkoa sitten
 """
 
 MARK = re.compile(r"\{\{(.+?)\}\}")
@@ -411,7 +424,7 @@ def text_slice(text: str, span: dict) -> str:
 def main() -> None:
     lines = [ln for ln in SRC.splitlines() if ln.strip() and not ln.startswith("#")]
     recs = [parse(i + 1, ln) for i, ln in enumerate(lines)]
-    assert len(recs) == 300, len(recs)
+    assert len(recs) == 312, len(recs)
     out = Path(__file__).with_name("corpus.jsonl")
     out.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in recs), encoding="utf-8")
     print(f"wrote {len(recs)} lines to {out}")

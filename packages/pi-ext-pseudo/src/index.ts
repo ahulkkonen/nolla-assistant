@@ -10,8 +10,9 @@ export const PSEUDO_DOWN = 'pseudo_down';
 
 /**
  * Masks everything that enters the Pi session and unmasks tool arguments (plan §6, invariant 1).
- * Fails closed: with the sidecar down, input is dropped, tool calls are blocked and tool output is
- * replaced by an error. The leak scan fails open. Logs carry kinds, ids and lengths only, never text.
+ * Fails closed: with the sidecar down, input is dropped, tool calls are blocked, tool output is
+ * replaced by an error and a failed leak scan aborts the turn. Logs carry kinds, ids and lengths
+ * only, never text.
  */
 export function pseudoExtension(opts: {
   client: PseudoClient;
@@ -95,20 +96,27 @@ export function pseudoExtension(opts: {
     // Per message index: the JSON last sent to /scan and the scanned JSON. Unchanged messages are
     // served from here, so each turn sends only new or changed messages (e.g. a compaction summary).
     const scanned: { sent: string; out: string }[] = [];
-    pi.on('context_with_system', async (event) => {
+    pi.on('context_with_system', async (event, ctx) => {
       const messages = event.messages as unknown as Msg[];
       const sent = messages.map((m) => JSON.stringify(m, withoutImageData));
       const todo = sent.flatMap((json, i) => (scanned[i]?.sent === json ? [] : [i]));
       try {
         if (todo.length) {
+          // Each message goes as JSON, so the sidecar masks string values only: a phone surrogate
+          // in a number (`"total":0.0107338`) once broke the JSON text it used to get.
           const r = await client.scan(
             sessionId,
-            todo.map((i) => ({ role: messages[i]?.role ?? 'user', content: sent[i] ?? '' })),
+            todo.map((i) => ({
+              role: messages[i]?.role ?? 'user',
+              content: JSON.parse(sent[i] ?? 'null') as Json,
+            })),
           );
+          const outs = todo.map((_, k) => r.messages[k]?.content);
+          // Checked before caching: a bad result must not be served again on later turns.
+          if (!outs.every((o) => o && typeof o === 'object' && !Array.isArray(o)))
+            throw new Error('scan: bad message');
           todo.forEach((i, k) => {
-            const out = r.messages[k]?.content;
-            if (typeof out !== 'string') throw new Error('scan: message count mismatch');
-            scanned[i] = { sent: sent[i] ?? '', out };
+            scanned[i] = { sent: sent[i] ?? '', out: JSON.stringify(outs[k]) };
           });
           for (const l of r.leaked)
             log('warn', 'pseudo leak', {
@@ -121,9 +129,11 @@ export function pseudoExtension(opts: {
         const out = scanned.map((c, i) => withImages(JSON.parse(c.out) as Msg, messages[i]));
         return { messages: out as unknown as typeof event.messages };
       } catch (err) {
-        // Fail open (phase-3.md): ingest masking already holds; blocking would stop compaction.
+        // Fail closed (phase-3.md): the scan is the backstop for real values that ingest missed.
+        // Pi ignores a throw here, so abort the turn and send no transcript.
         down('context_with_system', err);
-        return undefined;
+        ctx.abort();
+        return { messages: event.messages.filter((m) => m.role === 'system') };
       }
     });
   };

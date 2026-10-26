@@ -19,7 +19,7 @@ All bodies are JSON. `user_id` is required on every call (invariant 6). `session
 |---|---|---|
 | `POST /mask` | `{ user_id, session_id, text }` or `{ user_id, session_id, json: <any JSON> }` | `{ masked: string \| json, spans: [{ start, end, entity_id, kind, surrogate, real_form, detector, score, pending: bool }] }`. Spans are offsets in **masked** text. Pending (low-confidence) spans are masked but also queued in the pending lane. |
 | `POST /unmask` | `{ user_id, text }` or `{ user_id, json }` | `{ restored: string \| json, spans: [{ start, end, entity_id, surrogate_form }], unresolved: [{ start, end, form }], hold: int }`. Offsets in **restored** text. Longest-match-first over surrogate forms. `hold` = length of the longest suffix of the input text that is a proper prefix of some surrogate form of this user (0 when none); the bridge holds back that many characters of a streaming delta. For `json` input `hold` is 0. |
-| `POST /scan` | `{ user_id, session_id, messages: [{ role, content }] }` | `{ messages, leaked: [{ message_index, start, end, kind, entity_id }] }`: every found real value is masked through the vault and reported. |
+| `POST /scan` | `{ user_id, session_id, messages: [{ role, content }] }` | `{ messages, leaked: [{ message_index, start, end, kind, entity_id }] }`: every found real value is masked through the vault and reported. `content` is any JSON (the extension sends the whole Pi message); only string values change, so keys and numbers stay valid. |
 | `GET /vault/entities?user_id=` | | `{ entities: [{ id, kind, canonical, surrogate, mode, pinned, allowlisted, seen_count, last_seen }], pending: [{ id, kind, text, detector, score, session_id }] }` |
 | `POST /vault/merge` | `{ user_id, from_ids: [], into_id }` | `{ ok: true }` |
 | `POST /vault/split` | `{ user_id, entity_id, span_ids: [] }` | `{ ok: true, new_entity_id }` |
@@ -56,6 +56,26 @@ The user's own name: the vault holds a `self` entity whose surrogate is the conf
   made only of surrogate forms that this session already sent is not masked again either. The
   same name forms in another session are masked, because a real person can have the same name. Known gap:
   in one session, a new real name identical to a surrogate already sent there is not masked.
+- Surrogate idempotency (2026-10-26). A surrogate that comes back (the model echoes it, a tool
+  returns it) keeps its surrogate and never gets a second one, through every hook: `input`,
+  `tool_result`, `/scan`. The check is in the sidecar, not in the extension, because only the
+  vault knows which surrogates the user has, in which session, and in which inflected forms. The
+  extension would need a second copy of that state. Two checks run in `mask_text`: (1) the exact
+  surrogate forms of the session's entities (all cases, clitics, possessives) cover a candidate;
+  (2) a new person whose every name part has a surrogate base form of the session (lemma match)
+  is an echo, so lower-case echoes and inflections outside the form table also keep their
+  surrogate. A subagent session `<chat>/sub/<id>` shares the spans of its chat, because its task
+  comes from the chat. A lone first name or surname of a full name in the same text maps to that
+  person (`Liisa Kallion … Liisalle`).
+- Lower-case names (2026-10-26). Users type names in lower case on phones; "tiina ekolan kanssa"
+  reached the model unmasked because every name layer required a capital letter. Plain-text
+  requests (`text`: user input, titles, memory, search queries) and `user` messages in `/scan` now
+  also find lower-case names: a DVV first name followed by a surname that Voikko or Omorfi knows,
+  a lone word that Voikko knows as a name and not as an ordinary word (`tiinalle`, `virtasen`), and
+  the lower-case variants of the vault's real name forms. JSON requests (tool results) keep the
+  capital-letter rule, because they carry code, paths and English. Tokens in a path, file name,
+  address or identifier are skipped. Known gap: a lone lower-case word that Voikko knows only as a
+  name is masked (`aino kerta`, "only once").
 
 ## Pi extension `pi-ext-pseudo` (plan §6 table)
 
@@ -65,15 +85,22 @@ The user's own name: the vault holds a `self` entity whose surrogate is the conf
 | `before_agent_start` | (phase 8: memory injection passes through `/mask`) |
 | `tool_call` | `POST /unmask` with `json: event.input`; mutate `event.input` in place with `restored` |
 | `tool_result` | `POST /mask` with `json: { content, structuredContent }`; return both fields masked (never only `content`) |
-| `context_with_system` | `POST /scan` on all messages; return the scanned messages; log every `leaked` item at `warn` with kind and entity id only |
+| `context_with_system` | `POST /scan` on new or changed messages, each as JSON; return the scanned messages; log every `leaked` item at `warn` with kind and entity id only. A failed scan aborts the turn (fail closed). |
 | display (bridge) | `POST /unmask` per delta with a 24-character hold-back; attach `annotations` `{ start, end, entityId, modelSaw }` |
 
 Known gaps (accepted for phase 3): images (user attachments and tool-result image blocks) are not
-pseudonymized; the vault has no OCR. A failed `/scan` leaves the context unchanged (fail-open) because
-ingest masking already holds and blocking would stop compaction; it logs a warn.
+pseudonymized; the vault has no OCR.
 
 Fail closed: if `pseudo-svc` is unreachable, `input` returns `{ action: 'handled' }` and the bridge
-sends `error` code `pseudo_down`; `tool_call` blocks with reason `pseudo_down`.
+sends `error` code `pseudo_down`; `tool_call` blocks with reason `pseudo_down`. A failed `/scan`
+aborts the turn: Pi ignores a throw from `context_with_system`, so the handler calls `ctx.abort()`
+and returns only the system messages. No transcript goes to the model, the bridge sends `error` code
+`pseudo_down`, and the next turn scans again (a bad result is never cached). Until 2026-10-26 the
+scan failed open on the assumption that ingest masking always holds. The 2026-10-25 incident showed
+it does not: a lower-case name passed `input`, and the scan was the only check left. In the same
+incident the extension sent each message as a JSON string, the sidecar replaced `0107338` in
+`"total":0.0107338` with a phone surrogate, and the broken JSON disabled the scan for the rest of the
+chat. Messages now go as JSON, and the phone detector skips the tail of a decimal number.
 
 ## Task cards (filled as research lands)
 

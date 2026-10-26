@@ -157,6 +157,77 @@ def readings(word: str) -> frozenset[str]:
     return frozenset(re.findall(r"\[PROPER=(\w+)\]", "".join(om.analyses(word)))) if om else frozenset()
 
 
+LOWER_RE = re.compile(r"(?<![\w-])[a-zåäö][a-zåäöéü]{2,}(?:-[a-zåäö][a-zåäöéü]+)?(?![\w-])")
+# lower-case chat words that are also DVV first names: English words and abbreviations
+LOWER_STOP = frozenset("max min jan may mark will eli dan ron rose hope grace faith tom kim kai".split())
+
+
+def cap(word: str) -> str:
+    """laura -> Laura, anna-liisan -> Anna-Liisan."""
+    return "-".join(p[:1].upper() + p[1:] for p in word.split("-"))
+
+
+def plain_word(text: str, start: int, end: int) -> bool:
+    """False inside a path, file name, address or identifier: /data/work/aleksi, laura.txt, laura@x."""
+    return text[start - 1:start] not in ("/", "\\", "@", ".", "_", "#") and not re.match(r"[/\\@_]|\.\w", text[end:end + 2])
+
+
+NAME_CLASSES = ("etunimi", "sukunimi", "paikannimi", "nimi")
+
+
+@lru_cache(maxsize=50000)
+def known_name(word: str) -> bool:
+    """Voikko (else Omorfi) knows the capitalised token as a name. DVV alone is not enough for a
+    lower-case word: from, said and ma are DVV names too."""
+    v = _voikko()
+    if v:
+        return any(a.get("CLASS") in NAME_CLASSES for a in v.analyze(word))
+    return bool(readings(word) & {"FIRST", "LAST"})
+
+
+def lower_names(text: str) -> list[Candidate]:
+    """Lower-case names, as typed on a phone. Every word must be a name the lexicon knows (this also keeps
+    the DVV lookups off ordinary words). A first name followed by a surname is a name unless both words
+    are ordinary words (toivo laine); it goes to the pending lane if one of them is. A lone word must
+    be no ordinary word and no place, and a common first name or a surname. Without Voikko or Omorfi
+    only pairs are found: nothing tells an ordinary word."""
+    lexicon = _voikko() is not None or forms.omorfi() is not None
+    info = []
+    for m in LOWER_RE.finditer(text):
+        w = m.group(0)
+        if w in LOWER_STOP or not plain_word(text, m.start(), m.end()) or lexicon and not known_name(cap(w)):
+            continue
+        lem = lemmas(cap(w))
+        first = next((l for l, k in lem if k == "first" and _count(l, "first") >= MIN_FIRST_COUNT), None)
+        last = next((l for l, k in lem if k == "last" and _count(l, "last") >= MIN_SURNAME_COUNT), None)
+        if first or last:
+            info.append((m, first, last, common_word(w)))
+    out, i = [], 0
+    while i < len(info):
+        m, first, last, common = info[i]
+        nxt = info[i + 1] if i + 1 < len(info) else None
+        if first and nxt and nxt[2] and text[m.end():nxt[0].start()] == " " and not (common and nxt[3]):
+            n2 = nxt[0]
+            parts = [dict(start=m.start(), end=m.end(), part="first", lemma=first),
+                     dict(start=n2.start(), end=n2.end(), part="last", lemma=nxt[2])]
+            out.append(Candidate(m.start(), n2.end(), "PERSON", f"{first} {nxt[2]}", "gazetteer",
+                                 0.55 if common or nxt[3] else 0.9, text[m.start():n2.end()], parts))
+            i += 2
+            continue
+        i += 1
+        if common or not lexicon or place(cap(m.group(0))):
+            continue
+        if first and _count(first, "first") >= COMMON_NAME_COUNT and "ORG" not in readings(cap(m.group(0))):
+            part, lemma, score = "first", first, 0.7
+        elif last and not place(last):
+            part, lemma, score = "last", last, 0.8 if last.endswith("nen") else 0.65
+        else:
+            continue
+        out.append(Candidate(m.start(), m.end(), "PERSON", lemma, "gazetteer", score, m.group(0),
+                             [dict(start=m.start(), end=m.end(), part=part, lemma=lemma)]))
+    return out
+
+
 def detect(text: str, ctx=None) -> list[Candidate]:
     toks = [m for m in TOKEN_RE.finditer(text) if m.group(0) not in STOP]
     info = []
@@ -222,4 +293,4 @@ def detect(text: str, ctx=None) -> list[Candidate]:
             lemma = lemma if part != "last" or not first or last else w
             out.append(Candidate(m.start(), m.end(), "PERSON", lemma, "gazetteer", score, w,
                                  [dict(start=m.start(), end=m.end(), part=part, lemma=lemma)]))
-    return out
+    return out + lower_names(text) if ctx is not None and ctx.lower else out

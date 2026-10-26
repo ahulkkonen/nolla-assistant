@@ -1,11 +1,12 @@
-"""Layer 2: every real form stored in the vault, longest match first, case-sensitive."""
+"""Layer 2: every real form stored in the vault, longest match first, case-sensitive (plus lower-case name variants)."""
 
 import re
 from collections import defaultdict
 
 from . import Candidate, trie_pattern
-from .gazetteer import _sentence_start, common_word, place
+from .gazetteer import _sentence_start, common_word, place, plain_word
 
+NAMES = ("PERSON", "SELF")
 MAX_FORM = 256  # longer stored forms are never matched (bounds the trie)
 compiles = 0  # full-vault matcher compiles (tests assert how many a request costs)
 
@@ -15,7 +16,10 @@ def _compile(table):
 
 
 def matcher(vault, user_id: str, side: str = "real"):
-    """(compiled regex, form -> [(entity_id, part, analysis, kind)]) for one side of the vault, cached per version."""
+    """(compiled regex, form -> [(entity_id, part, analysis, kind)]) for one side of the vault, cached per version.
+    The real side also holds the lower-case variant of every name form (laura, aholan); detect() uses
+    the variants only for plain text. Stored name forms are always capitalised, so a lower-case
+    name key is always a variant."""
     ver = vault.version.get(user_id, 0)
     cache = vault.__dict__.setdefault("matchers", {})
     hit = cache.get((user_id, side))
@@ -26,6 +30,8 @@ def matcher(vault, user_id: str, side: str = "real"):
     for form, eid, part, analysis, kind in vault.all_forms(user_id, side):
         if len(form) <= MAX_FORM:
             table[form].append((eid, part, analysis, kind))
+            if side == "real" and kind in NAMES and form.lower() != form:
+                table[form.lower()].append((eid, part, analysis, kind))
     compiles += 1
     rx = _compile(table)
     cache[(user_id, side)] = (ver, rx, table)
@@ -89,6 +95,8 @@ def detect(text: str, ctx) -> list[Candidate]:
     hits = []
     for m in rx.finditer(text):
         opts = table[m.group(0)]
+        if m.group(0).islower() and opts[0][3] in NAMES and not (ctx.lower and plain_word(text, m.start(), m.end())):
+            continue  # a lower-case variant: plain text only, never in a path or identifier
         recent = {}
         if len({o[0] for o in opts}) > 1 and ctx.session_id:
             recent = ctx.vault.last_seen(ctx.session_id, [o[0] for o in opts])
@@ -112,5 +120,8 @@ def detect(text: str, ctx) -> list[Candidate]:
         lemma = ctx.vault.entity(ctx.user_id, c.entity_id)["canonical"].split()[-1]
         return not lemma.endswith("nen") and _sentence_start(text, c.start) and common_word(c.surface)
 
-    return [c for c in out if not (c.kind == "PERSON" and len(c.parts) == 1 and c.parts[0]["part"] == "last"
+    def lone_lower(c) -> bool:  # "laine", "koski": a lower-case lone part that is an ordinary word
+        return c.surface.islower() and len(c.parts) == 1 and common_word(c.surface)
+
+    return [c for c in out if not (lone_lower(c) or c.kind == "PERSON" and len(c.parts) == 1 and c.parts[0]["part"] == "last"
                                    and (place(c.surface) or ordinary(c)))]

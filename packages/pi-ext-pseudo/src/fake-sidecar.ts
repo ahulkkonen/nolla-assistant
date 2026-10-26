@@ -55,7 +55,7 @@ type PendingSeed = Omit<VaultPendingRow, 'id' | 'session_id'>;
  * Test double for `pseudo-svc` (contract in docs/decisions/phase-3.md). `dictionary` maps real
  * values to surrogates; entity ids are 1-based dictionary positions. Offsets are UTF-16 code units
  * (native JS string indexes), as the contract requires. `passthrough` makes `/mask`
- * return its input unchanged (for seeding a leak). Vault entities appear on their first mask (or
+ * return its input unchanged (for seeding a leak); `scanFail` makes `/scan` answer 404. Vault entities appear on their first mask (or
  * seed); `pending` fills the pending lane. `learn` adds every unknown email and `Name Surname`
  * pair seen by `/mask` to the dictionary with a generated surrogate (digits keep surrogates from
  * matching again).
@@ -69,7 +69,7 @@ export async function startFakeSidecar(
   const toFake = entries.map(([from, to], i) => ({ from, to, id: i + 1 })).sort(byLength);
   const toReal = entries.map(([to, from], i) => ({ from, to, id: i + 1 })).sort(byLength);
   const requests: { path: string; body: any }[] = [];
-  const state = { passthrough: false };
+  const state = { passthrough: false, scanFail: false };
 
   // Vault: entities by id, merged ids → target id, ids never to detect again.
   const entities = new Map<number, VaultEntityRow>();
@@ -217,10 +217,12 @@ export async function startFakeSidecar(
         return { restored, spans, unresolved: [], hold };
       }
       case '/scan': {
+        if (state.scanFail) return;
         const leaked: object[] = [];
-        const messages = body.messages.map((m: { role: string; content: string }, i: number) => {
-          const r = replace(m.content, toFake);
-          for (const h of r.hits)
+        const messages = body.messages.map((m: { role: string; content: Json }, i: number) => {
+          const found: Hit[] = [];
+          const content = deep(m.content, toFake, found);
+          for (const h of found)
             leaked.push({
               message_index: i,
               start: h.start,
@@ -228,7 +230,7 @@ export async function startFakeSidecar(
               kind: kindOf(h.pair.from),
               entity_id: h.pair.id,
             });
-          return { ...m, content: r.out };
+          return { ...m, content };
         });
         return { messages, leaked };
       }

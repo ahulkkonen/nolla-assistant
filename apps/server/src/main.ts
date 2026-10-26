@@ -88,9 +88,10 @@ export async function start(
   });
   const pseudoLog = (chatId: string, ...[level, msg, data]: Parameters<PseudoLog>) => {
     app.log[level]({ chatId, ...data }, msg);
-    // A dropped input starts no turn, so the bridge never sees it; mid-turn failures the bridge
-    // reports itself (once per turn).
-    if (msg === PSEUDO_DOWN && (data as { hook?: string } | undefined)?.hook === 'input')
+    // A dropped input starts no turn and a failed leak scan aborts one before the model, so the
+    // bridge sees neither; restore failures the bridge reports itself (once per turn).
+    const hook = (data as { hook?: string } | undefined)?.hook;
+    if (msg === PSEUDO_DOWN && (hook === 'input' || hook === 'context_with_system'))
       broadcast(rooms, chatId, errorMsg('pseudo_down', chatId));
   };
   // `app` exists by the time any memory callback runs.

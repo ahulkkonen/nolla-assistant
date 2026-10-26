@@ -157,11 +157,23 @@ class Vault:
                    " ORDER BY analysis<>?, rowid LIMIT 1", (entity_id, part, analysis, analysis))
         return r[0][0] if r else None
 
+    @staticmethod
+    def _scope(session_id: str) -> tuple[str, str]:
+        """A subagent session `<chat>/sub/<id>` gets its task from the chat, so it shares the chat's spans."""
+        return session_id, session_id.split("/sub/")[0]
+
     def last_seen(self, session_id: str, entity_ids: list[int]) -> dict[int, int]:
         marks = ",".join("?" * len(entity_ids))
         return {r[0]: r[1] for r in self.q(
-            f"SELECT entity_id, max(id) FROM span WHERE session_id=? AND entity_id IN ({marks}) GROUP BY entity_id",
-            (session_id, *entity_ids))}
+            f"SELECT entity_id, max(id) FROM span WHERE session_id IN (?,?) AND entity_id IN ({marks}) GROUP BY entity_id",
+            (*self._scope(session_id), *entity_ids))}
+
+    def session_surrogate_names(self, user_id: str, session_id: str) -> set[str]:
+        """Base forms (nominative) of the surrogate names of the people this session has seen."""
+        return {r[0] for r in self.q(
+            "SELECT f.form FROM entity_form f JOIN entity e ON e.id=f.entity_id WHERE f.user_id=? AND f.side='surrogate'"
+            " AND f.analysis='NOM' AND e.kind='PERSON' AND f.entity_id IN (SELECT entity_id FROM span WHERE session_id IN (?,?))",
+            (user_id, *self._scope(session_id)))}
 
     # -- spans
     def record_spans(self, user_id: str, session_id: str, entry_id: str | None, spans: list[dict]) -> list[int]:

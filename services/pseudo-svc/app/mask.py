@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from . import forms
 from .detect import codes, gazetteer, ner, trie_pattern, vault_rec
 from .detect.codes import SUFFIX_CASE, STREET_RE
+from .detect.gazetteer import cap
 from .detect.resolve import PENDING_BELOW, resolve
 from .surrogate import ensure_self, get_or_create_entity, part_kind, surrogate_form
 
@@ -42,6 +43,7 @@ class Ctx:
     user_id: str
     session_id: str | None = None
     only: tuple[int, ...] | None = None  # vault layer: match only these entities (ad-hoc matcher)
+    lower: bool = False  # plain text: also lower-case names (users type them on phones)
 
 
 def walk(value, fn, path=()):
@@ -81,7 +83,7 @@ def _case(c, part: dict) -> str | None:
     if part.get("case"):
         return part["case"]
     surface = c.surface[part["start"] - c.start:part["end"] - c.start]
-    return forms.case_of(surface, part["lemma"], part_kind(part["part"]))
+    return forms.case_of(cap(surface), part["lemma"], part_kind(part["part"]))
 
 
 def _pieces(vault, user_id: str, c, e) -> list[tuple[int, int, str]]:
@@ -94,7 +96,7 @@ def _pieces(vault, user_id: str, c, e) -> list[tuple[int, int, str]]:
             case = _case(c, p)
             surface = c.surface[p["start"] - c.start:p["end"] - c.start]
             if case is None:  # unknown inflection: learn the real form, send the nominative
-                vault.add_forms(user_id, e["id"], "real", [(surface, "NOM", p["part"])])
+                vault.add_forms(user_id, e["id"], "real", [(cap(surface), "NOM", p["part"])])
             out.append((p["start"], p["end"], surrogate_form(e, p["part"], case)))
         return out
     if e["kind"] == "ADDRESS":
@@ -132,8 +134,34 @@ def _covered(c, cover: list[tuple[int, int]], text: str) -> bool:
     return not text[pos:c.end].strip()
 
 
-def mask_text(vault, user_id: str, session_id: str, text: str, path=None, layers=FULL):
-    ctx = Ctx(vault, user_id, session_id)
+def _echo(vault, user_id: str, session_id: str | None, cands: list) -> list:
+    """New people whose every name part is a surrogate name this session has seen: the model echoing a
+    surrogate in a form the surrogate table lacks (lower case, an unlisted inflection). They keep the
+    surrogate; masking them would issue a second one."""
+    new = [c for c in cands if c.kind == "PERSON" and not c.entity_id and c.parts]
+    names = vault.session_surrogate_names(user_id, session_id) if new and session_id else set()
+    return [c for c in new if names and all(p.get("lemma") in names for p in c.parts)]
+
+
+def _entities(vault, user_id: str, cands: list) -> list:
+    """Vault rows for the candidates. A lone first name or surname of a full name found in the same text
+    is that person (Liisa Kallion ... Liisalle), not a new one."""
+    ents, by_part = {}, {}
+    for c in sorted(cands, key=lambda c: -len(c.parts)):
+        if c.entity_id:
+            e = vault.entity(user_id, c.entity_id)  # None when merged away meanwhile: skipped later
+        elif c.kind == "PERSON" and len(c.parts) == 1 and (c.parts[0]["part"], c.parts[0].get("lemma")) in by_part:
+            e = by_part[(c.parts[0]["part"], c.parts[0].get("lemma"))]
+        else:
+            e = get_or_create_entity(vault, user_id, c.kind, c.canonical, c.surface)
+        if c.kind == "PERSON" and len(c.parts) > 1 and not c.entity_id:
+            by_part.update({(p["part"], p.get("lemma")): e for p in c.parts})
+        ents[id(c)] = e
+    return [ents[id(c)] for c in cands]
+
+
+def mask_text(vault, user_id: str, session_id: str, text: str, path=None, layers=FULL, lower=False):
+    ctx = Ctx(vault, user_id, session_id, lower=lower)
 
     cover = _surrogate_cover(vault, user_id, session_id, text)
 
@@ -141,9 +169,10 @@ def mask_text(vault, user_id: str, session_id: str, text: str, path=None, layers
         return resolve([c for c in cands if not _covered(c, cover, text)], vault.never_detect(user_id))
 
     cands = resolved([c for layer in layers for c in layer.detect(text, ctx)])
-    ents = [vault.entity(user_id, c.entity_id) if c.entity_id else
-            get_or_create_entity(vault, user_id, c.kind, c.canonical, c.surface) for c in cands]
-    new = tuple(e["id"] for c, e in zip(cands, ents) if not c.entity_id)
+    echo = _echo(vault, user_id, session_id, cands)
+    cands = [c for c in cands if c not in echo]
+    ents = _entities(vault, user_id, cands)
+    new = tuple(dict.fromkeys(e["id"] for c, e in zip(cands, ents) if not c.entity_id))
     if new and vault_rec in layers:
         # new people: let the vault find their later mentions (Marja Saari ... Marjan); first-pass spans stay.
         # Only the new entities are matched, with a small ad-hoc regex.
@@ -184,8 +213,9 @@ def mask_text(vault, user_id: str, session_id: str, text: str, path=None, layers
 
 def mask(vault, user_id: str, session_id: str, text=None, json=None):
     ensure_self(vault, user_id)
-    if text is not None:
-        return mask_text(vault, user_id, session_id, text)
+    if text is not None:  # plain text (user input, titles, memory): lower-case names too
+        return mask_text(vault, user_id, session_id, text, lower=True)
+    # JSON (tool results) carries code, paths and English: capitalised names only
     return walk(json, lambda s, p: mask_text(vault, user_id, session_id, s, p))
 
 
@@ -276,10 +306,11 @@ def hold(vault, user_id: str, text: str) -> int:
 
 def scan(vault, user_id: str, session_id: str, messages: list[dict]):
     """Mask real values left in outgoing messages (vault + codes only) and report them as leaks.
-    Surrogates are skipped by mask_text itself."""
+    Surrogates are skipped by mask_text itself. Lower-case names only in user messages (plain text)."""
     out, leaked = [], []
     for i, msg in enumerate(messages):
-        content, spans = walk(msg.get("content"), lambda s, p: mask_text(vault, user_id, session_id, s, p, FAST))
+        lower = msg.get("role") == "user"
+        content, spans = walk(msg.get("content"), lambda s, p: mask_text(vault, user_id, session_id, s, p, FAST, lower))
         for s in spans:
             leak = dict(message_index=i, start=s["start"], end=s["end"], kind=s["kind"], entity_id=s["entity_id"])
             if s.get("path"):

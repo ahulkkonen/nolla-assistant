@@ -7,7 +7,7 @@ All names are synthetic combinations of common Finnish first names and surnames.
 
 | File | Purpose |
 |---|---|
-| `corpus.jsonl` | 300 labelled texts. Do not edit by hand. |
+| `corpus.jsonl` | 312 labelled texts. Do not edit by hand. |
 | `generate.py` | Hand-written source of the corpus with inline markup. Edit this file, then run it to rebuild `corpus.jsonl`. |
 | `validate.py` | Checks the corpus and prints the counts per kind and per tag. |
 | `vault-seed.json` | The 15 people that the harness registers in the vault before a run. |

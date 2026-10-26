@@ -1,6 +1,10 @@
+import pytest
 from conftest import KEY
+
+from app import forms
 from app import mask as M
 from app import surrogate as S
+from app.detect import gazetteer
 
 U = "u1"
 
@@ -224,3 +228,79 @@ def test_ten_new_people_compile_the_matcher_at_most_twice(vault):
     assert vault_rec.compiles - before <= 2
     assert len([s for s in spans if s["kind"] == "PERSON"]) >= 11
     assert "Virtan" not in masked and "Korhon" not in masked
+
+
+def _entities(v) -> int:
+    return v.q("SELECT count(*) FROM entity WHERE user_id=?", (U,))[0][0]
+
+
+def test_lowercase_inflected_name_is_masked(vault):
+    # the incident sentence: a lower-case genitive typed on a phone reached the model unmasked
+    masked, spans = mask(vault, "tiina ekolan kanssa")
+    e = vault.entity(U, spans[0]["entity_id"])
+    assert e["canonical"] == "Tiina Ekola" and masked == f"{spans[0]['surrogate']} kanssa"
+    assert spans[0]["surrogate"] == f"{e['surrogate'].split()[0]} {S.surrogate_form(e, 'last', 'GEN')}"
+    for text in ["en ole nähnyt tiina ekolaa", "menen huomenna tiina ekolaan", "Tiina Ekolan kanssa"]:
+        got, sp = mask(vault, text)
+        assert "ekola" not in got.lower() and [s["entity_id"] for s in sp] == [e["id"]]
+    assert unmask(vault, masked)[0] == "Tiina Ekolan kanssa"
+
+
+def test_masked_surrogate_keeps_its_surrogate(vault):
+    masked, spans = mask(vault, "Tiina Ekolan kanssa")
+    e = vault.entity(U, spans[0]["entity_id"])
+    first, last = e["surrogate"].split()
+    n = _entities(vault)
+    echoes = [masked, f"Kirjoitit {first} {last}.", f"Soitin {S.surrogate_form(e, 'last', 'ALL')}.",
+              f"{first.lower()} {S.surrogate_form(e, 'last', 'GEN').lower()} kanssa"]
+    for text in echoes:  # the model echoes the surrogate: no second surrogate, in any form
+        assert mask(vault, text) == (text, [])
+        assert M.scan(vault, U, "s1", [{"role": "assistant", "content": text}])[1] == []
+    assert _entities(vault) == n
+    assert mask(vault, "tiina ekolan kanssa")[0] == masked  # the real name keeps the same surrogate
+    assert mask(vault, masked, session="s1/sub/1") == (masked, [])  # a subagent of the chat
+
+
+def test_lone_name_of_a_full_name_in_the_same_text_is_that_person(vault):
+    masked, spans = mask(vault, "Tapasin Liisa Kallion eilen. Liisalle soitin tänään.")
+    assert len({s["entity_id"] for s in spans}) == 1 and "Liisa" not in masked
+
+
+def test_scan_takes_json_messages_and_leaves_numbers_alone(vault):
+    from app.detect.codes import detect
+
+    assert not [c for c in detect('"total":0.0107338, summa 1.0401234567') if c.kind == "PHONE"]
+    S.get_or_create_entity(vault, U, "PERSON", "Tiina Ekola")
+    msg = {"role": "assistant", "content": [{"type": "text", "text": "Tiina Ekola"}],
+           "usage": {"cost": {"total": 0.0107338}}, "timestamp": 1792959932652}
+    out, leaked = M.scan(vault, U, "s1", [{"role": "assistant", "content": msg},
+                                          {"role": "user", "content": {"role": "user", "content": "tiina ekolan kanssa"}},
+                                          {"role": "assistant", "content": "tiina ekolan kanssa"}])
+    assert out[0]["content"]["usage"] == msg["usage"] and out[0]["content"]["timestamp"] == msg["timestamp"]
+    assert "Ekola" not in out[0]["content"]["content"][0]["text"]
+    assert "ekola" not in out[1]["content"]["content"]  # user text: lower-case names too
+    assert out[2]["content"] == "tiina ekolan kanssa"  # model text: capitalised names only
+    assert [x["message_index"] for x in leaked] == [0, 1]
+
+
+def test_lowercase_names_skip_json_and_paths(vault):
+    S.get_or_create_entity(vault, U, "PERSON", "Tiina Ekola")
+    value = {"path": "/data/work/tiina", "text": "tiina ekolan kanssa"}
+    assert M.mask(vault, U, "s1", json=value) == (value, [])  # tool results: capitalised names only
+    assert mask(vault, "katso /data/work/tiina/ja tiina.txt")[1] == []
+
+
+needs_lexicon = pytest.mark.skipif(gazetteer._voikko() is None and forms.omorfi() is None,
+                                   reason="lone lower-case names need Voikko or Omorfi (the Docker image)")
+
+
+@needs_lexicon
+def test_lowercase_lone_names_and_ordinary_words(vault):
+    for text, canonical in [("soitin eilen tiinalle", "Tiina"), ("virtasen kanssa sovittiin", "Virtanen"),
+                            ("kävin eilen korhosella", "Korhonen")]:
+        _, spans = mask(vault, text)
+        assert [vault.entity(U, s["entity_id"])["canonical"] for s in spans] == [canonical], text
+    # "aino kerta" (only once) is masked: Voikko does not know "aino" as a word, and Aino is a top name
+    for text in ["toivo on hyvä asia ja onni myös", "satu kertoi sadun", "meri oli tyyni ja saari kaunis",
+                 "max 50 euroa", "tulen illalla kotiin", "usko pois", "lahja oli kiva"]:
+        assert mask(vault, text)[1] == [], text

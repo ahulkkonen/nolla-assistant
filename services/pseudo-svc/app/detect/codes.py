@@ -160,6 +160,8 @@ def detect(text: str, ctx=None) -> list[Candidate]:
             out.append(_cand(m, "IBAN", bban, 1.0 if ctx_ok else 0.9, 1))
     for m in phonenumbers.PhoneNumberMatcher(text, "FI", leniency=phonenumbers.Leniency.VALID):
         raw = m.raw_string
+        if re.search(r"\d[.,]?$", text[max(0, m.start - 2):m.start]):
+            continue  # the tail of a decimal or a longer number: "total": 0.0107338
         if raw.lstrip("(").startswith(("+", "00", "0")) and (raw.count("-") < 2 or raw.startswith("+")):
             canon = phonenumbers.format_number(m.number, phonenumbers.PhoneNumberFormat.E164)
             out.append(Candidate(m.start, m.end, "PHONE", canon, "codes", 1.0, raw))

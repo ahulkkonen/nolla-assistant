@@ -27,7 +27,8 @@ export type Leak = {
   kind: string;
   entity_id: number;
 };
-export type ScanMessage = { role: string; content: string };
+/** `content` is the whole message as JSON; the sidecar masks its string values. */
+export type ScanMessage = { role: string; content: Json };
 
 /** `canonical` and pending `text` are real values: never log them. */
 export type VaultEntityRow = {
