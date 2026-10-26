@@ -208,6 +208,11 @@ test.describe('collision', () => {
   }) => {
     app.llm.push({ text: 'Selvä.' });
     app.llm.push({ text: 'Soitan hänelle huomenna.' });
+    // The title job runs 2 s after the first turn, maybe while the message is held: its own turn,
+    // or it takes the resumed reply. Chat calls are counted without it.
+    app.llm.push({ ...titleTurn('Soitto', 'Käyttäjä pyysi soittamaan.'), match: 'Aiheet:' });
+    const chatCalls = () =>
+      app.llm.requests.filter((r) => (r.body as { model?: string }).model !== 'zdr/task-small');
     await app.login(page);
     // Matti Virtanen gets his entity; his surrogate is the name the user types next.
     await send(page, 'Matti Virtanen soitti eilen');
@@ -222,7 +227,7 @@ test.describe('collision', () => {
     await expect(
       thread(page).getByRole('button', { name: 'Avaa Nimisuoja ja vastaa' }),
     ).toBeVisible();
-    expect(app.llm.requests).toHaveLength(1);
+    expect(chatCalls()).toHaveLength(1);
 
     await page.getByRole('button', { name: 'Avaa Nimisuoja', exact: true }).click();
     const row = page.getByRole('listitem').filter({ hasText: `Onko ${COLLIDING} uusi henkilö?` });
@@ -239,7 +244,7 @@ test.describe('collision', () => {
     ).toHaveCount(0);
     // "Pekka Laaksonen" in that request is Matti Virtanen's surrogate in the earlier turn; the typed
     // name went out as the new person's own surrogate.
-    const body = JSON.stringify(app.llm.requests[1]?.body);
+    const body = JSON.stringify(chatCalls()[1]?.body);
     expect(body).not.toContain(`Soita ${COLLIDING}`);
     expect(body).toContain('Soita Uusi');
   });

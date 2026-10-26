@@ -386,3 +386,28 @@ test('forkSession and dropFork post the session ids and the fork time (phase 13)
     await sc.close();
   }
 });
+
+test('the fake sidecar never writes into the dictionary it was given', async () => {
+  // e2e shares one DICT across tests: an accepted collision once turned the next fake's
+  // "Pekka Laaksonen" (Matti Virtanen's surrogate) into a new person's "Uusi4 Henkilö4".
+  const shared = { ...DICT };
+  const call = (url: string, path: string, body: object): Promise<any> =>
+    fetch(url + path, { method: 'POST', body: JSON.stringify({ user_id: 'u1', ...body }) }).then(
+      (r) => r.json(),
+    );
+  const first = await startFakeSidecar(shared, { collide: ['Pekka Laaksonen'], learn: true });
+  closers.push(first.close);
+  await call(first.url, '/mask', { session_id: 's', text: 'Pekka Laaksonen', user_input: true });
+  await call(first.url, '/vault/pending/1', { action: 'accept' });
+  await call(first.url, '/mask', { session_id: 's', text: 'Liisa Korhonen' }); // learn adds one
+  expect(shared).toEqual(DICT);
+  const next = await startFakeSidecar(shared);
+  closers.push(next.close);
+  const m = await call(next.url, '/mask', { session_id: 's', text: 'Kirjoita Matti Virtanen' });
+  expect(m.masked).toBe('Kirjoita Pekka Laaksonen');
+  const sc = await call(next.url, '/scan', {
+    session_id: 's',
+    messages: [{ role: 'user', content: m.masked }],
+  });
+  expect(sc.messages[0].content).toBe('Kirjoita Pekka Laaksonen');
+});

@@ -67,9 +67,12 @@ type PendingSeed = Omit<VaultPendingRow, 'id' | 'session_id' | 'reason' | 'entit
  * leaves it as it is.
  */
 export async function startFakeSidecar(
-  dictionary: Record<string, string>,
+  seed: Record<string, string>,
   opts: { pending?: PendingSeed[]; learn?: boolean; collide?: string[] } = {},
 ) {
+  // A copy: `learn` and an accepted collision add entries, and callers share one seed object
+  // across tests (the e2e DICT); writing into it leaked "Uusi4 Henkilö4" into later fakes.
+  const dictionary = { ...seed };
   const byLength = (a: Pair, b: Pair) => b.from.length - a.from.length;
   const entries = Object.entries(dictionary);
   const toFake = entries.map(([from, to], i) => ({ from, to, id: i + 1 })).sort(byLength);
