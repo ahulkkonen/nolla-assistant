@@ -565,3 +565,17 @@ Out of scope: a palette command "Vaihda malli", per-message policy marks in the 
 - Reading the installed Pi 1.3.0 packages (`pi-ai` and `pi-coding-agent` in `node_modules/.pnpm`).
 
 No live inference call was made, because no OpenRouter key was available. Gate item 4 closes that gap.
+
+Gate item 4, live check on 2026-10-26 through the local Docker stack (LiteLLM 1.105.1 with the
+phase-10 routes, the user's real ZDR key, no open key):
+
+- `zdr/anthropic/claude-fable-5.1`: HTTP 404. The message that pa-server receives starts with
+  `litellm.NotFoundError: NotFoundError: OpenrouterException - {"error":{"message":"No endpoints
+  found matching your data policy (Zero data retention). Configure:
+  https://openrouter.ai/settings/privacy","code":404,...`. The classifier matches it on the
+  status and on the words "zero data retention".
+- `open/anthropic/claude-fable-5.1`: HTTP 400 from the guard, "open/ models are off:
+  OPENROUTER_OPEN_API_KEY is not set". No request left for OpenRouter.
+- `zdr/google/gemini-4-argon` with `reasoning.effort: low`: HTTP 200, `reasoning_tokens` 0,
+  cost 0.0021 USD. With `high`: HTTP 200, `reasoning_tokens` 397, cost 0.0041 USD. The effort
+  reaches the provider.
