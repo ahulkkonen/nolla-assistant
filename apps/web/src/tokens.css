@@ -236,6 +236,8 @@
   --success-subtle: #e6f2e3;
   --warning: #8a5300;
   --warning-subtle: #fbefd9;
+  /* Find bar hits: readable on the canvas, a card and a user bubble (phase 13). */
+  --find: #f6dc9a;
   --warning-line: #b7791f;
   --info: #1d5bbf;
   --info-subtle: #e5eefb;
@@ -289,6 +291,7 @@
     --success-subtle: #24392a;
     --warning: #e6b45e;
     --warning-subtle: #3d3220;
+    --find: #6a5322;
     --warning-line: #e6b45e;
     --info: #8fb6f5;
     --info-subtle: #22314a;
@@ -473,9 +476,9 @@
 
 /* Phase 13: the find bar's hits (CSS Custom Highlight API); the DOM does not change. */
 ::highlight(find) {
-  background-color: var(--warning-subtle);
+  background-color: var(--find);
 }
 ::highlight(find-current) {
-  background-color: var(--warning-subtle);
+  background-color: var(--find);
   text-decoration: underline 2px var(--warning);
 }

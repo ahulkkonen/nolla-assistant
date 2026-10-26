@@ -1,4 +1,4 @@
-import { TOOL_STATUS_WORD } from '@pa/protocol';
+import { TOOL_STATUS_WORD, type ToolSearch, WEB_SEARCH_TOOL } from '@pa/protocol';
 import { Ban, Check, ChevronRight, Clock, Loader2, TimerOff, X } from 'lucide-react';
 import { Collapsible } from 'radix-ui';
 import type { ReactNode } from 'react';
@@ -51,6 +51,62 @@ export function CollapsibleRow({
   );
 }
 
+/**
+ * A `web_search` row's word (phase-14 UI): "5 tulosta", "1 tulos", "ei tuloksia", "haetaan…";
+ * a blocked call (deny, timeout, automation) is "estetty".
+ */
+function searchWord(status: ToolView['status'], gate: string | null, s?: ToolSearch) {
+  if (status === 'denied' || gate === 'rejected' || gate === 'expired') return 'estetty';
+  if (status === 'running') return 'haetaan…';
+  if (status === 'error') return TOOL_STATUS_WORD.error;
+  const n = s?.results.length ?? 0;
+  return n === 0 ? 'ei tuloksia' : n === 1 ? '1 tulos' : `${n} tulosta`;
+}
+
+/** "www.yle.fi" → "yle.fi"; null for a URL that is not http(s). */
+const hostOf = (url: string) => {
+  if (!/^https?:\/\//i.test(url)) return null;
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return null;
+  }
+};
+
+/** The query that ran and its links, each opening in a new tab (phase-14 UI). */
+function SearchResults({ search }: { search: ToolSearch }) {
+  return (
+    <div className="flex flex-col gap-2 rounded-md bg-muted p-3">
+      <p className="text-ui text-foreground">Haku: ”{search.query}”</p>
+      {search.results.length > 0 && (
+        <ul aria-label="Hakutulokset" className="flex flex-col gap-2">
+          {search.results.map((r) => {
+            // The protocol allows http(s) only; the client checks again before an href.
+            const host = hostOf(r.url);
+            return (
+              <li key={r.url} className="flex min-w-0 flex-col">
+                {host ? (
+                  <a
+                    href={r.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-ui text-link underline-offset-4 [overflow-wrap:anywhere] hover:underline"
+                  >
+                    {r.title}
+                  </a>
+                ) : (
+                  <span className="text-ui">{r.title}</span>
+                )}
+                {host && <span className="text-meta text-muted-foreground">{host}</span>}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export function ToolRow({ tool }: { tool: ToolView }) {
   // A gated call waits for the user, not the tool (no spinner). After a decision the approval
   // card is gone and this row carries it: "hylätty" or "vanhentunut" (brief 7.5).
@@ -73,14 +129,17 @@ export function ToolRow({ tool }: { tool: ToolView }) {
         : gate
           ? ICON.waiting
           : ICON[tool.status];
+  const search = tool.name === WEB_SEARCH_TOOL;
   const word =
     gate === 'waiting'
       ? 'odottaa hyväksyntää'
-      : gate === 'expired'
-        ? 'vanhentunut'
-        : gate === 'rejected'
-          ? 'hylätty'
-          : TOOL_STATUS_WORD[tool.status];
+      : search
+        ? searchWord(tool.status, gate, tool.search)
+        : gate === 'expired'
+          ? 'vanhentunut'
+          : gate === 'rejected'
+            ? 'hylätty'
+            : TOOL_STATUS_WORD[tool.status];
   // Live output while running; the final summary replaces it.
   const result = tool.summary || tool.output;
   const part = (label: string, text: string) => (
@@ -99,18 +158,22 @@ export function ToolRow({ tool }: { tool: ToolView }) {
         </>
       }
     >
-      <div
-        role="region"
-        aria-label={`${tool.name}: tuloste`}
-        // A scrollable region must be focusable (brief 7.8).
-        tabIndex={0}
-        className="flex max-h-80 flex-col gap-2 overflow-auto rounded-md bg-muted p-3 font-mono text-[13px] leading-5 break-words whitespace-pre-wrap text-foreground"
-      >
-        {/* Arguments and result, each labelled (brief 7.5 tool output). */}
-        {tool.argsPreview && part('Syöte', tool.argsPreview)}
-        {result && part('Tulos', result)}
-        {!tool.argsPreview && !result && <div>—</div>}
-      </div>
+      {search && tool.search ? (
+        <SearchResults search={tool.search} />
+      ) : (
+        <div
+          role="region"
+          aria-label={`${tool.name}: tuloste`}
+          // A scrollable region must be focusable (brief 7.8).
+          tabIndex={0}
+          className="flex max-h-80 flex-col gap-2 overflow-auto rounded-md bg-muted p-3 font-mono text-[13px] leading-5 break-words whitespace-pre-wrap text-foreground"
+        >
+          {/* Arguments and result, each labelled (brief 7.5 tool output). */}
+          {tool.argsPreview && part('Syöte', tool.argsPreview)}
+          {result && part('Tulos', result)}
+          {!tool.argsPreview && !result && <div>—</div>}
+        </div>
+      )}
     </CollapsibleRow>
   );
 }

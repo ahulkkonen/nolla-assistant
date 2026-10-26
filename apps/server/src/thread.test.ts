@@ -104,6 +104,16 @@ test('chat.fork copies the path to the fork point, runs the edited text, leaves 
   ]);
 });
 
+test("message.accepted maps a user message's local id to its entry id", async () => {
+  const { c, chat } = await bootChat([{ text: 'Vastaus.' }]);
+  c.send({ type: 'user.message', chatId: chat.id, text: 'Hei', localId: 'local-1' });
+  const accepted = await c.next('message.accepted');
+  await c.idle();
+  expect(accepted).toMatchObject({ chatId: chat.id, localId: 'local-1' });
+  const [user] = (await open(c, chat.id)).messages;
+  expect(user).toMatchObject({ id: accepted.messageId, text: 'Hei' });
+});
+
 test('chat.fork of the first message starts an empty chat; an assistant id is refused', async () => {
   const { c, chat } = await bootChat([{ text: 'Vastaus.' }, { text: 'Uusi alku.' }]);
   await turn(c, chat.id, 'Alku');

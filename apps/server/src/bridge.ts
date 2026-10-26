@@ -149,7 +149,7 @@ export const summary = (r: ChatRow): ChatSummary => ({
 });
 
 /** Masked user and assistant texts of the session branch, in order. */
-export const transcript = (session: AgentSession) =>
+export const transcript = (session: Pick<AgentSession, 'sessionManager'>) =>
   session.sessionManager
     .getBranch()
     .flatMap((e) =>
@@ -563,6 +563,24 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
       },
     );
 
+  /**
+   * Phase 13: tells this socket the entry id of a user message that it sent with `localId`, once
+   * Pi has stored it (Pi stores right after the public `message_end`, hence the microtask).
+   * Returns the unsubscribe, for a prompt that ends without a stored message.
+   */
+  const acceptOnStore = (chatId: string, session: AgentSession, localId: string | undefined) => {
+    if (!localId) return () => {};
+    const off = session.subscribe((e) => {
+      if (e.type !== 'message_end' || e.message.role !== 'user') return;
+      off();
+      queueMicrotask(() => {
+        const messageId = session.sessionManager.getLeafId();
+        if (messageId) send(socket, { type: 'message.accepted', chatId, localId, messageId });
+      });
+    });
+    return off;
+  };
+
   /** Rewinds the branch to before `last` and prompts its text again (under `retry`'s hold). */
   const rerun = async (chatId: string, session: AgentSession, last: UserEntry) => {
     const sm = session.sessionManager;
@@ -630,7 +648,15 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
     let release = () => {};
     registry.hold(msg.chatId, new Promise<void>((r) => (release = r)));
     try {
-      const code = await forkFrom(src, session, branch, at, edited as UserEntry, msg.text);
+      const code = await forkFrom(
+        src,
+        session,
+        branch,
+        at,
+        edited as UserEntry,
+        msg.text,
+        msg.localId,
+      );
       if (code) send(socket, errorMsg(code, msg.chatId));
     } finally {
       release();
@@ -644,6 +670,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
     at: number,
     edited: UserEntry,
     text: string,
+    localId?: string,
   ): Promise<keyof typeof ERRORS | undefined> => {
     const sm = session.sessionManager;
     const leaf = sm.getLeafId();
@@ -719,7 +746,8 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
       send(socket, { type: 'chat.created', chat: summary(r) });
       send(socket, await chatState(r, forked));
       join(id, forked);
-      registry.hold(id, promptOrFail(id, forked, { ...sent, text: text + blocks }));
+      const off = acceptOnStore(id, forked, localId);
+      registry.hold(id, promptOrFail(id, forked, { ...sent, text: text + blocks }).finally(off));
       return undefined;
     } catch (err) {
       // Nothing of a half-made fork stays: its row, its file, its sidecar scope.
@@ -963,6 +991,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
           { chatId, length: msg.text.length, attachments: msg.attachments.length },
           'user.message',
         );
+        const off = acceptOnStore(chatId, session, msg.localId);
         // Held from the call on: a policy change must wait for this prompt (`assertIdle`).
         registry.hold(
           chatId,
@@ -971,7 +1000,8 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
             .catch((err: unknown) => {
               log.warn({ chatId, err }, 'prompt failed');
               broadcast(rooms, chatId, errorMsg('prompt_failed', chatId));
-            }),
+            })
+            .finally(off),
         );
         return;
       }
@@ -1404,7 +1434,7 @@ function filesOf(files: ReturnType<typeof chatFiles>, prev: string, at: string) 
  * (masked when `restore` does not restore). The export (export.ts) uses both.
  */
 export async function history(
-  session: AgentSession,
+  session: Pick<AgentSession, 'sessionManager'>,
   files: ReturnType<typeof chatFiles>,
   restore: Restore,
   blocks?: Map<string, string[]>,

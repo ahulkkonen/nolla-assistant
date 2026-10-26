@@ -1,7 +1,7 @@
 import { Lightbulb, Loader2 } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { useStore } from '../store.ts';
-import { duration, thoughtFor } from '../thread.ts';
+import { useEffect, useMemo, useState } from 'react';
+import { thinkingKey, useStore } from '../store.ts';
+import { duration, messageTime, thoughtFor } from '../thread.ts';
 import { loadThinking } from '../ws.ts';
 import { annotate } from './MessageView.tsx';
 import { useSlow } from './Page.tsx';
@@ -46,14 +46,21 @@ export function ThinkingRow({
   chatId,
   messageId,
   ms,
+  createdAt,
 }: {
   chatId: string;
   messageId: string;
   ms: number | null;
+  /** The reply's time: it names the open region, so two open rows differ. */
+  createdAt: string;
 }) {
-  const got = useStore((s) => s.thinkingText[messageId]);
+  const got = useStore((s) => s.thinkingText[thinkingKey(chatId, messageId)]);
   const [open, setOpen] = useState(false);
   const slow = useSlow(open && got?.state === 'loading');
+  const shown = useMemo(
+    () => (got?.state === 'ok' ? annotate(got.text, got.annotations) : null),
+    [got],
+  );
   return (
     <CollapsibleRow
       icon={<Lightbulb size={16} className="shrink-0" />}
@@ -66,12 +73,13 @@ export function ThinkingRow({
       {got?.state === 'ok' ? (
         <div
           role="region"
-          aria-label="Mallin ajattelu"
-          // A scrollable region must be focusable (brief 7.8).
+          aria-label={`Mallin ajattelu, ${messageTime(createdAt)}`}
+          // A scrollable region must be focusable (brief 7.8); the find bar searches it open.
           tabIndex={0}
+          data-find
           className="max-h-80 overflow-auto rounded-md bg-muted p-3 font-sans text-[14px] leading-[22px] break-words whitespace-pre-wrap text-muted-foreground"
         >
-          {annotate(got.text, got.annotations)}
+          {shown}
         </div>
       ) : got?.state === 'error' ? (
         <p className="text-meta text-muted-foreground">Ajattelua ei voitu näyttää.</p>

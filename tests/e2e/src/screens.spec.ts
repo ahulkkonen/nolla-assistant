@@ -17,6 +17,7 @@ import {
   openVault,
   png,
   search,
+  searchTurns,
   sendMessage,
   showSidebar,
   TAX,
@@ -450,6 +451,30 @@ for (const scheme of ['light', 'dark'] as const) {
           await shot(page, 'fork-link', vp.width, scheme);
         });
 
+        if (vp.width !== 1024)
+          test('message-edit-fork', async ({ app, page }) => {
+            app.llm.push({ text: 'Kevät on hyvä aika.' });
+            await app.login(page);
+            await sendMessage(page, 'Milloin kasvimaa kannattaa aloittaa?');
+            await expect(page.locator('.md').last()).toHaveText('Kevät on hyvä aika.');
+            if (phone) await page.getByLabel('Viesti').press('ArrowUp');
+            else {
+              const first = thread(page).locator('[data-message-id]').first();
+              await first.hover();
+              await first.getByRole('button', { name: 'Muokkaa' }).click();
+            }
+            await page
+              .getByLabel('Muokattava viesti')
+              .fill('Milloin kasvimaa kannattaa aloittaa syksyllä?');
+            await expect(
+              page.getByText(
+                'Muokattu viesti aloittaa uuden keskustelun. Tämä keskustelu ei muutu.',
+              ),
+            ).toBeVisible();
+            if (!phone) await page.mouse.move(vp.width / 2, vp.height - 200);
+            await shot(page, 'message-edit-fork', vp.width, scheme);
+          });
+
         test('find-bar', async ({ app, page }) => {
           app.llm.push({ text: 'Omena on hedelmä, ja omenapuu kukkii keväällä.' });
           await app.login(page);
@@ -471,7 +496,7 @@ for (const scheme of ['light', 'dark'] as const) {
           await row
             .getByRole('button', { name: phone ? 'Toiminnot: Kasvimaa' : 'Lisää: Kasvimaa' })
             .click();
-          await expect(page.getByRole('menu').getByText('0,01 € · 3,4 k tokenia')).toBeVisible();
+          await expect(page.getByRole('menu').getByText('0,012 € · 3,4 k tokenia')).toBeVisible();
           await shot(page, 'chat-menu-usage', vp.width, scheme);
         });
 
@@ -479,6 +504,7 @@ for (const scheme of ['light', 'dark'] as const) {
           await thinkingChat(app, page);
           await openSettings(page, 'Käyttö');
           await expect(page.getByText('3,4 k tokenia · 1 kutsu')).toBeVisible();
+          if (!phone) await page.mouse.move(vp.width / 2, vp.height - 40);
           await blur(page);
           await shot(page, 'usage-month', vp.width, scheme);
         });
@@ -489,6 +515,49 @@ for (const scheme of ['light', 'dark'] as const) {
           await expect(page.getByText('Ei käyttöä tässä kuussa')).toBeVisible();
           await blur(page);
           await shot(page, 'usage-empty', vp.width, scheme);
+        });
+      });
+
+      test.describe('web search', () => {
+        test.use({ pseudo: 'full' });
+        const thread = (page: Page) => page.getByRole('region', { name: 'Keskustelu' });
+
+        test('search-row-collapsed', async ({ app, page }) => {
+          searchTurns(app, 'Helsingin sää', 'Pilvistä, 7 astetta (yle.fi/saa).');
+          await app.login(page);
+          await sendMessage(page, 'Millainen sää on Helsingissä?');
+          await expect(page.locator('.md').last()).toContainText('Pilvistä');
+          await expect(
+            thread(page).getByRole('button', { name: /^web_search 2 tulosta/ }),
+          ).toBeVisible();
+          await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+          await shot(page, 'search-row-collapsed', vp.width, scheme);
+        });
+
+        test('search-row-expanded', async ({ app, page }) => {
+          searchTurns(app, 'Helsingin sää', 'Pilvistä, 7 astetta (yle.fi/saa).');
+          await app.login(page);
+          await sendMessage(page, 'Millainen sää on Helsingissä?');
+          await expect(page.locator('.md').last()).toContainText('Pilvistä');
+          await thread(page)
+            .getByRole('button', { name: /^web_search 2 tulosta/ })
+            .click();
+          await expect(thread(page).getByRole('list', { name: 'Hakutulokset' })).toBeVisible();
+          await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+          await shot(page, 'search-row-expanded', vp.width, scheme);
+        });
+
+        test('search-approval-card', async ({ app, page }) => {
+          app.llm.push({
+            toolCalls: [{ name: 'web_search', args: { query: 'Pekka Laaksonen hallitus' } }],
+          });
+          await app.login(page);
+          await sendMessage(page, 'Hae Matti Virtanen');
+          await expect(
+            page.getByRole('region', { name: 'Haku sisältää henkilötiedon' }),
+          ).toContainText('Matti Virtanen hallitus');
+          await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+          await shot(page, 'search-approval-card', vp.width, scheme);
         });
       });
 

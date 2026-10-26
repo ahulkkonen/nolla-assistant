@@ -1,27 +1,26 @@
 import { ChevronDown, ChevronUp, Search, X } from 'lucide-react';
 import { type RefObject, useEffect, useRef, useState } from 'react';
+import { announce } from '../announce.ts';
 import { useStore } from '../store.ts';
+import { findOffsets } from '../thread.ts';
 import { IconButton } from './IconButton.tsx';
-import { announce } from './Thread.tsx';
 
 /**
- * The hits of `q` in the message bodies under `root`: case-insensitive (`fi`), each inside one
- * text node (phase-13 decision 19). Collapsed tool and thinking rows are not in the DOM.
+ * The hits of `q` in the message bodies under `root`, each inside one text node (phase-13
+ * decision 19). Open thinking text counts (`data-find`); collapsed rows are not in the DOM.
  */
 export function findRanges(root: HTMLElement, q: string): Range[] {
-  const needle = q.toLocaleLowerCase('fi');
-  if (!needle) return [];
   const out: Range[] = [];
+  if (!q) return out;
   for (const body of root.querySelectorAll(
     '[data-message-id] [data-find], [data-message-id] .md',
   )) {
     const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-      const hay = (node.nodeValue ?? '').toLocaleLowerCase('fi');
-      for (let i = hay.indexOf(needle); i >= 0; i = hay.indexOf(needle, i + needle.length)) {
+      for (const i of findOffsets(node.nodeValue ?? '', q)) {
         const r = document.createRange();
         r.setStart(node, i);
-        r.setEnd(node, Math.min(i + needle.length, node.nodeValue?.length ?? 0));
+        r.setEnd(node, i + q.length);
         out.push(r);
       }
     }
@@ -30,41 +29,47 @@ export function findRanges(root: HTMLElement, q: string): Range[] {
 }
 
 const highlights = () => globalThis.CSS?.highlights;
+/** Typing waits this long before the thread is searched again; so do DOM changes. */
+const SETTLE_MS = 150;
 
 /**
  * "Etsi keskustelusta" (phase-13 UI): Ctrl/Cmd+F in an open chat. The DOM does not change: the
  * hits are CSS custom highlights (`::highlight(find)`, tokens.css). Without them the bar still
- * counts and scrolls. `watch` changes when the thread does.
+ * counts and scrolls. A changed thread (stream, "Mitä malli näki", an opened row) is searched
+ * again through a MutationObserver.
  */
-export function FindBar({
-  scroller,
-  watch,
-}: {
-  scroller: RefObject<HTMLElement | null>;
-  watch: unknown;
-}) {
+export function FindBar({ scroller }: { scroller: RefObject<HTMLElement | null> }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
+  const [query, setQuery] = useState('');
+  const [tick, setTick] = useState(0);
   const [ranges, setRanges] = useState<Range[]>([]);
   const [at, setAt] = useState(0);
   const input = useRef<HTMLInputElement>(null);
   const back = useRef<HTMLElement | null>(null);
   const findQuery = useStore((s) => s.findQuery);
+  const chatId = useStore((s) => s.activeChatId);
 
-  /** Opens (or, open, selects the query text); `query` replaces the text. */
-  const show = (query?: string) => {
+  /** Opens (or, open, selects the query text); `text` replaces the query. */
+  const show = (text?: string) => {
     if (!input.current) back.current = document.activeElement as HTMLElement | null;
     setOpen(true);
-    if (query !== undefined) setQ(query);
+    if (text !== undefined) {
+      setQ(text);
+      setQuery(text);
+    }
     requestAnimationFrame(() => {
       input.current?.focus();
       input.current?.select();
     });
   };
-  const close = () => {
+  const close = (refocus = true) => {
     setOpen(false);
     setQ('');
-    back.current?.focus();
+    setQuery('');
+    // Only to an element that is still on the page.
+    if (refocus && back.current?.isConnected) back.current.focus();
+    back.current = null;
   };
 
   useEffect(() => {
@@ -82,6 +87,14 @@ export function FindBar({
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  // Another chat: the bar closes and forgets its query.
+  const shownChat = useRef(chatId);
+  useEffect(() => {
+    if (shownChat.current === chatId) return;
+    shownChat.current = chatId;
+    close(false);
+  }, [chatId]);
+
   // A global search hit opens its chat with the query here.
   useEffect(() => {
     if (findQuery === null) return;
@@ -89,17 +102,39 @@ export function FindBar({
     show(findQuery);
   }, [findQuery]);
 
-  // The hits again on each change of the query or the thread; a new query starts at the first.
-  const last = useRef('');
+  // Keystrokes settle before a search.
+  useEffect(() => {
+    const t = setTimeout(() => setQuery(q), SETTLE_MS);
+    return () => clearTimeout(t);
+  }, [q]);
+
+  // The thread changes under an open bar: search again once it settles.
+  useEffect(() => {
+    const el = scroller.current;
+    if (!open || !el) return;
+    let t: ReturnType<typeof setTimeout> | undefined;
+    const mo = new MutationObserver(() => {
+      clearTimeout(t);
+      t = setTimeout(() => setTick((n) => n + 1), SETTLE_MS);
+    });
+    mo.observe(el, { childList: true, subtree: true, characterData: true });
+    return () => {
+      clearTimeout(t);
+      mo.disconnect();
+    };
+  }, [open, scroller]);
+
+  // A new query starts at its first hit; a changed thread keeps the place.
+  const searched = useRef('');
   useEffect(() => {
     const root = scroller.current;
-    const found = open && root ? findRanges(root, q) : [];
+    const found = open && root ? findRanges(root, query) : [];
     setRanges(found);
-    const fresh = q !== last.current;
-    last.current = q;
+    const fresh = query !== searched.current;
+    searched.current = query;
     setAt((i) => (fresh || i >= found.length ? 0 : i));
     if (fresh && found[0]) center(found[0]);
-  }, [open, q, watch]);
+  }, [open, query, tick]);
 
   useEffect(() => {
     const hl = highlights();
@@ -108,7 +143,9 @@ export function FindBar({
     hl.delete('find-current');
     const current = ranges[at];
     if (!open || !current) return;
-    hl.set('find', new Highlight(...ranges));
+    const all = new Highlight();
+    for (const r of ranges) all.add(r);
+    hl.set('find', all);
     hl.set('find-current', new Highlight(current));
     return () => {
       hl.delete('find');
@@ -139,7 +176,14 @@ export function FindBar({
   return (
     <div
       role="search"
-      className="sticky top-2 z-10 flex h-11 items-center gap-1 rounded-lg border bg-card pr-1 pl-3 shadow-sm max-md:-mx-2"
+      // Esc anywhere in the bar closes it, before the global Esc that stops a running reply.
+      onKeyDown={(e) => {
+        if (e.key !== 'Escape') return;
+        e.preventDefault();
+        e.stopPropagation();
+        close();
+      }}
+      className="sticky top-2 z-10 flex h-11 items-center gap-1 rounded-lg border bg-card pr-1 pl-3 shadow-sm transition-colors duration-100 focus-within:border-input max-md:-mx-2"
     >
       <Search size={16} className="shrink-0 text-muted-foreground" />
       <input
@@ -147,21 +191,17 @@ export function FindBar({
         value={q}
         onChange={(e) => setQ(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            e.preventDefault();
-            go(e.shiftKey ? -1 : 1);
-          } else if (e.key === 'Escape') {
-            // Before the global Esc (it would stop a running reply).
-            e.preventDefault();
-            e.stopPropagation();
-            close();
-          }
+          if (e.key !== 'Enter') return;
+          e.preventDefault();
+          // Enter right after typing searches first, then moves.
+          if (q !== query) setQuery(q);
+          else go(e.shiftKey ? -1 : 1);
         }}
         placeholder="Etsi keskustelusta"
         aria-label="Etsi keskustelusta"
         className="h-full min-w-0 flex-1 bg-transparent text-body placeholder:text-muted-foreground focus-visible:outline-none max-md:text-[16px]"
       />
-      {q && (
+      {query && (
         <span className="px-1 text-meta whitespace-nowrap text-muted-foreground tabular-nums">
           {n ? `${at + 1}/${n}` : 'Ei osumia'}
         </span>
@@ -172,7 +212,7 @@ export function FindBar({
       <IconButton label="Seuraava osuma" className="size-8" disabled={!n} onClick={() => go(1)}>
         <ChevronDown size={16} />
       </IconButton>
-      <IconButton label="Sulje haku" className="size-8" onClick={close}>
+      <IconButton label="Sulje haku" className="size-8" onClick={() => close()}>
         <X size={16} />
       </IconButton>
     </div>

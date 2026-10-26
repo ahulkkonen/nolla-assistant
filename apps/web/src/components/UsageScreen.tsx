@@ -18,6 +18,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { useStore } from '../store.ts';
+import { openRoute } from '../useModel.ts';
 import { send } from '../ws.ts';
 import { EmptyState, ListSkeleton, Page } from './Page.tsx';
 
@@ -42,7 +43,7 @@ const thisMonth = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 };
-const kunta = (n: number) => `${num.format(n)} ${n === 1 ? 'kutsu' : 'kutsua'}`;
+const callCount = (n: number) => `${num.format(n)} ${n === 1 ? 'kutsu' : 'kutsua'}`;
 
 /**
  * Käyttö (phase-13 UI): the month's model calls grouped by model, the costliest first, in euros
@@ -53,6 +54,12 @@ export function UsageScreen() {
   const fx = useStore((s) => s.fx);
   const [month, setMonth] = useState(thisMonth);
   useEffect(() => send({ type: 'usage.get', month }), [month]);
+  // Back in the window: the month may have new calls.
+  useEffect(() => {
+    const again = () => send({ type: 'usage.get', month });
+    window.addEventListener('focus', again);
+    return () => window.removeEventListener('focus', again);
+  }, [month]);
 
   const data = usage?.month === month ? usage : null;
   const rows = [...(data?.rows ?? [])].sort((a, b) => b.costUsd - a.costUsd);
@@ -60,10 +67,12 @@ export function UsageScreen() {
   const tokens = rows.reduce((n, r) => n + r.tokens, 0);
   const calls = rows.reduce((n, r) => n + r.calls, 0);
   const estimated = rows.some((r) => r.estimated);
-  const months = usage?.months.length ? usage.months : [month];
-  const cost = (usd: number, est: boolean) => formatCost(usd, fx, { estimated: est });
-  const zdrOff = (model: string) =>
-    model.startsWith('open/') && <Badge variant="warning">Ei ZDR</Badge>;
+  // This month is always there, also before its first call.
+  const now = thisMonth();
+  const months = [...new Set([now, month, ...(usage?.months ?? [])])].sort().reverse();
+  // One rounding rule with the thread: three decimals below 0,10 €.
+  const cost = (usd: number, est: boolean) => formatCost(usd, fx, { reply: true, estimated: est });
+  const zdrOff = (model: string) => openRoute(model) && <Badge variant="warning">Ei ZDR</Badge>;
 
   return (
     <Page
@@ -97,11 +106,14 @@ export function UsageScreen() {
           <div className="flex flex-col gap-1">
             <p className="text-title tabular-nums">{cost(total, estimated)}</p>
             <p className="text-meta text-muted-foreground tabular-nums">
-              {formatTokens(tokens)} · {kunta(calls)}
+              {formatTokens(tokens)} · {callCount(calls)}
             </p>
           </div>
           <div className="max-md:hidden">
-            <Table label="Mallit" className="[&_td:first-child]:pl-0 [&_th:first-child]:pl-0">
+            <Table
+              label="Mallit"
+              className="[&_td:first-child]:pl-0 [&_td:last-child]:pr-0 [&_th:first-child]:pl-0 [&_th:last-child]:pr-0"
+            >
               <TableHeader>
                 <TableRow>
                   <TableHead>Malli</TableHead>
@@ -143,7 +155,7 @@ export function UsageScreen() {
                     {zdrOff(r.model)}
                   </div>
                   <p className="text-meta text-muted-foreground tabular-nums">
-                    {kunta(r.calls)} · {formatTokens(r.tokens)}
+                    {callCount(r.calls)} · {formatTokens(r.tokens)}
                   </p>
                 </div>
                 <span className="shrink-0 tabular-nums">{cost(r.costUsd, r.estimated)}</span>

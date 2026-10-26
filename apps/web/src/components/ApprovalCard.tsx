@@ -1,3 +1,4 @@
+import { WEB_SEARCH_TOOL } from '@pa/protocol';
 import { Clock, ShieldAlert } from 'lucide-react';
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -60,6 +61,9 @@ export function ApprovalCard({ a }: { a: Approval }) {
       ? Object.entries(a.args)
       : [['', a.args] as const];
   const reason = a.reason !== `Työkalu ${a.tool} vaatii hyväksynnän.` ? a.reason : '';
+  // Phase 14: a search whose query names a vault entity; the reason is the title.
+  const search = a.tool === WEB_SEARCH_TOOL;
+  const query = search && args.find(([k]) => k === 'query')?.[1];
 
   return (
     <section
@@ -68,21 +72,37 @@ export function ApprovalCard({ a }: { a: Approval }) {
     >
       <h2 id={titleId} className="flex items-center gap-2 text-heading">
         <ShieldAlert size={16} className="shrink-0 text-warning" />
-        <span>
-          Hyväksytäänkö työkalu <span className="font-mono">{a.tool}</span>?
-        </span>
+        {search ? (
+          <span>{a.reason}</span>
+        ) : (
+          <span>
+            Hyväksytäänkö työkalu <span className="font-mono">{a.tool}</span>?
+          </span>
+        )}
       </h2>
-      {reason && <p className="text-meta text-muted-foreground">{reason}</p>}
-      <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1">
-        {args.map(([k, v]) => (
-          <div key={k} className="contents">
-            <dt className="max-w-32 truncate font-mono text-[13px] leading-5 text-muted-foreground">
-              {k}
-            </dt>
-            <Value text={show(v)} />
-          </div>
-        ))}
-      </dl>
+      {reason && !search && <p className="text-meta text-muted-foreground">{reason}</p>}
+      {search ? (
+        <dl className="grid grid-cols-[max-content_1fr] gap-x-2">
+          <dt className="font-mono text-[13px] leading-5 text-muted-foreground">Haku:</dt>
+          <Value text={show(query ?? '')} />
+        </dl>
+      ) : (
+        <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1">
+          {args.map(([k, v]) => (
+            <div key={k} className="contents">
+              <dt className="max-w-32 truncate font-mono text-[13px] leading-5 text-muted-foreground">
+                {k}
+              </dt>
+              <Value text={show(v)} />
+            </div>
+          ))}
+        </dl>
+      )}
+      {search && (
+        <p className="text-meta text-pretty text-muted-foreground">
+          Kysely lähtee hakupalveluun sellaisenaan. Hylkää, niin avustaja hakee ilman henkilöä.
+        </p>
+      )}
       <div className="flex flex-wrap items-center gap-2 max-md:grid max-md:grid-cols-2">
         <p className="mr-auto flex items-center gap-1.5 text-meta text-muted-foreground tabular-nums max-md:col-span-2">
           <Clock size={16} />

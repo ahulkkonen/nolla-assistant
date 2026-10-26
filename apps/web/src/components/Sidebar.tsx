@@ -126,7 +126,7 @@ function ChatRow({
   const name = label ?? UNTITLED;
   // The chat's cost at the end of its menu (phase 13); none before the first tokens.
   const note = chat.usage?.tokens
-    ? `${formatCost(chat.usage.costUsd, fx)} · ${formatTokens(chat.usage.tokens)}`
+    ? `${formatCost(chat.usage.costUsd, fx, { reply: true })} · ${formatTokens(chat.usage.tokens)}`
     : undefined;
 
   return (
@@ -166,7 +166,7 @@ function ChatRow({
             tabIndex={-1}
             className={cn('mr-3 text-muted-foreground', !drawer && 'group-hover:hidden')}
           >
-            <Lock size={12} />
+            <Lock size={16} />
           </span>
         </Tip>
       )}

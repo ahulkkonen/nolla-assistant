@@ -167,6 +167,17 @@ export const THINKING_TURN = {
   usage: { prompt_tokens: 3100, completion_tokens: 300, reasoning_tokens: 120, cost: 0.0134 },
 };
 
+/**
+ * Phase 14: a web search the model asks for, and its reply; `zdr/search` answers with the fake's
+ * two weather citations. With the sidecar on, the last user message of a chat call is the memory
+ * block, so these turns cannot match; the title job gets its own matched turn (`Aiheet:`).
+ */
+export const searchTurns = (app: App, query: string, reply: string) => {
+  app.llm.push({ toolCalls: [{ name: 'web_search', args: { query } }] });
+  app.llm.push({ text: reply });
+  app.llm.push({ ...titleTurn('Sää', 'Käyttäjä kysyi säästä.'), match: 'Aiheet:' });
+};
+
 /** The surrogate of Matti Virtanen, typed as a real person's name: a collision (phase 12). */
 export const COLLIDING = 'Pekka Laaksonen';
 

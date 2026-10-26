@@ -52,6 +52,42 @@ export function sumUsage(list: (CallUsage | undefined)[]): CallUsage | undefined
   };
 }
 
+type Turnish = {
+  id: string;
+  role: 'user' | 'assistant';
+  text: string;
+  usage?: CallUsage | undefined;
+};
+
+/**
+ * Each reply's usage (decision 15): its call plus the tool rounds before it that have no text.
+ * Rounds of a turn that ended without a reply (an abort, an error) go to the reply before them,
+ * so the replies add up to the chat total; while a turn runs (`running`), its rounds wait.
+ */
+export function replyUsage(messages: Turnish[], running: boolean) {
+  const out = new Map<string, CallUsage>();
+  let pending: CallUsage[] = [];
+  let lastReply: string | undefined;
+  const settle = () => {
+    const merged = lastReply && pending.length && sumUsage([...pending, out.get(lastReply)]);
+    if (lastReply && merged) out.set(lastReply, merged);
+    pending = [];
+  };
+  for (const m of messages) {
+    if (m.role === 'user') settle();
+    else if (!m.text) {
+      if (m.usage) pending.push(m.usage);
+    } else {
+      const u = sumUsage([...pending, m.usage]);
+      pending = [];
+      if (u) out.set(m.id, u);
+      lastReply = m.id;
+    }
+  }
+  if (!running) settle();
+  return out;
+}
+
 /** "12 s", "1 min 5 s"; at least 1 s. */
 export function duration(ms: number) {
   const s = Math.max(1, Math.round(ms / 1000));
@@ -61,3 +97,28 @@ export function duration(ms: number) {
 /** The closed thinking row: "Ajatteli 12 s", or "Ajatteli" without a time. */
 export const thoughtFor = (ms: number | null | undefined) =>
   ms === null || ms === undefined ? 'Ajatteli' : `Ajatteli ${duration(ms)}`;
+
+/**
+ * Lower case that keeps every offset: the whole string when its length stays, else char by
+ * char, keeping a char whose lower case has another length (`İ` → `i̇`).
+ */
+export function sameLengthLower(s: string) {
+  const all = s.toLocaleLowerCase('fi');
+  if (all.length === s.length) return all;
+  return [...s]
+    .map((ch) => {
+      const low = ch.toLocaleLowerCase('fi');
+      return low.length === ch.length ? low : ch;
+    })
+    .join('');
+}
+
+/** Offsets of `q` in `text`, case-insensitive (`fi`), without overlaps. */
+export function findOffsets(text: string, q: string): number[] {
+  const needle = sameLengthLower(q);
+  if (!needle) return [];
+  const hay = sameLengthLower(text);
+  const out: number[] = [];
+  for (let i = hay.indexOf(needle); i >= 0; i = hay.indexOf(needle, i + needle.length)) out.push(i);
+  return out;
+}

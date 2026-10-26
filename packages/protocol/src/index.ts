@@ -408,6 +408,154 @@ export const FileError = z.enum([
 ]);
 export type FileError = z.infer<typeof FileError>;
 
+/** Admin (docs/decisions/phase-15-admin.md). The agent every install has; it cannot be deleted. */
+export const DEFAULT_AGENT_ID = 'assistant';
+const toolNames = z.array(z.string().min(1).max(64));
+
+/** `agents/<id>.yaml` (phase-5 decision 1); the loader and the editor use it. `prompt` is a path. */
+export const AgentFile = z
+  .object({
+    id: z.string().regex(/^[a-z0-9-]{1,64}$/),
+    name: z.string().min(1).max(80),
+    /** An alias (`zdr/strong`) or a ZDR catalog model (`zdr/google/gemini-4-argon`). */
+    model: z
+      .string()
+      .regex(/^zdr\/(?:[A-Za-z0-9._-]+|[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*)$/),
+    prompt: z.string().min(1),
+    skills: toolNames.default([]),
+    tools: z.object({ allow: toolNames, mcp: toolNames.optional() }).strict(),
+    approval: z
+      .object({ always: toolNames.default([]), never: toolNames.default([]) })
+      .strict()
+      .default({ always: [], never: [] }),
+    subagents: z.boolean().default(false),
+  })
+  .strict();
+export type AgentFile = z.infer<typeof AgentFile>;
+
+/** One profile file as the editor gets it. */
+export const AgentDoc = z.object({
+  id: z.string(),
+  /** Null when the file fails the schema; `error` says why. */
+  profile: AgentFile.nullable(),
+  /** The file text as it is on disk. */
+  yaml: z.string(),
+  /** The prompt file's text. */
+  prompt: z.string(),
+  error: z.string().nullable(),
+});
+export type AgentDoc = z.infer<typeof AgentDoc>;
+
+export const AgentPrompt = z.string().min(1).max(100_000);
+/** Body of `POST /api/agents` and `PUT /api/agents/:id`: the YAML tab's text or the form's fields. */
+export const AgentSave = z.union([
+  z.object({ yaml: z.string().min(1).max(100_000), prompt: AgentPrompt }),
+  z.object({ profile: z.record(z.string(), z.unknown()), prompt: AgentPrompt }),
+]);
+export type AgentSave = z.infer<typeof AgentSave>;
+
+/** `GET /api/agents`. */
+export const AgentList = z.object({
+  defaultId: z.string(),
+  agents: z.array(AgentDoc),
+  options: z.object({
+    /** The tool names a profile can allow. */
+    tools: z.array(z.string()),
+    /** The servers of `infra/mcp.yaml`. */
+    mcp: z.array(z.string()),
+    /** The folders of `skills/`. */
+    skills: z.array(z.string()),
+    /** The fixed aliases of `infra/models.json`; catalog models come from `models.state`. */
+    aliases: z.array(z.object({ id: z.string(), name: z.string() })),
+  }),
+});
+export type AgentList = z.infer<typeof AgentList>;
+
+/** Body of `POST /api/automations` and `PUT /api/automations/:id`; the server's schema checks it. */
+export const AutomationSave = z.record(z.string(), z.unknown());
+/** Body of `POST /api/automations/preview`; the answer is `{ runs: string[] }` (ISO 8601 UTC). */
+export const CronPreview = z.object({
+  cron: z.string().min(1).max(200),
+  timezone: z.string().min(1).max(64).default('Europe/Helsinki'),
+});
+
+/** The automation form's schedule (phase-15 decision 8). `day`: 0 Sunday, 1 Monday … 6 Saturday. */
+export type Schedule =
+  | { kind: 'daily' | 'weekdays'; hour: number; minute: number }
+  | { kind: 'weekly'; day: number; hour: number; minute: number }
+  | { kind: 'custom'; cron: string };
+
+export function scheduleToCron(s: Schedule): string {
+  if (s.kind === 'custom') return s.cron.trim();
+  const dow = s.kind === 'weekly' ? String(s.day) : s.kind === 'daily' ? '*' : '1-5';
+  return `${s.minute} ${s.hour} * * ${dow}`;
+}
+
+/** A preset when `cron` is one (`7` reads as Sunday), else `custom`. */
+export function cronToSchedule(cron: string): Schedule {
+  const m = /^(\d{1,2}) (\d{1,2}) \* \* (\*|1-5|[0-7])$/.exec(cron.trim());
+  const minute = Number(m?.[1]);
+  const hour = Number(m?.[2]);
+  if (!m || minute > 59 || hour > 23) return { kind: 'custom', cron };
+  if (m[3] === '*') return { kind: 'daily', hour, minute };
+  if (m[3] === '1-5') return { kind: 'weekdays', hour, minute };
+  return { kind: 'weekly', day: Number(m[3]) % 7, hour, minute };
+}
+
+/** `GET /api/auth/sessions`: one signed-in device. */
+export const DeviceSession = z.object({
+  id: z.string(),
+  /** From the User-Agent at login, e.g. "Safari · iPhone"; null for older sessions. */
+  label: z.string().nullable(),
+  createdAt: z.iso.datetime(),
+  lastSeenAt: z.iso.datetime(),
+  /** The session of the request. */
+  current: z.boolean(),
+});
+export type DeviceSession = z.infer<typeof DeviceSession>;
+
+/** Body of `POST /api/export` (phase-15 decision 16). */
+export const ExportStart = z.object({
+  passphrase: z.string().min(12).max(1024),
+  unmask: z.boolean().default(false),
+});
+
+export const ExportJob = z.object({
+  id: z.string(),
+  status: z.enum(['building', 'ready', 'failed']),
+  masked: z.boolean(),
+  done: z.int().min(0),
+  total: z.int().min(0),
+  error: z.enum(['pseudo_down', 'too_large', 'failed']).nullable(),
+  /** Bytes of the encrypted file, when ready. */
+  size: z.int().min(0).nullable(),
+  fileName: z.string().nullable(),
+  createdAt: z.iso.datetime(),
+  /** When a ready file is deleted. */
+  expiresAt: z.iso.datetime().nullable(),
+});
+export type ExportJob = z.infer<typeof ExportJob>;
+
+/** PBKDF2-HMAC-SHA256 rounds of the export file (OWASP 2023), the `-iter` of the command below. */
+export const EXPORT_PBKDF2_ITER = 600_000;
+/** The command that decrypts an export file into the zip; it asks for the passphrase. */
+export const decryptCommand = (fileName: string) =>
+  `openssl enc -d -aes-256-cbc -pbkdf2 -iter ${EXPORT_PBKDF2_ITER} -md sha256 -in ${fileName} -out ${fileName.replace(/\.enc$/, '')}`;
+
+/** `{ error }` codes of the admin routes; `bad_message` also has `path` and `message`. */
+export const AdminError = z.enum([
+  'bad_message',
+  'not_found',
+  'exists',
+  'default_agent',
+  'in_use',
+  'busy',
+  'gone',
+  'too_large',
+  'pseudo_down',
+]);
+export type AdminError = z.infer<typeof AdminError>;
+
 /** Client to server messages. `auth.login` is itself a union on `method`. */
 const authLogin = z.literal('auth.login');
 export const AuthLogin = z.discriminatedUnion('method', [
@@ -453,6 +601,8 @@ export const ClientMessage = z.discriminatedUnion('type', [
     text: z.string().max(100_000),
     attachments: z.array(AttachmentRef).max(20).default([]),
     agentId: id64.optional(),
+    /** The client's own id for the message; `message.accepted` maps it to the entry id. */
+    localId: z.string().max(64).optional(),
   }),
   /** Runs the chat's last user turn again in place: the server rewinds the branch to before it. */
   z.object({ type: z.literal('user.retry'), chatId: id64 }),
@@ -524,6 +674,8 @@ export const ClientMessage = z.discriminatedUnion('type', [
     /** A user message entry on the chat's current branch. */
     messageId: id64,
     text: z.string().min(1).max(100_000),
+    /** The client's id for the edited text in the new chat (`message.accepted`). */
+    localId: z.string().max(64).optional(),
   }),
   z.object({ type: z.literal('thinking.get'), chatId: id64, messageId: id64 }),
   z.object({ type: z.literal('usage.get'), month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/) }),
@@ -591,6 +743,13 @@ export const ServerMessage = z.discriminatedUnion('type', [
     annotations: z.array(Annotation),
   }),
   z.object({ type: z.literal('message.final'), chatId: id64, message: Message }),
+  /** A user message that this client sent with `localId` is stored as entry `messageId`. */
+  z.object({
+    type: z.literal('message.accepted'),
+    chatId: id64,
+    localId: z.string(),
+    messageId: id64,
+  }),
   /** The streamed message `messageId` (stream id) thinks now, or stopped thinking. */
   z.object({
     type: z.literal('message.thinking'),
@@ -627,7 +786,23 @@ export const ServerMessage = z.discriminatedUnion('type', [
         estimated: z.boolean(),
       }),
     ),
+    /** Per agent id, highest cost first; null: a task without a chat (phase-15 decision 19). */
+    agents: z
+      .array(
+        z.object({
+          agentId: z.string().nullable(),
+          calls: z.int().min(0),
+          tokens: z.int().min(0),
+          costUsd: z.number().min(0),
+          estimated: z.boolean(),
+        }),
+      )
+      .optional(),
+    /** `web_search` calls in the month. */
+    searches: z.int().min(0).optional(),
   }),
+  /** The full export job (phase-15 decision 16); null after download or delete. */
+  z.object({ type: z.literal('export.state'), job: ExportJob.nullable() }),
   z.object({
     type: z.literal('tool.start'),
     chatId: id64,
@@ -734,6 +909,13 @@ export const ServerMessage = z.discriminatedUnion('type', [
         lastStatus: z.string().nullable(),
         lastChatId: z.string().nullable(),
         deliver: z.enum(['chat', 'push', 'both']).optional(),
+        /** Phase-15 editor fields; `name` is unset when the file has none (show the id). */
+        name: z.string().optional(),
+        timezone: z.string().optional(),
+        prompt: z.string().optional(),
+        autoApprove: z.array(z.string()).optional(),
+        /** Null when disabled. */
+        nextRunAt: z.iso.datetime().nullable().optional(),
       }),
     ),
   }),

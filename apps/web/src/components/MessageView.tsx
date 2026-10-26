@@ -332,8 +332,10 @@ type Props = {
   subagents?: SubagentChild[];
   /** User message: "Haarauta" starts a new chat from the edited text (phase 13). */
   onEdit?: (text: string) => void;
-  /** A fork of this message is on its way: "Haarauta" waits. */
+  /** A fork is on its way: "Haarauta" waits for its answer. */
   forking?: boolean;
+  /** False while the message has no entry id yet: "Haarauta" asks for a reopen. */
+  canFork?: boolean;
   /** The thinking row, above the tool rows and the text (phase 13). */
   thinking?: ReactNode;
   /** The action row meta: the time, and a reply's cost and tokens (phase 13). */
@@ -351,16 +353,18 @@ const small = 'size-8';
 function EditBox({
   text,
   busy,
+  canFork,
   onSend,
   onCancel,
 }: {
   text: string;
   busy: boolean;
+  canFork: boolean;
   onSend: (t: string) => void;
   onCancel: () => void;
 }) {
   const [value, setValue] = useState(text);
-  const ready = !!value.trim() && !busy;
+  const ready = !!value.trim() && !busy && canFork;
   const hint = useId();
   return (
     <div className="flex w-full max-w-[80%] flex-col gap-2 max-md:max-w-full">
@@ -381,7 +385,9 @@ function EditBox({
         className="field-sizing-fixed resize-y rounded-xl px-4"
       />
       <p id={hint} className="text-meta text-muted-foreground">
-        Muokattu viesti aloittaa uuden keskustelun. Tämä keskustelu ei muutu.
+        {canFork
+          ? 'Muokattu viesti aloittaa uuden keskustelun. Tämä keskustelu ei muutu.'
+          : 'Avaa keskustelu uudelleen, niin voit haarauttaa tämän viestin.'}
       </p>
       <div className="flex justify-end gap-2">
         <Button variant="outline" onClick={onCancel}>
@@ -409,6 +415,7 @@ export function MessageView({
   subagents = [],
   onEdit,
   forking = false,
+  canFork = true,
   thinking,
   meta,
   onRetry,
@@ -464,7 +471,13 @@ export function MessageView({
         )}
         {user && editing && onEdit ? (
           // Stays open while the fork is on its way: a failure keeps the text for a retry.
-          <EditBox text={text} busy={forking} onCancel={() => setEditing(false)} onSend={onEdit} />
+          <EditBox
+            text={text}
+            busy={forking}
+            canFork={canFork}
+            onCancel={() => setEditing(false)}
+            onSend={onEdit}
+          />
         ) : user ? (
           text && (
             <div
@@ -485,8 +498,9 @@ export function MessageView({
           <div
             className={cn(
               'flex h-8 items-center gap-1 transition-opacity duration-100 [-webkit-touch-callout:none] max-md:h-11',
-              // A user turn's row sits in the 40 px gap below the bubble (Thread.tsx).
-              user && 'absolute top-full right-0 mt-1',
+              // A user turn's row, and an older reply's, sits in the 40 px gap below it (Thread.tsx).
+              (user || (!latest && !live)) && 'absolute top-full mt-1',
+              user ? 'right-0' : 'left-0',
               // Hover devices: on hover or focus, except under the latest assistant turn.
               !(latest && !user) &&
                 '[@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:focus-within:opacity-100',
@@ -522,7 +536,9 @@ export function MessageView({
                     {pressed ? <EyeOff size={16} /> : <Eye size={16} />}
                   </IconButton>
                 )}
-                {!user && meta && <MessageMeta createdAt={meta.createdAt} usage={meta.usage} />}
+                {!user && meta && (
+                  <MessageMeta createdAt={meta.createdAt} usage={meta.usage} focusable={!!latest} />
+                )}
               </>
             )}
           </div>

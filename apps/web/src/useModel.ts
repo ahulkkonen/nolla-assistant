@@ -24,6 +24,9 @@ export const aliasName = (alias: string) => {
  * A model id as LiteLLM got it ('zdr/google/gemini-4-argon', 'zdr/strong'): the catalog name,
  * else the alias name, else the id (phase-13 cost tooltip and Käyttö).
  */
+/** The route prefix of a LiteLLM id: `open/` runs without ZDR (phase 10). */
+export const openRoute = (id: string) => id.startsWith('open/');
+
 export function modelLabel(catalog: CatalogModel[] | undefined, id: string) {
   const bare = id.replace(/^(zdr|open)\//, '');
   const hit = catalog?.find((m) => m.id === bare);

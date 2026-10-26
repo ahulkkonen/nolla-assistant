@@ -1,10 +1,11 @@
-import { TOOL_STATUS_WORD } from '@pa/protocol';
+import { TOOL_STATUS_WORD, WEB_SEARCH_TOOL } from '@pa/protocol';
 import { AlertCircle, ArrowDown, GitBranch, MessageSquare, ShieldAlert } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { FAILED_TEXT, type UiMessage, useStore } from '../store.ts';
-import { sumUsage } from '../thread.ts';
+import { announce } from '../announce.ts';
+import { FAILED_TEXT, serverIdOf, type UiMessage, useStore } from '../store.ts';
+import { replyUsage } from '../thread.ts';
 import { useModel } from '../useModel.ts';
 import { forkChat, openChat, retryTurn, sendUserMessage, setDataPolicy } from '../ws.ts';
 import { ApprovalCard } from './ApprovalCard.tsx';
@@ -42,16 +43,6 @@ function ForkRow({ chatId }: { chatId: string }) {
   );
 }
 
-/** Screen-reader announcement in the app's live regions (App.tsx; brief 7.8). */
-export function announce(text: string, assertive = false) {
-  const el = document.getElementById(assertive ? 'live-assertive' : 'live-polite');
-  if (!el) return;
-  el.textContent = '';
-  setTimeout(() => {
-    el.textContent = text;
-  }, 50);
-}
-
 /** The user message before `i`, for "retry". */
 const previousUser = (messages: UiMessage[], i: number) =>
   messages.slice(0, i).findLast((m) => m.role === 'user' && m.text);
@@ -78,7 +69,10 @@ function useAnnouncements(chatId: string | null) {
     for (const a of approvals) {
       if (a.expired || was.current.approvals.has(a.requestId)) continue;
       was.current.approvals.add(a.requestId);
-      announce(`Hyväksyntä odottaa: ${a.tool}`, true);
+      announce(
+        a.tool === WEB_SEARCH_TOOL ? 'Haku odottaa hyväksyntää' : `Hyväksyntä odottaa: ${a.tool}`,
+        true,
+      );
     }
   }, [approvals]);
 }
@@ -96,7 +90,7 @@ export function Thread() {
   const held = useStore((s) => (chatId ? s.held[chatId] !== undefined : false));
   const showThinking = useStore((s) => s.showThinking);
   const thinkingLive = useStore((s) => (chatId ? s.thinkingLive[chatId] : undefined));
-  const forking = useStore((s) => s.pendingFork?.messageId);
+  const forking = useStore((s) => s.pendingFork);
   const refusal = useStore((s) => (chatId ? s.zdrRefused[chatId] : undefined));
   const { name: modelName, policy } = useModel();
   // Only while the chat keeps the refused model: the name in the alert is that model's.
@@ -127,6 +121,11 @@ export function Thread() {
   }, [messages, scrollTo]);
 
   const lastUser = messages.findLastIndex((m) => m.role === 'user');
+  // Each reply's cost and tokens, its tool rounds included (decision 15); once per thread change.
+  const usageOf = useMemo(
+    () => replyUsage(messages, !!(stream || running)),
+    [messages, stream, running],
+  );
   // Phase 12: the toast goes after 8 s, so the held bubble says what it waits for.
   const heldNote = (
     <p className="text-meta text-muted-foreground">
@@ -160,9 +159,10 @@ export function Thread() {
   const joinLive =
     !!(stream || running) && lastTurn?.role === 'assistant' && !lastTurn.items.at(-1)?.m.text;
   const cards = approvals.map((a) => <ApprovalCard key={a.requestId} a={a} />);
-  // The live thinking line belongs to the message it streams (or to the next one, before text).
+  // The live line stays until the final message that owns it arrives (`message.final` clears it),
+  // also when a tool round has moved the stream on.
   const liveThinking =
-    showThinking && thinkingLive && (!stream || stream.messageId === thinkingLive.messageId) ? (
+    showThinking && thinkingLive ? (
       <ThinkingLive
         startedAt={thinkingLive.startedAt}
         {...(thinkingLive.endedAt ? { endedAt: thinkingLive.endedAt } : {})}
@@ -225,7 +225,7 @@ export function Thread() {
         className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-4"
       >
         <div className="mx-auto flex w-full max-w-(--thread-max) flex-col gap-6 py-6">
-          <FindBar scroller={scroller} watch={messages} />
+          <FindBar scroller={scroller} />
           {chatId && <ForkRow chatId={chatId} />}
           {turns.map((t, n) => {
             const last = n === turns.length - 1;
@@ -237,18 +237,15 @@ export function Thread() {
                 className={cn(
                   'flex flex-col gap-2 animate-fade-in',
                   t.role === 'user' && 'mb-4 max-md:mb-6',
+                  // An older reply's action row sits in the gap below it, as a user turn's does.
+                  t.role === 'assistant' && !last && '[@media(hover:hover)]:mb-4',
                   t.role === 'user' && t.items.some(({ i }) => i === lastUser) && 'max-md:mb-12',
                 )}
               >
                 <h2 className="sr-only">{t.role === 'user' ? 'Sinä sanoit' : 'Avustaja sanoi'}</h2>
-                {t.items.map(({ m, i }, j) => {
+                {t.items.map(({ m, i }) => {
                   const prev = m.role === 'assistant' ? previousUser(messages, i) : undefined;
-                  // A reply's cost: its own and the tool rounds before it in the turn (decision 15).
-                  const from = t.items.findLastIndex((x, k) => k < j && !!x.m.text) + 1;
-                  const usage =
-                    m.role === 'assistant' && m.text
-                      ? sumUsage(t.items.slice(from, j + 1).map((x) => x.m.usage))
-                      : undefined;
+                  const serverId = serverIdOf(m);
                   return (
                     <div key={m.id} data-message-id={m.id}>
                       <MessageView
@@ -259,11 +256,16 @@ export function Thread() {
                         attachments={m.attachments}
                         tools={m.tools}
                         latest={i === lastUser || i === lastAssistant}
-                        meta={{ createdAt: m.createdAt, usage }}
+                        meta={{ createdAt: m.createdAt, usage: usageOf.get(m.id) }}
                         {...(showThinking && m.thinking && chatId
                           ? {
                               thinking: (
-                                <ThinkingRow chatId={chatId} messageId={m.id} ms={m.thinking.ms} />
+                                <ThinkingRow
+                                  chatId={chatId}
+                                  messageId={m.id}
+                                  ms={m.thinking.ms}
+                                  createdAt={m.createdAt}
+                                />
                               ),
                             }
                           : {})}
@@ -272,8 +274,12 @@ export function Thread() {
                         // "Muokkaa" forks (phase 13); not while a reply streams.
                         {...(m.role === 'user' && chatId && !stream && !running
                           ? {
-                              onEdit: (text: string) => void forkChat(chatId, m.id, text),
-                              forking: forking === m.id,
+                              // Without its entry id (sent before `message.accepted` existed,
+                              // or the answer never came) the edit box asks for a reopen.
+                              onEdit: (text: string) =>
+                                serverId && forkChat(chatId, serverId, text),
+                              canFork: !!serverId,
+                              forking: !!forking,
                             }
                           : {})}
                         {...(prev

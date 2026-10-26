@@ -1,6 +1,6 @@
 import type { ChatSummary, Message } from '@pa/protocol';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { useStore } from './store.ts';
+import { serverIdOf, useStore } from './store.ts';
 
 const initial = useStore.getState();
 afterEach(() => useStore.setState(initial, true));
@@ -162,7 +162,7 @@ describe('store reducers', () => {
   it('a fork: its chat.state opens with the copied history plus the edited text; an error ends it', () => {
     const { apply } = useStore.getState();
     useStore.setState({
-      pendingFork: { chatId: 'src', messageId: 'u2', text: 'Muokattu', attachments: [] },
+      pendingFork: { chatId: 'src', messageId: 'u2', text: 'Muokattu', localId: 'local-f' },
     });
     const m = (id: string, role: 'user' | 'assistant') =>
       ({ id, role, text: id, annotations: [], attachments: [], tools: [], createdAt: '' }) as never;
@@ -179,16 +179,39 @@ describe('store reducers', () => {
     expect(st.forkedFrom.fork?.title).toBe('Lähde');
 
     useStore.setState({
-      pendingFork: { chatId: 'src', messageId: 'u2', text: 'x', attachments: [] },
+      pendingFork: { chatId: 'src', messageId: 'u2', text: 'x', localId: 'local-g' },
     });
-    apply({ type: 'error', code: 'failed', message: 'Request failed' });
+    // An error of another chat leaves the fork waiting; the source chat's error ends it.
+    apply({ type: 'error', code: 'failed', message: 'x', chatId: 'other' });
+    expect(useStore.getState().pendingFork).not.toBeNull();
+    apply({ type: 'error', code: 'failed', message: 'Request failed', chatId: 'src' });
     expect(useStore.getState().pendingFork).toBeNull();
   });
 
+  it('message.accepted gives a sent message its entry id; its own id stays', () => {
+    useStore.getState().addLocalMessage('c', {
+      id: 'local-1',
+      role: 'user',
+      text: 'Hei',
+      annotations: [],
+      attachments: [],
+      tools: [],
+      createdAt: '2026-01-01T00:00:00.000Z',
+    });
+    const [before] = useStore.getState().messages.c ?? [];
+    expect(before && serverIdOf(before)).toBeUndefined();
+    useStore
+      .getState()
+      .apply({ type: 'message.accepted', chatId: 'c', localId: 'local-1', messageId: 'e1' });
+    const [after] = useStore.getState().messages.c ?? [];
+    expect(after?.id).toBe('local-1');
+    expect(after && serverIdOf(after)).toBe('e1');
+  });
+
   it('a thinking text that fails to load turns the row to its error', () => {
-    useStore.setState({ thinkingText: { a1: { chatId: 'c', state: 'loading' } } });
+    useStore.setState({ thinkingText: { 'c:a1': { chatId: 'c', state: 'loading' } } });
     useStore.getState().apply({ type: 'error', code: 'not_found', message: 'x', chatId: 'c' });
-    expect(useStore.getState().thinkingText.a1?.state).toBe('error');
+    expect(useStore.getState().thinkingText['c:a1']?.state).toBe('error');
   });
 
   it('keeps approval cards until answered, resolved or the chat goes idle', () => {

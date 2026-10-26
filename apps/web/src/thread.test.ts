@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { duration, messageTime, sumUsage, thoughtFor } from './thread.ts';
+import {
+  duration,
+  findOffsets,
+  messageTime,
+  replyUsage,
+  sameLengthLower,
+  sumUsage,
+  thoughtFor,
+} from './thread.ts';
 
 const call = (costUsd: number, estimated = false) => ({
   model: 'zdr/strong',
@@ -33,6 +41,38 @@ describe('thread helpers', () => {
       estimated: true,
     });
     expect(sum?.costUsd).toBeCloseTo(0.03);
+  });
+
+  it('gives each reply its tool rounds; a turn without a reply adds to the reply before it', () => {
+    const msg = (id: string, role: 'user' | 'assistant', text: string, costUsd?: number) => ({
+      id,
+      role,
+      text,
+      ...(costUsd !== undefined ? { usage: call(costUsd) } : {}),
+    });
+    const thread = [
+      msg('u1', 'user', 'Kysy'),
+      msg('t1', 'assistant', '', 0.01),
+      msg('a1', 'assistant', 'Vastaus', 0.02),
+      msg('u2', 'user', 'Toinen'),
+      msg('t2', 'assistant', '', 0.04),
+    ];
+    const done = replyUsage(thread, false);
+    expect(done.get('a1')?.costUsd).toBeCloseTo(0.07);
+    expect(done.get('a1')?.model).toBe('zdr/strong');
+    // While the turn runs, its round waits for its own reply.
+    expect(replyUsage(thread, true).get('a1')?.costUsd).toBeCloseTo(0.03);
+  });
+
+  it('finds every hit, case-insensitive, with offsets that fit the original text', () => {
+    expect(findOffsets('Omena ja OMENAPUU, omena.', 'omena')).toEqual([0, 9, 19]);
+    expect(findOffsets('aaaa', 'aa')).toEqual([0, 2]);
+    expect(findOffsets('teksti', '')).toEqual([]);
+    // "İ" lowers to two code units: kept as it is, so the later offsets stay right.
+    const text = 'İstanbul ja omena';
+    expect(sameLengthLower(text)).toHaveLength(text.length);
+    const [at] = findOffsets(text, 'OMENA');
+    expect(text.slice(at, (at ?? 0) + 5)).toBe('omena');
   });
 
   it('writes the thinking time', () => {

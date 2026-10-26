@@ -21,10 +21,14 @@ export function metaText(createdAt: string, usage: CallUsage | undefined, fx: Fx
 export function MessageMeta({
   createdAt,
   usage,
+  focusable = false,
 }: {
   createdAt: string;
   usage?: CallUsage | undefined;
+  /** Tab stops only under the latest reply; others show their tooltips on hover. */
+  focusable?: boolean;
 }) {
+  const tab = focusable ? { tabIndex: 0 } : {};
   const fx = useStore((s) => s.fx);
   const catalog = useStore((s) => s.models?.catalog);
   const cache = usage ? usage.cacheRead + usage.cacheWrite : 0;
@@ -32,7 +36,7 @@ export function MessageMeta({
     <span className="ml-2 flex min-w-0 items-center gap-1 text-meta text-muted-foreground tabular-nums">
       <Tip label={fullTime(createdAt)}>
         {/* Focus shows the full date too. */}
-        <time dateTime={createdAt} tabIndex={0} className="rounded-xs whitespace-nowrap">
+        <time dateTime={createdAt} {...tab} className="rounded-xs whitespace-nowrap">
           {messageTime(createdAt)}
         </time>
       </Tip>
@@ -59,7 +63,7 @@ export function MessageMeta({
               </>
             }
           >
-            <span tabIndex={0} className="rounded-xs whitespace-nowrap">
+            <span {...tab} className="rounded-xs whitespace-nowrap">
               {formatCost(usage.costUsd, fx, { reply: true, estimated: usage.estimated })}
             </span>
           </Tip>

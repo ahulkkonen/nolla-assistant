@@ -1,6 +1,7 @@
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { SEARCH_DENIED } from '@pa/server/src/search-tool.ts';
 import type { Page } from '@playwright/test';
 import {
   acceptProposal,
@@ -16,6 +17,7 @@ import {
   openVault,
   png,
   search,
+  searchTurns,
   TAX,
   THINKING_TURN,
   taxChat,
@@ -553,6 +555,51 @@ test.describe('thread depth', () => {
     await expect(msgs(page)).toHaveCount(4);
   });
 
+  test('fork: an error keeps the edit box and its text; a double click sends one fork', async ({
+    app,
+    page,
+  }) => {
+    app.llm.push({ text: 'Vastaus.' });
+    app.llm.push({ text: 'Haaran vastaus.' });
+    // The first chat.fork gets an error from here; later ones go to the server, counted.
+    let fail = true;
+    let forks = 0;
+    await page.routeWebSocket(/\/ws$/, (ws) => {
+      const server = ws.connectToServer();
+      ws.onMessage((m) => {
+        const msg = typeof m === 'string' ? JSON.parse(m) : null;
+        if (msg?.type === 'chat.fork') {
+          forks++;
+          if (fail) {
+            fail = false;
+            ws.send(
+              JSON.stringify({ type: 'error', code: 'failed', message: 'x', chatId: msg.chatId }),
+            );
+            return;
+          }
+        }
+        server.send(m);
+      });
+    });
+    await app.login(page);
+    await send(page, 'Kysymys');
+    await expect(page.locator('.md').last()).toHaveText('Vastaus.');
+    await msgs(page).first().hover();
+    await msgs(page).first().getByRole('button', { name: 'Muokkaa' }).click();
+    const box = page.getByLabel('Muokattava viesti');
+    await box.fill('Toisin kysytty');
+    const fork = page.getByRole('button', { name: 'Haarauta' });
+    await fork.click();
+    await expect(page.getByText('Haarautus epäonnistui. Yritä uudelleen.')).toBeVisible();
+    await expect(box).toHaveValue('Toisin kysytty');
+    await expect(fork).toBeEnabled();
+
+    await fork.dblclick();
+    await expect(page.getByRole('button', { name: /^Haarautettu / })).toBeVisible();
+    await expect(page.locator('.md').last()).toHaveText('Haaran vastaus.');
+    expect(forks).toBe(2);
+  });
+
   test('thinking: live row, then "Ajatteli … s" opens to the text; the switch hides it', async ({
     app,
     page,
@@ -589,7 +636,7 @@ test.describe('thread depth', () => {
     const row = page.locator('nav li', { hasText: 'Kasvimaa' });
     await row.hover();
     await row.getByRole('button', { name: 'Lisää: Kasvimaa' }).click();
-    await expect(page.getByRole('menu').getByText('0,01 € · 3,4 k tokenia')).toBeVisible();
+    await expect(page.getByRole('menu').getByText('0,012 € · 3,4 k tokenia')).toBeVisible();
   });
 
   test('find: Ctrl+F, two hits 1/2, Enter 2/2, Esc closes', async ({ app, page }) => {
@@ -601,6 +648,11 @@ test.describe('thread depth', () => {
     const field = page.getByLabel('Etsi keskustelusta');
     await field.fill('omena');
     await expect(page.getByText('1/2', { exact: true })).toBeVisible();
+    // The hits are CSS custom highlights; the DOM keeps its text nodes.
+    const size = () =>
+      // The DOM typings of this package lack the registry's Map methods.
+      (CSS.highlights as unknown as Map<string, Set<Range>>).get('find')?.size;
+    expect(await page.evaluate(size)).toBe(2);
     await field.press('Enter');
     await expect(page.getByText('2/2', { exact: true })).toBeVisible();
     await field.press('Escape');
@@ -615,8 +667,60 @@ test.describe('thread depth', () => {
     await openSettings(page, 'Käyttö');
     const table = page.getByRole('region', { name: 'Mallit' });
     await expect(table.getByText('Gemini 4 Argon')).toBeVisible();
-    await expect(table.getByText('0,01 €')).toBeVisible();
+    await expect(table.getByText('0,012 €')).toBeVisible();
     await expect(page.getByText('Kurssi: EKP 23.10.2026, 1 € = 1,1193 $.')).toBeVisible();
+  });
+});
+
+test.describe('web search', () => {
+  // Phase-14 gate: the row and its links; a vault name asks; approve runs it; deny tells the model.
+  test.use({ pseudo: 'full' });
+
+  test('search: links in the row, a vault name raises the card, approve runs, deny is told', async ({
+    app,
+    page,
+  }) => {
+    searchTurns(app, 'Helsingin sää', 'Pilvistä, 7 astetta.');
+    await app.login(page);
+    await send(page, 'Millainen sää on Helsingissä?');
+    await expect(page.locator('.md').last()).toHaveText('Pilvistä, 7 astetta.');
+    await thread(page)
+      .getByRole('button', { name: /^web_search 2 tulosta/ })
+      .click();
+    const list = thread(page).getByRole('list', { name: 'Hakutulokset' });
+    const yle = list.getByRole('link', { name: 'Sää | Yle' });
+    await expect(yle).toHaveAttribute('href', 'https://yle.fi/saa');
+    await expect(yle).toHaveAttribute('target', '_blank');
+    await expect(yle).toHaveAttribute('rel', 'noopener noreferrer');
+    await expect(list.getByText('ilmatieteenlaitos.fi', { exact: true })).toBeVisible();
+
+    // The model's query names a vault person: the card shows the real query; approve runs it.
+    app.llm.push({
+      toolCalls: [{ name: 'web_search', args: { query: 'Pekka Laaksonen hallitus' } }],
+    });
+    app.llm.push({
+      citations: [
+        { url: 'https://valtioneuvosto.example/mv', title: 'Matti Virtanen – ministeri' },
+      ],
+    });
+    app.llm.push({ text: 'Löytyi.' });
+    await send(page, 'Hae Matti Virtanen');
+    const card = page.getByRole('region', { name: 'Haku sisältää henkilötiedon' });
+    await expect(card).toContainText('Matti Virtanen hallitus');
+    await expect(card).toContainText('Kysely lähtee hakupalveluun sellaisenaan.');
+    await card.getByRole('button', { name: 'Hyväksy' }).click();
+    await expect(page.locator('.md').last()).toHaveText('Löytyi.');
+    await expect(thread(page).getByRole('button', { name: /^web_search 1 tulos/ })).toBeVisible();
+
+    // Deny: no search, the row says "estetty", and the model reads why.
+    app.llm.push({ toolCalls: [{ name: 'web_search', args: { query: 'Pekka Laaksonen' } }] });
+    app.llm.push({ text: 'Selvä, haen ilman nimeä.' });
+    await send(page, 'Hae vielä Matti Virtanen');
+    await expect(card).toBeVisible();
+    await card.getByRole('button', { name: 'Hylkää' }).click();
+    await expect(page.locator('.md').last()).toHaveText('Selvä, haen ilman nimeä.');
+    await expect(thread(page).getByRole('button', { name: /^web_search estetty/ })).toBeVisible();
+    expect(JSON.stringify(app.llm.requests.at(-1)?.body)).toContain(SEARCH_DENIED);
   });
 });
 

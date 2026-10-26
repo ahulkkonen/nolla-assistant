@@ -20,7 +20,15 @@ import { create } from 'zustand';
 
 /** `output`: live `tool.update` text while the tool runs. */
 export type ToolView = ToolRow & { argsPreview?: string; output?: string };
-export type UiMessage = Omit<Message, 'tools'> & { tools: ToolView[] };
+/**
+ * `serverId`: the entry id of a message this client sent (`message.accepted`); its `id` stays the
+ * local one, so the row does not remount. A message from the server has its entry id as `id`.
+ */
+export type UiMessage = Omit<Message, 'tools'> & { tools: ToolView[]; serverId?: string };
+/** The entry id of a message, or undefined while the server has not stored it yet. */
+export const serverIdOf = (m: UiMessage) => (m.id.startsWith('local-') ? m.serverId : m.id);
+/** Key of `thinkingText`: one assistant entry of one chat. */
+export const thinkingKey = (chatId: string, messageId: string) => `${chatId}:${messageId}`;
 export type Streaming = {
   messageId: string;
   text: string;
@@ -107,16 +115,20 @@ type State = {
   fx: FxRate | null;
   /** The source of each forked chat from its `chat.state` (phase 13); null: not a fork. */
   forkedFrom: Record<string, ForkLink | null>;
-  /** A `chat.fork` sent from this client, until its `chat.state` (or an error) arrives. */
+  /**
+   * A `chat.fork` sent from this client, until its `chat.state` (or an error) arrives. `localId`
+   * is the edited text's message in the new chat; `forkId` the new chat once `chat.created` came.
+   */
   pendingFork: {
     chatId: string;
     messageId: string;
     text: string;
-    attachments: AttachmentRef[];
+    localId: string;
+    forkId?: string;
   } | null;
   /** The streamed message that thinks now, per chat (`message.thinking`); `endedAt` once it stopped. */
   thinkingLive: Record<string, { messageId: string; startedAt: number; endedAt?: number }>;
-  /** Thinking text per assistant message id, loaded on the first open of its row (`thinking.get`). */
+  /** Thinking text per `thinkingKey`, loaded on the first open of its row (`thinking.get`). */
   thinkingText: Record<
     string,
     | { chatId: string; state: 'loading' | 'error' }
@@ -413,6 +425,10 @@ export const useStore = create<State>()((set, get) => {
           }));
         case 'chat.created':
           return set((st) => ({
+            // The fork this client asked for: its chat opens now, its state comes next.
+            ...(st.pendingFork && !st.pendingFork.forkId
+              ? { pendingFork: { ...st.pendingFork, forkId: msg.chat.id } }
+              : {}),
             chats: sortChats([msg.chat, ...st.chats.filter((c) => c.id !== msg.chat.id)]),
             activeChatId: msg.chat.id,
             messages: { ...st.messages, [msg.chat.id]: st.messages[msg.chat.id] ?? [] },
@@ -448,6 +464,8 @@ export const useStore = create<State>()((set, get) => {
           return set((st) => {
             // Phase 13: the fork this client asked for: the copied history, then the edited text
             // as the optimistic user message (the server does not echo it).
+            // `chat.state` holds the copied history only: the server stores the edited text when
+            // the turn starts, and `message.accepted` gives this message its entry id then.
             const fork = st.pendingFork;
             const mine =
               fork &&
@@ -456,11 +474,11 @@ export const useStore = create<State>()((set, get) => {
             const local: UiMessage[] = mine
               ? [
                   {
-                    id: `local-${crypto.randomUUID()}`,
+                    id: fork.localId,
                     role: 'user',
                     text: fork.text,
                     annotations: [],
-                    attachments: fork.attachments,
+                    attachments: [],
                     tools: [],
                     createdAt: new Date().toISOString(),
                   },
@@ -495,11 +513,20 @@ export const useStore = create<State>()((set, get) => {
                 }
               : {};
           });
+        case 'message.accepted':
+          return set((st) => ({
+            messages: {
+              ...st.messages,
+              [msg.chatId]: (st.messages[msg.chatId] ?? []).map((m) =>
+                m.id === msg.localId ? { ...m, serverId: msg.messageId } : m,
+              ),
+            },
+          }));
         case 'thinking.text':
           return set((st) => ({
             thinkingText: {
               ...st.thinkingText,
-              [msg.messageId]: {
+              [thinkingKey(msg.chatId, msg.messageId)]: {
                 chatId: msg.chatId,
                 state: 'ok',
                 text: msg.text,
@@ -584,7 +611,12 @@ export const useStore = create<State>()((set, get) => {
         case 'tool.update':
           return patchTool(msg.chatId, msg.callId, { output: msg.output.slice(-2000) });
         case 'tool.end':
-          return patchTool(msg.chatId, msg.callId, { status: msg.status, summary: msg.summary });
+          return patchTool(msg.chatId, msg.callId, {
+            status: msg.status,
+            summary: msg.summary,
+            // Phase 14: a `web_search` that ran carries its query and links.
+            ...(msg.search ? { search: msg.search } : {}),
+          });
         case 'agent.status':
           return set((st) => ({
             agentStatus: { ...st.agentStatus, [msg.chatId]: msg.state },
@@ -690,6 +722,7 @@ export const useStore = create<State>()((set, get) => {
           const st0 = get();
           if (
             st0.pendingFork &&
+            msg.chatId === st0.pendingFork.chatId &&
             ['bad_message', 'failed', 'not_found', 'pseudo_down'].includes(msg.code)
           ) {
             set({ pendingFork: null });
@@ -699,9 +732,10 @@ export const useStore = create<State>()((set, get) => {
                 : 'Haarautus epäonnistui. Yritä uudelleen.',
             );
           }
-          // A thinking text that could not load: its row says so, no toast.
+          // A thinking text that could not load: its row says so, no toast. The answer names the
+          // chat, not the message, so every pending row of that chat takes it.
           const loading = Object.entries(st0.thinkingText).filter(
-            ([, t]) => t.state === 'loading' && (!msg.chatId || t.chatId === msg.chatId),
+            ([, t]) => t.state === 'loading' && msg.chatId && t.chatId === msg.chatId,
           );
           if (loading.length && (msg.code === 'not_found' || msg.code === 'pseudo_down'))
             return set((st) => ({
@@ -712,11 +746,12 @@ export const useStore = create<State>()((set, get) => {
                 ),
               },
             }));
-          // `chat.open` of a chat deleted elsewhere (e.g. while offline) answers not_found.
+          // `chat.open` of a chat deleted elsewhere (e.g. while offline) answers not_found; a find
+          // query for it must not open in another chat.
           if (msg.code === 'not_found') {
             const st = get();
             if (st.activeChatId && !st.chats.some((c) => c.id === st.activeChatId))
-              set({ activeChatId: null, scrollTo: null });
+              set({ activeChatId: null, scrollTo: null, findQuery: null });
           }
           // A ZDR refusal asks for consent inline (phase-10 UI), also when the chat opens later;
           // in a chat in the background a toast says so too.
@@ -796,6 +831,10 @@ export const useStore = create<State>()((set, get) => {
       set((st) => ({
         ...endTurn(st, chatId),
         messages: { ...st.messages, [chatId]: (st.messages[chatId] ?? []).slice(0, keep) },
+        // A rerun's reply is a new entry: no thinking text of this chat carries over.
+        thinkingText: Object.fromEntries(
+          Object.entries(st.thinkingText).filter(([, t]) => t.chatId !== chatId),
+        ),
       })),
     // Toasts (brief 7.5): 4 s, errors 6 s with a close button.
     pushError(message) {
