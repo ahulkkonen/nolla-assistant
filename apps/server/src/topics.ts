@@ -39,11 +39,16 @@ export type ChatMessage = { role: 'system' | 'user' | 'assistant'; content: stri
 const TASK_MODEL = 'zdr/task-small';
 
 /**
- * JSON-only calls to the LiteLLM alias `zdr/task-small`: validates the reply with `schema` and
+ * JSON-only calls to the LiteLLM alias `zdr/task-small` (or `model`): validates the reply with `schema` and
  * retries once with a repair message. Resolves `undefined` when the reply stays invalid. Each call
  * goes to `onUsage` as a `task` row of `chatId` (phase-13 decision 14).
  */
-export function taskSmall(litellmUrl: string, litellmMasterKey: string, onUsage?: RecordUsage) {
+export function taskSmall(
+  litellmUrl: string,
+  litellmMasterKey: string,
+  onUsage?: RecordUsage,
+  model = TASK_MODEL,
+) {
   let jsonMode = true;
   const complete = async (messages: ChatMessage[], chatId: string | null): Promise<string> => {
     for (;;) {
@@ -54,7 +59,7 @@ export function taskSmall(litellmUrl: string, litellmMasterKey: string, onUsage?
           authorization: `Bearer ${litellmMasterKey}`,
         },
         body: JSON.stringify({
-          model: TASK_MODEL,
+          model,
           stream: false,
           messages,
           ...(jsonMode ? { response_format: { type: 'json_object' } } : {}),
@@ -71,7 +76,7 @@ export function taskSmall(litellmUrl: string, litellmMasterKey: string, onUsage?
         choices?: { message?: { content?: string | null } }[];
         usage?: unknown;
       };
-      onUsage?.({ kind: 'task', chatId }, rawUsage(TASK_MODEL, body.usage, onUsage.warn));
+      onUsage?.({ kind: 'task', chatId }, rawUsage(model, body.usage, onUsage.warn));
       return body.choices?.[0]?.message?.content ?? '';
     }
   };

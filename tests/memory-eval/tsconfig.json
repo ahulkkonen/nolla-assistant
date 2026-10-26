@@ -1,0 +1,8 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  // The server's fastify augmentations (request.userId, multipart) live in these two files.
+  "include": ["src", "../../apps/server/src/auth/routes.ts", "../../apps/server/src/http.ts"]
+}

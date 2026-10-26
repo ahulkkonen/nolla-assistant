@@ -1,0 +1,50 @@
+{"chat": "e01", "kind": "rhythm", "text": "Käyttäjä juoksee kolme kertaa viikossa aamuisin ennen töitä."}
+{"chat": "e01", "kind": "fact", "text": "Käyttäjä asuu Espoossa."}
+{"chat": "e02", "kind": "fact", "text": "Käyttäjä on projektipäällikkö Rahtiväylä Oy:ssä."}
+{"chat": "e02", "kind": "relationship", "text": "Mikko Virtanen on käyttäjän tiiminvetäjä."}
+{"chat": "e02", "kind": "rhythm", "text": "Käyttäjä toimittaa viikkoraportin perjantaisin klo 14 mennessä."}
+{"chat": "e03", "kind": "relationship", "text": "Sanna Hyvönen on käyttäjän sisko."}
+{"chat": "e03", "kind": "fact", "text": "Sanna Hyvönen harrastaa keramiikkaa."}
+{"chat": "e04", "kind": "preference", "text": "Käyttäjä haluaa lyhyet vastaukset ilman otsikoita."}
+{"chat": "e04", "kind": "preference", "text": "Käyttäjä haluaa vastaukset suomeksi."}
+{"chat": "e05", "kind": "relationship", "text": "Pekka Lahti on käyttäjän naapuri."}
+{"chat": "e05", "kind": "fact", "text": "Pekka Lahti juo vain tummapaahtoista kahvia."}
+{"chat": "e06", "kind": "rhythm", "text": "Käyttäjä tekee syvätyötä aamupäivisin klo 8–11."}
+{"chat": "e06", "kind": "rhythm", "text": "Käyttäjä lopettaa työt perjantaisin klo 15."}
+{"chat": "e07", "kind": "preference", "text": "Käyttäjä ei syö punaista lihaa."}
+{"chat": "e07", "kind": "fact", "text": "Käyttäjän ruokabudjetti on noin 600 euroa kuussa."}
+{"chat": "e08", "kind": "goal", "text": "Käyttäjä tavoittelee puolimaratonia toukokuussa alle kahden tunnin."}
+{"chat": "e09", "kind": "preference", "text": "Käyttäjä haluaa koodiesimerkit TypeScriptinä."}
+{"chat": "e09", "kind": "fact", "text": "Käyttäjä käyttää VS Codea ja pnpm:ää."}
+{"chat": "e10", "kind": "rhythm", "text": "Käyttäjä tekee ruokaostokset sunnuntaisin."}
+{"chat": "e10", "kind": "preference", "text": "Käyttäjä haluaa ostoslistan lauantaina."}
+{"chat": "e11", "kind": "goal", "text": "Käyttäjä opettelee ruotsia tavoitteena B1-taso ensi vuoden loppuun."}
+{"chat": "e11", "kind": "rhythm", "text": "Käyttäjällä on ruotsin keskustelutunti tiistai-iltaisin Katja Lindqvistin kanssa."}
+{"chat": "e12", "kind": "preference", "text": "Käyttäjä ei halua emojeja vastauksiin."}
+{"chat": "e12", "kind": "preference", "text": "Käyttäjä haluaa suosituksen ennen perusteluja."}
+{"chat": "e13", "kind": "relationship", "text": "Anna-Liisa Mäkelä on käyttäjän mentori."}
+{"chat": "e13", "kind": "rhythm", "text": "Käyttäjä tapaa mentorinsa kuun ensimmäisenä maanantaina."}
+{"chat": "e14", "kind": "relationship", "text": "Juhani Korhonen Satamarahdista on käyttäjän tärkein asiakas."}
+{"chat": "e14", "kind": "fact", "text": "Satamarahdin sopimus uusitaan maaliskuussa."}
+{"chat": "e15", "kind": "preference", "text": "Käyttäjä suosii tietokirjoja."}
+{"chat": "e15", "kind": "preference", "text": "Käyttäjä kuuntelee kirjat äänikirjoina."}
+{"chat": "e16", "kind": "relationship", "text": "Tiina Kokko on käyttäjän tyttären opettaja."}
+{"chat": "e17", "kind": "relationship", "text": "Matti Laine on käyttäjän lanko."}
+{"chat": "e17", "kind": "fact", "text": "Matti Lainen syntymäpäivä on 12. maaliskuuta."}
+{"chat": "e18", "kind": "rhythm", "text": "Käyttäjä ui kaksi kertaa viikossa."}
+{"chat": "e18", "kind": "goal", "text": "Käyttäjä tavoittelee kahden kilometrin uintia."}
+{"chat": "e19", "kind": "fact", "text": "Käyttäjällä on vuoden 2019 Toyota Corolla hybridi."}
+{"chat": "e20", "kind": "fact", "text": "Käyttäjä on tuoteomistaja Rahtiväylällä."}
+{"chat": "e20", "kind": "relationship", "text": "Heikki Nieminen on käyttäjän esihenkilö."}
+{"chat": "e21", "kind": "fact", "text": "Käyttäjä asuu Tampereella Hervannassa."}
+{"chat": "e21", "kind": "rhythm", "text": "Käyttäjä käy Helsingin toimistolla kaksi päivää viikossa."}
+{"chat": "e22", "kind": "preference", "text": "Käyttäjä on kasvissyöjä."}
+{"chat": "e23", "kind": "decision_pattern", "text": "Käyttäjä tekee isot ostopäätökset vasta yön yli nukuttuaan."}
+{"chat": "e23", "kind": "decision_pattern", "text": "Käyttäjä vertaa vähintään kolmea vaihtoehtoa."}
+{"chat": "e24", "kind": "quirk", "text": "Käyttäjä kirjoittaa muistiinpanot ensin käsin."}
+{"chat": "e25", "kind": "fact", "text": "Käyttäjällä on labradorinnoutaja Roope."}
+{"chat": "e26", "kind": "fact", "text": "Käyttäjällä on pähkinäallergia."}
+{"chat": "e27", "kind": "goal", "text": "Käyttäjä suunnittelee matkaa Lissaboniin helmikuussa."}
+{"chat": "e28", "kind": "goal", "text": "Käyttäjä matkustaa Sannan kanssa Portoon helmikuussa."}
+{"chat": "e29", "kind": "rhythm", "text": "Käyttäjän ruotsin keskustelutunti on torstai-iltaisin."}
+{"chat": "e30", "kind": "rhythm", "text": "Käyttäjä toimittaa viikkoraportin torstaisin klo 16 mennessä."}

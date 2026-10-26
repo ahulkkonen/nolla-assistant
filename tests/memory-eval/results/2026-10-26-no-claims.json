@@ -1,0 +1,740 @@
+{
+  "date": "2026-10-26",
+  "commit": "47bd09c",
+  "mode": "no-claims",
+  "models": {
+    "answer": "zdr/fast",
+    "judge": "zdr/task-small",
+    "extract": "zdr/task-small"
+  },
+  "llmError": "fetch failed",
+  "recallAt5": {
+    "total": 0.765,
+    "single_session_user": 0.9,
+    "multi_session": 0.65,
+    "knowledge_update": 0.667,
+    "temporal": 0.867,
+    "preference": 0.733,
+    "abstention": null
+  },
+  "qaAccuracy": {
+    "total": null,
+    "single_session_user": null,
+    "multi_session": null,
+    "knowledge_update": null,
+    "temporal": null,
+    "preference": null,
+    "abstention": null
+  },
+  "blockTokens": {
+    "mean": 0,
+    "p95": 0
+  },
+  "claimPrecision": null,
+  "extraction": {
+    "calls": 0,
+    "costUsd": 0
+  },
+  "rows": [
+    {
+      "id": "q001",
+      "category": "single_session_user",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q002",
+      "category": "single_session_user",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q003",
+      "category": "single_session_user",
+      "recallHit": false,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q004",
+      "category": "single_session_user",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q005",
+      "category": "single_session_user",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q006",
+      "category": "single_session_user",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q007",
+      "category": "single_session_user",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q008",
+      "category": "single_session_user",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q009",
+      "category": "single_session_user",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q010",
+      "category": "single_session_user",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q011",
+      "category": "single_session_user",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q012",
+      "category": "single_session_user",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q013",
+      "category": "single_session_user",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q014",
+      "category": "single_session_user",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q015",
+      "category": "single_session_user",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q016",
+      "category": "single_session_user",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q017",
+      "category": "single_session_user",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q018",
+      "category": "single_session_user",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q019",
+      "category": "single_session_user",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q020",
+      "category": "single_session_user",
+      "recallHit": false,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q021",
+      "category": "multi_session",
+      "recallHit": false,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q022",
+      "category": "multi_session",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q023",
+      "category": "multi_session",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q024",
+      "category": "multi_session",
+      "recallHit": false,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q025",
+      "category": "multi_session",
+      "recallHit": false,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q026",
+      "category": "multi_session",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q027",
+      "category": "multi_session",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q028",
+      "category": "multi_session",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q029",
+      "category": "multi_session",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q030",
+      "category": "multi_session",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q031",
+      "category": "multi_session",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q032",
+      "category": "multi_session",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q033",
+      "category": "multi_session",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q034",
+      "category": "multi_session",
+      "recallHit": false,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q035",
+      "category": "multi_session",
+      "recallHit": false,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q036",
+      "category": "multi_session",
+      "recallHit": false,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q037",
+      "category": "multi_session",
+      "recallHit": false,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q038",
+      "category": "multi_session",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q039",
+      "category": "multi_session",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q040",
+      "category": "multi_session",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q041",
+      "category": "knowledge_update",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q042",
+      "category": "knowledge_update",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q043",
+      "category": "knowledge_update",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q044",
+      "category": "knowledge_update",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q045",
+      "category": "knowledge_update",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q046",
+      "category": "knowledge_update",
+      "recallHit": false,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q047",
+      "category": "knowledge_update",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q048",
+      "category": "knowledge_update",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q049",
+      "category": "knowledge_update",
+      "recallHit": false,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q050",
+      "category": "knowledge_update",
+      "recallHit": false,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q051",
+      "category": "knowledge_update",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q052",
+      "category": "knowledge_update",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q053",
+      "category": "knowledge_update",
+      "recallHit": false,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q054",
+      "category": "knowledge_update",
+      "recallHit": false,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q055",
+      "category": "knowledge_update",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q056",
+      "category": "temporal",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q057",
+      "category": "temporal",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q058",
+      "category": "temporal",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q059",
+      "category": "temporal",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q060",
+      "category": "temporal",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q061",
+      "category": "temporal",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q062",
+      "category": "temporal",
+      "recallHit": false,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q063",
+      "category": "temporal",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q064",
+      "category": "temporal",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q065",
+      "category": "temporal",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q066",
+      "category": "temporal",
+      "recallHit": false,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q067",
+      "category": "temporal",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q068",
+      "category": "temporal",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q069",
+      "category": "temporal",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q070",
+      "category": "temporal",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q071",
+      "category": "preference",
+      "recallHit": false,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q072",
+      "category": "preference",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q073",
+      "category": "preference",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q074",
+      "category": "preference",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q075",
+      "category": "preference",
+      "recallHit": false,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q076",
+      "category": "preference",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q077",
+      "category": "preference",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q078",
+      "category": "preference",
+      "recallHit": false,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q079",
+      "category": "preference",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q080",
+      "category": "preference",
+      "recallHit": false,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q081",
+      "category": "preference",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q082",
+      "category": "preference",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q083",
+      "category": "preference",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q084",
+      "category": "preference",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q085",
+      "category": "preference",
+      "recallHit": true,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q086",
+      "category": "abstention",
+      "recallHit": null,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q087",
+      "category": "abstention",
+      "recallHit": null,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q088",
+      "category": "abstention",
+      "recallHit": null,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q089",
+      "category": "abstention",
+      "recallHit": null,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q090",
+      "category": "abstention",
+      "recallHit": null,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q091",
+      "category": "abstention",
+      "recallHit": null,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q092",
+      "category": "abstention",
+      "recallHit": null,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q093",
+      "category": "abstention",
+      "recallHit": null,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q094",
+      "category": "abstention",
+      "recallHit": null,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q095",
+      "category": "abstention",
+      "recallHit": null,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q096",
+      "category": "abstention",
+      "recallHit": null,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q097",
+      "category": "abstention",
+      "recallHit": null,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q098",
+      "category": "abstention",
+      "recallHit": null,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q099",
+      "category": "abstention",
+      "recallHit": null,
+      "correct": null,
+      "blockChars": 0
+    },
+    {
+      "id": "q100",
+      "category": "abstention",
+      "recallHit": null,
+      "correct": null,
+      "blockChars": 0
+    }
+  ]
+}

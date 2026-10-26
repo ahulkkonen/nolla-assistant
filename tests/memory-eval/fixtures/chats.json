@@ -1,0 +1,425 @@
+[
+  {
+    "id": "e01",
+    "daysAgo": 92,
+    "messages": [
+      {
+        "role": "user",
+        "text": "Tarvitsen treeniohjelman. Juoksen kolme kertaa viikossa aamuisin ennen töitä, yleensä noin kahdeksan kilometriä."
+      },
+      {
+        "role": "assistant",
+        "text": "Hyvä pohja. Ehdotan yhtä pitkää lenkkiä, yhtä vauhtikestävyyttä ja yhtä palauttavaa viikossa."
+      },
+      {
+        "role": "user",
+        "text": "Asun Espoossa ja lenkkeilen Keskuspuistossa, joten mäkiä löytyy."
+      },
+      { "role": "assistant", "text": "Mäet sopivat vauhtikestävyyspäivään." }
+    ]
+  },
+  {
+    "id": "e02",
+    "daysAgo": 89,
+    "messages": [
+      {
+        "role": "user",
+        "text": "Olen projektipäällikkö Rahtiväylä Oy:ssä ja vastaan varastojärjestelmän uudistuksesta."
+      },
+      { "role": "assistant", "text": "Selvä. Millaista apua tarvitset projektiin?" },
+      {
+        "role": "user",
+        "text": "Tiiminvetäjäni on Mikko Virtanen. Hän haluaa viikkoraportin perjantaisin klo 14 mennessä."
+      },
+      {
+        "role": "assistant",
+        "text": "Tehdään raporttipohja, jossa on tila, riskit ja seuraavan viikon tavoitteet."
+      }
+    ]
+  },
+  {
+    "id": "e03",
+    "daysAgo": 86,
+    "messages": [
+      {
+        "role": "user",
+        "text": "Siskoni Sanna Hyvönen täyttää pian 40. Mitä hänelle voisi ostaa?"
+      },
+      { "role": "assistant", "text": "Mistä hän pitää?" },
+      { "role": "user", "text": "Sanna rakastaa keramiikkaa ja käy dreijauskurssilla Vantaalla." },
+      {
+        "role": "assistant",
+        "text": "Lahjakortti keramiikkapajaan tai laadukas lasite-setti voisi sopia."
+      }
+    ]
+  },
+  {
+    "id": "e04",
+    "daysAgo": 84,
+    "messages": [
+      {
+        "role": "user",
+        "text": "Yksi pyyntö: vastaa minulle jatkossa lyhyesti ja ilman otsikoita. Pitkät listat väsyttävät."
+      },
+      { "role": "assistant", "text": "Selvä, lyhyesti ja ilman otsikoita." },
+      {
+        "role": "user",
+        "text": "Ja kirjoita aina suomeksi, vaikka kysyisin englanninkielisestä aiheesta."
+      },
+      { "role": "assistant", "text": "Kirjoitan suomeksi." }
+    ]
+  },
+  {
+    "id": "e05",
+    "daysAgo": 80,
+    "messages": [
+      {
+        "role": "user",
+        "text": "Naapurini Pekka Lahti lupasi lainata peräkärryään lauantaina. Muistuta, että vien hänelle kahvipaketin kiitokseksi."
+      },
+      { "role": "assistant", "text": "Hyvä ajatus. Kirjaan sen muistiin." },
+      { "role": "user", "text": "Pekka juo vain tummapaahtoista kahvia." },
+      { "role": "assistant", "text": "Tummapaahto siis." }
+    ]
+  },
+  {
+    "id": "e06",
+    "daysAgo": 77,
+    "messages": [
+      {
+        "role": "user",
+        "text": "Mietin kalenterin rakennetta. Teen syvätyötä aamupäivisin kello 8–11 enkä halua palavereja siihen aikaan."
+      },
+      { "role": "assistant", "text": "Siirretään palaverit iltapäivään ja suojataan aamupäivä." },
+      { "role": "user", "text": "Perjantaisin lopetan työt jo kolmelta." },
+      { "role": "assistant", "text": "Merkitään perjantain iltapäivä vapaaksi kello 15 jälkeen." }
+    ]
+  },
+  {
+    "id": "e07",
+    "daysAgo": 74,
+    "messages": [
+      {
+        "role": "user",
+        "text": "Anna viikon ruokalista. Syön kalaa ja kanaa, mutta en punaista lihaa."
+      },
+      { "role": "assistant", "text": "Tässä viikon lista lohesta, kanasta ja kasviksista." },
+      {
+        "role": "user",
+        "text": "Ruokabudjettimme on noin 600 euroa kuussa kahdelle aikuiselle ja lapselle."
+      },
+      { "role": "assistant", "text": "Pidän listan budjetissa." }
+    ]
+  },
+  {
+    "id": "e08",
+    "daysAgo": 70,
+    "messages": [
+      {
+        "role": "user",
+        "text": "Tavoitteeni on juosta puolimaraton Helsinki City Runissa toukokuussa."
+      },
+      {
+        "role": "assistant",
+        "text": "Rakennetaan ohjelma niin, että pisin lenkki on 18 km kolme viikkoa ennen kisaa."
+      },
+      { "role": "user", "text": "Tavoiteaika olisi alle kaksi tuntia." },
+      { "role": "assistant", "text": "Se vaatii noin 5:40 min/km keskivauhdin." }
+    ]
+  },
+  {
+    "id": "e09",
+    "daysAgo": 66,
+    "messages": [
+      {
+        "role": "user",
+        "text": "Kun näytät koodia, käytä TypeScriptiä. En halua Python-esimerkkejä."
+      },
+      { "role": "assistant", "text": "Selvä, TypeScript-esimerkit jatkossa." },
+      { "role": "user", "text": "Käytän editorina VS Codea ja paketinhallintana pnpm:ää." },
+      { "role": "assistant", "text": "Hyvä tietää." }
+    ]
+  },
+  {
+    "id": "e10",
+    "daysAgo": 63,
+    "messages": [
+      { "role": "user", "text": "Teen viikon isot ruokaostokset aina sunnuntaisin Prismassa." },
+      { "role": "assistant", "text": "Voin koota ostoslistan lauantai-iltana valmiiksi." },
+      { "role": "user", "text": "Se sopii, lista lauantaina." },
+      { "role": "assistant", "text": "Sovittu." }
+    ]
+  },
+  {
+    "id": "e11",
+    "daysAgo": 60,
+    "messages": [
+      {
+        "role": "user",
+        "text": "Opettelen ruotsia. Tavoitteena on B1-taso ensi vuoden loppuun mennessä."
+      },
+      {
+        "role": "assistant",
+        "text": "Suosittelen päivittäistä 20 minuutin harjoitusta ja viikoittaista keskustelutuntia."
+      },
+      {
+        "role": "user",
+        "text": "Minulla on keskustelutunti tiistai-iltaisin Katja Lindqvistin kanssa."
+      },
+      { "role": "assistant", "text": "Hienoa, valmistellaan tunneille aiheita." }
+    ]
+  },
+  {
+    "id": "e12",
+    "daysAgo": 57,
+    "messages": [
+      {
+        "role": "user",
+        "text": "Älä käytä vastauksissa emojeja, ne näyttävät minusta lapsellisilta."
+      },
+      { "role": "assistant", "text": "Selvä." },
+      {
+        "role": "user",
+        "text": "Ja kun ehdotat jotain, kerro ensin suositus ja vasta sitten perustelut."
+      },
+      { "role": "assistant", "text": "Suositus ensin, perustelut sitten." }
+    ]
+  },
+  {
+    "id": "e13",
+    "daysAgo": 54,
+    "messages": [
+      {
+        "role": "user",
+        "text": "Mentorini Anna-Liisa Mäkelä ehdotti, että hakisin johtamiskoulutukseen."
+      },
+      { "role": "assistant", "text": "Mitä koulutuksia hän suositteli?" },
+      {
+        "role": "user",
+        "text": "Tapaan Anna-Liisan kerran kuussa, yleensä kuun ensimmäisenä maanantaina."
+      },
+      { "role": "assistant", "text": "Voin muistuttaa tapaamisista." }
+    ]
+  },
+  {
+    "id": "e14",
+    "daysAgo": 50,
+    "messages": [
+      {
+        "role": "user",
+        "text": "Tärkein asiakkaani on Juhani Korhonen Satamarahdista. Hän vihaa pitkiä sähköposteja."
+      },
+      {
+        "role": "assistant",
+        "text": "Kirjoitetaan hänelle tiiviit viestit, joissa päätös on ensimmäisellä rivillä."
+      },
+      { "role": "user", "text": "Satamarahdin sopimus uusitaan joka vuosi maaliskuussa." },
+      { "role": "assistant", "text": "Merkitään maaliskuu sopimusneuvotteluille." }
+    ]
+  },
+  {
+    "id": "e15",
+    "daysAgo": 47,
+    "messages": [
+      {
+        "role": "user",
+        "text": "Suosittele luettavaa. Pidän enemmän tietokirjoista kuin romaaneista."
+      },
+      { "role": "assistant", "text": "Ehdotan historiaa ja populaaritiedettä." },
+      { "role": "user", "text": "Kuuntelen kirjat mieluiten äänikirjoina työmatkalla." },
+      { "role": "assistant", "text": "Valitsen teoksia, joista on äänikirjaversio." }
+    ]
+  },
+  {
+    "id": "e16",
+    "daysAgo": 44,
+    "messages": [
+      {
+        "role": "user",
+        "text": "Tyttäreni aloitti koulun elokuussa. Hänen opettajansa on Tiina Kokko."
+      },
+      { "role": "assistant", "text": "Onnea koulun alkuun!" },
+      { "role": "user", "text": "Vanhempainilta on lokakuun puolivälissä, muistuta minua." },
+      { "role": "assistant", "text": "Muistutan." }
+    ]
+  },
+  {
+    "id": "e17",
+    "daysAgo": 40,
+    "messages": [
+      {
+        "role": "user",
+        "text": "Lankoni Matti Laine on Sannan mies. Hänen syntymäpäivänsä on 12. maaliskuuta."
+      },
+      { "role": "assistant", "text": "Kirjasin päivän." },
+      { "role": "user", "text": "Matti on intohimoinen kalastaja." },
+      { "role": "assistant", "text": "Kalastusvälineet ovat siis hyvä lahjaidea." }
+    ]
+  },
+  {
+    "id": "e18",
+    "daysAgo": 34,
+    "messages": [
+      {
+        "role": "user",
+        "text": "Polveni kipeytyi ja lääkäri kielsi juoksun. Lopetin juoksemisen ja aloitin uinnin."
+      },
+      { "role": "assistant", "text": "Ikävä kuulla. Uinti on polvelle hyvä vaihtoehto." },
+      {
+        "role": "user",
+        "text": "Uin nyt kaksi kertaa viikossa Tesoman uimahallissa. Puolimaraton jää tältä vuodelta väliin, uusi tavoite on uida kaksi kilometriä yhtäjaksoisesti."
+      },
+      { "role": "assistant", "text": "Rakennetaan uintiohjelma kohti kahta kilometriä." }
+    ]
+  },
+  {
+    "id": "e19",
+    "daysAgo": 31,
+    "messages": [
+      { "role": "user", "text": "Autoni on vuoden 2019 Toyota Corolla hybridi. Huolto lähestyy." },
+      {
+        "role": "assistant",
+        "text": "Hybridin määräaikaishuolto kannattaa tehdä merkkikorjaamolla takuun vuoksi."
+      },
+      { "role": "user", "text": "Mittarissa on noin 85 000 kilometriä." },
+      { "role": "assistant", "text": "Silloin on 90 000 km huolto pian edessä." }
+    ]
+  },
+  {
+    "id": "e20",
+    "daysAgo": 27,
+    "messages": [
+      {
+        "role": "user",
+        "text": "Sain uuden roolin: aloitin tuoteomistajana Rahtiväylällä lokakuun alussa. Projektipäällikön työt siirtyivät kollegalle."
+      },
+      { "role": "assistant", "text": "Onnittelut uudesta roolista!" },
+      { "role": "user", "text": "Esihenkilöni on nyt Heikki Nieminen, ei enää Mikko." },
+      { "role": "assistant", "text": "Selvä, Heikki Nieminen on uusi esihenkilösi." }
+    ]
+  },
+  {
+    "id": "e21",
+    "daysAgo": 24,
+    "messages": [
+      { "role": "user", "text": "Muutimme syyskuussa Espoosta Tampereelle, Hervantaan." },
+      { "role": "assistant", "text": "Tervetuloa Tampereelle!" },
+      {
+        "role": "user",
+        "text": "Käyn Helsingin toimistolla junalla kaksi päivää viikossa, muut päivät teen etänä."
+      },
+      { "role": "assistant", "text": "Junamatka kestää noin puolitoista tuntia suuntaansa." }
+    ]
+  },
+  {
+    "id": "e22",
+    "daysAgo": 21,
+    "messages": [
+      {
+        "role": "user",
+        "text": "Olen nyt ryhtynyt täysin kasvissyöjäksi, en syö enää kalaakaan tai kanaa."
+      },
+      { "role": "assistant", "text": "Päivitän ruokalistat kasvisruoiksi." },
+      { "role": "user", "text": "Proteiinia saan pavuista ja tofusta." },
+      { "role": "assistant", "text": "Hyvä, käytän niitä." }
+    ]
+  },
+  {
+    "id": "e23",
+    "daysAgo": 18,
+    "messages": [
+      {
+        "role": "user",
+        "text": "Mietin uuden sohvan ostoa. Teen isot ostopäätökset aina vasta yön yli nukuttuani."
+      },
+      { "role": "assistant", "text": "Kokoan vaihtoehdot tänään, ja voit päättää huomenna." },
+      { "role": "user", "text": "Vertaan aina vähintään kolmea vaihtoehtoa ennen kuin päätän." },
+      { "role": "assistant", "text": "Tässä kolme vaihtoehtoa vertailuun." }
+    ]
+  },
+  {
+    "id": "e24",
+    "daysAgo": 15,
+    "messages": [
+      {
+        "role": "user",
+        "text": "Kirjoitan muistiinpanot aina ensin käsin vihkoon ja siirrän ne vasta illalla koneelle."
+      },
+      { "role": "assistant", "text": "Voin auttaa jäsentämään ne illalla." },
+      { "role": "user", "text": "Käytän ruutuvihkoa ja lyijykynää." },
+      { "role": "assistant", "text": "Klassinen valinta." }
+    ]
+  },
+  {
+    "id": "e25",
+    "daysAgo": 13,
+    "messages": [
+      {
+        "role": "user",
+        "text": "Koiramme Roope on kolmevuotias labradorinnoutaja. Se tarvitsee kaksi pitkää lenkkiä päivässä."
+      },
+      { "role": "assistant", "text": "Labradori nauttii myös uimisesta." },
+      { "role": "user", "text": "Roopen eläinlääkäri on Hervannan eläinklinikalla." },
+      { "role": "assistant", "text": "Hyvä tietää lähellä oleva klinikka." }
+    ]
+  },
+  {
+    "id": "e26",
+    "daysAgo": 11,
+    "messages": [
+      {
+        "role": "user",
+        "text": "Minulla on vaikea pähkinäallergia, joten tarkista reseptit sen varalta."
+      },
+      { "role": "assistant", "text": "Tarkistan jokaisen reseptin pähkinöiden varalta." },
+      { "role": "user", "text": "Myös mantelit ja pistaasit ovat kiellettyjä." },
+      { "role": "assistant", "text": "Ne kaikki rajataan pois." }
+    ]
+  },
+  {
+    "id": "e27",
+    "daysAgo": 9,
+    "messages": [
+      { "role": "user", "text": "Suunnittelemme Sannan kanssa matkaa Lissaboniin helmikuussa." },
+      { "role": "assistant", "text": "Helmikuu on Lissabonissa leuto. Kuinka pitkä matka?" },
+      { "role": "user", "text": "Noin viisi päivää, ja haluamme asua Alfaman alueella." },
+      { "role": "assistant", "text": "Alfama on tunnelmallinen valinta." }
+    ]
+  },
+  {
+    "id": "e28",
+    "daysAgo": 6,
+    "messages": [
+      {
+        "role": "user",
+        "text": "Matkasuunnitelma muuttui: menemmekin Sannan kanssa Portoon emmekä Lissaboniin. Lennot ovat sinne halvemmat."
+      },
+      { "role": "assistant", "text": "Porto on hyvä valinta. Päivitän suunnitelman." },
+      { "role": "user", "text": "Ajankohta pysyy helmikuussa." },
+      { "role": "assistant", "text": "Selvä, Porto helmikuussa." }
+    ]
+  },
+  {
+    "id": "e29",
+    "daysAgo": 4,
+    "messages": [
+      { "role": "user", "text": "Ruotsin keskustelutunti siirtyi tiistailta torstai-iltaan." },
+      { "role": "assistant", "text": "Päivitän muistutukset torstaille." },
+      { "role": "user", "text": "Katja muutti aikatauluaan, siksi muutos." },
+      { "role": "assistant", "text": "Selvä." }
+    ]
+  },
+  {
+    "id": "e30",
+    "daysAgo": 2,
+    "messages": [
+      {
+        "role": "user",
+        "text": "Viikkoraportin määräaika muuttui: Heikki haluaa sen torstaisin kello 16 mennessä."
+      },
+      { "role": "assistant", "text": "Siirretään raporttimuistutus torstaille." },
+      { "role": "user", "text": "Raporttiin lisätään nyt myös tuotteen mittarit." },
+      { "role": "assistant", "text": "Lisään mittariosion pohjaan." }
+    ]
+  }
+]

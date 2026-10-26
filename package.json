@@ -11,7 +11,7 @@
     "typecheck": "pnpm -r --if-present typecheck",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
-    "test": "pnpm -r --if-present --filter '!@pa/egress-tests' --filter '!@pa/sandbox-tests' test",
+    "test": "pnpm -r --if-present --filter '!@pa/egress-tests' --filter '!@pa/sandbox-tests' --filter '!@pa/memory-eval' test",
     "test:contract": "pnpm --filter @pa/contract-tests test",
     "test:egress": "pnpm --filter @pa/egress-tests test",
     "test:sandbox": "pnpm --filter @pa/sandbox-tests test",
