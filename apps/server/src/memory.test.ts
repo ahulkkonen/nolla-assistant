@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { chats, memoryConsolidations, memoryPending, openDb, topics } from '@pa/db';
+import { chats, claims, memoryConsolidations, memoryPending, openDb, topics } from '@pa/db';
 import { startFakeSidecar } from '@pa/pi-ext-pseudo/fake-sidecar';
 import { eq } from 'drizzle-orm';
 import { afterEach, expect, test } from 'vitest';
@@ -30,8 +30,8 @@ const sidecar = async (dictionary: Record<string, string> = {}) => {
   return { PSEUDO_URL: sc.url };
 };
 const memoryDir = (dataDir: string) => join(dataDir, 'memory', 'aleksi');
-const add = (t: string) => ({
-  toolCalls: [{ name: 'memory', args: { action: 'add', target: 'memory', text: t } }],
+const add = (t: string, target: 'user' | 'memory' = 'user') => ({
+  toolCalls: [{ name: 'memory', args: { action: 'add', target, text: t } }],
 });
 
 test('lineDiff marks removed and added lines', () => {
@@ -160,23 +160,23 @@ test('a memory write after bash waits for approval, then applies and commits', {
     {
       id: expect.any(Number),
       action: 'add',
-      target: 'memory',
+      target: 'user',
       text: 'Sähkösopimus päättyy 30.11.',
       chatId: chat.id,
     },
   ]);
-  expect(st.memory).toBe('');
+  expect(st.user).toBe('');
   await c.idle();
   expect(lastTool(llm.requests[2]?.body)).toContain('odottaa hyväksyntääsi');
 
   c.send({ type: 'memory.approve', pendingId: st.pending[0]?.id ?? 0, approve: true });
   const after = await c.next('memory.state');
-  expect(after.memory).toBe('Sähkösopimus päättyy 30.11.');
+  expect(after.user).toBe('Sähkösopimus päättyy 30.11.');
   expect(after.pending).toEqual([]);
   const dir = memoryDir(config.dataDir);
-  expect(readFileSync(join(dir, 'MEMORY.md'), 'utf8')).toBe('Sähkösopimus päättyy 30.11.');
+  expect(readFileSync(join(dir, 'USER.md'), 'utf8')).toBe('Sähkösopimus päättyy 30.11.');
   expect(execFileSync('git', ['log', '--format=%s'], { cwd: dir, encoding: 'utf8' })).toContain(
-    `memory add memory (chat ${chat.id})`,
+    `memory add user (chat ${chat.id})`,
   );
 });
 
@@ -186,54 +186,77 @@ test('an untainted memory write applies at once and the room gets memory.state',
   const { c, chat } = await bootPseudo({}, [add('Pitää kahvista.'), { text: 'Ok.' }]);
   c.send({ type: 'user.message', chatId: chat.id, text: 'Muista: pidän kahvista.' });
   const st = await c.next('memory.state');
-  expect(st.memory).toBe('Pitää kahvista.');
+  expect(st.user).toBe('Pitää kahvista.');
   expect(st.pending).toEqual([]);
   await c.idle();
 });
 
 test('an over-cap memory write returns an error result', { timeout: 60_000 }, async () => {
-  const { llm, c, chat } = await bootPseudo({}, [add('x'.repeat(2600)), { text: 'Ok.' }]);
+  const { llm, c, chat } = await bootPseudo({}, [add('x'.repeat(1600)), { text: 'Ok.' }]);
   c.send({ type: 'user.message', chatId: chat.id, text: 'Muista tämä.' });
   expect((await c.next('tool.end')).status).toBe('error');
   await c.idle();
   expect(lastTool(llm.requests[1]?.body)).toContain('Muisti on täynnä');
 });
 
-test('consolidation stores a diff and accepting writes the files', {
-  timeout: 60_000,
-}, async () => {
-  const proposal = { user: 'Nimi: Aleksi', memory: 'Sähkösopimus päättyy 30.11.' };
-  const { llm, c, config } = await bootPseudo({}, [
-    { text: JSON.stringify(proposal) },
-    { text: JSON.stringify(proposal) },
-  ]);
-  c.send({
-    type: 'memory.edit',
-    target: 'memory',
-    text: 'Sähkösopimus päättyy 30.11.\nSähkösopimus päättyy marraskuussa.',
-  });
-  await c.next('memory.state');
-  c.send({ type: 'memory.consolidate' });
-  const st = await c.next('memory.state');
-  expect(llm.requests[0]?.body.model).toBe('zdr/task-small');
-  expect(st.consolidation?.diff).toContain('-Sähkösopimus päättyy marraskuussa.');
-  expect(st.consolidation?.diff).toContain('+Nimi: Aleksi');
+test.skipIf(!modelOk)(
+  'phase 17: target memory writes claims (untainted active, tainted proposed, remove closes); consolidation regenerates MEMORY.md',
+  { timeout: 60_000 },
+  async () => {
+    const { srv, c, chat, config } = await bootBroker(
+      [
+        add('Sähkösopimus päättyy 30.11.', 'memory'),
+        { text: 'Ok.' },
+        { toolCalls: [{ name: 'bash', args: { command: 'echo hei' } }] },
+        add('Vieras väite.', 'memory'),
+        { text: 'Ok.' },
+        {
+          toolCalls: [
+            { name: 'memory', args: { action: 'remove', target: 'memory', text: 'Sähkösopimus' } },
+          ],
+        },
+        { text: 'Ok.' },
+      ],
+      await sidecar(),
+    );
+    const rows = () => srv.db.select().from(claims).orderBy(claims.id).all();
+    c.send({ type: 'user.message', chatId: chat.id, text: 'Muista sähkösopimus.' });
+    await c.idle();
+    expect(rows().map((r) => [r.text, r.status, r.activatedBy])).toEqual([
+      ['Sähkösopimus päättyy 30.11.', 'active', 'user'],
+    ]);
 
-  c.send({ type: 'memory.consolidation.resolve', id: st.consolidation?.id ?? 0, accept: true });
-  const after = await c.next('memory.state');
-  expect(after).toMatchObject({ ...proposal, consolidation: null });
-  expect(readFileSync(join(memoryDir(config.dataDir), 'USER.md'), 'utf8')).toBe(proposal.user);
+    // Regeneration: the template, and no commit when the bytes stay the same.
+    const dir = memoryDir(config.dataDir);
+    const commits = () =>
+      execFileSync('git', ['log', '--format=%s'], { cwd: dir, encoding: 'utf8' })
+        .trim()
+        .split('\n');
+    c.inbox.length = 0; // the write's own memory.state
+    c.send({ type: 'memory.consolidate' });
+    expect((await c.next('memory.state')).memory).toBe('## Faktat\n- Sähkösopimus päättyy 30.11.');
+    const n = commits().length;
+    expect(commits()[0]).toBe('memory regenerate (1 claims)');
+    c.send({ type: 'memory.consolidate' });
+    await c.next('memory.state');
+    expect(commits()).toHaveLength(n);
+    expect(rows()[0]?.inProfile).toBe(true);
 
-  // A proposal made before a hand edit is refused.
-  c.send({ type: 'memory.edit', target: 'memory', text: 'Uusi.\nToinen.' });
-  await c.next('memory.state');
-  c.send({ type: 'memory.consolidate' });
-  const next = await c.next('memory.state');
-  c.send({ type: 'memory.edit', target: 'memory', text: 'Käsin muutettu.' });
-  await c.next('memory.state');
-  c.send({ type: 'memory.consolidation.resolve', id: next.consolidation?.id ?? 0, accept: true });
-  await expect(c.next('memory.state')).rejects.toThrow('memory_conflict');
-});
+    c.send({ type: 'user.message', chatId: chat.id, text: 'Aja ja muista' });
+    const req = await c.next('approval.request');
+    c.send({ type: 'approval.respond', requestId: req.requestId, approve: true });
+    await c.idle();
+    expect(rows()[1]).toMatchObject({ text: 'Vieras väite.', status: 'proposed' });
+
+    c.send({ type: 'user.message', chatId: chat.id, text: 'Unohda sähkösopimus.' });
+    await c.idle();
+    expect(rows()).toHaveLength(2);
+    expect(rows()[0]).toMatchObject({
+      status: 'superseded',
+      validTo: new Date().toISOString().slice(0, 10),
+    });
+  },
+);
 
 test('an over-cap memory.edit is refused', { timeout: 60_000 }, async () => {
   const { c } = await bootPseudo({}, []);
@@ -241,13 +264,9 @@ test('an over-cap memory.edit is refused', { timeout: 60_000 }, async () => {
   await expect(c.next('memory.state')).rejects.toThrow('memory_full');
 });
 
-test('without the sidecar memory is off and consolidation fails closed', {
-  timeout: 60_000,
-}, async () => {
-  const { srv, c, chat } = await bootChat([]);
+test('without the sidecar memory is off', { timeout: 60_000 }, async () => {
+  const { srv, chat } = await bootChat([]);
   expect((await srv.registry.get(chat.id)).getActiveToolNames()).not.toContain('memory');
-  c.send({ type: 'memory.consolidate' });
-  await expect(c.next('memory.state')).rejects.toThrow('pseudo_down');
 });
 
 test('memory.state goes to every open socket', { timeout: 60_000 }, async () => {
@@ -270,8 +289,6 @@ function store() {
     db,
     dataDir: dir,
     userId: 'aleksi',
-    litellmUrl: 'http://127.0.0.1:1',
-    litellmMasterKey: 'k',
     warn: (msg) => void warnings.push(msg),
     sendAll: () => {},
   });
@@ -283,29 +300,29 @@ function store() {
   return { m, db };
 }
 
-test('pending writes: dedupe, cap 5 per chat, a replace whose text is gone fails', () => {
+test('pending writes: dedupe, cap 5 per chat, a replace whose text is gone fails', async () => {
   const { m, db } = store();
   const w = { action: 'add', target: 'memory', text: 'a' } as const;
-  expect(m.park('c1', w)).toBe(m.park('c1', w));
-  for (const t of ['b', 'c', 'd', 'e']) m.park('c1', { ...w, text: t });
-  expect(() => m.park('c1', { ...w, text: 'f' })).toThrow('liikaa odottavia kirjoituksia');
+  expect(await m.park('c1', w)).toBe(await m.park('c1', w));
+  for (const t of ['b', 'c', 'd', 'e']) await m.park('c1', { ...w, text: t });
+  await expect(m.park('c1', { ...w, text: 'f' })).rejects.toThrow('liikaa odottavia kirjoituksia');
 
   // Rejecting one frees a slot.
-  expect(m.approve(1, false)).toBe('rejected');
+  expect(await m.approve(1, false)).toBe('rejected');
   m.edit('memory', 'vanha');
-  const replaceId = m.park('c1', {
+  const replaceId = await m.park('c1', {
     action: 'replace',
     target: 'memory',
     text: 'uusi',
     replace: 'vanha',
   });
   m.edit('memory', 'muutettu');
-  expect(m.approve(replaceId, true)).toBe('failed');
+  expect(await m.approve(replaceId, true)).toBe('failed');
   expect(db.select().from(memoryPending).where(eq(memoryPending.id, replaceId)).get()?.status).toBe(
     'failed',
   );
   expect(m.read('memory')).toBe('muutettu');
-  expect(m.approve(replaceId, true)).toBeUndefined();
+  expect(await m.approve(replaceId, true)).toBeUndefined();
 });
 
 test('an over-cap consolidation edit is refused', () => {

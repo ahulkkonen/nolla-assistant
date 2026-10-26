@@ -338,3 +338,166 @@ test.skipIf(!modelOk)(
     expect(JSON.stringify(llm.requests[0]?.body)).not.toContain('Mikko Virtanen');
   },
 );
+
+// --- S4: regeneration and review ---------------------------------------------------------------
+
+test('profile: same claims give the same bytes, capped, sections in order', {
+  timeout: 60_000,
+}, async () => {
+  const { db, store: s } = store();
+  const item = (kind: 'preference' | 'fact', text: string, confidence = 0.9) => ({
+    claim: { kind, text, confidence, status: 'active' as const },
+    evidence: [],
+  });
+  await s.add([
+    item('fact', 'Käyttäjä asuu Tampereella.'),
+    item('preference', 'Käyttäjä haluaa lyhyet vastaukset.'),
+    ...Array.from({ length: 40 }, (_, i) =>
+      item('fact', `Pitkä fakta ${i} ${'x'.repeat(80)}`, 0.5),
+    ),
+  ]);
+  const a = s.profile(2500);
+  expect(a.text.length).toBeLessThanOrEqual(2500);
+  expect(
+    a.text.startsWith(
+      '## Mieltymykset\n- Käyttäjä haluaa lyhyet vastaukset.\n## Faktat\n- Käyttäjä asuu Tampereella.',
+    ),
+  ).toBe(true);
+  expect(s.profile(2500)).toEqual(a);
+  expect(
+    db
+      .select()
+      .from(claims)
+      .all()
+      .filter((c) => c.inProfile),
+  ).toHaveLength(a.count);
+});
+
+test('review: a supersede accept closes the old claim; edit, expiry, reject, chip undo; stale and precision', {
+  timeout: 60_000,
+}, async () => {
+  const { db, store: s } = store();
+  const [old, auto, plain, staleId] = await s.add([
+    {
+      claim: { kind: 'rhythm', text: 'Käyttäjä juoksee.', confidence: 0.9, status: 'active' },
+      evidence: [],
+    },
+    {
+      claim: {
+        kind: 'preference',
+        text: 'Käyttäjä haluaa lyhyesti.',
+        confidence: 0.9,
+        status: 'active',
+        activatedBy: 'auto',
+        sourceChatId: 'c1',
+      },
+      evidence: [],
+    },
+    {
+      claim: {
+        kind: 'fact',
+        text: 'Käyttäjä asuu Espoossa.',
+        confidence: 0.9,
+        status: 'proposed',
+        sourceChatId: 'c1',
+      },
+      evidence: [],
+    },
+    {
+      claim: { kind: 'fact', text: 'Käyttäjä soittaa kitaraa.', confidence: 0.9, status: 'active' },
+      evidence: [],
+    },
+  ]);
+  const [sup] = await s.add([
+    {
+      claim: {
+        kind: 'rhythm',
+        text: 'Käyttäjä ui.',
+        confidence: 0.9,
+        status: 'proposed',
+        supersedesId: old as number,
+        validFrom: '2026-10-01',
+        sourceChatId: 'c1',
+      },
+      evidence: [{ chatId: 'c1', messageId: 'm1', quote: 'uin nyt', stance: 'supports' }],
+    },
+  ]);
+  const ago = new Date(Date.now() - 100 * 86_400_000).toISOString();
+  db.update(claims)
+    .set({ recordedAt: ago })
+    .where(eq(claims.id, staleId as number))
+    .run();
+
+  let st = s.state();
+  if (st.type !== 'claims.state') throw new Error('claims.state expected');
+  expect(st.proposed.map((c) => c.id)).toEqual([sup, plain]);
+  expect(st.proposed[0]?.supersedes).toEqual({ id: old, text: 'Käyttäjä juoksee.' });
+  expect(st.proposed[0]?.evidence).toEqual([
+    { chatId: 'c1', messageId: 'm1', quote: 'uin nyt', stance: 'supports' },
+  ]);
+  expect(st.stale.map((c) => c.id)).toEqual([staleId]);
+  expect(s.chips('c1')).toEqual([
+    { id: auto, kind: 'preference', text: 'Käyttäjä haluaa lyhyesti.' },
+  ]);
+
+  expect(await s.review(sup as number, 'accept')).toBe(true);
+  const rows = () =>
+    new Map(
+      db
+        .select()
+        .from(claims)
+        .all()
+        .map((c) => [c.id, c]),
+    );
+  expect(rows().get(old as number)).toMatchObject({ status: 'superseded', validTo: '2026-10-01' });
+  expect(rows().get(sup as number)).toMatchObject({ status: 'active', activatedBy: 'user' });
+  expect(await s.review(sup as number, 'accept')).toBe(false);
+
+  expect(
+    await s.review(plain as number, 'accept', {
+      text: 'Käyttäjä asuu Tampereella.',
+      validTo: '2027-01-01',
+    }),
+  ).toBe(true);
+  expect(rows().get(plain as number)).toMatchObject({
+    text: 'Käyttäjä asuu Tampereella.',
+    validTo: '2027-01-01',
+  });
+  expect((await s.relevant('', [])).ids).toEqual([]);
+  expect(await s.update(plain as number, { validTo: null })).toBe(true);
+  expect(rows().get(plain as number)?.validTo).toBeNull();
+
+  expect(await s.review(auto as number, 'reject')).toBe(true);
+  expect(rows().get(auto as number)?.status).toBe('rejected');
+  expect(await s.review(old as number, 'reject')).toBe(false);
+
+  expect(s.stale(staleId as number, 'lower')).toBe(true);
+  expect(rows().get(staleId as number)?.confidence).toBe(0.7);
+  st = s.state();
+  if (st.type !== 'claims.state') throw new Error('claims.state expected');
+  expect(st.stale).toEqual([]);
+  expect(st.precision).toEqual({ accepted: 2, rejected: 1 });
+  expect(db.select().from(claims).all()).toHaveLength(5);
+});
+
+test('repoint: a vault merge moves links and subjects', async () => {
+  const { db, store: s } = store();
+  const [id] = await s.add([
+    {
+      claim: {
+        kind: 'relationship',
+        text: 'X on käyttäjän ystävä.',
+        confidence: 0.9,
+        status: 'active',
+        subjectEntityId: 3,
+      },
+      evidence: [],
+      entityIds: [3, 5],
+    },
+  ]);
+  s.repoint([3], 5);
+  expect(db.select().from(claimEntities).all()).toEqual([
+    { claimId: id, entityId: 5, userId: 'aleksi' },
+  ]);
+  expect(db.select().from(claims).get()?.subjectEntityId).toBe(5);
+});

@@ -1,8 +1,8 @@
 import { chats, claimEntities, claims, type Db, evidence } from '@pa/db';
-import { ATTACHMENT_MARKER } from '@pa/pi-ext-memory';
+import { ATTACHMENT_MARKER, NOT_FOUND } from '@pa/pi-ext-memory';
 import type { Json, JsonPath, PseudoClient } from '@pa/pi-ext-pseudo';
-import { ClaimDay, ClaimKind } from '@pa/protocol';
-import { and, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm';
+import { type Claim, ClaimDay, ClaimKind, type ServerMessage } from '@pa/protocol';
+import { and, desc, eq, gt, inArray, isNotNull, isNull, lt, or, sql } from 'drizzle-orm';
 import cron from 'node-cron';
 import { z } from 'zod';
 import { embed } from './embeddings.ts';
@@ -66,6 +66,20 @@ export const recency = (c: Pick<ClaimRow, 'lastConfirmedAt' | 'recordedAt'>, now
   );
 const month = (c: Pick<ClaimRow, 'validFrom' | 'recordedAt'>) =>
   (c.validFrom ?? c.recordedAt).slice(0, 7);
+/** MEMORY.md sections in output order (decision 28). */
+const SECTIONS: [ClaimKind, string][] = [
+  ['preference', 'Mieltymykset'],
+  ['rhythm', 'Rytmi'],
+  ['goal', 'Tavoitteet'],
+  ['fact', 'Faktat'],
+  ['relationship', 'Ihmiset'],
+  ['decision_pattern', 'Päätöstavat'],
+  ['quirk', 'Tavat'],
+];
+const STALE_DAYS = 90;
+const CHECK_DAYS = 30;
+const CHIP_DAYS = 7;
+const DAY_MS = 86_400_000;
 /** One block line: `- (mieltymys, 0.9, 2026-09) text`. */
 export const claimLine = (c: ClaimRow) =>
   `- (${KIND_FI[c.kind]}, ${Math.round(c.confidence * 10) / 10}, ${month(c)}) ${c.text}`;
@@ -642,6 +656,307 @@ export function claimStore(deps: {
     }
   };
 
+  const now = () => new Date().toISOString();
+  const row = (id: number) =>
+    db
+      .select()
+      .from(claims)
+      .where(and(eq(claims.id, id), eq(claims.userId, userId)))
+      .get();
+
+  /**
+   * Decision 28: MEMORY.md from the active open claims. Score order fills the cap; sections and
+   * ids order the output, so the same claims give the same bytes. Marks `inProfile`.
+   */
+  const profile = (cap: number) => {
+    const rows = db
+      .select()
+      .from(claims)
+      .where(and(open(), eq(claims.status, 'active')))
+      .all();
+    const patterns = twoChats(rows.filter((c) => c.kind === 'decision_pattern').map((c) => c.id));
+    const ranked = rows
+      .filter((c) => c.kind !== 'decision_pattern' || (c.confidence >= 0.6 && patterns.has(c.id)))
+      .map((c) => ({ c, score: c.confidence * (1 + Math.log(c.timesSeen)) * recency(c) }))
+      .sort((a, b) => b.score - a.score || a.c.id - b.c.id);
+    const chosen: ClaimRow[] = [];
+    const render = (cs: ClaimRow[]) =>
+      SECTIONS.flatMap(([kind, title]) => {
+        const lines = cs
+          .filter((c) => c.kind === kind)
+          .sort((a, b) => a.id - b.id)
+          .map((c) => `- ${c.text}`);
+        return lines.length ? [`## ${title}`, ...lines] : [];
+      }).join('\n');
+    for (const { c } of ranked) if (render([...chosen, c]).length <= cap) chosen.push(c);
+    const ids = chosen.map((c) => c.id);
+    db.transaction((tx) => {
+      tx.update(claims).set({ inProfile: false }).where(eq(claims.userId, userId)).run();
+      if (ids.length)
+        tx.update(claims).set({ inProfile: true }).where(inArray(claims.id, ids)).run();
+    });
+    return { text: render(chosen), count: ids.length };
+  };
+
+  /** Decision 30: the `memory` tool on target `memory` writes claims. Throws NOT_FOUND. */
+  const toolWrite = async (
+    w: { action: 'add' | 'replace' | 'remove'; text: string; replace?: string | undefined },
+    chatId: string,
+    tainted: boolean,
+  ): Promise<number> => {
+    const status = tainted ? ('proposed' as const) : ('active' as const);
+    const fresh = (text: string, supersedesId: number | null = null) => ({
+      claim: {
+        kind: 'fact' as const,
+        text: text.slice(0, 240),
+        confidence: 0.9,
+        status,
+        activatedBy: tainted ? null : ('user' as const),
+        sourceChatId: chatId,
+        supersedesId,
+      },
+      evidence: [],
+    });
+    if (w.action === 'add') return (await add([fresh(w.text)]))[0] as number;
+    const needle = w.action === 'replace' ? w.replace : w.text;
+    const hits = needle
+      ? db
+          .select({ id: claims.id, text: claims.text })
+          .from(claims)
+          .where(and(open(), eq(claims.status, 'active')))
+          .all()
+          .filter((c) => c.text.includes(needle))
+      : [];
+    const old = hits.length === 1 ? hits[0] : undefined;
+    if (!old) throw new Error(NOT_FOUND);
+    if (!tainted) close(old.id, today());
+    const text = w.action === 'replace' ? w.text : `Käyttäjä pyysi unohtamaan: ${old.text}`;
+    if (!tainted && w.action === 'remove') return old.id;
+    return (await add([fresh(text, old.id)]))[0] as number;
+  };
+  /** Never a delete: the validity closes. */
+  const close = (id: number, validTo: string) =>
+    db
+      .update(claims)
+      .set({ status: 'superseded', validTo })
+      .where(and(eq(claims.id, id), inArray(claims.status, ['active', 'proposed'])))
+      .run();
+
+  /** `claims.review`: accept (with an edit or expiry) or reject. False when not allowed. */
+  const review = async (
+    id: number,
+    action: 'accept' | 'reject',
+    edit: { text?: string | undefined; validTo?: string | undefined } = {},
+  ) => {
+    const c = row(id);
+    const undo = c?.status === 'active' && c.activatedBy === 'auto' && action === 'reject';
+    if (!c || (c.status !== 'proposed' && !undo)) return false;
+    if (action === 'reject') {
+      db.update(claims)
+        .set({ status: 'rejected', reviewedAt: now() })
+        .where(eq(claims.id, id))
+        .run();
+      return true;
+    }
+    if (edit.text && edit.text !== c.text) await setText(id, edit.text);
+    db.transaction(() => {
+      db.update(claims)
+        .set({
+          status: 'active',
+          activatedBy: 'user',
+          reviewedAt: now(),
+          ...(edit.validTo ? { validTo: edit.validTo } : {}),
+        })
+        .where(eq(claims.id, id))
+        .run();
+      if (c.supersedesId) close(c.supersedesId, c.validFrom ?? today());
+    });
+    return true;
+  };
+
+  /** `claims.update` on an active claim. */
+  const update = async (
+    id: number,
+    edit: { text?: string | undefined; validTo?: string | null | undefined },
+  ) => {
+    const c = row(id);
+    if (c?.status !== 'active') return false;
+    if (edit.text && edit.text !== c.text) await setText(id, edit.text);
+    if (edit.validTo !== undefined)
+      db.update(claims).set({ validTo: edit.validTo }).where(eq(claims.id, id)).run();
+    return true;
+  };
+
+  const staleWhere = () => {
+    const t = Date.now();
+    return and(
+      open(),
+      eq(claims.status, 'active'),
+      lt(
+        sql`coalesce(${claims.lastConfirmedAt}, ${claims.recordedAt})`,
+        new Date(t - STALE_DAYS * DAY_MS).toISOString(),
+      ),
+      or(
+        isNull(claims.checkedAt),
+        lt(claims.checkedAt, new Date(t - CHECK_DAYS * DAY_MS).toISOString()),
+      ),
+    );
+  };
+  /** `claims.stale`: keep confirms now; lower takes 0.2 off (never below 0.1). */
+  const stale = (id: number, action: 'keep' | 'lower') => {
+    const c = row(id);
+    if (c?.status !== 'active') return false;
+    const at = now();
+    db.update(claims)
+      .set(
+        action === 'keep'
+          ? { lastConfirmedAt: at, checkedAt: at }
+          : {
+              confidence: Math.max(0.1, Math.round((c.confidence - 0.2) * 10) / 10),
+              checkedAt: at,
+            },
+      )
+      .where(eq(claims.id, id))
+      .run();
+    return true;
+  };
+
+  /** Rows to protocol claims with up to 3 newest quotes and the superseded claim's text. */
+  const toClaims = (rows: ClaimRow[]): Claim[] => {
+    const ids = rows.map((c) => c.id);
+    const ev = ids.length
+      ? db
+          .select()
+          .from(evidence)
+          .where(inArray(evidence.claimId, ids))
+          .orderBy(desc(evidence.id))
+          .all()
+      : [];
+    const sup = rows.flatMap((c) => (c.supersedesId ? [c.supersedesId] : []));
+    const old = new Map(
+      sup.length
+        ? db
+            .select({ id: claims.id, text: claims.text })
+            .from(claims)
+            .where(inArray(claims.id, sup))
+            .all()
+            .map((r) => [r.id, r])
+        : [],
+    );
+    return rows.map((c) => ({
+      id: c.id,
+      kind: c.kind,
+      text: c.text,
+      confidence: c.confidence,
+      status: c.status,
+      activatedBy: c.activatedBy,
+      validFrom: c.validFrom,
+      validTo: c.validTo,
+      recordedAt: c.recordedAt,
+      lastConfirmedAt: c.lastConfirmedAt,
+      timesSeen: c.timesSeen,
+      sourceChatId: c.sourceChatId,
+      supersedes: (c.supersedesId && old.get(c.supersedesId)) || null,
+      evidence: ev
+        .filter((e) => e.claimId === c.id)
+        .slice(0, 3)
+        .map((e) => ({
+          chatId: e.chatId,
+          messageId: e.messageId,
+          quote: e.quote,
+          stance: e.stance,
+        })),
+    }));
+  };
+
+  /** `claims.state` (phase-17 "Protocol"). */
+  const state = (): ServerMessage => {
+    const of = (status: ClaimRow['status']) =>
+      db
+        .select()
+        .from(claims)
+        .where(and(eq(claims.userId, userId), eq(claims.status, status)))
+        .orderBy(desc(claims.id));
+    const proposed = of('proposed').all();
+    const count = (status: ClaimRow['status']) =>
+      db
+        .select({ n: sql<number>`count(*)` })
+        .from(claims)
+        .where(
+          and(
+            eq(claims.userId, userId),
+            eq(claims.status, status),
+            isNotNull(claims.reviewedAt),
+            isNotNull(claims.sourceChatId),
+          ),
+        )
+        .get()?.n ?? 0;
+    return {
+      type: 'claims.state',
+      proposed: toClaims([
+        ...proposed.filter((c) => c.supersedesId),
+        ...proposed.filter((c) => !c.supersedesId),
+      ]),
+      active: toClaims(of('active').all()),
+      superseded: toClaims(of('superseded').limit(50).all()),
+      stale: toClaims(db.select().from(claims).where(staleWhere()).orderBy(claims.id).all()),
+      precision: {
+        accepted: count('active') + count('superseded'),
+        rejected: count('rejected'),
+      },
+    };
+  };
+
+  /** The chip of `chat.state`: claims this chat activated at once in the last 7 days. */
+  const chips = (chatId: string) =>
+    db
+      .select({ id: claims.id, kind: claims.kind, text: claims.text })
+      .from(claims)
+      .where(
+        and(
+          eq(claims.userId, userId),
+          eq(claims.sourceChatId, chatId),
+          eq(claims.status, 'active'),
+          eq(claims.activatedBy, 'auto'),
+          gt(claims.recordedAt, new Date(Date.now() - CHIP_DAYS * DAY_MS).toISOString()),
+        ),
+      )
+      .all();
+
+  /** Decision 23: after a vault merge, links and subjects follow the surviving entity. */
+  const repoint = (fromIds: number[], intoId: number) =>
+    db.transaction((tx) => {
+      const moved = tx
+        .select()
+        .from(claimEntities)
+        .where(and(eq(claimEntities.userId, userId), inArray(claimEntities.entityId, fromIds)))
+        .all();
+      tx.delete(claimEntities)
+        .where(and(eq(claimEntities.userId, userId), inArray(claimEntities.entityId, fromIds)))
+        .run();
+      for (const m of moved)
+        tx.insert(claimEntities)
+          .values({ ...m, entityId: intoId })
+          .onConflictDoNothing()
+          .run();
+      tx.update(claims)
+        .set({ subjectEntityId: intoId })
+        .where(and(eq(claims.userId, userId), inArray(claims.subjectEntityId, fromIds)))
+        .run();
+    });
+
+  /** Decision 43: every claim with its evidence and entity ids, for the open export. */
+  const exportAll = () => {
+    const rows = db.select().from(claims).where(eq(claims.userId, userId)).orderBy(claims.id).all();
+    const ev = db.select().from(evidence).where(eq(evidence.userId, userId)).all();
+    const ents = db.select().from(claimEntities).where(eq(claimEntities.userId, userId)).all();
+    return rows.map((c) => ({
+      ...c,
+      evidence: ev.filter((e) => e.claimId === c.id).map(({ userId: _, claimId: __, ...e }) => e),
+      entityIds: ents.filter((e) => e.claimId === c.id).map((e) => e.entityId),
+    }));
+  };
+
   /** Every 5 minutes (decision 11). */
   const schedule = (run: () => Promise<void>) =>
     cron.schedule('*/5 * * * *', run, { timezone: 'Europe/Helsinki', noOverlap: true });
@@ -657,5 +972,14 @@ export function claimStore(deps: {
     rank,
     relevant,
     recallLines,
+    profile,
+    toolWrite,
+    review,
+    update,
+    stale,
+    state,
+    chips,
+    repoint,
+    exportAll,
   };
 }

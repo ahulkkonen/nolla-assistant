@@ -160,23 +160,21 @@ export async function start(
     warn: (msg, data) => app.log.warn(data ?? {}, msg),
   });
   // `app` exists by the time any memory callback runs.
-  const memory = memoryStore({
-    db,
-    dataDir: config.dataDir,
-    userId: config.userId,
-    pseudo,
-    litellmUrl: config.litellmUrl,
-    litellmMasterKey: config.litellmMasterKey,
-    warn: (msg, data) => app.log.warn(data ?? {}, msg),
-    sendAll,
-    onUsage: recordUsage,
-  });
   const claimsDb = claimStore({
     db,
     userId: config.userId,
     warn: (msg, data) => app.log.warn(data ?? {}, msg),
     pseudo,
     ask: taskSmall(config.litellmUrl, config.litellmMasterKey, recordUsage),
+  });
+  const memory = memoryStore({
+    db,
+    dataDir: config.dataDir,
+    userId: config.userId,
+    pseudo,
+    warn: (msg, data) => app.log.warn(data ?? {}, msg),
+    sendAll,
+    claims: claimsDb,
   });
   // Pi entries per catalog model (phase-10 decision 8); `start` below runs once `app` exists.
   const catalog = modelCatalog({
@@ -218,7 +216,10 @@ export async function start(
     memory: {
       store: memory,
       claims: claimsDb,
-      onChange: (chatId) => broadcast(rooms, chatId, memory.state()),
+      onChange: (chatId) => {
+        broadcast(rooms, chatId, memory.state());
+        sendAll(claimsDb.state());
+      },
       log: (chatId, level, msg, data) => app.log[level]({ chatId, ...data }, msg),
     },
     subagents: {

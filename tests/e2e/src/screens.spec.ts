@@ -1330,7 +1330,8 @@ for (const scheme of ['light', 'dark'] as const) {
             await shot(page, 'memory-overcap', vp.width, scheme);
           });
 
-          test('memory-consolidating', async ({ app, page }) => {
+          // Phase 17 decision 29: no consolidation proposal any more; W1 replaces this screen.
+          test.skip('memory-consolidating', async ({ app, page }) => {
             app.llm.push({
               text: JSON.stringify({ user: 'Asun Tampereella.\nVastaa lyhyesti.', memory: '' }),
             });
@@ -1347,7 +1348,8 @@ for (const scheme of ['light', 'dark'] as const) {
             await expect(page.getByRole('region', { name: 'Tiivistysehdotus' })).toBeVisible();
           });
 
-          test('memory-consolidation-edit', async ({ app, page }) => {
+          // Phase 17 decision 29: no consolidation proposal any more; W1 replaces this screen.
+          test.skip('memory-consolidation-edit', async ({ app, page }) => {
             app.llm.push({
               text: JSON.stringify({ user: 'Asun Tampereella.\nVastaa lyhyesti.', memory: '' }),
             });
@@ -1362,7 +1364,8 @@ for (const scheme of ['light', 'dark'] as const) {
             await shot(page, 'memory-consolidation-edit', vp.width, scheme);
           });
 
-          test('memory-consolidation', async ({ app, page }) => {
+          // Phase 17 decision 29: no consolidation proposal any more; W1 replaces this screen.
+          test.skip('memory-consolidation', async ({ app, page }) => {
             app.llm.push({
               text: JSON.stringify({
                 user: 'Asun Tampereella.\nVastaa lyhyesti ja suomeksi.',

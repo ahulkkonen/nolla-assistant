@@ -595,6 +595,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
     switch (msg.type) {
       case 'vault.merge':
         await pseudo.vaultMerge(msg.fromIds, msg.intoId);
+        memory.claims?.repoint(msg.fromIds, msg.intoId);
         collisions.dropEntities([...msg.fromIds, msg.intoId]); // the question no longer stands
         break;
       case 'vault.split':
@@ -758,6 +759,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
       messages,
       artifacts: messageArtifacts(messages),
       ...(link ? { forkedFrom: link } : {}),
+      ...(memory.claims ? { claims: memory.claims.chips(r.id) } : {}),
     };
   };
 
@@ -1196,11 +1198,29 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
         return send(socket, topicState(db, userId));
       case 'memory.list':
         return send(socket, memory.state());
+      case 'claims.list':
+        return memory.claims
+          ? send(socket, memory.claims.state())
+          : send(socket, errorMsg('not_implemented'));
+      case 'claims.review':
+      case 'claims.update':
+      case 'claims.stale': {
+        const c = memory.claims;
+        if (!c) return send(socket, errorMsg('not_implemented'));
+        const ok =
+          msg.type === 'claims.review'
+            ? await c.review(msg.id, msg.action, { text: msg.text, validTo: msg.validTo })
+            : msg.type === 'claims.update'
+              ? await c.update(msg.id, { text: msg.text, validTo: msg.validTo })
+              : c.stale(msg.id, msg.action);
+        if (!ok) throw new NotFound();
+        return toAll(c.state());
+      }
       case 'memory.edit':
         memory.edit(msg.target, msg.text);
         return memoryToAll();
       case 'memory.approve': {
-        const status = memory.approve(msg.pendingId, msg.approve);
+        const status = await memory.approve(msg.pendingId, msg.approve);
         if (!status) throw new NotFound();
         // A failed write leaves the queue; this is its only report.
         if (status === 'failed') send(socket, errorMsg('memory_conflict'));

@@ -1109,7 +1109,7 @@ test.describe('memory', () => {
     await expect(page.locator('.md').last()).toHaveText('Selvä, muistan.');
     await expect(page.getByText('Muisti päivitetty')).toBeVisible();
     await page.getByRole('button', { name: 'Avaa muisti' }).click();
-    await expect(page.getByLabel('Muisti (MEMORY.md)')).toHaveValue(/Lempiväri on sininen\./);
+    await expect(page.getByLabel('Käyttäjä (USER.md)')).toHaveValue(/Lempiväri on sininen\./);
   });
 
   test('a tainted agent write waits; approve applies it', async ({ app, page }) => {
@@ -1124,7 +1124,7 @@ test.describe('memory', () => {
     await expect(pending).toContainText('Lempiväri on vihreä.');
     await pending.getByRole('button', { name: 'Hyväksy' }).click();
     await expect(pending).toHaveCount(0);
-    await expect(page.getByLabel('Muisti (MEMORY.md)')).toHaveValue(/Lempiväri on vihreä\./);
+    await expect(page.getByLabel('Käyttäjä (USER.md)')).toHaveValue(/Lempiväri on vihreä\./);
   });
 });
 

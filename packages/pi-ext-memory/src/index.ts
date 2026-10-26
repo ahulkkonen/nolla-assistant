@@ -248,7 +248,7 @@ export function memoryExtension(opts: {
     pi.registerTool({
       name: 'memory',
       label: 'memory',
-      description: `Edit long-term memory. target "user" = USER.md (who the user is, preferences; max ${CAPS.user} chars), "memory" = MEMORY.md (durable facts; max ${CAPS.memory} chars). add appends text; replace swaps the exact text in "replace" for "text"; remove deletes the exact text.`,
+      description: `Edit long-term memory. target "user" = USER.md (who the user is, preferences; max ${CAPS.user} chars). target "memory" = durable facts about the user, stored as claims: add stores "text" as a new fact; replace replaces the one fact that contains "replace" with "text"; remove ends the one fact that contains "text". For "user", add appends text; replace swaps the exact text in "replace" for "text"; remove deletes the exact text.`,
       parameters: Type.Object({
         action: Type.Union([Type.Literal('add'), Type.Literal('replace'), Type.Literal('remove')]),
         target: Type.Union([Type.Literal('user'), Type.Literal('memory')]),
@@ -265,9 +265,16 @@ export function memoryExtension(opts: {
             return text(err instanceof Error ? err.message : 'park failed', true);
           }
         }
-        const r = applyOp(await opts.files.read(p.target), write);
-        if ('error' in r) return text(r.error, true);
-        await opts.applyNow(write);
+        // Phase 17: MEMORY.md is generated from claims; the host checks target `memory` writes.
+        if (p.target === 'user') {
+          const r = applyOp(await opts.files.read(p.target), write);
+          if ('error' in r) return text(r.error, true);
+        }
+        try {
+          await opts.applyNow(write);
+        } catch (err) {
+          return text(err instanceof Error ? err.message : 'write failed', true);
+        }
         return text('Tallennettu.');
       },
     });

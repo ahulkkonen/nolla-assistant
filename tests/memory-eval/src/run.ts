@@ -92,8 +92,6 @@ const memory = memoryStore({
   dataDir,
   userId: USER,
   pseudo,
-  litellmUrl,
-  litellmMasterKey: litellmKey,
   warn: () => {},
   sendAll: () => {},
 });

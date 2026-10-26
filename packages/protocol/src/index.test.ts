@@ -349,3 +349,28 @@ describe('phase-15 admin', () => {
     );
   });
 });
+
+describe('phase 17 claims messages', () => {
+  it('parses review, update and stale; rejects a bad expiry and a long text', () => {
+    expect(
+      ClientMessage.parse({ type: 'claims.review', id: 3, action: 'accept', validTo: '2027-01' }),
+    ).toMatchObject({ id: 3 });
+    expect(ClientMessage.parse({ type: 'claims.update', id: 3, validTo: null })).toMatchObject({
+      validTo: null,
+    });
+    expect(ClientMessage.parse({ type: 'claims.stale', id: 3, action: 'lower' })).toMatchObject({
+      action: 'lower',
+    });
+    expect(() =>
+      ClientMessage.parse({
+        type: 'claims.review',
+        id: 3,
+        action: 'accept',
+        validTo: 'ensi vuonna',
+      }),
+    ).toThrow();
+    expect(() =>
+      ClientMessage.parse({ type: 'claims.update', id: 3, text: 'x'.repeat(241) }),
+    ).toThrow();
+  });
+});

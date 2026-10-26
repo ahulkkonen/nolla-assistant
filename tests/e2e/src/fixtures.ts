@@ -528,10 +528,11 @@ export async function acceptProposal(page: Page) {
 export const USER_MD = 'Asun Tampereella.\nPidän lyhyistä vastauksista.\nKirjoita suomeksi.';
 
 /** One agent run: an untainted `memory add`, or (`tainted`) a `recall` first, which parks it. */
+/** An agent write to USER.md (phase 17: target `memory` writes claims, not a file). */
 export function memoryTurns(app: App, text: string, tainted = false) {
   if (tainted) app.llm.push({ toolCalls: [{ name: 'recall', args: { query: 'väri' } }] });
   app.llm.push({
-    toolCalls: [{ name: 'memory', args: { action: 'add', target: 'memory', text } }],
+    toolCalls: [{ name: 'memory', args: { action: 'add', target: 'user', text } }],
   });
   app.llm.push({ text: 'Selvä, muistan.' });
 }

@@ -17,10 +17,9 @@ import type { ServerMessage } from '@pa/protocol';
 import { and, desc, eq, inArray, isNotNull, ne } from 'drizzle-orm';
 import cron from 'node-cron';
 import { z } from 'zod';
+import type { ClaimStore } from './claims.ts';
 import { gitCommitter, writeAtomic } from './git.ts';
 import { search } from './search.ts';
-import { taskSmall } from './topics.ts';
-import type { RecordUsage } from './usage.ts';
 
 /**
  * A memory operation that cannot run. `message` is `FULL` (over cap), `CONFLICT` (files or text
@@ -31,21 +30,6 @@ export const CONFLICT = 'conflict';
 export const PSEUDO_REQUIRED = 'pseudo_required';
 const MAX_PENDING = 5;
 const TOO_MANY = 'liikaa odottavia kirjoituksia';
-
-export const CONSOLIDATE_PROMPT = `Olet muistin tiivistäjä. Saat käyttäjän kaksi muistitiedostoa: USER.md (kuka käyttäjä on, mieltymykset, pysyvät ohjeet) ja MEMORY.md (pysyvät faktat). Tiivistä molemmat: yhdistä päällekkäiset kohdat, poista vanhentuneet ja ristiriitaiset tiedot, säilytä kaikki edelleen paikkansapitävä. Älä keksi uutta tietoa. Säilytä nimet ja muut tunnisteet täsmälleen sellaisinaan.
-
-Vastaa pelkällä JSON-objektilla, ilman muuta tekstiä:
-{"user": string, "memory": string}
-
-Säännöt:
-- user: uusi USER.md, enintään ${CAPS.user} merkkiä.
-- memory: uusi MEMORY.md, enintään ${CAPS.memory} merkkiä.
-- Lyhyet rivit, yksi asia riviä kohden, tiedostojen kielellä (yleensä suomi).`;
-
-const Proposal = z.object({
-  user: z.string().max(CAPS.user),
-  memory: z.string().max(CAPS.memory),
-});
 
 /** Whole-file unified diff from an LCS line table; '' when the texts are equal. */
 export function lineDiff(name: string, a: string, b: string): string {
@@ -83,14 +67,12 @@ export function memoryStore(deps: {
   dataDir: string;
   userId: string;
   pseudo?: PseudoClient | undefined;
-  litellmUrl: string;
-  litellmMasterKey: string;
   /** Called only after startup (on writes and jobs). */
   warn: (msg: string, data?: object) => void;
   /** Receives `memory.state` after the weekly consolidation. */
   sendAll: (msg: ServerMessage) => void;
-  /** The consolidation call as a `task` row (phase-13 decision 14). */
-  onUsage?: RecordUsage | undefined;
+  /** Phase 17: claims; MEMORY.md is generated from them and target `memory` writes them. */
+  claims?: ClaimStore | undefined;
 }) {
   const { db, userId, pseudo, warn } = deps;
   const dir = resolve(deps.dataDir, 'memory', userId);
@@ -116,7 +98,15 @@ export function memoryStore(deps: {
     commit(note);
   };
 
-  const applyWrite = (w: MemoryWrite, chatId: string) => {
+  const applyWrite = async (w: MemoryWrite, chatId: string) => {
+    if (w.target === 'memory' && deps.claims) {
+      try {
+        await deps.claims.toolWrite(w, chatId, false);
+      } catch {
+        throw new MemoryError(NOT_FOUND);
+      }
+      return;
+    }
     const r = applyOp(read(w.target), w);
     if ('error' in r) throw new MemoryError(r.error === NOT_FOUND ? CONFLICT : r.error);
     put({ [w.target]: r.text }, `memory ${w.action} ${w.target} (chat ${chatId})`);
@@ -164,51 +154,14 @@ export function memoryStore(deps: {
         .get() ?? null,
   });
 
-  const ask = taskSmall(deps.litellmUrl, deps.litellmMasterKey, deps.onUsage);
+  /**
+   * Phase-17 decision 28: MEMORY.md from the active claims, no model call. Writes and commits only
+   * when the bytes change.
+   */
   const consolidate = async () => {
-    const user = read('user');
-    const memory = read('memory');
-    // Invariant 1: never send the real files.
-    if (!pseudo) throw new MemoryError(PSEUDO_REQUIRED);
-    const base = baseHash();
-    const mask = async (t: string) => (t ? (await pseudo.mask(`memory:${userId}`, t)).masked : t);
-    const unmask = async (t: string) => (t ? (await pseudo.unmask(t)).restored : t);
-    const reply = await ask(Proposal, [
-      { role: 'system', content: CONSOLIDATE_PROMPT },
-      {
-        role: 'user',
-        content: `USER.md:\n${await mask(user)}\n\nMEMORY.md:\n${await mask(memory)}`,
-      },
-    ]);
-    if (!reply) return warn('consolidation reply invalid');
-    const proposedUser = await unmask(reply.user);
-    const proposedMemory = await unmask(reply.memory);
-    // Surrogates can be shorter than the real values.
-    if (proposedUser.length > CAPS.user || proposedMemory.length > CAPS.memory)
-      return warn('consolidation over cap after restore: discarded');
-    const diff = [
-      lineDiff('USER.md', user, proposedUser),
-      lineDiff('MEMORY.md', memory, proposedMemory),
-    ]
-      .filter(Boolean)
-      .join('\n');
-    if (!diff) return;
-    db.transaction((tx) => {
-      tx.update(memoryConsolidations)
-        .set({ status: 'superseded' })
-        .where(consolidationWhere())
-        .run();
-      tx.insert(memoryConsolidations)
-        .values({
-          userId,
-          diff,
-          proposedUser,
-          proposedMemory,
-          baseHash: base,
-          createdAt: new Date().toISOString(),
-        })
-        .run();
-    });
+    if (!deps.claims) return;
+    const { text, count } = deps.claims.profile(CAPS.memory);
+    if (text !== read('memory')) put({ memory: text }, `memory regenerate (${count} claims)`);
   };
 
   const task = cron.schedule(
@@ -223,6 +176,7 @@ export function memoryStore(deps: {
   );
 
   return {
+    claims: deps.claims,
     dir,
     read,
     state,
@@ -231,7 +185,9 @@ export function memoryStore(deps: {
     /** Writes the user's own text (cap-checked). */
     edit: (t: Target, text: string) => put({ [t]: text }, `edit ${t}`),
     /** Queues a write unvalidated; an identical pending write returns its id. Throws past MAX_PENDING per chat. */
-    park(chatId: string, w: MemoryWrite): number {
+    /** Phase 17: a tainted write to target `memory` becomes a proposed claim (its id). */
+    async park(chatId: string, w: MemoryWrite): Promise<number> {
+      if (w.target === 'memory' && deps.claims) return deps.claims.toolWrite(w, chatId, true);
       const queued = db
         .select()
         .from(memoryPending)
@@ -265,13 +221,13 @@ export function memoryStore(deps: {
      * Applies or rejects a pending write. A write that no longer applies is marked `failed` (and
      * leaves `memory.state`). Undefined when the id is not pending.
      */
-    approve(id: number, ok: boolean): 'applied' | 'rejected' | 'failed' | undefined {
+    async approve(id: number, ok: boolean): Promise<'applied' | 'rejected' | 'failed' | undefined> {
       const p = db.select().from(memoryPending).where(pendingWhere(id)).get();
       if (!p) return;
       let status: 'applied' | 'rejected' | 'failed' = ok ? 'applied' : 'rejected';
       if (ok)
         try {
-          applyWrite({ ...p, replace: p.replace ?? undefined }, p.chatId);
+          await applyWrite({ ...p, replace: p.replace ?? undefined }, p.chatId);
         } catch (err) {
           if (!(err instanceof MemoryError)) throw err;
           status = 'failed';

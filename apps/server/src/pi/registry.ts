@@ -509,12 +509,12 @@ export class SessionRegistry {
                 recentTitles: async () => memory.store.recentTitles(chatId),
                 recall: (q, o) => memory.store.recall(q, o),
                 park: async (w) => {
-                  const id = memory.store.park(chatId, w);
+                  const id = await memory.store.park(chatId, w);
                   memory.onChange(chatId);
                   return id;
                 },
                 applyNow: async (w) => {
-                  memory.store.applyWrite(w, chatId);
+                  await memory.store.applyWrite(w, chatId);
                   memory.onChange(chatId);
                 },
                 onTaint: () => memory.store.markTainted(chatId),

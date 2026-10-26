@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { buffer } from 'node:stream/consumers';
 import { inflateRawSync } from 'node:zlib';
-import { authSessions } from '@pa/db';
+import { authSessions, claims, type Db } from '@pa/db';
 import { type AttachmentRef, ChatExport, EXPORT_PBKDF2_ITER, type ExportJob } from '@pa/protocol';
 import { afterEach, expect, test } from 'vitest';
 import { api, bootChat, bootPseudo, login, runCleanups, tempDir } from './test-utils.ts';
@@ -14,6 +14,20 @@ import { opensslEncrypt, type ZipEntry, ZipTooLarge, zip } from './zip.ts';
 afterEach(runCleanups);
 
 const has = (cmd: string) => spawnSync(cmd, ['-h'], { stdio: 'ignore' }).error === undefined;
+
+/** Phase 17: one claim with a real name (the open export carries it, the masked one does not). */
+const seedClaim = (db: Db) =>
+  db
+    .insert(claims)
+    .values({
+      userId: 'aleksi',
+      kind: 'relationship',
+      text: 'Matti Virtanen on käyttäjän esihenkilö.',
+      confidence: 0.9,
+      status: 'active',
+      recordedAt: new Date().toISOString(),
+    })
+    .run();
 
 /** The entries of a zip from its central directory: name to content. */
 function unzip(buf: Buffer): Map<string, Buffer> {
@@ -146,6 +160,7 @@ test('export job: open export has chats, vault, memory, work dir and uploads; do
   writeFileSync(join(work, '.trash', 'pois.txt'), 'roskis');
   symlinkSync(join(dataDir, 'app.db'), join(work, 'linkki'));
   writeFileSync(join(dataDir, 'memory', 'aleksi', 'USER.md'), 'Käyttäjä on Matti Virtanen.');
+  seedClaim(srv.db);
 
   const res = await start({ passphrase: 'pitkä salasana 42', unmask: true });
   expect(res.status).toBe(202);
@@ -184,6 +199,9 @@ test('export job: open export has chats, vault, memory, work dir and uploads; do
   expect(JSON.parse(entries.get('vault.json')?.toString() ?? '')).toHaveProperty('entities');
   expect(entries.get('muisti/USER.md')?.toString()).toBe('Käyttäjä on Matti Virtanen.');
   expect(entries.get('muisti/MEMORY.md')?.toString()).toBe('');
+  expect(JSON.parse(entries.get('muisti/havainnot.json')?.toString() ?? '')).toMatchObject([
+    { text: 'Matti Virtanen on käyttäjän esihenkilö.', evidence: [], entityIds: [] },
+  ]);
   expect(entries.get('tyokansio/muistiinpanot/a.txt')?.toString()).toBe('työtiedosto');
   expect(entries.get(`liitteet/${attachments[0]?.id}-Matti Virtanen.txt`)?.toString()).toBe(
     'liite 42',
@@ -209,6 +227,7 @@ test('export job: masked export has only chats; bad passphrase, cancel, pseudo d
 }, async () => {
   const { config, sc, srv, port, cookie, start } = await bootExport();
   const { dataDir } = config;
+  seedClaim(srv.db);
 
   const short = await start({ passphrase: 'lyhyt' });
   expect(short.status).toBe(400);

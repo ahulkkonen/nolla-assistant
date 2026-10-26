@@ -28,7 +28,7 @@ const OMITTED = ['vault.json', 'muisti/', 'tyokansio/', 'liitteet/'];
 
 type Deps = Pick<BridgeDeps, 'db' | 'registry' | 'pseudo' | 'agents' | 'fx'> & {
   dataDir: string;
-  memory: Pick<MemoryStore, 'read'>;
+  memory: Pick<MemoryStore, 'read' | 'claims'>;
   work: Pick<WorkStore, 'root' | 'workBytes' | 'uploadBytes'>;
   sendAll: (msg: ServerMessage) => void;
   warn: (msg: string, data?: object) => void;
@@ -191,6 +191,9 @@ export function exportJobs(deps: Deps) {
         yield* text(`muisti/${FILES[t]}`, memory.read(t));
         tick();
       }
+      // Phase 17: claims with evidence (real values); the masked export omits `muisti/`.
+      if (memory.claims)
+        yield* text('muisti/havainnot.json', JSON.stringify(memory.claims.exportAll(), null, 2));
       for (const f of found.out)
         yield* file(`tyokansio/${f.rel}`, f.abs, workRoot, f.size, f.mtime, f);
       for (const u of uploads) {
