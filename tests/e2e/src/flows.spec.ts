@@ -13,6 +13,7 @@ import {
   editAgent,
   expect,
   HTML_REPLY,
+  MERMAID_REPLY,
   memoryTurns,
   mockMic,
   mockPush,
@@ -1206,6 +1207,49 @@ test('vega-lite: the chart renders in the sandbox with the lifted title (phase 1
     getComputedStyle(document.documentElement).getPropertyValue('--chart-1').trim(),
   );
   await expect(frame.locator('#vis svg .mark-rect path').first()).toHaveAttribute('fill', accent);
+});
+
+test('export: chart and diagram download as SVG with inlined fonts, and as PNG', async ({
+  app,
+  page,
+}) => {
+  const save = async (item: 'Lataa SVG' | 'Lataa PNG') => {
+    // The menu of the previous export must be gone, or the click lands on its closing frame.
+    await expect(page.getByRole('menu')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Lataa', exact: true }).click();
+    const [file] = await Promise.all([
+      page.waitForEvent('download'),
+      page.getByRole('menuitem', { name: item }).click(),
+    ]);
+    return { name: file.suggestedFilename(), body: readFileSync(await file.path()) };
+  };
+  app.llm.push({ text: CHART_REPLY });
+  await app.login(page);
+  await send(page, 'Piirrä kulutus');
+  const frame = page.getByRole('complementary', { name: 'Artefaktit' }).locator('iframe');
+  await expect(frame.contentFrame().locator('#vis svg')).toBeVisible();
+  const svg = await save('Lataa SVG');
+  expect(svg.name).toBe('Sähkönkulutus-kuukausittain-2025.svg');
+  const text = svg.body.toString('utf8');
+  expect(text).toMatch(/^<svg xmlns="http:\/\/www.w3.org\/2000\/svg"/);
+  expect(text).toContain("@font-face{font-family:'Inter Variable'");
+  expect(text).toContain('data:font/woff2;base64,');
+  // The lifted title and caption are in the file, the chart's marks too.
+  expect(text).toContain('Sähkönkulutus kuukausittain 2025</text>');
+  expect(text).toContain('yhteensä 3 370 kWh');
+  expect(text).toContain('mark-rect');
+  const png = await save('Lataa PNG');
+  expect(png.name).toBe('Sähkönkulutus-kuukausittain-2025.png');
+  expect(png.body.subarray(1, 4).toString()).toBe('PNG');
+  // Twice the SVG's width (device pixel ratio 2), from the PNG header.
+  const width = Number(/width="(\d+)"/.exec(text)?.[1]);
+  expect(png.body.readUInt32BE(16)).toBe(width * 2);
+
+  app.llm.push({ text: MERMAID_REPLY });
+  await send(page, 'Piirrä suunnitelma');
+  await expect(frame.contentFrame().locator('.diagram svg')).toBeVisible();
+  const diagram = await save('Lataa SVG');
+  expect(diagram.body.toString('utf8')).toContain('Lomasuunnitelma</text>');
 });
 
 test('vega-lite: a spec with a url falls back to its data as a table (R6)', async ({

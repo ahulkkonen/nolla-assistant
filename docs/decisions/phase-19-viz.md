@@ -128,7 +128,8 @@ in `apps/web/package.json` (decision 2).
 11. **Plot and D3.** When the source of an `html`, `jsx` or `tsx` artifact contains `Plot.` or `d3.`,
     the renderer inlines `apps/web/src/plot-runtime.ts` before the content. It sets the globals
     `Plot` and `d3`. Plot needs D3, so one bundle holds both.
-12. **Export.** For `vega-lite` and `mermaid` artifacts the panel shows "Lataa SVG" and "Lataa PNG".
+12. **Export.** For `vega-lite` and `mermaid` artifacts the "Lataa" button opens a menu: "Lataa
+    SVG", "Lataa PNG" and "Lataa lähdekoodi". A menu keeps the 390 px header at five buttons.
     The parent asks the iframe for `view.toSVG()` with `postMessage` and checks `event.source`. For
     Mermaid it uses its own render output. The export adds the lifted title, subtitle and caption as
     SVG text, a background rectangle, and the font faces as base64 WOFF2. PNG draws that SVG on a

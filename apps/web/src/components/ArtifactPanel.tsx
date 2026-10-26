@@ -1,5 +1,15 @@
 import type { Artifact } from '@pa/protocol';
-import { Check, ChevronDown, Copy, Download, ExternalLink, Save, X } from 'lucide-react';
+import {
+  Check,
+  ChevronDown,
+  Copy,
+  Download,
+  ExternalLink,
+  FileCode,
+  FileImage,
+  Save,
+  X,
+} from 'lucide-react';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import {
   DropdownMenu,
@@ -19,9 +29,11 @@ import { useStore } from '../store.ts';
 import {
   type Chart,
   fontFaces,
+  framedSvg,
   inlineHtml,
   type Lifted,
   mermaidTheme,
+  pngBlob,
   prepareChart,
   type Refused,
   type Row,
@@ -30,6 +42,7 @@ import {
   tokenSheet,
 } from '../viz.ts';
 import vizUrl from '../viz-runtime.ts?worker&url';
+import { ActionMenu } from './Actions.tsx';
 import { IconButton } from './IconButton.tsx';
 import { htmlDocument, postWhenReady, SANDBOX_URL, SandboxFrame } from './Sandbox.tsx';
 import { SidePanel } from './SidePanel.tsx';
@@ -268,6 +281,46 @@ function ChartFallback({ refused: { error, rows } }: { refused: Refused }) {
   );
 }
 
+/** The chart's SVG from the sandbox (decision 12): asked by postMessage, from that frame only. */
+function askSvg(frame: HTMLIFrameElement | null): Promise<string> {
+  const win = frame?.contentWindow;
+  if (!win) return Promise.reject(new Error('ei kaaviota'));
+  return new Promise((resolve, reject) => {
+    const done = () => {
+      clearTimeout(timer);
+      removeEventListener('message', onMessage);
+    };
+    const onMessage = (e: MessageEvent<{ type?: string; svg?: unknown }>) => {
+      if (e.source !== win || e.data?.type !== 'viz-svg' || typeof e.data.svg !== 'string') return;
+      done();
+      resolve(e.data.svg);
+    };
+    const timer = setTimeout(() => {
+      done();
+      reject(new Error('aikakatkaisu'));
+    }, 10_000);
+    addEventListener('message', onMessage);
+    win.postMessage({ type: 'viz-svg' }, '*');
+  });
+}
+
+/** "Lataa SVG" and "Lataa PNG": Mermaid's own output, or the chart's SVG from the sandbox. */
+async function exportFigure(
+  a: Artifact,
+  format: 'svg' | 'png',
+  source: string | HTMLIFrameElement | null,
+  lifted: Lifted,
+  { t, fonts }: { t: Tokens; fonts: string },
+) {
+  const inner = typeof source === 'string' ? source : await askSvg(source);
+  const { svg, width, height } = framedSvg(inner, lifted, t, fonts);
+  const blob =
+    format === 'svg'
+      ? new Blob([svg], { type: 'image/svg+xml' })
+      : await pngBlob(svg, width, height);
+  saveFile(blob, `${stem(a)}.${format}`);
+}
+
 /** "Tallenna tiedostoksi" (phase-11 decision 12): into the work dir, with real values. */
 async function saveToWork(chatId: string, artifactId: string) {
   try {
@@ -344,6 +397,15 @@ export function ArtifactPanel() {
   const close = () => useStore.setState({ openArtifact: null });
   const ready = doc?.id === a.id ? doc : null;
   const plain = a.kind === 'code' || a.kind === 'file';
+  const theme = ready?.html ? ready.theme : undefined;
+  const exportable = (a.kind === 'vega-lite' || a.kind === 'mermaid') && theme;
+  const exportAs = (format: 'svg' | 'png') => {
+    if (!theme || !ready) return;
+    exportFigure(a, format, ready.svg ?? frame.current, ready.lifted ?? {}, theme).catch(
+      (err: unknown) =>
+        useStore.getState().pushError(`Vienti epäonnistui: ${(err as Error).message}`),
+    );
+  };
   const title = <span className="truncate">{a.title}</span>;
   const code = (
     <pre
@@ -423,9 +485,21 @@ export function ArtifactPanel() {
             >
               {copied ? <Check size={16} /> : <Copy size={16} />}
             </IconButton>
-            <IconButton label="Lataa" className="size-8" onClick={() => download(a)}>
-              <Download size={16} />
-            </IconButton>
+            {exportable ? (
+              <ActionMenu
+                label="Lataa"
+                Icon={Download}
+                actions={[
+                  { label: 'Lataa SVG', Icon: FileImage, run: () => exportAs('svg') },
+                  { label: 'Lataa PNG', Icon: FileImage, run: () => exportAs('png') },
+                  { label: 'Lataa lähdekoodi', Icon: FileCode, run: () => download(a) },
+                ]}
+              />
+            ) : (
+              <IconButton label="Lataa" className="size-8" onClick={() => download(a)}>
+                <Download size={16} />
+              </IconButton>
+            )}
             {/* A code block opened from a message (`local-…`) has no artifact on the server. */}
             {!a.id.startsWith('local-') && (
               <IconButton
