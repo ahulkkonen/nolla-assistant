@@ -3,7 +3,7 @@ import { rmSync } from 'node:fs';
 import { join as joinPath, resolve, sep } from 'node:path';
 import type { AgentSession, AgentSessionEvent } from '@earendil-works/pi-coding-agent';
 import { chats, type Db, files, topicProposals, topics } from '@pa/db';
-import { ATTACHMENT_MARKER, FULL } from '@pa/pi-ext-memory';
+import { FULL } from '@pa/pi-ext-memory';
 import {
   type PseudoClient,
   PseudoDownError,
@@ -25,7 +25,7 @@ import type { Agents } from './agents.ts';
 import { type Approvals, DENIED_REASON, TIMEOUT_REASON } from './approval.ts';
 import { extractArtifacts, messageArtifacts } from './artifacts.ts';
 import type { Automations } from './automations.ts';
-import { AttachmentNotFound, chatFiles, ingestAttachments } from './files.ts';
+import { AttachmentNotFound, chatFiles, ingestAttachments, splitBlocks } from './files.ts';
 import { MemoryError, type MemoryStore, PSEUDO_REQUIRED } from './memory.ts';
 import { GUARD_REASON } from './pi/guard.ts';
 import { ChatNotFound, type SessionRegistry } from './pi/registry.ts';
@@ -173,8 +173,9 @@ export function restorer(pseudo: PseudoClient | undefined, onDown: () => void): 
       }));
       return { text: restored, annotations, hold: Math.min(Math.max(hold, 0), text.length) };
     } catch {
+      // Once, also when parallel calls fail together (`history`).
+      if (!failed) onDown();
       failed = true;
-      onDown();
       return { text, annotations: [], hold: 0 };
     }
   };
@@ -827,13 +828,15 @@ function toMessage(id: string, m: AgentMessage, tools: ToolRow[]): Message {
 /**
  * Rebuilds messages from the Pi branch. A user message gets the chat's files uploaded after the
  * previous user message and up to its own timestamp; the appended `[Liite: ...]` blocks are cut
- * from its text. `restore` also serves the export (export.ts).
+ * from its text (`splitBlocks`); `blocks` gets their names per message id, as the text has them
+ * (masked when `restore` does not restore). The export (export.ts) uses both.
  */
 // ponytail: timestamp window, not a stored message link; a file uploaded but sent with a later message shows on the earlier one. Add files.messageId if that happens.
 export async function history(
   session: AgentSession,
   files: ReturnType<typeof chatFiles>,
   restore: Restore,
+  blocks?: Map<string, string[]>,
 ): Promise<Message[]> {
   const entries = session.sessionManager.getBranch();
   const statuses = new Map<string, ToolStatus>();
@@ -855,16 +858,17 @@ export async function history(
     }
     return [m];
   });
-  // ponytail: one /unmask per message; batch in phase 7.
-  for (const m of messages) {
-    const { text, annotations } = await restore(m.text);
-    // By the marker, not the name: a masked text (sidecar down, masked export) masks the name too.
-    const at = m.attachments.some((a) => a.kind === 'document')
-      ? text.indexOf(ATTACHMENT_MARKER)
-      : -1;
-    const cut = at < 0 ? text.length : at;
-    m.text = text.slice(0, cut);
-    m.annotations = annotations.filter((a) => a.end <= cut);
-  }
+  // ponytail: 8 /unmask calls at a time; a batch endpoint in the sidecar would cut the round trips.
+  for (let i = 0; i < messages.length; i += 8)
+    await Promise.all(
+      messages.slice(i, i + 8).map(async (m) => {
+        const { text, annotations } = await restore(m.text);
+        const docs = m.attachments.filter((a) => a.kind === 'document').map((a) => a.name);
+        const { own, names } = splitBlocks(text, docs);
+        m.text = own;
+        m.annotations = annotations.filter((a) => a.end <= own.length);
+        if (names.length) blocks?.set(m.id, names);
+      }),
+    );
   return messages;
 }

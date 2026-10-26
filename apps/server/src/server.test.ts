@@ -5,7 +5,17 @@ import { startFakeSidecar } from '@pa/pi-ext-pseudo/fake-sidecar';
 import type { AttachmentRef, ServerMessage } from '@pa/protocol';
 import sharp from 'sharp';
 import { afterEach, expect, test } from 'vitest';
-import { api, boot, bootPseudo, cleanups, connect, KEY, login, runCleanups } from './test-utils.ts';
+import {
+  api,
+  boot,
+  bootPseudo,
+  cleanups,
+  connect,
+  KEY,
+  login,
+  openFirst,
+  runCleanups,
+} from './test-utils.ts';
 
 const SCRIPTED = 'Hei! Miten voin auttaa?';
 afterEach(runCleanups);
@@ -197,8 +207,7 @@ test('attachments: image and txt reach the model; owner-only download', {
     image_url: { url: expect.stringMatching(/^data:image\/png;base64,[A-Za-z0-9+/=]+$/) },
   });
 
-  c.send({ type: 'chat.open', chatId: chat.id });
-  const [first] = (await c.next('chat.state')).messages;
+  const first = await openFirst(c, chat.id);
   expect(first?.text).toBe('Katso');
   expect(first?.attachments.map((a) => a.name)).toEqual(['dot.png', 'note.txt']);
 });

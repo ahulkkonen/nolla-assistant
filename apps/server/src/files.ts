@@ -295,6 +295,27 @@ export async function ingestAttachments(
   return { images, text };
 }
 
+/** One block header as `ingestAttachments` writes it; `cleanName` keeps line breaks out of names. */
+const BLOCK = /\n\n\[Liite: ([^\n]*)\]\n/g;
+
+/**
+ * Splits a user text into its own part and the names of the `[Liite: …]` blocks that
+ * `ingestAttachments` appended for `docs` (the message's document names). The blocks start at the
+ * first block with an exact document name. A masked text masks the names, so else they start at
+ * the `docs.length`-th block from the end, and a marker in the user's own text stays in it.
+ */
+// ponytail: a marker inside a document's own content can still move the fallback cut; store the user text length per message if that ever matters.
+export function splitBlocks(text: string, docs: string[]) {
+  const blocks = docs.length ? [...text.matchAll(BLOCK)] : [];
+  if (!blocks.length) return { own: text, names: [] };
+  const exact = blocks.findIndex((b) => docs.includes(b[1] ?? ''));
+  const first = exact >= 0 ? exact : Math.max(0, blocks.length - docs.length);
+  return {
+    own: text.slice(0, blocks[first]?.index),
+    names: blocks.slice(first).map((b) => b[1] ?? ''),
+  };
+}
+
 /** Attachment refs of a chat's files, for rebuilding `chat.state`. */
 export function chatFiles(
   db: Db,

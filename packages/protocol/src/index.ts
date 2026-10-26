@@ -22,6 +22,57 @@ export const AttachmentRef = z.object({
 });
 export type AttachmentRef = z.infer<typeof AttachmentRef>;
 
+/** Highest first, as OpenRouter lists them (docs/decisions/phase-10-models.md). */
+export const ReasoningEffort = z.enum(['max', 'xhigh', 'high', 'medium', 'low', 'minimal', 'none']);
+export type ReasoningEffort = z.infer<typeof ReasoningEffort>;
+
+/** An OpenRouter model id: vendor/model, lowercase, no `~alias`, no `:variant`. */
+export const ModelId = z
+  .string()
+  .max(100)
+  .regex(/^[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*$/);
+
+export const DataPolicy = z.enum(['zdr', 'open']);
+export type DataPolicy = z.infer<typeof DataPolicy>;
+
+export const ModelPolicy = z.object({
+  /** 'auto', an OpenRouter id, or null for the agent profile's fixed alias (older and automation chats). */
+  modelId: z.union([z.literal('auto'), ModelId]).nullable(),
+  /** 'auto' resolves on the server (phase-10 decision 7). */
+  reasoning: z.union([z.literal('auto'), ReasoningEffort]),
+  dataPolicy: DataPolicy,
+});
+export type ModelPolicy = z.infer<typeof ModelPolicy>;
+
+/** The part of a policy that the client chooses. `dataPolicy` has its own message. */
+export const ModelChoice = z.object({
+  modelId: z.union([z.literal('auto'), ModelId]),
+  reasoning: z.union([z.literal('auto'), ReasoningEffort]),
+});
+export type ModelChoice = z.infer<typeof ModelChoice>;
+
+export const CatalogModel = z.object({
+  id: ModelId,
+  /** OpenRouter name without the "Vendor: " prefix, e.g. "Claude Opus 5.5". */
+  name: z.string().max(120),
+  zdr: z.boolean(),
+  vision: z.boolean(),
+  contextLength: z.int().min(0),
+  /** USD per 1M tokens. */
+  price: z.object({ input: z.number().min(0), output: z.number().min(0) }),
+  /** Null when the model exposes no effort selection. */
+  reasoning: z
+    .object({
+      /** Highest first, as OpenRouter lists them. */
+      efforts: z.array(ReasoningEffort).min(1),
+      /** What 'auto' resolves to (phase-10 decision 7). */
+      recommended: ReasoningEffort,
+      mandatory: z.boolean(),
+    })
+    .nullable(),
+});
+export type CatalogModel = z.infer<typeof CatalogModel>;
+
 export const ChatSummary = z.object({
   id: z.string(),
   title: z.string().nullable(),
@@ -31,6 +82,7 @@ export const ChatSummary = z.object({
   archived: z.boolean(),
   /** True after a manual rename: automatic titling no longer changes the title. */
   titleLocked: z.boolean().optional(),
+  modelPolicy: ModelPolicy,
   updatedAt: z.iso.datetime(),
 });
 export type ChatSummary = z.infer<typeof ChatSummary>;
@@ -127,7 +179,7 @@ export const ChatExport = z.object({
     title: z.string().nullable(),
     createdAt: z.iso.datetime(),
     agent: z.object({ id: id64, name: z.string() }),
-    /** The topic name. */
+    /** The topic name; null in a masked export (a topic name has no masked form). */
     topic: z.string().nullable(),
   }),
   messages: z.array(
@@ -135,7 +187,10 @@ export const ChatExport = z.object({
       role: Message.shape.role,
       createdAt: z.iso.datetime(),
       text: z.string(),
-      /** Listed, never embedded. `name` is null for an image in a masked export: the model never saw it. */
+      /**
+       * Listed, never embedded. In a masked export `name` is the name the model saw: null for an
+       * image (it saw none) and for a document whose masked name is not certain.
+       */
       attachments: z.array(
         AttachmentRef.omit({ id: true }).extend({ name: z.string().nullable() }),
       ),
@@ -165,7 +220,14 @@ export const ClientMessage = z.discriminatedUnion('type', [
     type: z.literal('chat.create'),
     agentId: id64.default('assistant'),
     topicId: id64.optional(),
+    /** Unset: Auto with automatic thinking. No `dataPolicy`: a new chat is always `zdr`. */
+    model: ModelChoice.optional(),
   }),
+  z.object({ type: z.literal('chat.setModel'), chatId: id64, ...ModelChoice.shape }),
+  /** `open` only after a recorded ZDR refusal for the chat's model (phase-10 decision 9). */
+  z.object({ type: z.literal('chat.setDataPolicy'), chatId: id64, dataPolicy: DataPolicy }),
+  z.object({ type: z.literal('models.list') }),
+  z.object({ type: z.literal('models.favorite'), modelId: ModelId, favorite: z.boolean() }),
   z.object({ type: z.literal('chat.open'), chatId: id64 }),
   z.object({ type: z.literal('chat.related'), chatId: id64 }),
   z.object({ type: z.literal('chat.list'), archived: z.boolean().optional() }),
@@ -268,6 +330,17 @@ export const ServerMessage = z.discriminatedUnion('type', [
     agents: z.array(
       z.object({ id: id64, name: z.string(), model: z.string(), subagents: z.boolean() }),
     ),
+  }),
+  /** Answer to `models.list`; also sent to every socket after `models.favorite`. */
+  z.object({
+    type: z.literal('models.state'),
+    /** What 'auto' routes to, e.g. 'google/gemini-4-argon'. */
+    auto: ModelId,
+    /** In `createdAt` order. */
+    favorites: z.array(ModelId),
+    catalog: z.array(CatalogModel),
+    /** Null: no catalog yet. */
+    fetchedAt: z.iso.datetime().nullable(),
   }),
   z.object({
     type: z.literal('chat.state'),

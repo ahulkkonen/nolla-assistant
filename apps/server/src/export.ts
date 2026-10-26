@@ -1,5 +1,4 @@
 import { topics } from '@pa/db';
-import { ATTACHMENT_MARKER } from '@pa/pi-ext-memory';
 import { PseudoDownError } from '@pa/pi-ext-pseudo';
 import { type ChatExport, type ExportFormat, ExportQuery, TOOL_STATUS_WORD } from '@pa/protocol';
 import { and, eq } from 'drizzle-orm';
@@ -13,6 +12,10 @@ import { ChatNotFound } from './pi/registry.ts';
 
 type Deps = Pick<BridgeDeps, 'db' | 'registry' | 'pseudo' | 'agents'>;
 
+/** More messages than this answer 413: the file is built in memory, one `/unmask` per message. */
+export const MAX_EXPORT_MESSAGES = 2000;
+export class ExportTooLarge extends Error {}
+
 const TZ = 'Europe/Helsinki';
 const day = new Intl.DateTimeFormat('fi-FI', {
   timeZone: TZ,
@@ -24,17 +27,11 @@ const time = new Intl.DateTimeFormat('fi-FI', { timeZone: TZ, hour: 'numeric', m
 /** "26.10.2026 klo 17.20" (brief 7.9). */
 const when = (iso: string) => `${day.format(new Date(iso))} klo ${time.format(new Date(iso))}`;
 
-/** Document names in a masked user text's attachment markers, in order. */
-const markerNames = (text: string) =>
-  text
-    .split(ATTACHMENT_MARKER)
-    .slice(1)
-    .map((b) => b.slice(0, b.indexOf(']\n')));
-
 /**
  * The export of one chat; undefined when the user has no such chat. `unmask` restores through the
  * thread's own path (`history` with the sidecar restorer) and throws `PseudoDownError` when the
- * sidecar fails. Masked, the sidecar is never called.
+ * sidecar fails or is not configured. Masked, the sidecar is never called, and the topic (a real
+ * name with no masked form) is left out.
  */
 export async function chatExport(
   { db, registry, pseudo, agents }: Deps,
@@ -44,24 +41,25 @@ export async function chatExport(
 ): Promise<ChatExport | undefined> {
   const r = chatRow(db, userId, chatId);
   if (!r) return undefined;
+  // Without a sidecar the file would say "avoin" over texts nobody restored.
+  if (unmask && !pseudo) throw new PseudoDownError('no sidecar');
   const session = await registry.get(chatId);
+  if (transcript(session).length > MAX_EXPORT_MESSAGES) throw new ExportTooLarge();
   let down = false;
   const restore = restorer(unmask ? pseudo : undefined, () => {
     down = true;
   });
-  const messages = await history(session, chatFiles(db, userId, chatId), restore);
+  const blocks = new Map<string, string[]>();
+  const messages = await history(session, chatFiles(db, userId, chatId), restore, blocks);
   if (down) throw new PseudoDownError('sidecar down');
-  // Masked: document names as the model saw them; it never saw image names.
-  const seen = unmask
-    ? undefined
-    : new Map(transcript(session).map((t) => [t.id, markerNames(t.text)]));
-  const topic = r.topicId
-    ? db
-        .select({ name: topics.name })
-        .from(topics)
-        .where(and(eq(topics.id, r.topicId), eq(topics.userId, userId)))
-        .get()?.name
-    : undefined;
+  const topic =
+    unmask && r.topicId
+      ? db
+          .select({ name: topics.name })
+          .from(topics)
+          .where(and(eq(topics.id, r.topicId), eq(topics.userId, userId)))
+          .get()?.name
+      : undefined;
   return {
     version: 1,
     masked: !unmask,
@@ -73,14 +71,21 @@ export async function chatExport(
       topic: topic ?? null,
     },
     messages: messages.map((m) => {
-      const names = seen?.get(m.id) ?? [];
+      // Masked: the document names the model saw, only when their count matches; never image names.
+      const names = blocks.get(m.id) ?? [];
+      const docs = m.attachments.filter((a) => a.kind === 'document').length;
+      let doc = 0;
       return {
         role: m.role,
         createdAt: m.createdAt,
         text: m.text,
         attachments: m.attachments.map(({ id: _, ...a }) => ({
           ...a,
-          name: !seen ? a.name : a.kind === 'document' ? (names.shift() ?? null) : null,
+          name: unmask
+            ? a.name
+            : a.kind === 'document' && names.length === docs
+              ? (names[doc++] ?? null)
+              : null,
         })),
         tools: m.tools.map(({ name, status }) => ({ name, status })),
         artifacts:
@@ -90,14 +95,26 @@ export async function chatExport(
   };
 }
 
-/** The title, else the first user line (as the sidebar labels it). */
+/** One Markdown line: a line break or a run of spaces in a name must not start a new block. */
+const oneLine = (s: string) => s.replace(/\s+/g, ' ').trim();
+
+/** The title, else the first user line (as the sidebar labels it), on one line. */
 const titleOf = (e: ChatExport) =>
-  e.chat.title ??
-  e.messages
-    .find((m) => m.role === 'user' && m.text.trim())
-    ?.text.trim()
-    .split('\n')[0] ??
-  'Uusi keskustelu';
+  oneLine(
+    e.chat.title ??
+      e.messages
+        .find((m) => m.role === 'user' && m.text.trim())
+        ?.text.trim()
+        .split('\n')[0] ??
+      '',
+  ) || 'Uusi keskustelu';
+
+/** A message body as a blockquote: its own `#` lines cannot pass for the file's headings. */
+const quote = (s: string) =>
+  s
+    .split('\n')
+    .map((l) => (l ? `> ${l}` : '>'))
+    .join('\n');
 
 /** `<title-slug>-<yyyy-mm-dd>-<masked|avoin>.<format>`; ASCII only, so no `filename*`. */
 export function fileName(e: ChatExport, format: ExportFormat) {
@@ -115,17 +132,18 @@ export function fileName(e: ChatExport, format: ExportFormat) {
 
 export function toMarkdown(e: ChatExport): string {
   const { chat } = e;
+  const agent = oneLine(chat.agent.name);
   const lines = [
     `# ${titleOf(e)}`,
     '',
     `- Päivämäärä: ${day.format(new Date(chat.createdAt))}`,
-    `- Agentti: ${chat.agent.name}`,
-    ...(chat.topic ? [`- Aihe: ${chat.topic}`] : []),
+    `- Agentti: ${agent}`,
+    ...(chat.topic ? [`- Aihe: ${oneLine(chat.topic)}`] : []),
     `- Nimet: ${e.masked ? 'niin kuin malli näki ne' : 'oikeat nimet, sisältää henkilötietoja'}`,
   ];
   for (const m of e.messages) {
-    lines.push('', `## ${m.role === 'user' ? 'Sinä' : chat.agent.name} · ${when(m.createdAt)}`);
-    if (m.text) lines.push('', m.text);
+    lines.push('', `## ${m.role === 'user' ? 'Sinä' : agent} · ${when(m.createdAt)}`);
+    if (m.text) lines.push('', quote(m.text));
     if (m.attachments.length)
       lines.push(
         '',
@@ -157,6 +175,7 @@ export function exportRoutes(app: FastifyInstance, auth: preHandlerHookHandler, 
         e = await chatExport(deps, req.userId, req.params.id, unmask === '1');
       } catch (err) {
         if (err instanceof PseudoDownError) return reply.code(503).send({ error: 'pseudo_down' });
+        if (err instanceof ExportTooLarge) return reply.code(413).send({ error: 'too_large' });
         // `chat.delete` ran while the session loaded.
         if (!(err instanceof ChatNotFound)) throw err;
       }

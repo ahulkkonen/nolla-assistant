@@ -1,5 +1,6 @@
 import type { ExportFormat } from '@pa/protocol';
-import { useState } from 'react';
+import { TriangleAlert } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -17,34 +18,58 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { saveFile } from '@/lib/utils';
+import { cn, saveFile } from '@/lib/utils';
 import { exportChat, HttpError } from '../api.ts';
 import { firstUserLine, useStore } from '../store.ts';
 import { Row } from './SettingsDialog.tsx';
 import { UNTITLED } from './Sidebar.tsx';
 
-/** The dialog body; it mounts on each open, so the switch starts off every time. */
-function ExportForm({ chatId, onClose }: { chatId: string; onClose: () => void }) {
+const ERROR_TEXT: Record<number, string> = {
+  503: 'Pseudonymisointipalvelu ei vastaa. Vie ilman oikeita nimiä.',
+  413: 'Keskustelu on liian pitkä vietäväksi.',
+};
+
+/**
+ * The dialog body, mounted afresh on each open (`key`). `open` turns false while the dialog
+ * animates out: a download in flight is then aborted and never saved.
+ */
+function ExportForm({
+  chatId,
+  open,
+  onClose,
+}: {
+  chatId: string;
+  open: boolean;
+  onClose: () => void;
+}) {
   const name = useStore(
     (s) => s.chats.find((c) => c.id === chatId)?.title ?? firstUserLine(s.messages[chatId]),
   );
   const [format, setFormat] = useState<ExportFormat>('md');
   const [unmask, setUnmask] = useState(false);
   const [busy, setBusy] = useState(false);
+  const inFlight = useRef<AbortController | null>(null);
+  useEffect(() => {
+    if (!open) inFlight.current?.abort();
+  }, [open]);
+  useEffect(() => () => inFlight.current?.abort(), []);
 
   const download = async () => {
+    const ctrl = new AbortController();
+    inFlight.current = ctrl;
     setBusy(true);
     try {
-      const file = await exportChat(chatId, format, unmask);
+      const file = await exportChat(chatId, format, unmask, ctrl.signal);
+      if (ctrl.signal.aborted) return;
       saveFile(file.blob, file.name);
       onClose();
     } catch (err) {
+      if (ctrl.signal.aborted) return;
       useStore
         .getState()
         .pushError(
-          err instanceof HttpError && err.status === 503
-            ? 'Pseudonymisointipalvelu ei vastaa. Vie ilman oikeita nimiä.'
-            : 'Vienti epäonnistui. Yritä uudelleen.',
+          (err instanceof HttpError && ERROR_TEXT[err.status]) ||
+            'Vienti epäonnistui. Yritä uudelleen.',
         );
     } finally {
       setBusy(false);
@@ -73,9 +98,22 @@ function ExportForm({ chatId, onClose }: { chatId: string; onClose: () => void }
           label="Näytä oikeat nimet"
           htmlFor="export-unmask"
           helper={
-            unmask
-              ? 'Tiedostossa on henkilötietoja.'
-              : 'Nimet niin kuin malli näki ne. Tiedoston voi jakaa.'
+            // Both lines share one grid cell, so the row keeps its height when the switch turns.
+            // The hidden one is out of the switch's description.
+            <span className="grid">
+              <span className={cn('[grid-area:1/1]', unmask && 'invisible')}>
+                Nimet niin kuin malli näki ne. Tiedoston voi jakaa.
+              </span>
+              <span
+                className={cn(
+                  'flex items-start gap-1 text-warning [grid-area:1/1]',
+                  !unmask && 'invisible',
+                )}
+              >
+                <TriangleAlert size={16} className="mt-px shrink-0" />
+                Tiedostossa on henkilötietoja.
+              </span>
+            </span>
           }
         >
           <Switch
@@ -86,7 +124,8 @@ function ExportForm({ chatId, onClose }: { chatId: string; onClose: () => void }
           />
         </Row>
       </div>
-      <DialogFooter>
+      {/* Phones: 50 % each, Lataa on the right, as the confirmation dialog (brief 7.5). */}
+      <DialogFooter className="grid grid-cols-2 sm:flex">
         <Button variant="outline" onClick={onClose}>
           Peruuta
         </Button>
@@ -104,15 +143,26 @@ function ExportForm({ chatId, onClose }: { chatId: string; onClose: () => void }
  */
 export function ExportDialog() {
   const open = useStore((s) => s.exportChatId);
-  // The last chat stays rendered through the close animation.
-  const [chatId, setChatId] = useState(open);
-  if (open && open !== chatId) setChatId(open);
+  // The last chat stays rendered through the close animation; each open gets a new form.
+  const [prev, setPrev] = useState(open);
+  const [shown, setShown] = useState({ chatId: open, n: 0 });
+  if (open !== prev) {
+    setPrev(open);
+    if (open) setShown({ chatId: open, n: shown.n + 1 });
+  }
   const close = () => useStore.setState({ exportChatId: null });
 
   return (
     <Dialog open={!!open} onOpenChange={(o) => !o && close()}>
       <DialogContent showCloseButton={false} className="sm:max-w-[420px]">
-        {chatId && <ExportForm chatId={chatId} onClose={close} />}
+        {shown.chatId && (
+          <ExportForm
+            key={`${shown.chatId}:${shown.n}`}
+            chatId={shown.chatId}
+            open={!!open}
+            onClose={close}
+          />
+        )}
       </DialogContent>
     </Dialog>
   );

@@ -67,10 +67,15 @@ export async function transcribe(
 }
 
 /** One chat as a file (`GET /api/chats/:id/export`); the server names it. */
-export async function exportChat(chatId: string, format: ExportFormat, unmask: boolean) {
+export async function exportChat(
+  chatId: string,
+  format: ExportFormat,
+  unmask: boolean,
+  signal: AbortSignal,
+) {
   const r = await fetch(
     `/api/chats/${encodeURIComponent(chatId)}/export?format=${format}&unmask=${unmask ? 1 : 0}`,
-    { credentials: 'same-origin' },
+    { credentials: 'same-origin', signal },
   );
   if (!r.ok) throw new HttpError(r.status);
   const name = /filename="([^"]+)"/.exec(r.headers.get('content-disposition') ?? '')?.[1];

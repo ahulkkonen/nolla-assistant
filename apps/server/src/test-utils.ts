@@ -113,6 +113,12 @@ export async function connect(port: number, origin?: string, cookie?: string) {
   return { ws, inbox, next, idle, send };
 }
 
+/** Opens the chat on `c` and returns its first message. */
+export async function openFirst(c: Awaited<ReturnType<typeof connect>>, chatId: string) {
+  c.send({ type: 'chat.open', chatId });
+  return (await c.next('chat.state')).messages[0];
+}
+
 /** Boots and returns a socket on a new chat. */
 export async function bootChat(turns: FakeTurn[], env: Record<string, string> = {}) {
   const b = await boot(turns, env);
