@@ -1,5 +1,6 @@
-import type { LucideIcon } from 'lucide-react';
+import { ChevronLeft, type LucideIcon } from 'lucide-react';
 import { type ReactNode, useEffect, useState } from 'react';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 
@@ -11,32 +12,56 @@ export function Page({
   title,
   wide = false,
   action,
+  footer,
   children,
 }: {
   title: string;
   wide?: boolean;
   action?: ReactNode;
+  /** An editor's actions: a bar at the bottom of the main area, outside the scroll. */
+  footer?: ReactNode;
   children: ReactNode;
 }) {
+  const max = wide ? 'max-w-(--page-max)' : 'max-w-(--thread-max)';
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto px-4 md:px-6">
-      <div
-        className={cn(
-          'mx-auto flex w-full flex-col gap-6 py-6 md:py-8',
-          wide ? 'max-w-(--page-max)' : 'max-w-(--thread-max)',
-        )}
-      >
-        {/* Phones: the top bar carries the title; only an action keeps this row. */}
-        <div className={cn('flex items-center gap-4', !action && 'max-md:hidden')}>
-          <h1 className="min-w-0 flex-1 text-title max-md:hidden">{title}</h1>
-          {/* Phones: the action is a full-width button (the title is in the top bar). */}
-          {action && (
-            <div className="ml-auto max-md:ml-0 max-md:w-full max-md:*:w-full">{action}</div>
-          )}
+    <>
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 md:px-6">
+        <div className={cn('mx-auto flex w-full flex-col gap-6 py-6 md:py-8', max)}>
+          {/* Phones: the top bar carries the title; only an action keeps this row. */}
+          <div className={cn('flex items-center gap-4', !action && 'max-md:hidden')}>
+            <h1 className="min-w-0 flex-1 text-title max-md:hidden">{title}</h1>
+            {/* Phones: the action is a full-width button (the title is in the top bar). */}
+            {action && (
+              <div className="ml-auto max-md:ml-0 max-md:w-full max-md:*:w-full">{action}</div>
+            )}
+          </div>
+          <div className="flex flex-col gap-8">{children}</div>
         </div>
-        <div className="flex flex-col gap-8">{children}</div>
       </div>
-    </div>
+      {footer && (
+        // Phones: above the home indicator (brief 7.7).
+        <div className="shrink-0 border-t bg-background p-3 pb-[calc(12px+env(safe-area-inset-bottom))] md:px-6">
+          <div
+            className={cn(
+              'mx-auto flex w-full flex-wrap gap-2 max-sm:grid max-sm:grid-cols-2',
+              max,
+            )}
+          >
+            {footer}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+/** An editor's way back to its list (phase-15 UI); the screen's title stays above it. */
+export function BackLink({ onClick }: { onClick: () => void }) {
+  return (
+    <Button variant="ghost" size="sm" className="-ml-2 self-start" onClick={onClick}>
+      <ChevronLeft size={16} />
+      Takaisin luetteloon
+    </Button>
   );
 }
 

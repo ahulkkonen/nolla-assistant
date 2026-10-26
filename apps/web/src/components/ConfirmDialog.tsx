@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -9,6 +9,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { useStore } from '../store.ts';
 
 /**
  * A confirmation (brief 7.5): 420 wide, a passive question with the object in ”…”, one line of
@@ -50,5 +51,52 @@ export function ConfirmDialog({
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
+  );
+}
+
+type Place = Pick<ReturnType<typeof useStore.getState>, 'screen' | 'activeChatId'>;
+
+/**
+ * Unsaved changes on `screen`: the browser asks on unload, and an in-app navigation away is undone
+ * and asked in the returned dialog. "Hylkää muutokset" runs `discard`, then goes on.
+ */
+export function useLeaveGuard(
+  screen: Place['screen'],
+  dirty: boolean,
+  body: string,
+  discard: () => void = () => {},
+) {
+  const [leave, setLeave] = useState<Place | null>(null);
+  const dirtyRef = useRef(dirty);
+  dirtyRef.current = dirty;
+  useEffect(() => {
+    if (!dirty) return;
+    const onUnload = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener('beforeunload', onUnload);
+    return () => window.removeEventListener('beforeunload', onUnload);
+  }, [dirty]);
+  useEffect(
+    () =>
+      useStore.subscribe((s, prev) => {
+        if (!dirtyRef.current || prev.screen !== screen || s.screen === screen) return;
+        setLeave({ screen: s.screen, activeChatId: s.activeChatId });
+        useStore.setState({ screen, activeChatId: prev.activeChatId });
+      }),
+    [screen],
+  );
+  return (
+    <ConfirmDialog
+      open={!!leave}
+      title="Hylätäänkö tallentamattomat muutokset?"
+      action="Hylkää muutokset"
+      onConfirm={() => {
+        dirtyRef.current = false;
+        discard();
+        if (leave) useStore.setState(leave);
+      }}
+      onClose={() => setLeave(null)}
+    >
+      {body}
+    </ConfirmDialog>
   );
 }

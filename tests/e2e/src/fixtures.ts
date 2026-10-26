@@ -9,7 +9,7 @@ import { startFakeSidecar } from '@pa/pi-ext-pseudo/fake-sidecar';
 import { hashPassword } from '@pa/server/src/auth/password.ts';
 import { loadConfig } from '@pa/server/src/config.ts';
 import { start } from '@pa/server/src/main.ts';
-import { test as base, expect, type Page } from '@playwright/test';
+import { type Browser, test as base, expect, type Page } from '@playwright/test';
 import { WEB } from './global-setup.ts';
 
 // One embedding model cache for all runs, outside the per-test DATA_DIR (downloaded once).
@@ -310,6 +310,30 @@ export const openSettings = async (
   if (entry !== 'Asetukset') await page.getByRole('button', { name: entry }).click();
 };
 export const openVault = (page: Page) => openSettings(page, 'Nimisuoja');
+
+/** Agentit › Toiminnot › Muokkaa of the agent `name`; the form shows its name. */
+export const editAgent = async (page: Page, name: string) => {
+  await openSettings(page, 'Agentit');
+  await page.getByRole('button', { name: `Toiminnot: ${name}` }).click();
+  await page.getByRole('menuitem', { name: 'Muokkaa' }).click();
+  await expect(page.getByLabel('Nimi', { exact: true })).toHaveValue(name);
+};
+
+/** A second signed-in browser (Laitteet); close `context` at the end. */
+export const secondDevice = async (app: App, browser: Browser) => {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  await app.login(page);
+  return { context, page };
+};
+
+/** Laitteet on `page` with two sessions: their rows. */
+export const deviceRows = async (page: Page) => {
+  await openSettings(page, 'Laitteet');
+  const rows = page.getByRole('region', { name: 'Kirjautuneet laitteet' }).getByRole('listitem');
+  await expect(rows).toHaveCount(2);
+  return rows;
+};
 
 /** Automaatiot › Uusi automaatio, filled in for "Arkisin klo 7.30"; the next-runs list. */
 export const newAutomation = async (page: Page) => {

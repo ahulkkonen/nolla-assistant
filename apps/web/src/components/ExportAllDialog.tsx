@@ -1,6 +1,6 @@
 import { decryptCommand } from '@pa/protocol';
 import { Download } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { type MouseEvent, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -76,7 +76,8 @@ function StartForm({ failed }: { failed: string | null }) {
         <Input
           id="export-pass"
           type="password"
-          autoComplete="new-password"
+          autoComplete="off"
+          maxLength={1024}
           value={pass}
           aria-invalid={short}
           aria-describedby="export-pass-help"
@@ -96,7 +97,8 @@ function StartForm({ failed }: { failed: string | null }) {
         <Input
           id="export-again"
           type="password"
-          autoComplete="new-password"
+          autoComplete="off"
+          maxLength={1024}
           value={again}
           aria-invalid={mismatch}
           {...(mismatch ? { 'aria-describedby': 'export-again-error' } : {})}
@@ -148,11 +150,37 @@ export function ExportAllDialog() {
     );
   }, [open]);
   const close = () => useStore.setState({ exportAllOpen: false });
+  // The download is done when the server drops the job (`export.state` with null).
+  const prev = useRef(job);
+  useEffect(() => {
+    if (prev.current?.status === 'ready' && !job) close();
+    prev.current = job;
+  }, [job]);
   const cancel = (id: string) =>
     void exportCancel(id).then(
       () => useStore.setState({ exportJob: null }),
-      () => useStore.getState().pushError('Vientiä ei voitu perua.'),
+      (err) =>
+        // 404: the job is already gone.
+        err instanceof HttpError && err.status === 404
+          ? useStore.setState({ exportJob: null })
+          : useStore.getState().pushError('Vientiä ei voitu perua.'),
     );
+  /**
+   * The file goes once. ponytail: a navigation hides the download's own 409 or 410, so the job
+   * is checked just before; a download that races another tab still fails in the browser only.
+   */
+  const download = async (e: MouseEvent<HTMLAnchorElement>, id: string) => {
+    e.preventDefault();
+    const href = e.currentTarget.href;
+    const now = await exportGet().then(
+      (r) => r.job,
+      () => undefined,
+    );
+    if (now === undefined || (now?.id === id && now.status === 'ready'))
+      return window.location.assign(href);
+    useStore.getState().pushError('Tiedosto on jo ladattu tai vanhentunut.');
+    useStore.setState({ exportJob: now });
+  };
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && close()}>
@@ -196,7 +224,9 @@ export function ExportAllDialog() {
           <>
             <div className="flex min-w-0 flex-col gap-3">
               <div className="flex min-w-0 flex-col gap-0.5">
-                <p className="font-mono text-[13px] break-all">{job.fileName}</p>
+                <p className="font-mono text-[13px] whitespace-pre-wrap [overflow-wrap:anywhere]">
+                  {job.fileName}
+                </p>
                 <p className="text-meta text-muted-foreground tabular-nums">
                   {[
                     job.size !== null && formatBytes(job.size),
@@ -212,7 +242,7 @@ export function ExportAllDialog() {
               <div className="flex flex-col gap-1.5">
                 <p className="text-ui font-medium">Avaa tiedosto komennolla</p>
                 <div className="flex items-start gap-1 rounded-lg bg-muted py-2 pr-1 pl-3">
-                  <code className="min-w-0 flex-1 py-1.5 font-mono text-[13px] leading-5 break-all">
+                  <code className="min-w-0 flex-1 py-1.5 font-mono text-[13px] leading-5 whitespace-pre-wrap [overflow-wrap:anywhere]">
                     {decryptCommand(job.fileName)}
                   </code>
                   <CopyButton
@@ -227,7 +257,11 @@ export function ExportAllDialog() {
                 Sulje
               </Button>
               <Button asChild>
-                <a href={exportDownloadUrl(job.id)} download onClick={close}>
+                <a
+                  href={exportDownloadUrl(job.id)}
+                  download
+                  onClick={(e) => void download(e, job.id)}
+                >
                   <Download size={16} />
                   Lataa
                 </a>

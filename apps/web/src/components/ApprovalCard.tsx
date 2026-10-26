@@ -65,7 +65,9 @@ export function ApprovalCard({ a }: { a: Approval }) {
   const query = args.find(([k]) => k === 'query')?.[1];
   // Only the entity guard's card; anything else (`approval.always`) keeps the generic list.
   const search =
-    a.tool === WEB_SEARCH_TOOL && a.reason === SEARCH_ENTITY_REASON && query !== undefined;
+    a.tool === WEB_SEARCH_TOOL &&
+    a.reason === SEARCH_ENTITY_REASON &&
+    String(query ?? '').trim() !== '';
 
   return (
     <section

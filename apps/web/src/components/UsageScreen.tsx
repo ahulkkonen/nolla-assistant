@@ -195,12 +195,15 @@ export function UsageScreen() {
               {formatTokens(tokens)} · {callCount(calls)}
             </p>
           </div>
-          <Breakdown
-            label="Mallit"
-            head="Malli"
-            cost={cost}
-            rows={rows.map((r) => ({ ...r, key: r.model, badge: zdrOff(r.model) }))}
-          />
+          <div className="flex flex-col gap-2">
+            <h2 className="text-heading">Malleittain</h2>
+            <Breakdown
+              label="Mallit"
+              head="Malli"
+              cost={cost}
+              rows={rows.map((r) => ({ ...r, key: r.model, badge: zdrOff(r.model) }))}
+            />
+          </div>
           {agentRows.length > 0 && (
             <div className="flex flex-col gap-2">
               <h2 className="text-heading">Agenteittain</h2>
@@ -208,7 +211,9 @@ export function UsageScreen() {
             </div>
           )}
           {data.searches !== undefined && (
-            <p className="text-ui tabular-nums">Verkkohaut: {num.format(data.searches)}</p>
+            <p className="text-meta text-muted-foreground tabular-nums">
+              Verkkohaut: {num.format(data.searches)}
+            </p>
           )}
         </>
       )}

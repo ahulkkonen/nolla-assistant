@@ -1,12 +1,12 @@
 import { Info, LoaderCircle } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import { firstUserLine, type MemoryState, pendingLines, useStore } from '../store.ts';
 import { openChat, send } from '../ws.ts';
-import { ConfirmDialog } from './ConfirmDialog.tsx';
+import { useLeaveGuard } from './ConfirmDialog.tsx';
 import { Page, useSlow } from './Page.tsx';
 import { UNTITLED } from './Sidebar.tsx';
 
@@ -213,16 +213,13 @@ export function MemoryScreen() {
   // Panes hold the consolidation proposal as editable drafts.
   const [editing, setEditing] = useState(false);
   const [consolidating, setConsolidating] = useState(false);
-  /** Where the user tried to go with unsaved drafts; the dialog asks before leaving. */
-  const [leave, setLeave] = useState<Pick<
-    ReturnType<typeof useStore.getState>,
-    'screen' | 'activeChatId'
-  > | null>(null);
   // Only real differences count: opening a pane or the editor alone must not trigger the guard.
   const dirty =
     !!mem && (['user', 'memory'] as const).some((t) => drafts[t] !== null && drafts[t] !== mem[t]);
-  const dirtyRef = useRef(dirty);
-  dirtyRef.current = dirty;
+  const guard = useLeaveGuard('memory', dirty, 'Muistiin tehdyt muokkaukset menetetään.', () => {
+    setDrafts({ user: null, memory: null });
+    setEditing(false);
+  });
   const slow = useSlow(!mem);
 
   useEffect(() => send({ type: 'memory.list' }), []);
@@ -238,23 +235,6 @@ export function MemoryScreen() {
       memory: d.memory === mem.memory ? null : d.memory,
     }));
   }, [mem, errors]);
-
-  // Unsaved drafts: the browser asks on unload; any in-app navigation is undone and asked here.
-  useEffect(() => {
-    if (!dirty) return;
-    const onUnload = (e: BeforeUnloadEvent) => e.preventDefault();
-    window.addEventListener('beforeunload', onUnload);
-    return () => window.removeEventListener('beforeunload', onUnload);
-  }, [dirty]);
-  useEffect(
-    () =>
-      useStore.subscribe((s, prev) => {
-        if (!dirtyRef.current || prev.screen !== 'memory' || s.screen === 'memory') return;
-        setLeave({ screen: s.screen, activeChatId: s.activeChatId });
-        useStore.setState({ screen: 'memory', activeChatId: prev.activeChatId });
-      }),
-    [],
-  );
 
   if (!mem)
     return (
@@ -384,20 +364,7 @@ export function MemoryScreen() {
           ))}
         </div>
       </div>
-      <ConfirmDialog
-        open={!!leave}
-        title="Hylätäänkö tallentamattomat muutokset?"
-        action="Hylkää muutokset"
-        onConfirm={() => {
-          dirtyRef.current = false;
-          setDrafts({ user: null, memory: null });
-          setEditing(false);
-          if (leave) useStore.setState(leave);
-        }}
-        onClose={() => setLeave(null)}
-      >
-        Muistiin tehdyt muokkaukset menetetään.
-      </ConfirmDialog>
+      {guard}
     </Page>
   );
 }

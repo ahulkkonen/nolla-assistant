@@ -1,12 +1,15 @@
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { SEARCH_DENIED } from '@pa/server/src/search-tool.ts';
 import type { Page } from '@playwright/test';
 import {
   acceptProposal,
   COLLIDING,
   DICT,
+  deviceRows,
+  editAgent,
   expect,
   HTML_REPLY,
   memoryTurns,
@@ -19,6 +22,7 @@ import {
   png,
   search,
   searchTurns,
+  secondDevice,
   TAX,
   THINKING_TURN,
   taxChat,
@@ -766,11 +770,8 @@ test.describe('admin', () => {
     page,
   }) => {
     await app.login(page);
-    await openSettings(page, 'Agentit');
-    await page.getByRole('button', { name: 'Toiminnot: Tutkija' }).click();
-    await page.getByRole('menuitem', { name: 'Muokkaa' }).click();
+    await editAgent(page, 'Tutkija');
     const name = page.getByLabel('Nimi', { exact: true });
-    await expect(name).toHaveValue('Tutkija');
     await name.fill('Tutkija Pro');
     // The dry run merges the form into the file: the comments stay.
     await page.getByRole('tab', { name: 'YAML' }).click();
@@ -810,13 +811,9 @@ test.describe('admin', () => {
     page,
     browser,
   }) => {
-    const other = await browser.newContext();
-    const second = await other.newPage();
-    await app.login(second);
+    const { context: other, page: second } = await secondDevice(app, browser);
     await app.login(page);
-    await openSettings(page, 'Laitteet');
-    const list = page.getByRole('region', { name: 'Kirjautuneet laitteet' }).getByRole('listitem');
-    await expect(list).toHaveCount(2);
+    const list = await deviceRows(page);
     await expect(list.filter({ hasText: 'Tämä laite' })).toHaveCount(1);
     await page.getByRole('button', { name: 'Kirjaa ulos kaikkialta' }).click();
     await page.getByRole('alertdialog').getByRole('button', { name: 'Kirjaa ulos' }).click();
@@ -826,6 +823,81 @@ test.describe('admin', () => {
     await page.reload();
     await expect(page.getByRole('button', { name: 'Uusi keskustelu' }).first()).toBeVisible();
     await other.close();
+  });
+
+  test('agents: a failed dry run keeps the YAML tab and its text; leaving asks first', async ({
+    app,
+    page,
+  }) => {
+    await app.login(page);
+    await editAgent(page, 'Tutkija');
+    await page.getByRole('tab', { name: 'YAML' }).click();
+    const yaml = page.getByLabel('Tiedosto', { exact: true });
+    const bad = (await yaml.inputValue()).replace('model: zdr/strong', 'model: zdr/ei-ole');
+    await yaml.fill(bad);
+    await page.getByRole('tab', { name: 'Lomake' }).click();
+    await expect(page.getByText('model: unknown model zdr/ei-ole')).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'YAML' })).toHaveAttribute('aria-selected', 'true');
+    await expect(yaml).toHaveValue(bad);
+    await expect(yaml).toBeFocused();
+    expect(readFileSync(join(app.dataDir, 'agents/research.yaml'), 'utf8')).toContain(
+      'model: zdr/strong',
+    );
+    // Unsaved: a navigation away is held and asked.
+    await newChat(page);
+    const ask = page.getByRole('alertdialog', { name: 'Hylätäänkö tallentamattomat muutokset?' });
+    await expect(ask).toBeVisible();
+    await expect(yaml).toBeAttached();
+    await ask.getByRole('button', { name: 'Hylkää muutokset' }).click();
+    await expect(page.getByLabel('Viesti')).toBeVisible();
+  });
+
+  test('devices: a revoke from another browser signs this one out (4401), then the last one itself', async ({
+    app,
+    page,
+    browser,
+  }) => {
+    await app.login(page);
+    const { context: other, page: second } = await secondDevice(app, browser);
+    const rows = await deviceRows(second);
+    // The row without "Tämä laite" is `page`: its socket closes with 4401.
+    await rows
+      .filter({ hasNotText: 'Tämä laite' })
+      .getByRole('button', { name: /^Kirjaa ulos: .+, kirjautunut / })
+      .click();
+    await expect(page.getByRole('button', { name: 'Kirjaudu', exact: true })).toBeVisible();
+    await expect(rows).toHaveCount(1);
+    await rows.getByRole('button', { name: / \(tämä laite\)$/ }).click();
+    await second.getByRole('alertdialog').getByRole('button', { name: 'Kirjaa ulos' }).click();
+    await expect(second.getByRole('button', { name: 'Kirjaudu', exact: true })).toBeVisible();
+    await other.close();
+  });
+
+  test('export: real names need a fresh sign-in; the masked export does not', async ({
+    app,
+    page,
+  }) => {
+    await app.login(page);
+    // An 11-minute-old session: past the 10-minute fresh-login rule.
+    const db = new DatabaseSync(join(app.dataDir, 'app.db'));
+    db.prepare('UPDATE authSessions SET createdAt = ?').run(
+      new Date(Date.now() - 11 * 60_000).toISOString(),
+    );
+    db.close();
+    await openSettings(page, 'Asetukset');
+    await page.getByRole('button', { name: 'Vie kaikki', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Vie kaikki tiedot' });
+    const unmask = dialog.getByRole('switch', { name: 'Näytä oikeat nimet' });
+    await unmask.click();
+    await dialog.getByLabel('Salasana', { exact: true }).fill('pitkä salasana 1');
+    await dialog.getByLabel('Salasana uudelleen').fill('pitkä salasana 1');
+    await dialog.getByRole('button', { name: 'Aloita' }).click();
+    await expect(dialog.getByRole('alert')).toHaveText(
+      'Oikeat nimet vaativat tuoreen kirjautumisen. Kirjaudu ulos ja takaisin sisään, ja yritä uudelleen.',
+    );
+    await unmask.click();
+    await dialog.getByRole('button', { name: 'Aloita' }).click();
+    await expect(dialog.getByRole('link', { name: 'Lataa' })).toBeVisible();
   });
 
   test('export: a masked export builds and downloads once', async ({ app, page }) => {

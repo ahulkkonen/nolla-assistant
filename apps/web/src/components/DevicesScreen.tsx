@@ -7,7 +7,7 @@ import { sessionRevoke, sessionsList, sessionsRevokeAll } from '../api.ts';
 import { formatDate } from '../files.ts';
 import { useStore } from '../store.ts';
 import { messageTime } from '../thread.ts';
-import { disconnect } from '../ws.ts';
+import { signedOut } from '../ws.ts';
 import { ConfirmDialog } from './ConfirmDialog.tsx';
 import { EmptyState, ListSkeleton, Page } from './Page.tsx';
 
@@ -39,11 +39,9 @@ export function DevicesScreen() {
         useStore.getState().notify('Muut laitteet kirjattu ulos');
       } else {
         await sessionRevoke(target.id);
-        // This device: the cookie is gone, so is the app.
-        if (target.current) {
-          disconnect();
-          return useStore.getState().setAuth('out');
-        }
+        // This device: the cookie is gone. The same sign-out as the socket's 4401, which may
+        // come first or not at all.
+        if (target.current) return signedOut();
       }
       load();
     } catch {
@@ -79,7 +77,8 @@ export function DevicesScreen() {
                 <Button
                   variant="outline"
                   size="sm"
-                  aria-label={`Kirjaa ulos: ${label(s)}${s.current ? ' (tämä laite)' : ''}`}
+                  // The sign-in time tells two rows of the same browser apart.
+                  aria-label={`Kirjaa ulos: ${label(s)}, kirjautunut ${formatDate(s.createdAt)}${s.current ? ' (tämä laite)' : ''}`}
                   onClick={() => (s.current ? setConfirm(s) : void signOut(s))}
                 >
                   Kirjaa ulos

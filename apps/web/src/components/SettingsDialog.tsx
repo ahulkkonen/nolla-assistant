@@ -35,7 +35,7 @@ import { googleConnect, integrationsStatus, logout, passkeyRegister } from '../a
 import { useMobile } from '../media.ts';
 import { disablePush, enablePush, pushSubscription, pushSupported } from '../push.ts';
 import { type Theme, useStore } from '../store.ts';
-import { disconnect } from '../ws.ts';
+import { signedOut } from '../ws.ts';
 import { IconButton } from './IconButton.tsx';
 import { Segmented } from './Segmented.tsx';
 
@@ -261,19 +261,19 @@ export function SettingsDialog() {
     try {
       await logout();
     } finally {
-      disconnect();
-      useStore.setState({ settingsOpen: false });
-      useStore.getState().setAuth('out');
+      signedOut();
     }
   };
 
-  const go = (screen: (typeof SCREENS)[number][0]) => {
+  /** Settings closes for a screen or a dialog; under 768 px the drawer would stay behind it. */
+  const leave = () => {
     leaving.current = true;
-    const st = useStore.getState();
-    // Under 768 px the sidebar is a drawer that would cover the new screen.
-    if (matchMedia('(max-width: 767.98px)').matches) st.setSidebarOpen(false);
+    if (matchMedia('(max-width: 767.98px)').matches) useStore.getState().setSidebarOpen(false);
     useStore.setState({ settingsOpen: false });
-    st.setScreen(screen);
+  };
+  const go = (screen: (typeof SCREENS)[number][0]) => {
+    leave();
+    useStore.getState().setScreen(screen);
   };
 
   return (
@@ -386,8 +386,8 @@ export function SettingsDialog() {
                   variant="outline"
                   size="sm"
                   onClick={() => {
-                    leaving.current = true;
-                    useStore.setState({ settingsOpen: false, exportAllOpen: true });
+                    leave();
+                    useStore.setState({ exportAllOpen: true });
                   }}
                 >
                   <Download size={16} />

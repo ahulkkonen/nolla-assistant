@@ -7,6 +7,8 @@ import {
   type App,
   acceptProposal,
   COLLIDING,
+  deviceRows,
+  editAgent,
   expect,
   HTML_REPLY,
   memoryTurns,
@@ -19,6 +21,7 @@ import {
   png,
   search,
   searchTurns,
+  secondDevice,
   sendMessage,
   showSidebar,
   TAX,
@@ -1388,11 +1391,6 @@ for (const scheme of ['light', 'dark'] as const) {
         test.use({ timezoneId: 'Europe/Helsinki' });
         const blur = (page: Page) =>
           page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
-        const editAgent = async (page: Page, name: string) => {
-          await page.getByRole('button', { name: `Toiminnot: ${name}` }).click();
-          await page.getByRole('menuitem', { name: 'Muokkaa' }).click();
-          await expect(page.getByLabel('Nimi', { exact: true })).toHaveValue(name);
-        };
         const openExport = async (page: Page) => {
           await openSettings(page, 'Asetukset');
           await page.getByRole('button', { name: 'Vie kaikki', exact: true }).click();
@@ -1404,7 +1402,6 @@ for (const scheme of ['light', 'dark'] as const) {
 
         test('agents-editor', async ({ app, page }) => {
           await app.login(page);
-          await openSettings(page, 'Agentit');
           await editAgent(page, 'Tutkija');
           await blur(page);
           await shot(page, 'agents-editor', vp.width, scheme);
@@ -1412,7 +1409,6 @@ for (const scheme of ['light', 'dark'] as const) {
 
         test('agents-editor-yaml', async ({ app, page }) => {
           await app.login(page);
-          await openSettings(page, 'Agentit');
           await editAgent(page, 'Tutkija');
           await page.getByRole('tab', { name: 'YAML' }).click();
           await expect(page.getByLabel('Tiedosto', { exact: true })).toHaveValue(/^id: research$/m);
@@ -1422,7 +1418,6 @@ for (const scheme of ['light', 'dark'] as const) {
 
         test('agents-editor-error', async ({ app, page }) => {
           await app.login(page);
-          await openSettings(page, 'Agentit');
           await editAgent(page, 'Tutkija');
           await page.getByLabel('Nimi', { exact: true }).fill('');
           await page.getByRole('button', { name: 'Tallenna' }).click();
@@ -1442,12 +1437,9 @@ for (const scheme of ['light', 'dark'] as const) {
         });
 
         test('devices', async ({ app, page, browser }) => {
-          const other = await browser.newContext();
-          await app.login(await other.newPage());
+          const { context: other } = await secondDevice(app, browser);
           await app.login(page);
-          await openSettings(page, 'Laitteet');
-          const list = page.getByRole('region', { name: 'Kirjautuneet laitteet' });
-          await expect(list.getByRole('listitem')).toHaveCount(2);
+          await deviceRows(page);
           await blur(page);
           await shot(page, 'devices', vp.width, scheme);
           await other.close();

@@ -61,6 +61,24 @@ export function disconnect() {
   ws = null;
 }
 
+/**
+ * Signed out (Kirjaudu ulos, or this session revoked: socket close 4401): no socket and nothing of
+ * the user left in memory. The device's own settings (theme, speech, thinking view) stay.
+ */
+export function signedOut() {
+  disconnect();
+  const s = useStore.getState();
+  useStore.setState({
+    ...useStore.getInitialState(),
+    auth: 'out',
+    theme: s.theme,
+    sttAutoSend: s.sttAutoSend,
+    sttLanguage: s.sttLanguage,
+    showThinking: s.showThinking,
+    sidebarOpen: s.sidebarOpen,
+  });
+}
+
 export function send(msg: ClientMessageInput) {
   const data = JSON.stringify(msg);
   if (ws?.readyState === WebSocket.OPEN) ws.send(data);
@@ -286,11 +304,7 @@ function open() {
   sock.onclose = (e) => {
     clearInterval(pingTimer);
     // 4401: this device's session was revoked (Laitteet, phase 15): signed out, no reconnect.
-    if (e.code === 4401) {
-      disconnect();
-      useStore.getState().setAuth('out');
-      return;
-    }
+    if (e.code === 4401) return signedOut();
     // The answer to a pending consent, retry, fork or thinking text may never come; a reconnect
     // starts clean.
     policyIntent = null;

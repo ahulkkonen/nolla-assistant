@@ -495,11 +495,15 @@ export const useStore = create<State>()((set, get) => {
                 ]
               : [];
             // A message this client sent keeps its local id (no remount, an open edit box stays)
-            // and takes the entry id as `serverId`, when the same place holds the same text.
+            // and takes the entry id as `serverId`, when the same place holds the same text and
+            // the same number of attachments.
             const prev = st.messages[msg.chat.id] ?? [];
             const kept = msg.messages.map((m, k): UiMessage => {
               const old = prev[k];
-              return old?.id.startsWith('local-') && old.role === m.role && old.text === m.text
+              return old?.id.startsWith('local-') &&
+                old.role === m.role &&
+                old.text === m.text &&
+                (old.attachments?.length ?? 0) === (m.attachments?.length ?? 0)
                 ? { ...m, id: old.id, serverId: m.id }
                 : m;
             });
