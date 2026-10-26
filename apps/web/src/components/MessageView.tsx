@@ -27,7 +27,7 @@ import { MessageMeta, metaText } from './MessageMeta.tsx';
 import { SubagentRow } from './SubagentRow.tsx';
 import { ToolRow } from './ToolRow.tsx';
 
-function CopyButton({ text, className }: { text: () => string; className: string }) {
+export function CopyButton({ text, className }: { text: () => string; className: string }) {
   const [done, setDone] = useState(false);
   return (
     <IconButton
@@ -336,6 +336,8 @@ type Props = {
   forking?: boolean;
   /** False while the message has no entry id yet: "Haarauta" asks for a reopen. */
   canFork?: boolean;
+  /** Asks the server for the chat's entry ids (an edit of a message without one). */
+  onNeedIds?: () => void;
   /** The thinking row, above the tool rows and the text (phase 13). */
   thinking?: ReactNode;
   /** The action row meta: the time, and a reply's cost and tokens (phase 13). */
@@ -416,6 +418,7 @@ export function MessageView({
   onEdit,
   forking = false,
   canFork = true,
+  onNeedIds,
   thinking,
   meta,
   onRetry,
@@ -434,6 +437,11 @@ export function MessageView({
     setEditing(true);
     useStore.setState({ editMessageId: null });
   }, [editRequested]);
+
+  // An edit of a message without its entry id: the chat's ids come first (`chat.open`).
+  useEffect(() => {
+    if (editing && !canFork) onNeedIds?.();
+  }, [editing]);
 
   const copy = () => void navigator.clipboard.writeText(text);
   const actions = !live && !editing && text;

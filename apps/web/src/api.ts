@@ -1,6 +1,11 @@
 import type {
+  AdminError,
+  AgentDoc,
+  AgentList,
   AttachmentRef,
+  DeviceSession,
   ExportFormat,
+  ExportJob,
   FileError,
   FileRoot,
   FileUsage,
@@ -11,33 +16,46 @@ import type {
 } from '@pa/protocol';
 import { startAuthentication, startRegistration } from '@simplewebauthn/browser';
 
+/** The rest of a failed answer body: phase 15's `path` and `message`, `in_use`'s `automations`. */
+export type ErrorDetail = {
+  path?: string;
+  message?: string;
+  chats?: number;
+  automations?: string[];
+};
+
 export class HttpError extends Error {
   readonly status: number;
-  /** The `{ error }` code of the answer body, when it has one (the file routes). */
-  readonly code: FileError | undefined;
-  constructor(status: number, code?: FileError) {
+  /** The `{ error }` code of the answer body, when it has one (the file and admin routes). */
+  readonly code: FileError | AdminError | undefined;
+  readonly detail: ErrorDetail;
+  constructor(status: number, code?: FileError | AdminError, detail: ErrorDetail = {}) {
     super(`HTTP ${status}`);
     this.status = status;
     this.code = code;
+    this.detail = detail;
   }
 }
 
 /** The error code of a failed answer body (`{ error: FileError }`), if any. */
-const codeOf = (body: unknown) => (body as { error?: FileError } | null)?.error;
+const codeOf = (body: unknown) => (body as { error?: FileError | AdminError } | null)?.error;
 
 async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
   const r = await fetch(path, { credentials: 'same-origin', ...init });
-  if (!r.ok) throw new HttpError(r.status, codeOf(await r.json().catch(() => null)));
+  if (!r.ok) {
+    const body = await r.json().catch(() => null);
+    throw new HttpError(r.status, codeOf(body), (body ?? {}) as ErrorDetail);
+  }
   return (r.status === 204 ? undefined : await r.json()) as T;
 }
+const json = (method: string, body: unknown): RequestInit => ({
+  method,
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify(body),
+});
 
 const post = <T>(path: string, body?: unknown) =>
-  req<T>(path, {
-    method: 'POST',
-    ...(body === undefined
-      ? {}
-      : { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }),
-  });
+  req<T>(path, body === undefined ? { method: 'POST' } : json('POST', body));
 
 export const passwordLogin = (password: string) =>
   post<{ userId: string }>('/api/auth/password', { password });
@@ -168,3 +186,38 @@ export function treeUpload(path: string, file: File, onProgress: (done: number) 
   xhr.send(form);
   return { done, abort: () => xhr.abort() };
 }
+
+/** Phase 15: the agent and automation editors, devices and the full export. */
+export const agentsList = () => req<AgentList>('/api/agents');
+/** A save from the form (`profile`) or the YAML tab (`yaml`); `dry` checks without a write. */
+export const agentSave = (
+  id: string | undefined,
+  body: { profile: Record<string, unknown> } | { yaml: string },
+  prompt: string,
+  dry = false,
+) =>
+  req<AgentDoc>(
+    `/api/agents${id ? `/${encodeURIComponent(id)}` : ''}${dry ? '?dry=1' : ''}`,
+    json(id ? 'PUT' : 'POST', { ...body, prompt }),
+  );
+export const agentDelete = (id: string) =>
+  req<void>(`/api/agents/${encodeURIComponent(id)}`, { method: 'DELETE' });
+export const automationSave = (id: string | undefined, body: Record<string, unknown>) =>
+  req<{ id: string }>(
+    `/api/automations${id ? `/${encodeURIComponent(id)}` : ''}`,
+    json(id ? 'PUT' : 'POST', body),
+  );
+export const automationDelete = (id: string) =>
+  req<void>(`/api/automations/${encodeURIComponent(id)}`, { method: 'DELETE' });
+export const cronPreview = (cron: string, timezone: string) =>
+  post<{ runs: string[] }>('/api/automations/preview', { cron, timezone });
+export const sessionsList = () => req<{ sessions: DeviceSession[] }>('/api/auth/sessions');
+export const sessionRevoke = (id: string) =>
+  req<void>(`/api/auth/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' });
+export const sessionsRevokeAll = () => post<void>('/api/auth/sessions/revoke-all');
+export const exportStart = (passphrase: string, unmask: boolean) =>
+  post<{ job: ExportJob }>('/api/export', { passphrase, unmask });
+export const exportGet = () => req<{ job: ExportJob | null }>('/api/export');
+export const exportCancel = (id: string) =>
+  req<void>(`/api/export/${encodeURIComponent(id)}`, { method: 'DELETE' });
+export const exportDownloadUrl = (id: string) => `/api/export/${encodeURIComponent(id)}/download`;

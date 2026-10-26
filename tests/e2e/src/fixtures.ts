@@ -255,6 +255,8 @@ export const test = base.extend<{
         USER_ID: 'aleksi',
         LOG_LEVEL: 'warn',
         AUTOMATIONS_DIR: join(dataDir, 'automations'),
+        // A copy of the repository's agents/ (seeded at start): the editor tests write to it.
+        AGENTS_DIR: join(dataDir, 'agents'),
         // Push on, any endpoint host: the browser side is mocked (see `mockPush`).
         VAPID_PUBLIC: VAPID.publicKey,
         VAPID_PRIVATE: VAPID.privateKey,
@@ -291,7 +293,15 @@ export const openFiles = async (page: Page) => {
 /** Opens a settings entry; settings sits in the drawer under 768 px, in the sidebar above. */
 export const openSettings = async (
   page: Page,
-  entry: 'Nimisuoja' | 'Aiheet' | 'Agentit' | 'Automaatiot' | 'Muisti' | 'Käyttö' | 'Asetukset',
+  entry:
+    | 'Nimisuoja'
+    | 'Aiheet'
+    | 'Agentit'
+    | 'Automaatiot'
+    | 'Muisti'
+    | 'Käyttö'
+    | 'Laitteet'
+    | 'Asetukset',
 ) => {
   const menu = page.getByRole('button', { name: 'Valikko' });
   if (await menu.isVisible()) await menu.click();
@@ -300,6 +310,22 @@ export const openSettings = async (
   if (entry !== 'Asetukset') await page.getByRole('button', { name: entry }).click();
 };
 export const openVault = (page: Page) => openSettings(page, 'Nimisuoja');
+
+/** Automaatiot › Uusi automaatio, filled in for "Arkisin klo 7.30"; the next-runs list. */
+export const newAutomation = async (page: Page) => {
+  await openSettings(page, 'Automaatiot');
+  await page.getByRole('button', { name: 'Uusi automaatio' }).click();
+  await page.getByLabel('Nimi', { exact: true }).fill('Aamukatsaus');
+  await page.getByLabel('Ohje', { exact: true }).fill('Anna lyhyt aamukatsaus.');
+  await page
+    .getByRole('group', { name: 'Aikataulu' })
+    .getByRole('button', { name: 'Arkisin' })
+    .click();
+  await page.getByLabel('Kellonaika').fill('07:30');
+  const runs = page.getByRole('list', { name: 'Seuraavat ajot' }).getByRole('listitem');
+  await expect(runs).toHaveCount(5);
+  return runs;
+};
 
 /** The reply of the title job (non-streaming `zdr/task-small` call), queued after the chat turn. */
 export const titleTurn = (

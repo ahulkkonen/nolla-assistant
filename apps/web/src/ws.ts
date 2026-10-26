@@ -15,6 +15,7 @@ let stopped = true;
 let pingTimer: ReturnType<typeof setInterval> | undefined;
 let retryTimer: ReturnType<typeof setTimeout> | undefined;
 let createWaiters: Array<(chatId: string) => void> = [];
+let forkTimer: ReturnType<typeof setTimeout> | undefined;
 /**
  * A data-policy change sent from this client, until its `chat.updated` confirms it. For `open`,
  * `turnId` is the refused turn's user message: the consent retries that turn and no newer one.
@@ -24,6 +25,8 @@ let policyIntent: { chatId: string; dataPolicy: DataPolicy; turnId?: string } | 
 let retryIntent: { chatId: string; turnId: string } | null = null;
 // A chat switch drops the consent: its retry runs only in the chat on screen.
 useStore.subscribe((s, prev) => {
+  // A fork that settled (its state, an error, a switch, a close): its timeout goes too.
+  if (prev.pendingFork && !s.pendingFork) clearTimeout(forkTimer);
   if (s.activeChatId === prev.activeChatId) return;
   policyIntent = null;
   // Another chat than the source or the new fork: the fork's answer has no screen to land on.
@@ -118,12 +121,16 @@ export function retryTurn(chatId: string) {
   if (!last) return;
   const inPlace =
     st.failed[chatId] !== 'prompt_failed' && messages.slice(i + 1).every((m) => !m.tools.length);
+  // The kept message becomes a new entry: a fresh local id, and its old entry id (off the branch
+  // after the rewind) goes; `message.accepted` brings the new one.
+  const localId = `local-${crypto.randomUUID()}`;
+  st.relocal(chatId, last.id, localId);
   if (inPlace) {
-    retryIntent = { chatId, turnId: last.id };
-    return send({ type: 'user.retry', chatId });
+    retryIntent = { chatId, turnId: localId };
+    return send({ type: 'user.retry', chatId, localId });
   }
   st.rewind(chatId, i + 1);
-  send({ type: 'user.message', chatId, text: last.text, attachments: last.attachments });
+  send({ type: 'user.message', chatId, text: last.text, attachments: last.attachments, localId });
 }
 
 /** How long a fork may take before the edit box gives up and says so. */
@@ -141,7 +148,8 @@ export function forkChat(chatId: string, messageId: string, text: string) {
   const localId = `local-${crypto.randomUUID()}`;
   useStore.setState({ pendingFork: { chatId, messageId, text, localId } });
   send({ type: 'chat.fork', chatId, messageId, text, localId });
-  setTimeout(() => {
+  clearTimeout(forkTimer);
+  forkTimer = setTimeout(() => {
     if (useStore.getState().pendingFork?.localId !== localId) return;
     useStore.setState({ pendingFork: null });
     useStore.getState().pushError('Haarautus epäonnistui. Yritä uudelleen.');
@@ -275,8 +283,14 @@ function open() {
       if (store.activeChatId) send({ type: 'chat.open', chatId: store.activeChatId });
     }
   };
-  sock.onclose = () => {
+  sock.onclose = (e) => {
     clearInterval(pingTimer);
+    // 4401: this device's session was revoked (Laitteet, phase 15): signed out, no reconnect.
+    if (e.code === 4401) {
+      disconnect();
+      useStore.getState().setAuth('out');
+      return;
+    }
     // The answer to a pending consent, retry, fork or thinking text may never come; a reconnect
     // starts clean.
     policyIntent = null;

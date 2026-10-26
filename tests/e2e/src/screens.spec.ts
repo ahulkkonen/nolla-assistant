@@ -12,6 +12,7 @@ import {
   memoryTurns,
   mockMic,
   mockPush,
+  newAutomation,
   openFiles,
   openSettings,
   openVault,
@@ -507,6 +508,17 @@ for (const scheme of ['light', 'dark'] as const) {
           if (!phone) await page.mouse.move(vp.width / 2, vp.height - 40);
           await blur(page);
           await shot(page, 'usage-month', vp.width, scheme);
+        });
+
+        test('usage-agents', async ({ app, page }) => {
+          await thinkingChat(app, page);
+          await openSettings(page, 'Käyttö');
+          const agents = page.getByRole('heading', { name: 'Agenteittain' });
+          await expect(page.getByText('Verkkohaut: 0')).toBeVisible();
+          await agents.scrollIntoViewIfNeeded();
+          if (!phone) await page.mouse.move(vp.width / 2, vp.height - 40);
+          await blur(page);
+          await shot(page, 'usage-agents', vp.width, scheme);
         });
 
         test('usage-empty', async ({ app, page }) => {
@@ -1170,7 +1182,9 @@ for (const scheme of ['light', 'dark'] as const) {
           test('settings-automations', async ({ app, page }) => {
             await app.login(page);
             await openSettings(page, 'Automaatiot');
-            await expect(page.getByText('1.1. klo 3.00').filter({ visible: true })).toBeVisible();
+            await expect(
+              page.getByText('1.1. klo 3.00', { exact: true }).filter({ visible: true }),
+            ).toBeVisible();
             await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
             await shot(page, 'settings-automations', vp.width, scheme);
           });
@@ -1368,6 +1382,94 @@ for (const scheme of ['light', 'dark'] as const) {
           await shot(page, 'composer-attachments', vp.width, scheme);
         });
       }
+
+      test.describe('admin', () => {
+        // Phase 15: the editors, devices and the full export; run times in Helsinki time.
+        test.use({ timezoneId: 'Europe/Helsinki' });
+        const blur = (page: Page) =>
+          page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+        const editAgent = async (page: Page, name: string) => {
+          await page.getByRole('button', { name: `Toiminnot: ${name}` }).click();
+          await page.getByRole('menuitem', { name: 'Muokkaa' }).click();
+          await expect(page.getByLabel('Nimi', { exact: true })).toHaveValue(name);
+        };
+        const openExport = async (page: Page) => {
+          await openSettings(page, 'Asetukset');
+          await page.getByRole('button', { name: 'Vie kaikki', exact: true }).click();
+          const dialog = page.getByRole('dialog', { name: 'Vie kaikki tiedot' });
+          await dialog.getByLabel('Salasana', { exact: true }).fill('pitkä salasana 1');
+          await dialog.getByLabel('Salasana uudelleen').fill('pitkä salasana 1');
+          return dialog;
+        };
+
+        test('agents-editor', async ({ app, page }) => {
+          await app.login(page);
+          await openSettings(page, 'Agentit');
+          await editAgent(page, 'Tutkija');
+          await blur(page);
+          await shot(page, 'agents-editor', vp.width, scheme);
+        });
+
+        test('agents-editor-yaml', async ({ app, page }) => {
+          await app.login(page);
+          await openSettings(page, 'Agentit');
+          await editAgent(page, 'Tutkija');
+          await page.getByRole('tab', { name: 'YAML' }).click();
+          await expect(page.getByLabel('Tiedosto', { exact: true })).toHaveValue(/^id: research$/m);
+          await blur(page);
+          await shot(page, 'agents-editor-yaml', vp.width, scheme);
+        });
+
+        test('agents-editor-error', async ({ app, page }) => {
+          await app.login(page);
+          await openSettings(page, 'Agentit');
+          await editAgent(page, 'Tutkija');
+          await page.getByLabel('Nimi', { exact: true }).fill('');
+          await page.getByRole('button', { name: 'Tallenna' }).click();
+          await expect(page.getByText('Tarkista kenttä.')).toBeVisible();
+          await expect(page.getByLabel('Nimi', { exact: true })).toBeFocused();
+          await shot(page, 'agents-editor-error', vp.width, scheme);
+        });
+
+        test('automation-editor', async ({ app, page }) => {
+          await app.login(page);
+          const runs = await newAutomation(page);
+          await expect(runs.first()).toHaveText(/klo 7\.30$/);
+          await page.getByRole('group', { name: 'Aikataulu' }).scrollIntoViewIfNeeded();
+          // The time input keeps focus through blur(); a click on the title moves it away.
+          await page.getByRole('heading', { name: 'Uusi automaatio' }).click();
+          await shot(page, 'automation-editor', vp.width, scheme);
+        });
+
+        test('devices', async ({ app, page, browser }) => {
+          const other = await browser.newContext();
+          await app.login(await other.newPage());
+          await app.login(page);
+          await openSettings(page, 'Laitteet');
+          const list = page.getByRole('region', { name: 'Kirjautuneet laitteet' });
+          await expect(list.getByRole('listitem')).toHaveCount(2);
+          await blur(page);
+          await shot(page, 'devices', vp.width, scheme);
+          await other.close();
+        });
+
+        test('export-all-dialog', async ({ app, page }) => {
+          await app.login(page);
+          const dialog = await openExport(page);
+          await expect(dialog.getByRole('button', { name: 'Aloita' })).toBeEnabled();
+          await blur(page);
+          await shot(page, 'export-all-dialog', vp.width, scheme);
+        });
+
+        test('export-all-ready', async ({ app, page }) => {
+          await app.login(page);
+          const dialog = await openExport(page);
+          await dialog.getByRole('button', { name: 'Aloita' }).click();
+          await expect(dialog.getByRole('link', { name: 'Lataa' })).toBeVisible();
+          await blur(page);
+          await shot(page, 'export-all-ready', vp.width, scheme);
+        });
+      });
 
       if (vp.width === 390) {
         test('sidebar-open', async ({ app, page }) => {

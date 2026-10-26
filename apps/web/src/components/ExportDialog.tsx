@@ -30,6 +30,50 @@ const ERROR_TEXT: Record<number, string> = {
 };
 
 /**
+ * "Näytä oikeat nimet" (brief 7.11), also in "Vie kaikki tiedot". Both helper lines share one grid
+ * cell, so the row keeps its height when the switch turns; the hidden one is out of the description.
+ */
+export function UnmaskRow({
+  id,
+  checked,
+  onChange,
+  masked,
+}: {
+  id: string;
+  checked: boolean;
+  onChange: (on: boolean) => void;
+  masked: string;
+}) {
+  return (
+    <Row
+      label="Näytä oikeat nimet"
+      htmlFor={id}
+      helper={
+        <span className="grid">
+          <span className={cn('[grid-area:1/1]', checked && 'invisible')}>{masked}</span>
+          <span
+            className={cn(
+              'flex items-start gap-1 text-warning [grid-area:1/1]',
+              !checked && 'invisible',
+            )}
+          >
+            <TriangleAlert size={16} className="mt-px shrink-0" />
+            Tiedostossa on henkilötietoja.
+          </span>
+        </span>
+      }
+    >
+      <Switch
+        id={id}
+        checked={checked}
+        onCheckedChange={onChange}
+        aria-describedby={`${id}-help`}
+      />
+    </Row>
+  );
+}
+
+/**
  * The dialog body, mounted afresh on each open (`key`). `open` turns false while the dialog
  * animates out: a download in flight is then aborted and never saved.
  */
@@ -94,35 +138,12 @@ function ExportForm({
             </SelectContent>
           </Select>
         </Row>
-        <Row
-          label="Näytä oikeat nimet"
-          htmlFor="export-unmask"
-          helper={
-            // Both lines share one grid cell, so the row keeps its height when the switch turns.
-            // The hidden one is out of the switch's description.
-            <span className="grid">
-              <span className={cn('[grid-area:1/1]', unmask && 'invisible')}>
-                Nimet niin kuin malli näki ne. Tiedoston voi jakaa.
-              </span>
-              <span
-                className={cn(
-                  'flex items-start gap-1 text-warning [grid-area:1/1]',
-                  !unmask && 'invisible',
-                )}
-              >
-                <TriangleAlert size={16} className="mt-px shrink-0" />
-                Tiedostossa on henkilötietoja.
-              </span>
-            </span>
-          }
-        >
-          <Switch
-            id="export-unmask"
-            checked={unmask}
-            onCheckedChange={setUnmask}
-            aria-describedby="export-unmask-help"
-          />
-        </Row>
+        <UnmaskRow
+          id="export-unmask"
+          checked={unmask}
+          onChange={setUnmask}
+          masked="Nimet niin kuin malli näki ne. Tiedoston voi jakaa."
+        />
       </div>
       {/* Phones: 50 % each, Lataa on the right, as the confirmation dialog (brief 7.5). */}
       <DialogFooter className="grid grid-cols-2 sm:flex">

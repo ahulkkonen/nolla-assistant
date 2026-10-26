@@ -4,10 +4,12 @@ import {
   CalendarClock,
   ChartColumn,
   ChevronRight,
+  Download,
   FolderOpen,
   KeyRound,
   LogOut,
   Monitor,
+  MonitorSmartphone,
   Moon,
   Settings,
   ShieldCheck,
@@ -51,6 +53,7 @@ export const SCREENS = [
   ['automations', CalendarClock, 'Automaatiot'],
   ['files', FolderOpen, 'Tiedostot'],
   ['usage', ChartColumn, 'Käyttö'],
+  ['devices', MonitorSmartphone, 'Laitteet'],
 ] as const;
 
 /** Opens the one settings dialog (rendered by the app shell). */
@@ -294,7 +297,7 @@ export function SettingsDialog() {
           </IconButton>
         </div>
         <DialogDescription className="sr-only">
-          Teema, yksityisyys, näkymät, puhe, ilmoitukset, integraatiot ja avaimet
+          Teema, yksityisyys, näkymät, puhe, ilmoitukset, integraatiot, tiedot ja avaimet
         </DialogDescription>
         {/* Phones scroll natively (no custom thumb); desktop gets the kit ScrollArea. */}
         <Body mobile={mobile}>
@@ -373,6 +376,24 @@ export function SettingsDialog() {
             </Section>
             <Section title="Integraatiot">
               <Integrations />
+            </Section>
+            <Section title="Tiedot">
+              <Row
+                label="Vie kaikki tiedot"
+                helper="Keskustelut, nimisuoja, muisti ja tiedostot salattuna tiedostona."
+              >
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    leaving.current = true;
+                    useStore.setState({ settingsOpen: false, exportAllOpen: true });
+                  }}
+                >
+                  <Download size={16} />
+                  Vie kaikki
+                </Button>
+              </Row>
             </Section>
             <Section title="Avaimet">
               <Row label="Pääsyavain" helper="Kirjaudu ilman salasanaa tällä laitteella.">

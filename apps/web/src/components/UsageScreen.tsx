@@ -1,6 +1,6 @@
 import { formatCost, formatTokens } from '@pa/protocol';
 import { ChartColumn } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import {
   Select,
@@ -45,6 +45,82 @@ const thisMonth = () => {
 };
 const callCount = (n: number) => `${num.format(n)} ${n === 1 ? 'kutsu' : 'kutsua'}`;
 
+type BreakdownRow = {
+  key: string;
+  name: string;
+  badge?: ReactNode;
+  calls: number;
+  tokens: number;
+  costUsd: number;
+  estimated: boolean;
+};
+
+/** One grouping of the month: a table at 768 and up, cards below (brief 7.10 4a). */
+function Breakdown({
+  label,
+  head,
+  rows,
+  cost,
+}: {
+  label: string;
+  head: string;
+  rows: BreakdownRow[];
+  cost: (usd: number, estimated: boolean) => string;
+}) {
+  return (
+    <>
+      <div className="max-md:hidden">
+        <Table
+          label={label}
+          className="[&_td:first-child]:pl-0 [&_td:last-child]:pr-0 [&_th:first-child]:pl-0 [&_th:last-child]:pr-0"
+        >
+          <TableHeader>
+            <TableRow>
+              <TableHead>{head}</TableHead>
+              <TableHead className="text-right">Kutsut</TableHead>
+              <TableHead className="text-right">Tokenit</TableHead>
+              <TableHead className="text-right">Kustannus</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map((r) => (
+              <TableRow key={r.key}>
+                <TableCell className="w-full max-w-0">
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span className="truncate">{r.name}</span>
+                    {r.badge}
+                  </span>
+                </TableCell>
+                <TableCell className="text-right tabular-nums">{num.format(r.calls)}</TableCell>
+                <TableCell className="text-right tabular-nums">{num.format(r.tokens)}</TableCell>
+                <TableCell className="text-right tabular-nums">
+                  {cost(r.costUsd, r.estimated)}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+      <ul className="flex flex-col gap-2 md:hidden" aria-label={label}>
+        {rows.map((r) => (
+          <li key={r.key} className="flex items-center gap-3 rounded-lg border bg-card px-4 py-3">
+            <div className="min-w-0 flex-1">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="truncate font-medium">{r.name}</span>
+                {r.badge}
+              </div>
+              <p className="text-meta text-muted-foreground tabular-nums">
+                {callCount(r.calls)} · {formatTokens(r.tokens)}
+              </p>
+            </div>
+            <span className="shrink-0 tabular-nums">{cost(r.costUsd, r.estimated)}</span>
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
+
 /**
  * Käyttö (phase-13 UI): the month's model calls grouped by model, the costliest first, in euros
  * at the newest ECB rate (dollars without one).
@@ -52,6 +128,7 @@ const callCount = (n: number) => `${num.format(n)} ${n === 1 ? 'kutsu' : 'kutsua
 export function UsageScreen() {
   const usage = useStore((s) => s.usage);
   const fx = useStore((s) => s.fx);
+  const agents = useStore((s) => s.agents);
   const [month, setMonth] = useState(thisMonth);
   useEffect(() => send({ type: 'usage.get', month }), [month]);
   // Back in the window: the month may have new calls.
@@ -73,6 +150,15 @@ export function UsageScreen() {
   // One rounding rule with the thread: three decimals below 0,10 €.
   const cost = (usd: number, est: boolean) => formatCost(usd, fx, { reply: true, estimated: est });
   const zdrOff = (model: string) => openRoute(model) && <Badge variant="warning">Ei ZDR</Badge>;
+  // A null id is a task without a chat; a deleted agent keeps its id (phase-15 decision 19).
+  const agentRows = (data?.agents ?? []).map((r) => ({
+    ...r,
+    key: r.agentId ?? '',
+    name:
+      r.agentId === null
+        ? 'Tehtävät ilman keskustelua'
+        : (agents.find((a) => a.id === r.agentId)?.name ?? r.agentId),
+  }));
 
   return (
     <Page
@@ -109,59 +195,21 @@ export function UsageScreen() {
               {formatTokens(tokens)} · {callCount(calls)}
             </p>
           </div>
-          <div className="max-md:hidden">
-            <Table
-              label="Mallit"
-              className="[&_td:first-child]:pl-0 [&_td:last-child]:pr-0 [&_th:first-child]:pl-0 [&_th:last-child]:pr-0"
-            >
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Malli</TableHead>
-                  <TableHead className="text-right">Kutsut</TableHead>
-                  <TableHead className="text-right">Tokenit</TableHead>
-                  <TableHead className="text-right">Kustannus</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((r) => (
-                  <TableRow key={r.model}>
-                    <TableCell className="w-full max-w-0">
-                      <span className="flex min-w-0 items-center gap-2">
-                        <span className="truncate">{r.name}</span>
-                        {zdrOff(r.model)}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">{num.format(r.calls)}</TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {num.format(r.tokens)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {cost(r.costUsd, r.estimated)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-          <ul className="flex flex-col gap-2 md:hidden" aria-label="Mallit">
-            {rows.map((r) => (
-              <li
-                key={r.model}
-                className="flex items-center gap-3 rounded-lg border bg-card px-4 py-3"
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <span className="truncate font-medium">{r.name}</span>
-                    {zdrOff(r.model)}
-                  </div>
-                  <p className="text-meta text-muted-foreground tabular-nums">
-                    {callCount(r.calls)} · {formatTokens(r.tokens)}
-                  </p>
-                </div>
-                <span className="shrink-0 tabular-nums">{cost(r.costUsd, r.estimated)}</span>
-              </li>
-            ))}
-          </ul>
+          <Breakdown
+            label="Mallit"
+            head="Malli"
+            cost={cost}
+            rows={rows.map((r) => ({ ...r, key: r.model, badge: zdrOff(r.model) }))}
+          />
+          {agentRows.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <h2 className="text-heading">Agenteittain</h2>
+              <Breakdown label="Agenteittain" head="Agentti" cost={cost} rows={agentRows} />
+            </div>
+          )}
+          {data.searches !== undefined && (
+            <p className="text-ui tabular-nums">Verkkohaut: {num.format(data.searches)}</p>
+          )}
         </>
       )}
       {rows.length > 0 && (

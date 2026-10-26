@@ -113,7 +113,13 @@ export function FindBar({ scroller }: { scroller: RefObject<HTMLElement | null> 
     const el = scroller.current;
     if (!open || !el) return;
     let t: ReturnType<typeof setTimeout> | undefined;
-    const mo = new MutationObserver(() => {
+    // The bar's own counter and field are no thread change.
+    const outside = (r: MutationRecord) =>
+      !(r.target instanceof Element ? r.target : r.target.parentElement)?.closest(
+        '[role="search"]',
+      );
+    const mo = new MutationObserver((records) => {
+      if (!records.some(outside)) return;
       clearTimeout(t);
       t = setTimeout(() => setTick((n) => n + 1), SETTLE_MS);
     });

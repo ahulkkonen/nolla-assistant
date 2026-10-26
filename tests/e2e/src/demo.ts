@@ -70,6 +70,7 @@ await start(
     USER_ID: 'aleksi',
     LOG_LEVEL: 'warn',
     AUTOMATIONS_DIR: join(dataDir, 'automations'),
+    AGENTS_DIR: join(dataDir, 'agents'),
   }),
 );
 console.log(`demo: http://127.0.0.1:${port}  password: salasana  data: ${dataDir}`);

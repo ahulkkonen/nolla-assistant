@@ -7,7 +7,7 @@ import { announce } from '../announce.ts';
 import { FAILED_TEXT, serverIdOf, type UiMessage, useStore } from '../store.ts';
 import { replyUsage } from '../thread.ts';
 import { useModel } from '../useModel.ts';
-import { forkChat, openChat, retryTurn, sendUserMessage, setDataPolicy } from '../ws.ts';
+import { forkChat, openChat, retryTurn, send, sendUserMessage, setDataPolicy } from '../ws.ts';
 import { ApprovalCard } from './ApprovalCard.tsx';
 import { FindBar } from './FindBar.tsx';
 import { IconButton } from './IconButton.tsx';
@@ -240,6 +240,8 @@ export function Thread() {
                   // An older reply's action row sits in the gap below it, as a user turn's does.
                   t.role === 'assistant' && !last && '[@media(hover:hover)]:mb-4',
                   t.role === 'user' && t.items.some(({ i }) => i === lastUser) && 'max-md:mb-12',
+                  // Editing: the action row is gone, so is the room kept for it.
+                  t.role === 'user' && 'has-[textarea]:mb-0',
                 )}
               >
                 <h2 className="sr-only">{t.role === 'user' ? 'Sinä sanoit' : 'Avustaja sanoi'}</h2>
@@ -280,6 +282,7 @@ export function Thread() {
                                 serverId && forkChat(chatId, serverId, text),
                               canFork: !!serverId,
                               forking: !!forking,
+                              onNeedIds: () => send({ type: 'chat.open', chatId }),
                             }
                           : {})}
                         {...(prev

@@ -77,27 +77,42 @@ const hostOf = (url: string) => {
 function SearchResults({ search }: { search: ToolSearch }) {
   return (
     <div className="flex flex-col gap-2 rounded-md bg-muted p-3">
-      <p className="text-ui text-foreground">Haku: ”{search.query}”</p>
+      <p className="text-ui text-foreground">
+        <span className="text-muted-foreground">Haku:</span> ”{search.query}”
+      </p>
       {search.results.length > 0 && (
-        <ul aria-label="Hakutulokset" className="flex flex-col gap-2">
-          {search.results.map((r) => {
+        <ul aria-label="Hakutulokset" className="flex flex-col">
+          {search.results.map((r, i) => {
             // The protocol allows http(s) only; the client checks again before an href.
             const host = hostOf(r.url);
+            const body = (
+              <>
+                <span className="text-ui [overflow-wrap:anywhere] group-hover/link:underline">
+                  {r.title}
+                </span>
+                {host && (
+                  // The title alone names the link.
+                  <span aria-hidden="true" className="text-meta text-muted-foreground">
+                    {host}
+                  </span>
+                )}
+              </>
+            );
             return (
-              <li key={r.url} className="flex min-w-0 flex-col">
+              <li key={`${i}:${r.url}`} className="min-w-0">
                 {host ? (
+                  // One block link over the title and the host (44 px on touch).
                   <a
                     href={r.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-ui text-link underline-offset-4 [overflow-wrap:anywhere] hover:underline"
+                    className="group/link flex min-h-11 flex-col justify-center rounded-sm py-1.5 text-link underline-offset-4"
                   >
-                    {r.title}
+                    {body}
                   </a>
                 ) : (
-                  <span className="text-ui">{r.title}</span>
+                  <div className="flex min-h-11 flex-col justify-center py-1.5">{body}</div>
                 )}
-                {host && <span className="text-meta text-muted-foreground">{host}</span>}
               </li>
             );
           })}

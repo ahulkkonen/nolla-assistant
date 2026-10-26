@@ -61,7 +61,10 @@ export const fileError = (err: unknown, own: Partial<Record<FileError, string>> 
   if (!(err instanceof HttpError)) return 'Toiminto epäonnistui.';
   // No answer at all (XHR status 0), or a proxy's 413 without our body.
   if (err.status === 0) return 'Ei yhteyttä. Yritä uudelleen.';
-  const code = err.code ?? (err.status === 413 ? 'too_large' : undefined);
+  // The file routes answer only `FileError` codes.
+  const code = (err.code ?? (err.status === 413 ? 'too_large' : undefined)) as
+    | FileError
+    | undefined;
   return (code && (own[code] ?? FILE_ERROR[code])) || 'Toiminto epäonnistui.';
 };
 

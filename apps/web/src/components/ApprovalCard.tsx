@@ -1,4 +1,4 @@
-import { WEB_SEARCH_TOOL } from '@pa/protocol';
+import { SEARCH_ENTITY_REASON, WEB_SEARCH_TOOL } from '@pa/protocol';
 import { Clock, ShieldAlert } from 'lucide-react';
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -62,8 +62,10 @@ export function ApprovalCard({ a }: { a: Approval }) {
       : [['', a.args] as const];
   const reason = a.reason !== `Työkalu ${a.tool} vaatii hyväksynnän.` ? a.reason : '';
   // Phase 14: a search whose query names a vault entity; the reason is the title.
-  const search = a.tool === WEB_SEARCH_TOOL;
-  const query = search && args.find(([k]) => k === 'query')?.[1];
+  const query = args.find(([k]) => k === 'query')?.[1];
+  // Only the entity guard's card; anything else (`approval.always`) keeps the generic list.
+  const search =
+    a.tool === WEB_SEARCH_TOOL && a.reason === SEARCH_ENTITY_REASON && query !== undefined;
 
   return (
     <section

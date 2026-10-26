@@ -10,7 +10,7 @@ class FakeWebSocket {
   sent: string[] = [];
   onopen: (() => void) | null = null;
   onmessage: ((e: { data: string }) => void) | null = null;
-  onclose: (() => void) | null = null;
+  onclose: ((e: { code: number }) => void) | null = null;
   constructor(_url: string) {
     FakeWebSocket.last = this;
   }
@@ -113,7 +113,7 @@ describe('ws client', () => {
     frame({ type: 'chat.updated', chat: summary('zdr') });
     // The socket closes before the answer.
     setDataPolicy('c1', 'open');
-    sock.onclose?.();
+    sock.onclose?.({ code: 1006 });
     frame({ type: 'chat.updated', chat: summary('open') });
     sock.open();
     // No policy known for the chat yet.
@@ -136,7 +136,11 @@ describe('ws client', () => {
     expect(useStore.getState().messages.c1).toHaveLength(2);
     retryTurn('c1');
     frame({ type: 'agent.status', chatId: 'c1', state: 'running' });
-    expect(useStore.getState().messages.c1?.map((m) => m.id)).toEqual(['u1']);
+    // The kept message runs as a new entry: a fresh local id, its old entry id gone.
+    const kept = useStore.getState().messages.c1 ?? [];
+    expect(kept.map((m) => m.text)).toEqual([USER.text]);
+    expect(kept[0]?.id).toMatch(/^local-/);
+    expect(kept[0]?.serverId).toBeUndefined();
   });
 
   it('a turn with tool rows, or a message that never arrived, goes again as a new message', () => {

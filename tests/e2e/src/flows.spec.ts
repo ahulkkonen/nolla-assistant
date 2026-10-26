@@ -12,6 +12,7 @@ import {
   memoryTurns,
   mockMic,
   mockPush,
+  newAutomation,
   openFiles,
   openSettings,
   openVault,
@@ -751,8 +752,112 @@ test.describe('automations', () => {
     await expect(row).toContainText('1.1. klo 3.00');
     await expect(row).toContainText('ei vielä ajettu');
     await expect(row).toContainText('Avustaja');
-    await row.getByRole('button', { name: 'Suorita nyt: aamu' }).click();
+    await row.getByRole('button', { name: 'Aja nyt: aamu' }).click();
     await expect(row).toContainText(/käynnissä|onnistui/);
+  });
+});
+
+test.describe('admin', () => {
+  // Phase-15 gate: the editors, devices and the full export. The run times are Helsinki times.
+  test.use({ timezoneId: 'Europe/Helsinki' });
+
+  test('agents: rename in the form, YAML and back, the picker shows the new name', async ({
+    app,
+    page,
+  }) => {
+    await app.login(page);
+    await openSettings(page, 'Agentit');
+    await page.getByRole('button', { name: 'Toiminnot: Tutkija' }).click();
+    await page.getByRole('menuitem', { name: 'Muokkaa' }).click();
+    const name = page.getByLabel('Nimi', { exact: true });
+    await expect(name).toHaveValue('Tutkija');
+    await name.fill('Tutkija Pro');
+    // The dry run merges the form into the file: the comments stay.
+    await page.getByRole('tab', { name: 'YAML' }).click();
+    const yaml = page.getByLabel('Tiedosto', { exact: true });
+    await expect(yaml).toHaveValue(/^name: Tutkija Pro$/m);
+    await expect(yaml).toHaveValue(/# Children ask for their own gated tools\./);
+    await yaml.fill((await yaml.inputValue()).replace('Tutkija Pro', 'Tutkija Plus'));
+    await page.getByRole('tab', { name: 'Lomake' }).click();
+    await expect(name).toHaveValue('Tutkija Plus');
+    await page.getByRole('button', { name: 'Tallenna' }).click();
+    await expect(page.getByRole('button', { name: 'Toiminnot: Tutkija Plus' })).toBeVisible();
+    await newChat(page);
+    await page.getByRole('button', { name: 'Agentti: Avustaja' }).click();
+    await expect(page.getByRole('menuitemradio', { name: 'Tutkija Plus' })).toBeVisible();
+  });
+
+  test('automations: Arkisin klo 7.30 shows five next runs, saves, turns off', async ({
+    app,
+    page,
+  }) => {
+    await app.login(page);
+    const runs = await newAutomation(page);
+    for (const r of await runs.all()) await expect(r).toHaveText(/^(ma|ti|ke|to|pe) .+ klo 7\.30$/);
+    await page.getByRole('button', { name: 'Tallenna' }).click();
+    const row = page.getByRole('row', { name: /Aamukatsaus/ });
+    await expect(row).toContainText('Arkisin klo 7.30');
+    await expect(row).toContainText(/(ma|ti|ke|to|pe) .+ klo 7\.30/);
+    const on = row.getByRole('switch', { name: 'Käytössä: Aamukatsaus' });
+    await expect(on).toBeChecked();
+    await on.click();
+    await expect(on).not.toBeChecked();
+    await expect(row).toContainText('–');
+  });
+
+  test('devices: revoke all signs the other browser out, this one stays', async ({
+    app,
+    page,
+    browser,
+  }) => {
+    const other = await browser.newContext();
+    const second = await other.newPage();
+    await app.login(second);
+    await app.login(page);
+    await openSettings(page, 'Laitteet');
+    const list = page.getByRole('region', { name: 'Kirjautuneet laitteet' }).getByRole('listitem');
+    await expect(list).toHaveCount(2);
+    await expect(list.filter({ hasText: 'Tämä laite' })).toHaveCount(1);
+    await page.getByRole('button', { name: 'Kirjaa ulos kaikkialta' }).click();
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Kirjaa ulos' }).click();
+    await expect(second.getByRole('button', { name: 'Kirjaudu', exact: true })).toBeVisible();
+    await expect(list).toHaveCount(1);
+    // The new cookie of this device works after a reload.
+    await page.reload();
+    await expect(page.getByRole('button', { name: 'Uusi keskustelu' }).first()).toBeVisible();
+    await other.close();
+  });
+
+  test('export: a masked export builds and downloads once', async ({ app, page }) => {
+    app.llm.push({ text: 'Hei.' });
+    await app.login(page);
+    await send(page, 'Moi');
+    await expect(page.locator('.md').last()).toHaveText('Hei.');
+    await openSettings(page, 'Asetukset');
+    await page.getByRole('button', { name: 'Vie kaikki', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Vie kaikki tiedot' });
+    await expect(dialog.getByRole('switch', { name: 'Näytä oikeat nimet' })).not.toBeChecked();
+    await dialog.getByLabel('Salasana', { exact: true }).fill('pitkä salasana 1');
+    const start = dialog.getByRole('button', { name: 'Aloita' });
+    await expect(start).toBeDisabled();
+    await dialog.getByLabel('Salasana uudelleen').fill('pitkä salasana 1');
+    await start.click();
+    const link = dialog.getByRole('link', { name: 'Lataa' });
+    await expect(link).toBeVisible();
+    await expect(dialog.locator('code')).toHaveText(/^openssl enc -d -aes-256-cbc .+\.zip$/);
+    const href = await link.getAttribute('href');
+    const download = page.waitForEvent('download');
+    await link.click();
+    const file = await download;
+    expect(file.suggestedFilename()).toMatch(/\.zip\.enc$/);
+    expect(
+      readFileSync(await file.path())
+        .subarray(0, 8)
+        .toString(),
+    ).toBe('Salted__');
+    await expect(dialog).toHaveCount(0);
+    // Once: the file is gone after the download.
+    await expect.poll(async () => (await page.request.get(href ?? '')).status()).not.toBe(200);
   });
 });
 

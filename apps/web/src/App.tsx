@@ -10,6 +10,8 @@ import { ArtifactPanel } from './components/ArtifactPanel.tsx';
 import { AUTOMATIONS_TITLE, AutomationsScreen } from './components/AutomationsScreen.tsx';
 import { CommandPalette } from './components/CommandPalette.tsx';
 import { Composer } from './components/Composer.tsx';
+import { DEVICES_TITLE, DevicesScreen } from './components/DevicesScreen.tsx';
+import { ExportAllDialog } from './components/ExportAllDialog.tsx';
 import { ExportDialog } from './components/ExportDialog.tsx';
 import { FILES_TITLE, FilesScreen } from './components/FilesScreen.tsx';
 import { IconButton } from './components/IconButton.tsx';
@@ -37,6 +39,7 @@ const SCREEN_TITLE = {
   memory: MEMORY_TITLE,
   files: FILES_TITLE,
   usage: USAGE_TITLE,
+  devices: DEVICES_TITLE,
 };
 
 /** `--background` of each scheme (tokens.css), for the browser chrome (brief 7.7). */
@@ -211,6 +214,7 @@ function Shell() {
         {screen === 'memory' && <MemoryScreen />}
         {screen === 'files' && <FilesScreen />}
         {screen === 'usage' && <UsageScreen />}
+        {screen === 'devices' && <DevicesScreen />}
         {/* Hidden, not unmounted, on other screens: the composer owns the global shortcuts. */}
         <div className={cn('flex min-h-0 flex-1 flex-col', screen !== 'chat' && 'hidden')}>
           {empty ? (
@@ -232,6 +236,7 @@ function Shell() {
       <ShortcutsDialog />
       <CommandPalette />
       <ExportDialog />
+      <ExportAllDialog />
     </div>
   );
 }

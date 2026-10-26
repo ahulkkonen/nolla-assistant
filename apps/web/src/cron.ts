@@ -1,4 +1,7 @@
+import { cronToSchedule } from '@pa/protocol';
+
 const DAYS = ['su', 'ma', 'ti', 'ke', 'to', 'pe', 'la', 'su'];
+const clock = (h: number, m: number) => `klo ${h}.${String(m).padStart(2, '0')}`;
 const num = (s: string) => (/^\d+$/.test(s) ? Number(s) : null);
 
 /** `1-5` → `ma–pe`, `1,3` → `ma, ke`; null for steps or names. */
@@ -23,7 +26,7 @@ export function cronText(cron: string): string {
   if (f.every((x) => x === '*')) return 'joka minuutti';
   const [mm, hh] = [num(m), num(h)];
   if (mm == null || hh == null || mm > 59 || hh > 23) return cron;
-  const at = `klo ${hh}.${String(mm).padStart(2, '0')}`;
+  const at = clock(hh, mm);
   const [d, mo] = [num(dom), num(mon)];
   if (dom === '*' && mon === '*') {
     if (dow === '*') return `joka päivä ${at}`;
@@ -34,4 +37,19 @@ export function cronText(cron: string): string {
   if (d != null && mo != null) return `${d}.${mo}. ${at}`;
   if (d != null && mon === '*') return `kuun ${d}. päivä ${at}`;
   return cron;
+}
+
+/** The editor's presets in words (phase-15 decision 8): "Arkisin klo 7.30"; else `cronText`. */
+export function scheduleText(cron: string): string {
+  const s = cronToSchedule(cron);
+  if (s.kind === 'custom') return cronText(cron);
+  const at = clock(s.hour, s.minute);
+  if (s.kind === 'weekly') return `Viikoittain ${DAYS[s.day]} ${at}`;
+  return `${s.kind === 'daily' ? 'Päivittäin' : 'Arkisin'} ${at}`;
+}
+
+/** A run time in local time: "ma 27.10. klo 7.30". */
+export function runText(iso: string): string {
+  const d = new Date(iso);
+  return `${DAYS[d.getDay()]} ${d.getDate()}.${d.getMonth() + 1}. ${clock(d.getHours(), d.getMinutes())}`;
 }

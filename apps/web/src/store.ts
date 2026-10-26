@@ -3,6 +3,7 @@ import type {
   Artifact,
   AttachmentRef,
   ChatSummary,
+  ExportJob,
   FileRoot,
   ForkLink,
   FxRate,
@@ -110,7 +111,12 @@ type State = {
     | 'automations'
     | 'memory'
     | 'files'
-    | 'usage';
+    | 'usage'
+    | 'devices';
+  /** The full export (`export.state`, phase 15): null when there is none. */
+  exportJob: ExportJob | null;
+  /** "Vie kaikki tiedot" dialog. */
+  exportAllOpen: boolean;
   /** The newest ECB rate (`fx.state`); null: prices show in dollars (phase-13 decision 16). */
   fx: FxRate | null;
   /** The source of each forked chat from its `chat.state` (phase 13); null: not a fork. */
@@ -222,6 +228,8 @@ type State = {
   addLocalMessage(chatId: string, msg: UiMessage): void;
   /** Keeps the chat's first `keep` messages and ends the turn (a retry in place). */
   rewind(chatId: string, keep: number): void;
+  /** A message sent again: its new local id, and no entry id until `message.accepted`. */
+  relocal(chatId: string, id: string, localId: string): void;
   pushError(message: string): void;
   notify(message: string, action?: { label: string; onClick: () => void }): void;
   setSidebarOpen(open: boolean): void;
@@ -401,6 +409,8 @@ export const useStore = create<State>()((set, get) => {
     sidebarOpen: globalThis.matchMedia?.('(min-width: 1024px)').matches ?? false,
     theme: loadTheme(),
     fx: null,
+    exportJob: null,
+    exportAllOpen: false,
     forkedFrom: {},
     pendingFork: null,
     thinkingLive: {},
@@ -484,8 +494,17 @@ export const useStore = create<State>()((set, get) => {
                   },
                 ]
               : [];
+            // A message this client sent keeps its local id (no remount, an open edit box stays)
+            // and takes the entry id as `serverId`, when the same place holds the same text.
+            const prev = st.messages[msg.chat.id] ?? [];
+            const kept = msg.messages.map((m, k): UiMessage => {
+              const old = prev[k];
+              return old?.id.startsWith('local-') && old.role === m.role && old.text === m.text
+                ? { ...m, id: old.id, serverId: m.id }
+                : m;
+            });
             return {
-              messages: { ...st.messages, [msg.chat.id]: [...msg.messages, ...local] },
+              messages: { ...st.messages, [msg.chat.id]: [...kept, ...local] },
               policies: { ...st.policies, [msg.chat.id]: msg.chat.modelPolicy },
               forkedFrom: { ...st.forkedFrom, [msg.chat.id]: msg.forkedFrom ?? null },
               ...(mine ? { pendingFork: null, activeChatId: msg.chat.id, screen: 'chat' } : {}),
@@ -494,6 +513,8 @@ export const useStore = create<State>()((set, get) => {
           });
         case 'fx.state':
           return set({ fx: msg.rate });
+        case 'export.state':
+          return set({ exportJob: msg.job });
         case 'message.thinking':
           return set((st) => {
             const now = st.thinkingLive[msg.chatId];
@@ -610,13 +631,31 @@ export const useStore = create<State>()((set, get) => {
           }));
         case 'tool.update':
           return patchTool(msg.chatId, msg.callId, { output: msg.output.slice(-2000) });
-        case 'tool.end':
-          return patchTool(msg.chatId, msg.callId, {
+        case 'tool.end': {
+          const patch = {
             status: msg.status,
             summary: msg.summary,
             // Phase 14: a `web_search` that ran carries its query and links.
             ...(msg.search ? { search: msg.search } : {}),
-          });
+          };
+          // Live: the streamed row. After its `message.final` the row is in `messages`; never a
+          // new stream for it (that would show a reply that is not coming).
+          if (get().streaming[msg.chatId]?.tools.some((t) => t.callId === msg.callId))
+            return patchTool(msg.chatId, msg.callId, patch);
+          return set((st) => ({
+            messages: {
+              ...st.messages,
+              [msg.chatId]: (st.messages[msg.chatId] ?? []).map((m) =>
+                m.tools.some((t) => t.callId === msg.callId)
+                  ? {
+                      ...m,
+                      tools: m.tools.map((t) => (t.callId === msg.callId ? { ...t, ...patch } : t)),
+                    }
+                  : m,
+              ),
+            },
+          }));
+        }
         case 'agent.status':
           return set((st) => ({
             agentStatus: { ...st.agentStatus, [msg.chatId]: msg.state },
@@ -826,6 +865,17 @@ export const useStore = create<State>()((set, get) => {
       set((st) => ({
         ...endTurn(st, chatId),
         messages: { ...st.messages, [chatId]: [...(st.messages[chatId] ?? []), m] },
+      })),
+    relocal: (chatId, id, localId) =>
+      set((st) => ({
+        messages: {
+          ...st.messages,
+          [chatId]: (st.messages[chatId] ?? []).map((m) => {
+            if (m.id !== id) return m;
+            const { serverId: _, ...rest } = m;
+            return { ...rest, id: localId };
+          }),
+        },
       })),
     rewind: (chatId, keep) =>
       set((st) => ({

@@ -208,6 +208,47 @@ describe('store reducers', () => {
     expect(after && serverIdOf(after)).toBe('e1');
   });
 
+  it("chat.state keeps a sent message's local id and gives it the entry id", () => {
+    const local = {
+      id: 'local-9',
+      role: 'user' as const,
+      text: 'Hei',
+      annotations: [],
+      attachments: [],
+      tools: [],
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+    useStore.setState({ messages: { c: [local] } });
+    useStore.getState().apply({
+      type: 'chat.state',
+      chat: chat('c', false, '2026-01-01T00:00:00.000Z'),
+      messages: [{ ...local, id: 'e9' }],
+    });
+    const [m] = useStore.getState().messages.c ?? [];
+    expect(m?.id).toBe('local-9');
+    expect(m && serverIdOf(m)).toBe('e9');
+  });
+
+  it('a late tool.end patches the final row, and starts no stream', () => {
+    const final = {
+      id: 'a1',
+      role: 'assistant' as const,
+      text: '',
+      annotations: [],
+      attachments: [],
+      tools: [{ callId: 'k1', name: 'web_search', status: 'running' as const, summary: '' }],
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+    useStore.setState({ messages: { c: [final] } });
+    const search = { query: 'sää', results: [{ title: 'Yle', url: 'https://yle.fi/saa' }] };
+    useStore
+      .getState()
+      .apply({ type: 'tool.end', chatId: 'c', callId: 'k1', status: 'ok', summary: '', search });
+    const st = useStore.getState();
+    expect(st.messages.c?.[0]?.tools[0]).toMatchObject({ status: 'ok', search });
+    expect(st.streaming.c).toBeUndefined();
+  });
+
   it('a thinking text that fails to load turns the row to its error', () => {
     useStore.setState({ thinkingText: { 'c:a1': { chatId: 'c', state: 'loading' } } });
     useStore.getState().apply({ type: 'error', code: 'not_found', message: 'x', chatId: 'c' });
