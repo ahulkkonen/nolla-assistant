@@ -1,6 +1,6 @@
 import type { TreeEntry } from '@pa/protocol';
-import { ChevronRight, File, Folder } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { ChevronRight } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { treeList, treeMove } from '../api.ts';
-import { attachWorkFile, fileError, formatBytes } from '../files.ts';
+import { attachWorkFile, fileError, formatBytes, iconOf } from '../files.ts';
 
 /** The parent folder of a work-dir path ('' is the root). */
 export const parentOf = (path: string) =>
@@ -96,8 +96,11 @@ function TreeBrowser({
         })),
       () => setFailed(true),
     );
+  const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
     setFailed(false);
+    // A folder opens at its top.
+    box.current?.scrollTo(0, 0);
     void load();
   }, [path]);
 
@@ -107,7 +110,11 @@ function TreeBrowser({
   return (
     <div className="flex min-w-0 flex-col gap-2">
       <Crumbs path={path} onGo={onPath} />
-      <div className="h-[min(50dvh,320px)] overflow-y-auto rounded-lg border">
+      {/* Sized to the content, 2 to 7 whole rows: a row is never cut at the bottom edge. */}
+      <div
+        ref={box}
+        className="max-h-[calc(7*2.5rem+0.5rem+2px)] min-h-[calc(2*2.5rem+0.5rem+2px)] overflow-y-auto rounded-lg border max-md:max-h-[calc(7*2.75rem+0.5rem+2px)] max-md:min-h-[calc(2*2.75rem+0.5rem+2px)]"
+      >
         {failed ? (
           <p className="p-4 text-meta text-muted-foreground">Kansiota ei löydy.</p>
         ) : list?.path === path && !shown.length ? (
@@ -118,7 +125,7 @@ function TreeBrowser({
           <ul className="p-1">
             {shown.map((e) => {
               const dir = e.type === 'dir';
-              const Icon = dir ? Folder : File;
+              const Icon = iconOf(e);
               return (
                 <li key={e.path}>
                   <button
@@ -210,7 +217,10 @@ export function MoveDialog({
           <Button variant="outline" onClick={onClose}>
             Peruuta
           </Button>
-          <Button onClick={() => void move()}>Siirrä tähän</Button>
+          {/* Its own folder is no move. */}
+          <Button disabled={!entry || path === parentOf(entry.path)} onClick={() => void move()}>
+            Siirrä tähän
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

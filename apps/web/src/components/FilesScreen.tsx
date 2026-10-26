@@ -2,11 +2,6 @@ import type { FileRoot, FileUsage, TrashEntry, TreeEntry } from '@pa/protocol';
 import {
   Download,
   Eye,
-  File,
-  FileCode,
-  FileImage,
-  FileText,
-  Folder,
   FolderInput,
   FolderOpen,
   FolderPlus,
@@ -52,7 +47,7 @@ import {
   treeRawUrl,
   treeUpload,
 } from '../api.ts';
-import { attachWorkFile, fileError, formatBytes, formatDate } from '../files.ts';
+import { attachWorkFile, fileError, formatBytes, formatDate, iconOf, jobQueue } from '../files.ts';
 import { useStore } from '../store.ts';
 import { openChat } from '../ws.ts';
 import { type Action, ActionMenu, ActionRow } from './Actions.tsx';
@@ -75,17 +70,6 @@ const VIEWS = [
 
 /** The upload row's text; the toast for the same error stays within 60 characters. */
 const QUOTA_ROW = 'Tallennustila on täynnä. Tyhjennä roskakori tai poista tiedostoja.';
-
-const ICON: Record<NonNullable<TreeEntry['preview']>, LucideIcon> = {
-  text: FileText,
-  markdown: FileText,
-  code: FileCode,
-  html: FileCode,
-  image: FileImage,
-  pdf: FileText,
-};
-const iconOf = (e: { type: 'dir' | 'file'; preview?: TreeEntry['preview'] }) =>
-  e.type === 'dir' ? Folder : e.preview ? ICON[e.preview] : File;
 
 const setView = (patch: Partial<{ root: View; path: string }>) =>
   useStore.setState((s) => ({
@@ -114,7 +98,7 @@ function UsageMeter({ usage }: { usage: FileUsage }) {
           aria-valuemax={usage.quota}
           aria-valuenow={Math.min(usage.used, usage.quota)}
           aria-valuetext={text}
-          className="h-1 w-30 shrink-0 overflow-hidden rounded-full bg-muted"
+          className="h-1 w-30 shrink-0 overflow-hidden rounded-full bg-secondary dark:bg-accent"
         >
           <div
             className={cn(
@@ -139,7 +123,8 @@ function NameDialog({
   state: { mode: 'mkdir' } | { mode: 'rename'; entry: TreeEntry } | null;
   dir: string;
   onClose: () => void;
-  onDone: () => void;
+  /** `renamed`: the entry after a rename (the preview follows it). */
+  onDone: (renamed?: { from: string; entry: TreeEntry }) => void;
 }) {
   const [name, setName] = useState('');
   const [error, setError] = useState('');
@@ -154,9 +139,12 @@ function NameDialog({
     const clean = name.trim();
     if (!state || !clean) return;
     try {
-      if (state.mode === 'mkdir') await treeMkdir(joinPath(dir, clean));
-      else await treeMove(state.entry.path, joinPath(parentOf(state.entry.path), clean));
-      onDone();
+      if (state.mode === 'mkdir') {
+        await treeMkdir(joinPath(dir, clean));
+        return onDone();
+      }
+      const to = joinPath(parentOf(state.entry.path), clean);
+      onDone({ from: state.entry.path, entry: (await treeMove(state.entry.path, to)).entry });
     } catch (err) {
       setError(fileError(err));
     }
@@ -211,7 +199,37 @@ function NameDialog({
   );
 }
 
-type Upload = { key: string; name: string; progress: number; error?: string; abort?: () => void };
+/** One file upload: its row, and what a retry needs. */
+type Upload = {
+  key: string;
+  file: File;
+  dir: string;
+  progress: number;
+  error?: string | undefined;
+  abort?: (() => void) | undefined;
+};
+/** At most this many uploads run at once; the rest wait in order. */
+const MAX_UPLOADS = 3;
+
+const keyOf = (v: { root: View; path: string }) => `${v.root}:${v.root === 'trash' ? '' : v.path}`;
+/** The visible one of the table row and the phone card (the other is `display: none`). */
+const visibleRow = (path: string) =>
+  [...document.querySelectorAll(`[data-path="${CSS.escape(path)}"]`)].find(
+    (el) => el.getClientRects().length > 0,
+  );
+
+/** "Työkansio › Raportit": the folder an entry came from ("Alkuperäinen sijainti"). */
+const folderOf = (path: string) =>
+  ['Työkansio', ...parentOf(path).split('/').filter(Boolean)].join(' › ');
+
+/** The preview follows a renamed or moved file and closes when its file or a parent goes. */
+function followPreview(from: string, to?: TreeEntry) {
+  const p = useStore.getState().filePreview;
+  if (!p || p.root !== 'work') return;
+  if (p.entry.path === from)
+    useStore.setState({ filePreview: to?.type === 'file' ? { root: 'work', entry: to } : null });
+  else if (p.entry.path.startsWith(`${from}/`)) useStore.setState({ filePreview: null });
+}
 
 /** One row of the listing: a table row at ≥ 768 px, a card below (brief 7.5 Tables). */
 type Row = {
@@ -231,7 +249,18 @@ type Row = {
   menuLabel: string;
 };
 
-function Listing({ label, heads, rows }: { label: string; heads: string[]; rows: Row[] }) {
+function Listing({
+  label,
+  heads,
+  rows,
+  current,
+}: {
+  label: string;
+  heads: string[];
+  rows: Row[];
+  /** The previewed row: selected state and `aria-current`. */
+  current?: string | undefined;
+}) {
   return (
     <>
       <div className="max-md:hidden">
@@ -250,7 +279,13 @@ function Listing({ label, heads, rows }: { label: string; heads: string[]; rows:
           </TableHeader>
           <TableBody>
             {rows.map((r) => (
-              <TableRow key={r.key} data-path={r.key} className="group/row">
+              <TableRow
+                key={r.key}
+                data-path={r.key}
+                data-state={r.key === current ? 'selected' : undefined}
+                aria-current={r.key === current ? 'true' : undefined}
+                className="group/row"
+              >
                 <TableCell className="max-w-0 w-full">
                   <span className="flex min-w-0 items-center gap-2">
                     <r.Icon size={16} className="shrink-0 text-muted-foreground" />
@@ -289,7 +324,11 @@ function Listing({ label, heads, rows }: { label: string; heads: string[]; rows:
           <li
             key={r.key}
             data-path={r.key}
-            className="flex items-center gap-3 rounded-lg border bg-card py-3 pr-2 pl-4"
+            aria-current={r.key === current ? 'true' : undefined}
+            className={cn(
+              'flex items-center gap-3 rounded-lg border bg-card py-3 pr-2 pl-4',
+              r.key === current && 'bg-accent/50',
+            )}
           >
             <r.Icon size={16} className="shrink-0 text-muted-foreground" />
             <div className="min-w-0 flex-1">
@@ -341,98 +380,143 @@ export function FilesScreen() {
   const view = useStore((s) => s.filesView);
   const preview = useStore((s) => s.filePreview);
   const [usage, setUsage] = useState<FileUsage | null>(null);
-  const key = `${view.root}:${view.path}`;
+  const key = keyOf(view);
   const [list, setList] = useState<{ key: string; entries: TreeEntry[]; next: string | null }>();
   const [trash, setTrash] = useState<{ entries: TrashEntry[]; next: string | null }>();
   const [uploads, setUploads] = useState<Upload[]>([]);
   const [naming, setNaming] = useState<Parameters<typeof NameDialog>[0]['state']>(null);
   const [moving, setMoving] = useState<TreeEntry | null>(null);
   const [purge, setPurge] = useState<TrashEntry | 'all' | null>(null);
+  /** Bumped by each reload and on window focus: the open preview fetches its file again. */
+  const [rev, setRev] = useState(0);
   const picker = useRef<HTMLInputElement>(null);
   const root: FileRoot = view.root === 'files' ? 'files' : 'work';
 
   const refreshUsage = () => void fileUsage().then(setUsage, () => {});
+  /**
+   * Lists what the store shows now (never a stale closure); an answer for a folder or view that
+   * was left in the meantime is dropped.
+   */
   const load = async (cursor?: string) => {
+    const v = useStore.getState().filesView;
+    const k = keyOf(v);
+    const current = () => keyOf(useStore.getState().filesView) === k;
     try {
-      if (view.root === 'trash') {
+      if (v.root === 'trash') {
         const l = await trashList(cursor);
+        if (!current()) return;
         setTrash((prev) => ({
           entries: cursor && prev ? [...prev.entries, ...l.entries] : l.entries,
           next: l.nextCursor,
         }));
         return;
       }
-      const l = await treeList(view.root, view.path, cursor);
+      const l = await treeList(v.root, v.path, cursor);
+      if (!current()) return;
       setList((prev) => ({
-        key,
-        entries: cursor && prev?.key === key ? [...prev.entries, ...l.entries] : l.entries,
+        key: k,
+        entries: cursor && prev?.key === k ? [...prev.entries, ...l.entries] : l.entries,
         next: l.nextCursor,
       }));
     } catch (err) {
+      if (!current()) return;
       // A folder that is gone (moved or deleted elsewhere): back to the root.
-      if (err instanceof HttpError && err.code === 'not_found' && view.path) setView({ path: '' });
+      if (err instanceof HttpError && err.code === 'not_found' && v.path) setView({ path: '' });
       else useStore.getState().pushError(fileError(err));
     }
   };
+  /** After a change: the listing, the meter, and the open preview fetch again. */
   const reload = () => {
     void load();
     refreshUsage();
+    setRev((r) => r + 1);
   };
   useEffect(() => {
     void load();
   }, [key]);
   useEffect(refreshUsage, []);
+  // The agent can rewrite the open file: back in the window, the preview fetches it again.
+  useEffect(() => {
+    const again = () => setRev((r) => r + 1);
+    window.addEventListener('focus', again);
+    return () => window.removeEventListener('focus', again);
+  }, []);
+  // Leaving the screen closes the preview, so the shell does not keep its side-panel layout.
+  useEffect(() => () => useStore.setState({ filePreview: null }), []);
 
-  // "Näytä" after "Tallenna tiedostoksi": the file opens in the preview once its folder is listed.
+  // "Näytä" after "Tallenna tiedostoksi": the file opens in the preview once its folder is listed,
+  // following the pages until it shows.
   const entries = list?.key === key ? list.entries : undefined;
   useEffect(() => {
-    if (!view.focus || !entries) return;
-    const hit = entries.find((e) => e.path === view.focus);
+    const focus = view.focus;
+    if (!focus || !entries) return;
+    const hit = entries.find((e) => e.path === focus);
+    if (!hit && list?.next) {
+      void load(list.next);
+      return;
+    }
     useStore.setState((s) => ({
       filesView: { ...s.filesView, focus: null },
       ...(hit?.preview ? { filePreview: { root: 'work' as const, entry: hit } } : {}),
     }));
-    if (hit)
-      document
-        .querySelector(`[data-path="${CSS.escape(hit.path)}"]`)
-        ?.scrollIntoView({ block: 'center' });
+    if (!hit) return useStore.getState().pushError('Tiedostoa ei löydy.');
+    requestAnimationFrame(() => visibleRow(hit.path)?.scrollIntoView({ block: 'center' }));
   }, [view.focus, entries]);
 
   const patch = (k: string, p: Partial<Upload>) =>
     setUploads((u) => u.map((x) => (x.key === k ? { ...x, ...p } : x)));
   const drop = (k: string) => setUploads((u) => u.filter((x) => x.key !== k));
-  /** One request per file, with progress; errors stay on the file's row. */
-  const upload = async (files: File[]) => {
-    if (view.root !== 'work' || !files.length) return;
-    const dir = view.path;
-    const rows = files.map((f) => ({ key: crypto.randomUUID(), file: f }));
-    setUploads((u) => [
-      ...u,
-      ...rows.map(({ key: k, file }) => ({ key: k, name: file.name, progress: 0 })),
-    ]);
-    await Promise.all(
-      rows.map(async ({ key: k, file }) => {
-        const job = treeUpload(dir, file, (progress) => patch(k, { progress }));
-        patch(k, { abort: job.abort });
-        try {
-          await job.done;
-          drop(k);
-        } catch (err) {
-          if (err instanceof DOMException) return drop(k);
-          const quota = err instanceof HttpError && err.code === 'quota';
-          patch(k, { error: quota ? QUOTA_ROW : fileError(err), abort: () => drop(k) });
-          if (quota) useStore.getState().pushError(fileError(err));
-        }
-      }),
-    );
-    reload();
+  const start = async ({ key: k, file, dir }: Upload) => {
+    const job = treeUpload(dir, file, (progress) => patch(k, { progress }));
+    patch(k, { abort: job.abort });
+    try {
+      await job.done;
+      drop(k);
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') return drop(k);
+      // The row says it; no toast on top (the meter shows the use too).
+      const quota = err instanceof HttpError && err.code === 'quota';
+      patch(k, { error: quota ? QUOTA_ROW : fileError(err), abort: undefined });
+    }
   };
-  const dropping = useFileDrop(view.root === 'work', (files) => void upload(files));
+  // One queue for the screen: at most MAX_UPLOADS at once; the last to end reloads the listing.
+  // `start` and `reload` only use state setters and the store, so the first render's are current.
+  const [queue] = useState(() =>
+    jobQueue(
+      MAX_UPLOADS,
+      (u: Upload) => start(u),
+      () => reload(),
+    ),
+  );
+  /** One request per file, with progress; errors stay on the file's row with a retry. */
+  const upload = (files: File[]) => {
+    const v = useStore.getState().filesView;
+    if (v.root !== 'work') return;
+    // A dropped folder arrives as an empty File without a type.
+    // ponytail: an empty file without an extension looks the same; webkitGetAsEntry() tells them apart.
+    const real = files.filter((f) => f.size > 0 || f.type !== '');
+    if (real.length < files.length) useStore.getState().pushError('Kansioita ei voi ladata.');
+    const jobs = real.map((file) => ({ key: crypto.randomUUID(), file, dir: v.path, progress: 0 }));
+    setUploads((u) => [...u, ...jobs]);
+    queue.add(jobs);
+  };
+  const retry = (u: Upload) => {
+    const job = { ...u, progress: 0, error: undefined, abort: undefined };
+    patch(u.key, job);
+    queue.add([job]);
+  };
+  /** A running upload aborts; a queued one leaves the queue. */
+  const cancel = (u: Upload) => {
+    if (u.abort) return u.abort();
+    queue.remove((j) => j.key === u.key);
+    drop(u.key);
+  };
+  const dropping = useFileDrop(view.root === 'work', upload);
 
   const remove = async (e: TreeEntry) => {
     try {
       const { entry } = await treeDelete(e.path);
-      if (preview?.entry.path === e.path) useStore.setState({ filePreview: null });
+      followPreview(e.path);
       reload();
       useStore.getState().notify('Siirretty roskakoriin', {
         label: 'Kumoa',
@@ -533,14 +617,14 @@ export function FilesScreen() {
     Icon: iconOf(e),
     cells: [
       <span key="from" className="block max-w-60 truncate">
-        {e.originalPath}
+        {folderOf(e.originalPath)}
       </span>,
       formatDate(e.deletedAt),
       <span key="size" className="block text-right tabular-nums">
         {formatBytes(e.size)}
       </span>,
     ],
-    meta: `${e.originalPath} · ${formatDate(e.deletedAt, false)}`,
+    meta: `${folderOf(e.originalPath)} · ${formatDate(e.deletedAt, false)}`,
     icons: [
       { label: `Palauta: ${e.name}`, Icon: RotateCcw, run: () => void restore(e) },
       { label: `Poista pysyvästi: ${e.name}`, Icon: Trash2, run: () => setPurge(e) },
@@ -567,7 +651,8 @@ export function FilesScreen() {
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
               {/* Phones: the path takes its own line above the buttons. */}
               <div className="min-w-0 flex-1 max-md:basis-full">
-                <Crumbs path={view.path} onGo={(path) => setView({ path })} />
+                {/* At the root the tab already names the place: the path starts one level down. */}
+                {view.path && <Crumbs path={view.path} onGo={(path) => setView({ path })} />}
               </div>
               <div className="flex gap-2">
                 <Button variant="outline" onClick={() => picker.current?.click()}>
@@ -586,7 +671,7 @@ export function FilesScreen() {
                 multiple
                 hidden
                 onChange={(e) => {
-                  void upload([...(e.target.files ?? [])]);
+                  upload([...(e.target.files ?? [])]);
                   e.target.value = '';
                 }}
               />
@@ -617,7 +702,7 @@ export function FilesScreen() {
                     <Upload size={16} className="shrink-0 text-muted-foreground" />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <span className="min-w-0 flex-1 truncate text-ui">{u.name}</span>
+                        <span className="min-w-0 flex-1 truncate text-ui">{u.file.name}</span>
                         {!u.error && (
                           <span className="text-meta text-muted-foreground tabular-nums">
                             {pct} %
@@ -629,20 +714,29 @@ export function FilesScreen() {
                       ) : (
                         <div
                           role="progressbar"
-                          aria-label={`Lataus: ${u.name}`}
+                          aria-label={`Lataus: ${u.file.name}`}
                           aria-valuemin={0}
                           aria-valuemax={100}
                           aria-valuenow={pct}
-                          className="mt-1 h-0.5 overflow-hidden rounded-full bg-muted"
+                          className="mt-1 h-0.5 overflow-hidden rounded-full bg-secondary dark:bg-accent"
                         >
                           <div className="h-full bg-primary" style={{ width: `${pct}%` }} />
                         </div>
                       )}
                     </div>
+                    {u.error && (
+                      <IconButton
+                        label={`Yritä uudelleen: ${u.file.name}`}
+                        className="size-7"
+                        onClick={() => retry(u)}
+                      >
+                        <RotateCcw size={16} />
+                      </IconButton>
+                    )}
                     <IconButton
-                      label={`${u.error ? 'Piilota' : 'Peruuta lataus'}: ${u.name}`}
+                      label={`${u.error ? 'Piilota' : 'Peruuta lataus'}: ${u.file.name}`}
                       className="size-7"
-                      onClick={() => (u.error ? drop(u.key) : u.abort?.())}
+                      onClick={() => (u.error ? drop(u.key) : cancel(u))}
                     >
                       <X size={16} />
                     </IconButton>
@@ -668,6 +762,7 @@ export function FilesScreen() {
           <Listing
             label={view.root === 'files' ? 'Liitteet' : 'Työkansio'}
             heads={['Nimi', 'Koko', 'Muokattu', ...(preview ? [] : ['Lähde'])]}
+            current={preview?.root === root ? preview.entry.path : undefined}
             rows={entries.map(fileRow)}
           />
         ) : view.root === 'files' ? (
@@ -689,6 +784,7 @@ export function FilesScreen() {
         <FilePreview
           root={preview.root}
           entry={preview.entry}
+          rev={rev}
           onClose={() => useStore.setState({ filePreview: null })}
         />
       )}
@@ -696,15 +792,17 @@ export function FilesScreen() {
         state={naming}
         dir={view.path}
         onClose={() => setNaming(null)}
-        onDone={() => {
+        onDone={(renamed) => {
           setNaming(null);
+          if (renamed) followPreview(renamed.from, renamed.entry);
           reload();
         }}
       />
       <MoveDialog
         entry={moving}
         onClose={() => setMoving(null)}
-        onMoved={() => {
+        onMoved={(moved) => {
+          if (moving) followPreview(moving.path, moved);
           setMoving(null);
           reload();
         }}

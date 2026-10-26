@@ -425,7 +425,7 @@ test.describe('files', () => {
     await expect(table.getByText('Yhteenveto.md', { exact: true })).toHaveCount(0);
     await page.getByRole('button', { name: 'Roskakori', exact: true }).click();
     const bin = page.getByRole('region', { name: 'Roskakori' });
-    await expect(bin.getByText('Raportit/Yhteenveto.md')).toBeVisible();
+    await expect(bin.getByText('Työkansio › Raportit')).toBeVisible();
     await page.getByRole('button', { name: 'Palauta: Yhteenveto.md' }).click();
     await expect(page.getByText('Roskakori on tyhjä')).toBeVisible();
     await page.getByRole('button', { name: 'Työkansio', exact: true }).click();

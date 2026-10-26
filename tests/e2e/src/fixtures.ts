@@ -117,6 +117,8 @@ export const WORK_FILES: Record<string, string | Buffer> = {
     '<!doctype html><html lang="fi"><body><h1>Esittely</h1><p>Tämä sivu näkyy hiekkalaatikossa.</p></body></html>',
   'kansikuva.png': png([217, 119, 87], 480, 300),
   'arkisto.zip': Buffer.from([0x50, 0x4b, 0x05, 0x06, ...Array(18).fill(0)]),
+  // Five levels: the breadcrumb collapses its middle.
+  'Projektit/2026/Syksy/Lokakuu/Viikko 43/muistio.txt': 'Viikon muistio.\n',
 };
 /** One fixed time for every seeded entry, so the screenshots keep their dates. */
 const SEEDED_AT = new Date('2026-10-25T14:20:00Z');
@@ -127,7 +129,10 @@ function seedWork(dir: string) {
     writeFileSync(join(dir, path), body);
     utimesSync(join(dir, path), SEEDED_AT, SEEDED_AT);
   }
-  for (const folder of ['Raportit', 'Kuvat']) utimesSync(join(dir, folder), SEEDED_AT, SEEDED_AT);
+  // Folders last: writing a file changes its folder's time.
+  for (const path of Object.keys(WORK_FILES))
+    for (let d = dirname(path); d !== '.'; d = dirname(d))
+      utimesSync(join(dir, d), SEEDED_AT, SEEDED_AT);
 }
 
 /** An assistant reply with one HTML block (an artifact). */

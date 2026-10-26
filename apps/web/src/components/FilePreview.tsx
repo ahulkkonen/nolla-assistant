@@ -1,4 +1,4 @@
-import type { FileRoot, TreeEntry } from '@pa/protocol';
+import { type FileRoot, PREVIEW_MAX, type TreeEntry } from '@pa/protocol';
 import { Download, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { treeRawUrl } from '../api.ts';
@@ -11,47 +11,84 @@ import { SidePanel } from './SidePanel.tsx';
 export const download = (url: string) =>
   Object.assign(document.createElement('a'), { href: url }).click();
 
-/** The file's text for the text kinds; null while it loads, undefined when it failed. */
-function useText(url: string, wanted: boolean) {
-  const [text, setText] = useState<{ url: string; body: string | undefined } | null>(null);
+type Loaded = { text: string } | { error: 'failed' | 'large' };
+
+/** The body as text, or `large` past `max` bytes: by Content-Length first, then while reading. */
+async function readCapped(url: string, max: number, signal: AbortSignal): Promise<Loaded> {
+  const r = await fetch(url, { credentials: 'same-origin', cache: 'no-cache', signal });
+  if (!r.ok) return { error: 'failed' };
+  if (Number(r.headers.get('content-length') ?? 0) > max) {
+    void r.body?.cancel();
+    return { error: 'large' };
+  }
+  const reader = r.body?.getReader();
+  if (!reader) return { text: await r.text() };
+  const parts: BlobPart[] = [];
+  let n = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    n += value.byteLength;
+    if (n > max) {
+      void reader.cancel();
+      return { error: 'large' };
+    }
+    parts.push(value as BlobPart);
+  }
+  return { text: await new Blob(parts).text() };
+}
+
+/**
+ * The file's text for the text kinds (null `max`: none), fetched again when `rev` changes; the
+ * last text stays up until the new one is in. Null while the first fetch runs.
+ */
+function useText(url: string, max: number | null, rev: number) {
+  const [got, setGot] = useState<{ url: string; value: Loaded } | null>(null);
   useEffect(() => {
-    if (!wanted) return;
-    let live = true;
-    fetch(url, { credentials: 'same-origin' })
-      .then((r) => (r.ok ? r.text() : Promise.reject(new Error(String(r.status)))))
-      .then(
-        (body) => live && setText({ url, body }),
-        () => live && setText({ url, body: undefined }),
-      );
-    return () => {
-      live = false;
-    };
-  }, [url, wanted]);
-  return text?.url === url ? text.body : null;
+    if (max === null) return;
+    const ctrl = new AbortController();
+    readCapped(url, max, ctrl.signal).then(
+      (value) => setGot({ url, value }),
+      () => !ctrl.signal.aborted && setGot({ url, value: { error: 'failed' } }),
+    );
+    return () => ctrl.abort();
+  }, [url, max, rev]);
+  return got?.url === url ? got.value : null;
 }
 
 const note = (text: string) => <p className="p-1 text-meta text-muted-foreground">{text}</p>;
+const TOO_LARGE = 'Tiedosto on liian suuri esikatseluun. Lataa se yläpalkista.';
 
 /** The preview body per kind (phase-11 decision 9). Every kind shows real values. */
-function Body({ root, entry }: { root: FileRoot; entry: TreeEntry }) {
+function Body({ root, entry, rev }: { root: FileRoot; entry: TreeEntry; rev: number }) {
   const url = treeRawUrl(root, entry.path);
   const kind = entry.preview;
-  const text = useText(url, kind !== 'image' && kind !== 'pdf');
+  const max = kind ? PREVIEW_MAX[kind] : 0;
+  const big = entry.size > max;
+  const loaded = useText(url, kind !== 'image' && kind !== 'pdf' && !big ? max : null, rev);
+  // A new `rev` loads the image or PDF again (the raw answer is `no-cache`).
+  const fresh = rev ? `${url}&v=${rev}` : url;
+  if (big) return note(TOO_LARGE);
   if (kind === 'image')
     return (
       <div className="flex size-full items-center justify-center overflow-auto rounded-lg bg-muted p-4">
-        <img src={url} alt={entry.name} className="max-h-full max-w-full object-contain" />
+        <img src={fresh} alt={entry.name} className="max-h-full max-w-full object-contain" />
       </div>
     );
   if (kind === 'pdf')
-    // The browser's own viewer; without one in a frame, the header's "Lataa" stays (risk 1).
+    // No `sandbox`: Chrome shows no PDF viewer in a sandboxed frame. This same-origin frame runs no
+    // page script: the raw route sends this URL only as `application/pdf` (its pdf branch, with
+    // `frame-ancestors 'self'`) and every answer has `nosniff`. Without a viewer, the header's
+    // "Lataa" stays (record risk 1).
     return navigator.pdfViewerEnabled === false ? (
       note('Esikatselu ei onnistunut.')
     ) : (
-      <iframe title={entry.name} src={url} className="block size-full rounded-lg border" />
+      <iframe title={entry.name} src={fresh} className="block size-full rounded-lg border" />
     );
-  if (text === null) return note('Ladataan…');
-  if (text === undefined) return note('Esikatselu ei onnistunut.');
+  if (loaded === null) return note('Ladataan…');
+  if ('error' in loaded)
+    return note(loaded.error === 'large' ? TOO_LARGE : 'Esikatselu ei onnistunut.');
+  const text = loaded.text;
   if (kind === 'html') return <SandboxFrame title={entry.name} html={htmlDocument(text)} />;
   if (kind === 'markdown')
     return (
@@ -90,10 +127,13 @@ function Body({ root, entry }: { root: FileRoot; entry: TreeEntry }) {
 export function FilePreview({
   root,
   entry,
+  rev,
   onClose,
 }: {
   root: FileRoot;
   entry: TreeEntry;
+  /** A change fetches the file again (a reload of the listing, window focus). */
+  rev: number;
   onClose: () => void;
 }) {
   return (
@@ -113,7 +153,7 @@ export function FilePreview({
           </IconButton>
         </div>
         <div className="min-h-0 flex-1 p-3">
-          <Body root={root} entry={entry} />
+          <Body root={root} entry={entry} rev={rev} />
         </div>
       </aside>
     </SidePanel>

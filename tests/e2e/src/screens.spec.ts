@@ -508,11 +508,9 @@ for (const scheme of ['light', 'dark'] as const) {
           const dir = mkdtempSync(join(tmpdir(), 'pa-e2e-quota-'));
           writeFileSync(join(dir, 'video.mp4'), Buffer.alloc(2048));
           await page.locator('#files-upload').setInputFiles(join(dir, 'video.mp4'));
+          // The row says it; no toast on top.
           await expect(
             page.getByText('Tallennustila on täynnä. Tyhjennä roskakori tai poista'),
-          ).toBeVisible();
-          await expect(
-            page.getByText('Tallennustila on täynnä. Tyhjennä roskakori.'),
           ).toBeVisible();
           await blur(page);
           await shot(page, 'files-quota', vp.width, scheme);
@@ -523,12 +521,35 @@ for (const scheme of ['light', 'dark'] as const) {
           await page.getByRole('button', { name: 'Liitä tiedosto' }).click();
           await page.getByRole('menuitem', { name: 'Valitse työkansiosta' }).click();
           const dialog = page.getByRole('dialog', { name: 'Valitse työkansiosta' });
-          await dialog.getByRole('button', { name: /^muistiinpanot\.md/ }).click();
-          await expect(dialog.getByRole('button', { name: /^muistiinpanot\.md/ })).toHaveAttribute(
+          // A row in view, after the open animation: a click during it makes Playwright scroll
+          // the list to retry the hit test (the app itself opens at the top).
+          await expect(dialog.getByRole('button', { name: /^esittely\.html/ })).toBeVisible();
+          await page.waitForTimeout(400);
+          await dialog.getByRole('button', { name: /^esittely\.html/ }).click();
+          await expect(dialog.getByRole('button', { name: /^esittely\.html/ })).toHaveAttribute(
             'aria-pressed',
             'true',
           );
           await shot(page, 'files-picker', vp.width, scheme);
+        });
+
+        test('files-deep-path', async ({ app, page }) => {
+          await app.login(page);
+          await openFiles(page);
+          for (const name of ['Projektit', '2026', 'Syksy', 'Lokakuu', 'Viikko 43'])
+            await page.getByRole('button', { name, exact: true }).click();
+          const crumbs = page.getByRole('navigation', { name: 'Kansiopolku' });
+          await expect(crumbs.getByText('Viikko 43')).toHaveAttribute('aria-current', 'page');
+          await expect(crumbs.getByText('…')).toBeVisible();
+          await blur(page);
+          await shot(page, 'files-deep-path', vp.width, scheme);
+        });
+
+        test('files-attach-menu', async ({ app, page }) => {
+          await app.login(page);
+          await page.getByRole('button', { name: 'Liitä tiedosto' }).click();
+          await expect(page.getByRole('menuitem', { name: 'Valitse työkansiosta' })).toBeVisible();
+          await shot(page, 'files-attach-menu', vp.width, scheme);
         });
 
         test('files-move', async ({ app, page }) => {
