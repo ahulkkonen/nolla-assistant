@@ -119,3 +119,13 @@ Goal: the user can reach every file the agent writes and every file the user upl
 
 Voice out (TTS); in-thread branch switcher; in-browser file editing; company and date-of-birth
 detection; approval per web search without entities.
+
+## Gate (2026-10-26)
+
+Run on a clean worktree of `af21f52`: `pnpm typecheck` and `pnpm lint` pass; `pnpm test` passes
+every unit suite (server 164, web 30, protocol 40, contract 23, pseudo extension 17, subagents 13,
+memory 9, sandbox extension 5, masked-only 2, mcp 14, fake-llm 6, db 1) and e2e 476 of 477; the one
+failure was a shared test dictionary that the fake sidecar wrote into, fixed in `aaa6e13` and
+looped 72 of 72 green afterwards. `pnpm test:egress` 25, `pnpm test:sandbox` 17, sidecar pytest
+135 (3 Voikko tests skipped locally, all pass in the image). Every scored UI review passed with
+every cell at 5. The local Docker stack runs the final image.
