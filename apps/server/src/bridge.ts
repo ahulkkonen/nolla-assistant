@@ -4,6 +4,7 @@ import { join as joinPath, resolve, sep } from 'node:path';
 import {
   type AgentSession,
   type AgentSessionEvent,
+  type PromptOptions,
   SessionManager,
 } from '@earendil-works/pi-coding-agent';
 import { chats, type Db, files, modelFavorites, topicProposals, topics } from '@pa/db';
@@ -335,6 +336,126 @@ async function release(restore: Restore, pending: string, final: boolean) {
   return { out: { text: r.text.slice(0, cut + shift), annotations }, rest: pending.slice(cut) };
 }
 
+/**
+ * `message.accepted` (phase 13): the prompts of a session whose user entry is not stored yet, in
+ * call order. One queue per session, shared by every socket; each prompt keeps its own `notify`.
+ *
+ * Pi 1.3.0 `AgentSession.prompt` (dist/core/agent-session.js) runs the input hooks first (masking),
+ * then reports through `preflightResult`:
+ * - `started` (idle): the run starts and stores this prompt as its first user message. `prompt`
+ *   resolves only when the run ends.
+ * - `queued` (a run is active, `steer`): the masked text joins the steering queue
+ *   (`getSteeringMessages()`) and `prompt` resolves at once. Pi stores the message later, after the
+ *   current turn, so the prompt's promise says nothing about the entry.
+ * - `handled` (an input hook dropped it: sidecar down, a dropped collision): nothing is stored.
+ *
+ * Pi stores a message right after the public `message_end` listeners return, so the entry is read
+ * in a microtask. A queued prompt matches by its masked text; the started one is the run's first
+ * user message.
+ */
+type Accepting = {
+  state: 'input' | 'started' | 'queued';
+  /** The masked text of a queued prompt. */
+  text?: string | undefined;
+  notify: ((entryId: string) => void) | undefined;
+};
+const accepting = new WeakMap<AgentSession, Accepting[]>();
+const unsubscribe = new WeakMap<AgentSession, () => void>();
+
+/** Stops listening once no prompt of the session waits. */
+function pruneAccepting(session: AgentSession) {
+  if (accepting.get(session)?.length) return;
+  unsubscribe.get(session)?.();
+  unsubscribe.delete(session);
+  accepting.delete(session);
+}
+
+/**
+ * The entry id of the stored user message `m`: the leaf, or the nearest entry above it that holds
+ * `m` (an extension may append a custom entry right after it).
+ */
+function storedId(sm: AgentSession['sessionManager'], m: AgentMessage) {
+  let id = sm.getLeafId();
+  for (let hops = 0; id && hops < 8; hops++) {
+    const e = sm.getEntry(id);
+    if (!e) return undefined;
+    if (
+      e.type === 'message' &&
+      e.message.role === 'user' &&
+      (e.message === m || (e.message.timestamp === m.timestamp && textOf(e.message) === textOf(m)))
+    )
+      return e.id;
+    id = e.parentId;
+  }
+  return undefined;
+}
+
+function acceptEvent(session: AgentSession, e: AgentSessionEvent) {
+  const items = accepting.get(session);
+  if (!items) return;
+  // The run is over: a started or queued prompt that got no entry never will.
+  if (e.type === 'agent_settled') {
+    for (let i = items.length - 1; i >= 0; i--) if (items[i]?.state !== 'input') items.splice(i, 1);
+    return pruneAccepting(session);
+  }
+  if (e.type !== 'message_end' || e.message.role !== 'user') return;
+  const m = e.message;
+  const text = textOf(m);
+  const started = items.findIndex((x) => x.state === 'started');
+  const i =
+    started >= 0 ? started : items.findIndex((x) => x.state === 'queued' && x.text === text);
+  const item = items[i];
+  if (!item) return;
+  items.splice(i, 1);
+  queueMicrotask(() => {
+    const id = storedId(session.sessionManager, m);
+    if (id) item.notify?.(id);
+    pruneAccepting(session);
+  });
+}
+
+/**
+ * Tracks one prompt until its user entry is stored, then calls `notify` with the entry id. Every
+ * prompt is tracked, with or without `notify`, so queued texts stay matched in order. Pass
+ * `preflightResult` in the prompt's options and call `failed` when the prompt rejects.
+ */
+function trackAccept(session: AgentSession, notify?: (entryId: string) => void) {
+  let items = accepting.get(session);
+  if (!items) {
+    items = [];
+    accepting.set(session, items);
+    unsubscribe.set(
+      session,
+      session.subscribe((e) => acceptEvent(session, e)),
+    );
+  }
+  const list = items;
+  const item: Accepting = { state: 'input', notify };
+  list.push(item);
+  const drop = () => {
+    const i = list.indexOf(item);
+    if (i >= 0) list.splice(i, 1);
+    pruneAccepting(session);
+  };
+  const preflightResult: NonNullable<PromptOptions['preflightResult']> = (d) => {
+    if (d === 'handled') return drop();
+    if (d === 'started') {
+      item.state = 'started';
+      return;
+    }
+    // This prompt's text: the first one in the steering queue that no other queued prompt holds.
+    const held = list.filter((x) => x !== item && x.state === 'queued').map((x) => x.text);
+    item.text = session.getSteeringMessages().find((t) => {
+      const k = held.indexOf(t);
+      if (k < 0) return true;
+      held.splice(k, 1);
+      return false;
+    });
+    item.state = 'queued';
+  };
+  return { preflightResult, failed: drop };
+}
+
 export const agentsState = (agents: Agents): ServerMessage => ({
   type: 'agents.state',
   agents: [...agents.values()].map(({ id, name, model, subagents }) => ({
@@ -515,7 +636,10 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
    * no reply yet), so its user message runs again in place, with the same text and images. The
    * thread and the model then hold that message once. Returns the refusal code, if any.
    */
-  const retry = async (chatId: string): Promise<keyof typeof ERRORS | undefined> => {
+  const retry = async (
+    chatId: string,
+    localId?: string,
+  ): Promise<keyof typeof ERRORS | undefined> => {
     owned(chatId);
     const session = await registry.get(chatId);
     // Synchronous from this check to the hold: no prompt or policy change starts in between.
@@ -525,7 +649,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
     let release = () => {};
     registry.hold(chatId, new Promise<void>((r) => (release = r)));
     try {
-      return await rerun(chatId, session, last);
+      return await rerun(chatId, session, last, localId);
     } finally {
       release();
     }
@@ -548,41 +672,48 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
     return { text, images };
   };
 
-  /** Prompts `sent` in `chatId`; a failure tells the room `prompt_failed` and resolves false. */
+  /**
+   * Prompts `sent` in `chatId`; a failure tells the room `prompt_failed` and resolves false. The
+   * stored entry goes to this socket as `localId` (`message.accepted`).
+   */
   const promptOrFail = (
     chatId: string,
     session: AgentSession,
     sent: NonNullable<Awaited<ReturnType<typeof resend>>>,
-  ) =>
-    session.prompt(sent.text, { images: sent.images }).then(
+    localId?: string,
+  ) => {
+    const { preflightResult, failed } = accept(chatId, session, localId);
+    return session.prompt(sent.text, { images: sent.images, preflightResult }).then(
       () => true,
       (err: unknown) => {
+        failed();
         log.warn({ chatId, err }, 'prompt failed');
         broadcast(rooms, chatId, errorMsg('prompt_failed', chatId));
         return false;
       },
     );
-
-  /**
-   * Phase 13: tells this socket the entry id of a user message that it sent with `localId`, once
-   * Pi has stored it (Pi stores right after the public `message_end`, hence the microtask).
-   * Returns the unsubscribe, for a prompt that ends without a stored message.
-   */
-  const acceptOnStore = (chatId: string, session: AgentSession, localId: string | undefined) => {
-    if (!localId) return () => {};
-    const off = session.subscribe((e) => {
-      if (e.type !== 'message_end' || e.message.role !== 'user') return;
-      off();
-      queueMicrotask(() => {
-        const messageId = session.sessionManager.getLeafId();
-        if (messageId) send(socket, { type: 'message.accepted', chatId, localId, messageId });
-      });
-    });
-    return off;
   };
 
+  /** Tracks a prompt of `chatId`; its stored user entry goes to this socket as `localId`. */
+  const accept = (chatId: string, session: AgentSession, localId: string | undefined) =>
+    trackAccept(
+      session,
+      localId
+        ? (messageId) => {
+            try {
+              send(socket, { type: 'message.accepted', chatId, localId, messageId });
+            } catch {}
+          }
+        : undefined,
+    );
+
   /** Rewinds the branch to before `last` and prompts its text again (under `retry`'s hold). */
-  const rerun = async (chatId: string, session: AgentSession, last: UserEntry) => {
+  const rerun = async (
+    chatId: string,
+    session: AgentSession,
+    last: UserEntry,
+    localId?: string,
+  ) => {
     const sm = session.sessionManager;
     const leaf = sm.getLeafId();
     const sent = await resend(last);
@@ -606,7 +737,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
     const rewound = sm.getLeafId();
     join(chatId, session);
     // `prompt_failed` means: the branch was rewound, the client sends the message anew.
-    if (!(await promptOrFail(chatId, session, sent))) return undefined;
+    if (!(await promptOrFail(chatId, session, sent, localId))) return undefined;
     // The input hook dropped the text (the sidecar went down after the check above; it already
     // broadcast `pseudo_down`): put the old turn back. A turn without a reply cannot go back,
     // because navigation to a user entry lands on its parent.
@@ -746,8 +877,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
       send(socket, { type: 'chat.created', chat: summary(r) });
       send(socket, await chatState(r, forked));
       join(id, forked);
-      const off = acceptOnStore(id, forked, localId);
-      registry.hold(id, promptOrFail(id, forked, { ...sent, text: text + blocks }).finally(off));
+      registry.hold(id, promptOrFail(id, forked, { ...sent, text: text + blocks }, localId));
       return undefined;
     } catch (err) {
       // Nothing of a half-made fork stays: its row, its file, its sidecar scope.
@@ -991,24 +1121,24 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
           { chatId, length: msg.text.length, attachments: msg.attachments.length },
           'user.message',
         );
-        const off = acceptOnStore(chatId, session, msg.localId);
+        const { preflightResult, failed } = accept(chatId, session, msg.localId);
         // Held from the call on: a policy change must wait for this prompt (`assertIdle`).
         registry.hold(
           chatId,
           session
-            .prompt(msg.text + text, { streamingBehavior: 'steer', images })
+            .prompt(msg.text + text, { streamingBehavior: 'steer', images, preflightResult })
             .catch((err: unknown) => {
+              failed();
               log.warn({ chatId, err }, 'prompt failed');
               broadcast(rooms, chatId, errorMsg('prompt_failed', chatId));
-            })
-            .finally(off),
+            }),
         );
         return;
       }
       case 'user.retry': {
         if (collisions.held(msg.chatId)) return send(socket, errorMsg('held', msg.chatId));
         // Every refusal names the chat: the client then keeps its thread as it was.
-        const code = await retry(msg.chatId).catch((err: unknown) => {
+        const code = await retry(msg.chatId, msg.localId).catch((err: unknown) => {
           if (err instanceof NotFound || err instanceof ChatNotFound) return 'not_found' as const;
           log.warn({ chatId: msg.chatId, err }, 'retry failed');
           return 'failed' as const;

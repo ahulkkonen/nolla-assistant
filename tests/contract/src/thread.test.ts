@@ -123,3 +123,36 @@ test('one message_end per assistant message, tool rounds included (no re-emit)',
   expect(new Set(ends).size).toBe(2);
   expect(listened).toHaveLength(2);
 });
+
+test('preflightResult: started when idle, queued while a run streams (prompt resolves first), handled', async () => {
+  const seen: string[] = [];
+  const { session } = await setup(
+    [
+      {
+        toolCalls: [{ name: 'read', args: { path: 'missing.txt' } }],
+        reasoning: 'mietin ensin pitkään',
+        thinkMs: 400,
+      },
+      { text: 'valmis' },
+    ],
+    [(pi) => void pi.on('input', (e) => (e.text === 'pudota' ? { action: 'handled' } : undefined))],
+  );
+  session.subscribe((e) => {
+    if (e.type === 'message_end' && e.message.role === 'user')
+      seen.push(`stored ${JSON.stringify(e.message.content)}`);
+  });
+  const d: string[] = [];
+  const first = session.prompt('eka', { preflightResult: (x) => void d.push(`eka ${x}`) });
+  await new Promise((r) => setTimeout(r, 150));
+  await session.prompt('toka', {
+    streamingBehavior: 'steer',
+    preflightResult: (x) => void d.push(`toka ${x}`),
+  });
+  // Resolved on queueing: the steered message is not stored yet.
+  expect(seen.some((s) => s.includes('toka'))).toBe(false);
+  expect(session.getSteeringMessages()).toEqual(['toka']);
+  await first;
+  expect(seen.some((s) => s.includes('toka'))).toBe(true);
+  await session.prompt('pudota', { preflightResult: (x) => void d.push(`pudota ${x}`) });
+  expect(d).toEqual(['eka started', 'toka queued', 'pudota handled']);
+});

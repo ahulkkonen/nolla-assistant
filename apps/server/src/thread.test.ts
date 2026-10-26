@@ -386,3 +386,101 @@ test('cutText cuts at a paragraph or a space, never inside a surrogate pair', ()
   const cut = cutText(emoji, 3001);
   expect(cut).toBe(`${'x'.repeat(3000)}…`);
 });
+
+// --- message.accepted: one queue per session, matched in store order --------------------------
+
+type Inbox = Chat['c']['inbox'];
+/** Waits for an inbox message without throwing on errors (a failed reply is part of the test). */
+async function waitFor<T extends Inbox[number]>(inbox: Inbox, pick: (m: Inbox[number]) => m is T) {
+  for (let i = 0; i < 500; i++) {
+    const m = inbox.find(pick);
+    if (m) return m;
+    await sleep(20);
+  }
+  throw new Error('waitFor timed out');
+}
+const accepted = (inbox: Inbox) =>
+  inbox.flatMap((m) => (m.type === 'message.accepted' ? [[m.localId, m.messageId]] : []));
+const idleOf = (inbox: Inbox) =>
+  waitFor(
+    inbox,
+    (m): m is Extract<Inbox[number], { type: 'agent.status' }> =>
+      m.type === 'agent.status' && m.state === 'idle',
+  );
+/** Entry id → text of the chat's messages. */
+async function texts(c: Chat['c'], chatId: string) {
+  return new Map((await open(c, chatId)).messages.map((m) => [m.id, m.text]));
+}
+
+test('two quick user.message frames, both still masking: each local id gets its own entry', async () => {
+  const { c, chat, proxy } = await bootProxied([{ text: 'Eka.' }]);
+  proxy.delayMs = 150;
+  c.send({ type: 'user.message', chatId: chat.id, text: 'Yksi', localId: 'l-a' });
+  c.send({ type: 'user.message', chatId: chat.id, text: 'Kaksi', localId: 'l-b' });
+  // Pi may take the second as a steer into the same run: one reply, two user entries.
+  await idleOf(c.inbox);
+  await waitFor(c.inbox, (m): m is Inbox[number] => accepted(c.inbox).length === 2);
+  proxy.delayMs = 0;
+  const byId = await texts(c, chat.id);
+  const got = Object.fromEntries(accepted(c.inbox).map(([l, id]) => [l, byId.get(id ?? '')]));
+  expect(got).toEqual({ 'l-a': 'Yksi', 'l-b': 'Kaksi' });
+});
+
+test('a steered message (sent while a run streams) still gets its message.accepted', async () => {
+  const { c, chat } = await bootChat([
+    {
+      toolCalls: [{ name: 'read', args: { path: 'puuttuu.txt' } }],
+      reasoning: 'Mietin ensin pitkään.',
+      thinkMs: 500,
+    },
+    { text: 'Molemmat.' },
+  ]);
+  c.send({ type: 'user.message', chatId: chat.id, text: 'Ensin', localId: 'l-a' });
+  await waitFor(
+    c.inbox,
+    (m): m is Extract<Inbox[number], { type: 'message.thinking' }> =>
+      m.type === 'message.thinking' && m.active,
+  );
+  c.send({ type: 'user.message', chatId: chat.id, text: 'Väliin', localId: 'l-b' });
+  await idleOf(c.inbox);
+  const byId = await texts(c, chat.id);
+  const got = Object.fromEntries(accepted(c.inbox).map(([l, id]) => [l, byId.get(id ?? '')]));
+  expect(got).toEqual({ 'l-a': 'Ensin', 'l-b': 'Väliin' });
+});
+
+test('a prompt the sidecar blocked leaves nothing that could match the next message', async () => {
+  const { c, chat, proxy } = await bootProxied([{ text: 'Vastaus.' }]);
+  proxy.fail.add('/mask');
+  c.send({ type: 'user.message', chatId: chat.id, text: 'Estetty', localId: 'l-x' });
+  await waitFor(
+    c.inbox,
+    (m): m is Extract<Inbox[number], { type: 'error' }> =>
+      m.type === 'error' && m.code === 'pseudo_down',
+  );
+  proxy.fail.delete('/mask');
+  c.send({ type: 'user.message', chatId: chat.id, text: 'Vapaa', localId: 'l-y' });
+  await idleOf(c.inbox);
+  const got = accepted(c.inbox);
+  c.inbox.length = 0;
+  const byId = await texts(c, chat.id);
+  expect(got.map(([l, id]) => [l, byId.get(id ?? '')])).toEqual([['l-y', 'Vapaa']]);
+});
+
+test('user.retry with a fresh local id gets the new entry id', async () => {
+  const { c, chat } = await bootChat([
+    { error: { status: 400, message: 'fake: bad request' } },
+    { text: 'Nyt toimii.' },
+  ]);
+  c.send({ type: 'user.message', chatId: chat.id, text: 'Yksi', localId: 'l-a' });
+  await idleOf(c.inbox);
+  const [first] = accepted(c.inbox);
+  c.inbox.length = 0;
+  c.send({ type: 'user.retry', chatId: chat.id, localId: 'l-r' });
+  await idleOf(c.inbox);
+  const [again] = accepted(c.inbox);
+  expect(again?.[0]).toBe('l-r');
+  expect(again?.[1]).not.toBe(first?.[1]);
+  const byId = await texts(c, chat.id);
+  expect(byId.get(again?.[1] ?? '')).toBe('Yksi');
+  expect(byId.has(first?.[1] ?? '')).toBe(false);
+});

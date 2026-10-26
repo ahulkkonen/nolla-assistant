@@ -605,7 +605,12 @@ export const ClientMessage = z.discriminatedUnion('type', [
     localId: z.string().max(64).optional(),
   }),
   /** Runs the chat's last user turn again in place: the server rewinds the branch to before it. */
-  z.object({ type: z.literal('user.retry'), chatId: id64 }),
+  z.object({
+    type: z.literal('user.retry'),
+    chatId: id64,
+    /** A fresh client id: `message.accepted` maps it to the new entry of the message run again. */
+    localId: z.string().max(64).optional(),
+  }),
   z.object({ type: z.literal('user.stop'), chatId: id64 }),
   z.object({ type: z.literal('approval.respond'), requestId: id64, approve: z.boolean() }),
   z.object({ type: z.literal('vault.list') }),
