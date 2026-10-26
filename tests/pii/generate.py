@@ -345,6 +345,213 @@ lowercase,nominative :: {{sanna hyvönen|P|Sanna Hyvönen||nominatiivi, pienet k
 lowercase,no-pii :: toivo on hyvä asia, ja onni potkaisi viime viikolla
 lowercase,no-pii :: satu kertoi sadun, ja meri oli tyyni koko illan
 lowercase,no-pii :: aino kerta kun se toimi oli max kaksi viikkoa sitten
+# --- phase 12: phone-typed lower case without punctuation (c313-c362)
+lowercase,phone-typed,allative,inflected :: moi voitko laittaa {{jukka salmiselle|P|Jukka Salminen||allatiivi, pienet kirjaimet}} viestin et palaveri siirtyy huomiseen
+lowercase,phone-typed,allative,inflected :: soita {{mervi koskiselle|P|Mervi Koskinen||allatiivi, pienet kirjaimet}} kun ehdit se odottaa
+lowercase,phone-typed,genitive,inflected :: {{antti lehtosen|P|Antti Lehtonen||genetiivi, pienet kirjaimet}} kanssa sovittiin et nähdään kahdelta
+lowercase,phone-typed,partitive,inflected :: ootko nähny {{marko heikkistä|P|Marko Heikkinen||partitiivi, pienet kirjaimet}} tänään
+lowercase,phone-typed :: {{riitta mäkinen|P|Riitta Mäkinen||nominatiivi, pienet kirjaimet}} soitti ja kysy sun numeroa
+lowercase,phone-typed,adessive,inflected :: {{janne laaksosella|P|Janne Laaksonen||adessiivi, pienet kirjaimet}} on avaimet joten kysy siltä
+lowercase,phone-typed,ablative,inflected :: kysy {{pirjo ahoselta|P|Pirjo Ahonen||ablatiivi, pienet kirjaimet}} onko kokous huomenna
+lowercase,phone-typed,illative,inflected :: otin yhteyttä {{harri rantaseen|P|Harri Rantanen||illatiivi, pienet kirjaimet}} mut se ei vastannu
+lowercase,phone-typed,genitive,inflected,place-vs-surname :: muista {{elina kosken|P|Elina Koski||genetiivi, pienet kirjaimet}} synttärit lauantaina
+lowercase,phone-typed,allative,inflected :: laitoin {{sari virtaselle|P|Sari Virtanen||allatiivi, pienet kirjaimet}} kuvat mut se ei oo vielä kattonu
+lowercase,phone-typed,genitive,first-name-only,swedish-finnish :: {{tommi lindroos|P|Tommi Lindroos||nominatiivi, pienet kirjaimet}} tulee kuudelta ja {{tommin|P|Tommi|Tommi Lindroos|genetiivi; viittaa samassa rivissä tommi lindroosiin}} auto on jo pihalla
+lowercase,phone-typed,lone-surname,allative,inflected :: laita viesti {{heikkiselle|P|Heikkinen||allatiivi, pelkkä sukunimi}} et myöhästyn vähän
+lowercase,phone-typed,lone-surname,genitive,inflected :: {{lehtosen|P|Lehtonen||genetiivi, pelkkä sukunimi}} mukaan työt alkaa maanantaina
+lowercase,phone-typed,lone-surname,adessive,inflected :: kävin eilen {{salosella|P|Salonen||adessiivi, pelkkä sukunimi}} saunomassa
+lowercase,phone-typed,lone-surname,ablative,inflected :: kysyin {{kettuselta|P|Kettunen||ablatiivi, pelkkä sukunimi}} mut se ei tienny mitään
+lowercase,phone-typed,lone-surname,partitive,inflected :: en oo nähny {{hämäläistä|P|Hämäläinen||partitiivi, pelkkä sukunimi; myös yleisnimi hämäläinen}} koko viikkona
+lowercase,phone-typed,lone-surname,allative,inflected,swedish-finnish :: soitin {{nyströmille|P|Nyström||allatiivi, pelkkä sukunimi}} ja se lupas tulla
+lowercase,phone-typed,lone-surname,genitive,inflected :: {{pitkäsen|P|Pitkänen||genetiivi, pelkkä sukunimi}} kans puhuttiin pitkään
+lowercase,phone-typed,first-name-only,allative :: sano {{jannelle|P|Janne||allatiivi, pelkkä etunimi}} et pelit on peruttu
+lowercase,phone-typed,first-name-only,genitive :: {{minnan|P|Minna||genetiivi, pelkkä etunimi}} kanssa mennään kauppaan
+lowercase,phone-typed,first-name-only,adessive :: {{jarilla|P|Jari||adessiivi, pelkkä etunimi}} on se peräkärry lainassa
+lowercase,phone-typed,first-name-only,partitive :: muista onnitella {{kaisaa|P|Kaisa||partitiivi, pelkkä etunimi}} huomenna
+lowercase,phone-typed,allative,inflected,swedish-finnish :: lähetä {{mikael lindholmille|P|Mikael Lindholm||allatiivi, pienet kirjaimet}} se tarjous
+lowercase,phone-typed,genitive,inflected,swedish-finnish :: {{sofia ekströmin|P|Sofia Ekström||genetiivi, pienet kirjaimet}} lento laskeutuu seittemältä
+lowercase,phone-typed,swedish-finnish :: {{henrik sjöberg|P|Henrik Sjöberg||nominatiivi, pienet kirjaimet}} ei pääse tänään
+lowercase,phone-typed,nickname :: {{masa|P|Masa|Matti Laine|lempinimi, pienet kirjaimet}} tulee hakemaan sen kärryn huomenna
+lowercase,phone-typed,nickname,allative :: kerro {{jussille|P|Jussi|Juhani Korhonen|lempinimi, allatiivi, pienet kirjaimet}} et kokous alkaa kolmelta
+lowercase,phone-typed,first-name-only,genitive :: {{tiina kokko|P|Tiina Kokko||nominatiivi, pienet kirjaimet}} lähti jo ja {{tiinan|P|Tiina|Tiina Kokko|genetiivi; viittaa samassa rivissä tiina kokkoon}} kassi jäi tänne
+lowercase,phone-typed,email :: laita kuvat {{pekka.niemi84@gmail.com|E}} niin tulostan ne
+lowercase,phone-typed,email :: mun uus sposti on {{jenni.salo@hotmail.com|E}} vanha ei toimi
+lowercase,phone-typed,street-suffix-kuja :: asun nykyään {{koivukuja 7 b 12|A|Koivukuja 7 b 12}} jos tuut käymään
+lowercase,phone-typed,address-inflected,street-suffix-katu :: paketti pitää hakea {{kauppakadulta 14|A|Kauppakatu 14||ablatiivi}} ennen kuutta
+lowercase,phone-typed,street-suffix-tie :: uus osote on {{rantatie 22 a 3|A|Rantatie 22 a 3}} {{40100 jyväskylä|Z|40100 Jyväskylä}}
+lowercase,phone-typed,phone-local :: soita mulle {{0407713920|T}} ku oot perillä
+lowercase,phone-typed,phone-local,genitive,inflected,place-vs-surname :: {{timo kosken|P|Timo Koski||genetiivi, pienet kirjaimet}} numero on {{050 449 1182|T}} jos tarviit
+lowercase,phone-typed,multi-entity :: {{lauri mattila|P|Lauri Mattila||nominatiivi, pienet kirjaimet}} {{lauri.mattila@kolumbus.fi|E}} {{045 118 2290|T}}
+lowercase,phone-typed,genitive,inflected :: ootko muistanu {{outi järvisen|P|Outi Järvinen||genetiivi, pienet kirjaimet}} lahjan
+lowercase,phone-typed,essive,inflected :: {{hanna heinosena|P|Hanna Heinonen||essiivi, pienet kirjaimet}} se on vielä vanhoissa papereissa
+lowercase,phone-typed,lone-surname,translative,inflected :: sen nimi vaihtu {{lahtiseksi|P|Lahtinen||translatiivi, pelkkä sukunimi}} häissä
+lowercase,phone-typed,inessive,inflected :: {{jani nurmisessa|P|Jani Nurminen||inessiivi, pienet kirjaimet}} on potentiaalia
+lowercase,phone-typed,elative,inflected :: mitä tiedät {{kari peltosesta|P|Kari Peltonen||elatiivi, pienet kirjaimet}} onko se luotettava
+lowercase,phone-typed,lone-surname,abessive,inflected :: pärjätään kyllä {{virtasetta|P|Virtanen|Mikko Virtanen|abessiivi, pelkkä sukunimi}} tän yhden viikon
+lowercase,phone-typed,first-name-only,clitic :: {{päivikö|P|Päivi||nominatiivi + -kö, pelkkä etunimi}} sen tilas vai joku muu
+lowercase,phone-typed,no-pii :: tuuli yltyi illalla ja sade alko vasta yöllä
+lowercase,phone-typed,no-pii :: voitto tuli jatkoajalla ja into oli kova koko illan
+lowercase,phone-typed,no-pii :: lumi suli nopeesti ja kevät tuli aikasin
+lowercase,phone-typed,no-pii :: ilona sain kuulla et se pääsi kouluun
+lowercase,phone-typed,no-pii :: rauha ja hiljasuus on parasta mökillä
+lowercase,phone-typed,no-pii :: valo palaa vielä keittiössä sammutatko sen
+lowercase,phone-typed,genitive,inflected,swedish-finnish :: {{linnea holmströmin|P|Linnea Holmström||genetiivi, pienet kirjaimet}} kans mennään leffaan
+# --- phase 12: Swedish-Finnish names (c363-c392)
+swedish-finnish,allative,inflected :: Lähetin {{Mikael Lindholmille|P|Mikael Lindholm||allatiivi}} sopimuksen eilen illalla.
+swedish-finnish,genitive,inflected :: {{Johan Nyströmin|P|Johan Nyström||genetiivi}} vene on myynnissä, kysy häneltä hintaa.
+swedish-finnish :: {{Ebba Sundqvist|P}} aloittaa meillä maanantaina.
+swedish-finnish,partitive,inflected :: Pyydä {{Fredrik Wikströmiä|P|Fredrik Wikström||partitiivi}} katsomaan sopimus läpi.
+swedish-finnish,ablative,inflected :: Sain {{Annika Blomqvistilta|P|Annika Blomqvist||ablatiivi}} hyvän vinkin päiväkodista.
+swedish-finnish,illative,inflected :: Luotan {{Kristian Lindroosiin|P|Kristian Lindroos||illatiivi}} näissä asioissa.
+swedish-finnish,adessive,inflected :: {{Camilla Backmanilla|P|Camilla Backman||adessiivi}} on huomenna vapaapäivä.
+swedish-finnish,essive,inflected :: Muistan hänet vielä {{Malin Granqvistina|P|Malin Granqvist||essiivi}}, ennen avioliittoa.
+swedish-finnish,translative,inflected :: {{Ida Forsman|P}} vaihtoi sukunimensä {{Fagerströmiksi|P|Fagerström|Ida Forsman|translatiivi, uusi sukunimi}} kesällä.
+swedish-finnish,inessive,inflected :: Minusta {{Patrik Holmbergissä|P|Patrik Holmberg||inessiivi}} on ainesta esihenkilöksi.
+swedish-finnish,elative,inflected :: Mitä mieltä olet {{Stefan Lundqvistista|P|Stefan Lundqvist||elatiivi}}? Hän haki samaa paikkaa.
+swedish-finnish,genitive,inflected :: {{Elin Strandbergin|P|Elin Strandberg||genetiivi}} hakemus tuli myöhässä, mutta se hyväksyttiin.
+swedish-finnish,allative,inflected :: Kirjoita {{Henrik Westerlundille|P|Henrik Westerlund||allatiivi}}, että lasku on maksettu.
+swedish-finnish,first-name-only :: {{Sofia Eriksson|P}} ja {{Jonas Karlsson|P}} tulevat yhdessä. {{Sofia|P|Sofia|Sofia Eriksson|etunimi; viittaa edellisen lauseen Sofia Erikssoniin}} ajaa.
+swedish-finnish,genitive,inflected :: {{Ulf Johanssonin|P|Ulf Johansson||genetiivi}} mukaan kokous siirtyy ensi viikkoon.
+swedish-finnish,partitive,inflected :: Ehdotin {{Linda Anderssonia|P|Linda Andersson||partitiivi}} uudeksi sihteeriksi.
+swedish-finnish,allative,inflected :: Muistuta {{Mats Nymanille|P|Mats Nyman||allatiivi}} huomisesta tapaamisesta.
+swedish-finnish,adessive,inflected :: {{Kristina Åbergilla|P|Kristina Åberg||adessiivi}} on kaikki tarvittavat paperit.
+swedish-finnish,genitive,inflected :: {{Benita Öhbergin|P|Benita Öhberg||genetiivi}} puhelin on ollut kiinni koko päivän.
+swedish-finnish,ablative,inflected,double-surname :: Kysy {{Anna Lindberg-Mäkiseltä|P|Anna Lindberg-Mäkinen||ablatiivi, kaksoissukunimi}}, onko sali varattu.
+swedish-finnish,genitive,inflected,noble-name :: Puhuin eilen {{Carl von Hertzenin|P|Carl von Hertzen||genetiivi, aatelisnimi}} kanssa perunkirjoituksesta.
+swedish-finnish,allative,inflected :: Soitin {{Jenny Holmströmille|P|Jenny Holmström||allatiivi}}, mutta hän ei vastannut.
+swedish-finnish,illative,inflected :: Törmäsin {{Peter Lindqvistiin|P|Peter Lindqvist||illatiivi}} satamassa.
+swedish-finnish,genitive,inflected :: {{Niklas Sjöblomin|P|Niklas Sjöblom||genetiivi}} auto on huollossa.
+swedish-finnish,partitive,inflected :: Onnittelin {{Emilia Rosenbergiä|P|Emilia Rosenberg||partitiivi}} valmistumisesta.
+swedish-finnish :: Ilmoittautuneet: {{Tobias Gustafsson|P}}, {{Wilma Lindholm|P}} ja {{Axel Nordström|P}}.
+swedish-finnish,adessive,inflected :: {{Oskar Lindgrenillä|P|Oskar Lindgren||adessiivi}} on tieto siitä.
+swedish-finnish,allative,inflected,email :: Laita {{Elsa Bergmanille|P|Elsa Bergman||allatiivi}} kopio osoitteeseen {{elsa.bergman@elisanet.fi|E}}.
+swedish-finnish,lone-surname,genitive,inflected :: Puhuin {{Ekholmin|P|Ekholm||genetiivi, pelkkä sukunimi}} kanssa eilen.
+swedish-finnish,lone-surname,allative,inflected :: Lähetä lasku {{Sundströmille|P|Sundström||allatiivi, pelkkä sukunimi}}.
+# --- phase 12: nicknames (c393-c412)
+nickname :: {{Markku Rantanen|P}} on taas paikalla. {{Make|P|Make|Markku Rantanen|lempinimi; viittaa edellisen lauseen Markku Rantaseen}} tuo kahvit.
+nickname,allative :: {{Jaakko Mustonen|P}} muuttaa Tampereelle. Pidetään {{Jaskalle|P|Jaska|Jaakko Mustonen|lempinimi, allatiivi; viittaa edellisen lauseen Jaakko Mustoseen}} läksiäiset.
+nickname :: {{Reijo Kinnunen|P}} soitti. {{Reiska|P|Reiska|Reijo Kinnunen|lempinimi; viittaa edellisen lauseen Reijo Kinnuseen}} haluaa lainata mönkijää.
+nickname,genitive :: {{Tapio Hiltunen|P}} lähti kalaan. {{Tapsan|P|Tapsa|Tapio Hiltunen|lempinimi, genetiivi; viittaa edellisen lauseen Tapio Hiltuseen}} vene on rannassa.
+nickname :: {{Katariina Lehtinen|P}} eli {{Kati|P|Kati|Katariina Lehtinen|lempinimi; viittaa samassa lauseessa Katariina Lehtiseen}} vastaa ilmoittautumisista.
+nickname,allative :: {{Sakari Huttunen|P}} on lomalla. Kerro {{Sakelle|P|Sakke|Sakari Huttunen|lempinimi, allatiivi, kk > k; viittaa edellisen lauseen Sakari Huttuseen}}, kun hän palaa.
+nickname :: {{Pentti Hirvonen|P}} täyttää 70. {{Pena|P|Pena|Pentti Hirvonen|lempinimi; viittaa edellisen lauseen Pentti Hirvoseen}} juhlii lauantaina.
+nickname,partitive :: {{Liisa Turunen|P}} jää eläkkeelle. Muistetaan {{Lissua|P|Lissu|Liisa Turunen|lempinimi, partitiivi; viittaa edellisen lauseen Liisa Turuseen}} kukilla.
+nickname :: {{Väinö Pesonen|P}} ajaa kuorma-autoa. {{Väiski|P|Väiski|Väinö Pesonen|lempinimi; viittaa edellisen lauseen Väinö Pesoseen}} tuntee kaikki tiet.
+nickname,adessive :: {{Ari Savolainen|P}} lupasi auttaa. {{Arskalla|P|Arska|Ari Savolainen|lempinimi, adessiivi; viittaa edellisen lauseen Ari Savolaiseen}} on peräkärry.
+nickname :: {{Teemu Laitinen|P}} pelaa sählyä. {{Teme|P|Teme|Teemu Laitinen|lempinimi; viittaa edellisen lauseen Teemu Laitiseen}} on aina ensimmäisenä paikalla.
+nickname,genitive :: {{Anna Kauppinen|P}} on uusi esihenkilö. {{Anskun|P|Ansku|Anna Kauppinen|lempinimi, genetiivi; viittaa edellisen lauseen Anna Kauppiseen}} ensimmäinen päivä on maanantaina.
+nickname,allative :: {{Simo Räsänen|P}} hoitaa grillin. Anna {{Simppalle|P|Simppa|Simo Räsänen|lempinimi, allatiivi, pp > p; viittaa edellisen lauseen Simo Räsäseen}} sytytysneste.
+nickname :: {{Lauri Mattila|P}} tuli jo. {{Late|P|Late|Lauri Mattila|lempinimi, ei lempinimitaulukossa; viittaa edellisen lauseen Lauri Mattilaan}} odottaa autossa.
+nickname :: {{Kirsi Moilanen|P}} vetää kokousta. {{Kirre|P|Kirre|Kirsi Moilanen|lempinimi; viittaa edellisen lauseen Kirsi Moilaseen}} lähettää muistion.
+nickname,allative :: {{Elina Korpela|P}} on sairaana. Toivotetaan {{Ellille|P|Elli|Elina Korpela|lempinimi, allatiivi; viittaa edellisen lauseen Elina Korpelaan}} pikaista paranemista.
+nickname :: {{Hannu Leinonen|P}} korjasi auton. {{Hanski|P|Hanski|Hannu Leinonen|lempinimi; viittaa edellisen lauseen Hannu Leinoseen}} ei ottanut maksua.
+nickname :: {{Pirkko Ojala|P}} leipoi pullat. {{Pirkkis|P|Pirkkis|Pirkko Ojala|lempinimi, ei lempinimitaulukossa; viittaa edellisen lauseen Pirkko Ojalaan}} on paras leipuri.
+nickname,genitive :: {{Seppo Vainio|P}} lähti jo. {{Sepin|P|Sepi|Seppo Vainio|lempinimi, genetiivi; viittaa edellisen lauseen Seppo Vainioon}} takki jäi naulakkoon.
+nickname,lowercase,phone-typed :: {{veikko hakala|P|Veikko Hakala||nominatiivi, pienet kirjaimet}} soitti ja {{veke|P|Veke|Veikko Hakala|lempinimi, pienet kirjaimet; viittaa samassa rivissä veikko hakalaan}} tulee illalla
+# --- phase 12: emails (c413-c437)
+email :: Lähetä laskut osoitteeseen {{liisa.kallio@gmail.com|E}}, kiitos.
+email :: Uusi osoitteeni on {{jarmo.t1974@gmail.com|E}}.
+email :: Kirjoita {{s.nieminen@hotmail.com|E}}, hän vastaa yleensä illalla.
+email :: Työosoite: {{tiina.kettunen@rakennusliikekettunen.fi|E}}
+email,email-inflected :: Kirjoitin eilen {{tuomas.lehtonen@rakennuslehtonen.fi|E}}:hin, mutta vastausta ei ole tullut.
+email,email-inflected :: Lähetin kutsun {{outi.kallio@outlook.com|E}}:iin ja kopion sinulle.
+email :: Hänen vanha osoitteensa {{pirjo.ahonen@luukku.com|E}} ei enää toimi.
+email :: Laita kopio myös {{kari.ranta@saunalahti.fi|E}}, hän on mukana hankkeessa.
+email,multi-entity :: Yhteystiedot: {{Henna Leppänen|P}}, {{henna.leppanen@kiinteistohuoltoleppanen.fi|E}}, {{040 772 1934|T}}.
+email,swedish-finnish :: {{Leena Öhman|P}} <{{leena.ohman@elisanet.fi|E}}> lisäsi sinut ryhmään.
+email :: Muuta sähköpostiksi {{Kirsi.Lahtinen@Tilitoimistolahtinen.fi|E}}, vanha ei ole käytössä.
+email :: Laskut voi ohjata osoitteeseen {{antti.niemi+laskut@gmail.com|E}}.
+email,code-snippet :: {"nimi": "{{Ville Heikkinen|P}}", "email": "{{ville.heikkinen@yritys.fi|E}}"}
+email :: Opiskelijan osoite on {{matias.korhonen@tuni.fi|E}}, lähetä tiedote sinne.
+email :: Kaupungin yhteyshenkilö: {{sari.laaksonen@hel.fi|E}}.
+email :: Lähetä vahvistus osoitteeseen {{JUHA.SEPPALA@KOLUMBUS.FI|E}}, hän kirjoittaa aina isoilla.
+email,email-inflected :: Etsin viestiä {{marjut.heino@suomi24.fi|E}}:stä, se tuli viime viikolla.
+email :: Lähetä kuittikopio {{jukka.salminen@pp.inet.fi|E}}.
+email :: Isän osoite on {{reijo.karjalainen@netti.fi|E}}.
+email,email-decoy :: Kuvatiedosto on {{logo@2x.png|!E|tiedostonimi, ei sähköposti}}, älä pienennä sitä.
+email,email-decoy :: Tallenna ikoni nimellä {{ikoni@3x.webp|!E|tiedostonimi, ei sähköposti}}.
+email,email-decoy :: Merkitse hänet ryhmäkeskusteluun muodossa {{@kirsi|!E|käyttäjätunnus ilman verkkotunnusta}}.
+email,multi-entity :: {{Aino Ylönen|P}} ({{aino.ylonen@gmail.com|E}}) ja {{Eero Pöyhönen|P}} ({{eero.poyhonen@outlook.com|E}}) ilmoittautuivat.
+email :: Sähköposti: {{h.virtanen-koskinen@kolumbus.fi|E}}
+email,english-mixed :: Please cc {{katja.lindqvist@tilitoimisto.fi|E}} on the invoice, kiitos.
+# --- phase 12: street addresses (c438-c472)
+street-suffix-kaarre :: Uusi osoitteemme on {{Lehtikaarre 4 B 9|A}}, {{02210 Espoo|Z}}.
+street-suffix-kaarre,address-inflected :: Asumme {{Lehtikaarteella 4|A|Lehtikaarre 4||adessiivi}}, mutta muutamme keväällä.
+street-suffix-piha :: Toimitus osoitteeseen {{Sepänpiha 3 A 5|A}}, {{33500 Tampere|Z}}.
+street-suffix-piha,address-inflected :: Hän asuu {{Sepänpihalla 3|A|Sepänpiha 3||adessiivi}}, keltaisessa talossa.
+street-suffix-portti :: Lähetä paketti osoitteeseen {{Sammonportti 7 C 21|A}}, {{90230 Oulu|Z}}.
+street-suffix-portti,address-inflected :: Varasto on {{Sammonportilla 7|A|Sammonportti 7||adessiivi, tt > t}}.
+street-suffix-katu,address-inflected :: Muutimme {{Kalevankadulle 31|A|Kalevankatu 31||allatiivi}} viime kuussa.
+street-suffix-tie :: Laskutusosoite: {{Pihlajatie 18 as. 4|A}}, {{00270 Helsinki|Z}}.
+street-suffix-kuja,address-inflected :: Asun {{Tervakujalla 2 D 40|A|Tervakuja 2 D 40||adessiivi}} kolmannessa kerroksessa.
+street-suffix-polku :: Postit tulevat osoitteeseen {{Kanervapolku 6|A}}, {{15140 Lahti|Z}}.
+street-suffix-väylä,address-inflected :: Kokous pidetään {{Kauppaväylällä 9|A|Kauppaväylä 9||adessiivi}} toimiston neuvotteluhuoneessa.
+street-suffix-rinne,address-inflected :: Ajoin {{Kuusirinteelle 11|A|Kuusirinne 11||allatiivi}}, mutta ovi oli lukossa.
+street-suffix-ranta,address-inflected :: Mökki on {{Järvirannassa 3|A|Järviranta 3||inessiivi, nt > nn}}, aivan uimarannan vieressä.
+street-suffix-tori,address-inflected :: Myyntikoju on {{Asematorilla 2|A|Asematori 2||adessiivi}} lauantaisin.
+street-suffix-aukio :: Toimiston osoite: {{Tähtiaukio 1 B|A}}, {{20100 Turku|Z}}.
+street-suffix-raitti,address-inflected :: Kahvila muutti {{Puistoraitille 8|A|Puistoraitti 8||allatiivi, tt > t}}.
+street-suffix-kaari :: Uusi kotiosoite on {{Revontulenkaari 15 A 2|A}}, {{96400 Rovaniemi|Z}}.
+street-suffix-tie,address-inflected :: Auto on parkissa {{Mannerheimintiellä 40|A|Mannerheimintie 40||adessiivi}}, hotellin edessä.
+street-suffix-katu,address-inflected :: Hain lapset {{Koulukadulta 6|A|Koulukatu 6||ablatiivi}} kolmelta.
+street-suffix-katu :: Osoite on {{Rautatienkatu 21 B 33|A}}, {{65100 Vaasa|Z}}, toinen kerros.
+swedish-finnish,address :: Kesämökin osoite: {{Strandvägen 12|A|Strandvägen 12||ruotsinkielinen kadunnimi}}, {{10600 Ekenäs|Z}}.
+street-suffix-polku,address-inflected :: Vie avaimet {{Kanervapolulle 6|A|Kanervapolku 6||allatiivi, k > Ø}} postilaatikkoon.
+street-suffix-katu,email-body :: Hei,\ntoimitusosoite on {{Satakunnankatu 18 A 7|A}}, {{33210 Tampere|Z}}.\nTerveisin {{Mira Lehtola|P}}
+address-decoy :: Ruuhka alkaa {{Valtatie 4|!A|tienumero, ei osoite}}:llä Lahden kohdalla.
+address-decoy :: Käänny {{Kantatie 51|!A|tienumero, ei osoite}}:lle Karjaan risteyksessä.
+address-decoy :: Remontti sulkee {{Seututie 110|!A|tienumero, ei osoite}}:n koko kesäksi.
+street-suffix-katu,address-inflected :: Pakettiautomaatti on {{Hämeenkadun 25|A|Hämeenkatu 25||genetiivi}} kulmassa.
+street-suffix-kuja :: Mummon uusi osoite: {{Haapakuja 1 as 2|A}}, {{80140 Joensuu|Z}}.
+street-suffix-tie,multi-entity :: Kuljetus: {{Teollisuustie 33|A}}, {{01510 Vantaa|Z}}. Vastaanottaja {{Jari Hakkarainen|P}}, {{044 553 2810|T}}.
+street-suffix-katu,english-mixed :: Ship it to {{Fredrikinkatu 48 C 12|A}}, {{00100 Helsinki|Z}}, Finland.
+street-suffix-tie,address-inflected,lowercase,phone-typed :: oon {{koulutiellä 3|A|Koulutie 3||adessiivi, pienet kirjaimet}} odottamassa
+street-suffix-ranta,lowercase,phone-typed :: osote on {{merenranta 9 b|A|Merenranta 9 b}} ihan sataman vieressä
+street-suffix-katu,lowercase,phone-typed :: tuu {{puistokatu 12|A|Puistokatu 12}} ovikoodi on 1234
+street-suffix-katu :: Asunto sijaitsee osoitteessa {{Isokatu 26 a 14|A}}.
+street-suffix-piha,lowercase,phone-typed :: kerhohuone on {{myllypiha 2|A|Myllypiha 2}} sisäpihan perällä
+# --- phase 12: decoys and lines without PII (c473-c492)
+no-pii,sentence-initial-common-noun :: Toivo on tärkeää, kun odottaa tuloksia.
+no-pii,sentence-initial-common-noun :: Lumi sulaa viimeistään huhtikuussa.
+no-pii,sentence-initial-common-noun :: Tuuli kääntyi pohjoiseen iltapäivällä.
+no-pii,sentence-initial-common-noun :: Rauha laskeutui taloon, kun lapset nukahtivat.
+no-pii :: Ostin {{Stockmannilta|O|Stockmann}} uuden takin alennuksesta.
+no-pii :: {{Hartwallin|O|Hartwall}} lonkeroa oli tarjouksessa.
+no-pii :: Tilasin {{Fiskarsin|O|Fiskars}} kirveen verkkokaupasta.
+no-pii :: Vaihdoin liittymän {{Telialle|O|Telia}}, koska hinta oli parempi.
+no-pii :: Liput ostettiin {{Finnkinosta|O|Finnkino}}.
+place-vs-surname :: Kävimme viikonloppuna {{Kotkassa|!P|kaupunki Kotka}} katsomassa merta.
+place-vs-surname :: {{Porin|!P|kaupunki Pori}} jazzit ovat taas heinäkuussa.
+place-vs-surname :: Juna {{Kouvolaan|!P|kaupunki Kouvola}} lähtee puoli tuntia myöhässä.
+place-vs-surname :: Muutimme {{Raumalle|!P|kaupunki Rauma}} kolme vuotta sitten.
+place-vs-surname :: Kesäloma vietetään {{Kuusamossa|!P|kunta Kuusamo}}.
+place-vs-surname,sentence-initial-common-noun :: {{Kallio|!P|yleisnimi kallio}} oli liukas sateen jälkeen.
+place-vs-surname,sentence-initial-common-noun :: {{Laakso|!P|yleisnimi laakso}} täyttyi sumusta aamulla.
+no-pii :: Kokous on {{Teamsissa|O|Teams}} kello kymmenen.
+no-pii,capitalised-common-noun :: Joulupukin Pajakylä on avoinna joka päivä.
+no-pii :: Viitenumero {{1234 5678 9012|!T|viitenumero}} pitää muistaa maksaessa.
+no-pii,lowercase,phone-typed :: kaikki meni hyvin ja onni oli matkassa
+# --- phase 12: multi-entity texts (c493-c512)
+multi-entity,calendar,swedish-finnish :: Kokous ke 12.11. klo 10\nPaikka: {{Kalevankatu 31|A}}, {{00100 Helsinki|Z}}\nOsallistujat: {{Mikael Lindholm|P}}, {{Riitta Mäkinen|P}}, {{Janne Laaksonen|P}}
+multi-entity,email-body,first-name-only :: Hei {{Pirjo|P|Pirjo|Pirjo Ahonen|etunimi tervehdyksessä}},\nkiitos tapaamisesta. Lähetän sopimuksen osoitteeseen {{pirjo.ahonen@luukku.com|E}}.\nTerveisin\n{{Harri Rantanen|P}}
+multi-entity,dialogue,swedish-finnish,adessive,inflected :: {{Sofia Ekström|P}}: Onko {{Johan Nyströmillä|P|Johan Nyström||adessiivi}} vielä se pakettiauto?\nMinä: On, soita hänelle {{040 663 1209|T}}.
+multi-entity,shopping-list,swedish-finnish :: Kauppalista:\n- leipää\n- juustoa\n- kahvia\nToimitus {{Tervakuja 2 D 40|A}}, vastaanottaja {{Linnea Holmström|P}}, {{050 227 4416|T}}
+multi-entity,email-body,iban-spaced :: Hei {{Antti Lehtonen|P}},\nvuokra maksetaan tilille {{FI35 1590 3000 0097 36|I}}. Kuitti osoitteeseen {{antti.lehtonen@gmail.com|E}}.
+multi-entity :: Hakija: {{Kimmo Lahtinen|P}}, henkilötunnus {{120584-347M|H}}, osoite {{Pihlajatie 18 as. 4|A}}.
+multi-entity,lowercase,phone-typed :: {{sari virtanen|P|Sari Virtanen||nominatiivi, pienet kirjaimet}} {{sari.virtanen@outlook.com|E}} {{rantatie 22 a 3|A|Rantatie 22 a 3}} {{0442710938|T}}
+multi-entity,swedish-finnish,email :: Yhteyshenkilöt: {{Fredrik Wikström|P}} ({{fredrik.wikstrom@varvet.fi|E}}) ja {{Annika Blomqvist|P}} ({{040 815 2299|T}}).
+multi-entity,calendar,nickname :: Saunailta pe klo 18\nPaikka: {{Sepänpiha 3 A 5|A}}\nTulossa: {{Markku Rantanen|P}} ja {{Pentti Hirvonen|P}} vaimoineen. {{Make|P|Make|Markku Rantanen|lempinimi; viittaa samassa viestissä Markku Rantaseen}} tuo makkarat.
+multi-entity,english-mixed,swedish-finnish :: Meeting with {{Stefan Lundqvist|P}} at {{Fredrikinkatu 48 C 12|A}}, contact {{stefan.lundqvist@gmail.com|E}} or {{+358 40 553 1876|T}}.
+multi-entity,email-body,iban :: Hei,\nuuden työntekijän tiedot: {{Mira Lehtola|P}}, {{mira.lehtola@tilitoimistolahtinen.fi|E}}, aloitus 1.12.\nPalkkatili {{FI2547081234567811|I}}.
+multi-entity,code-snippet,swedish-finnish :: users = [{"name": "{{Elin Strandberg|P}}", "email": "{{elin.strandberg@gmail.com|E}}"}, {"name": "{{Oskar Lindgren|P}}", "email": "{{oskar.lindgren@yritys.fi|E}}"}]
+multi-entity,first-name-only,ablative :: {{Kaisa Partanen|P}} ja {{Mervi Koskinen|P}} järjestävät myyjäiset. {{Kaisalta|P|Kaisa|Kaisa Partanen|ablatiivi; viittaa edellisen lauseen Kaisa Partaseen}} saa arvat ja {{Merviltä|P|Mervi|Mervi Koskinen|ablatiivi; viittaa edellisen lauseen Mervi Koskiseen}} pullat.
+multi-entity,address-inflected,street-suffix-kuja,street-suffix-katu :: Muutin {{Koivukujalta 7|A|Koivukuja 7||ablatiivi}} {{Kalevankadulle 31|A|Kalevankatu 31||allatiivi}}, uusi numeroni on {{045 990 2283|T}}.
+multi-entity,dialogue,lowercase,phone-typed :: minä: missä {{janne|P|Janne||etunimi, pienet kirjaimet}} on\n{{riitta|P|Riitta||etunimi, pienet kirjaimet}}: se meni {{laaksosille|P|Laaksonen||monikon allatiivi, pienet kirjaimet}} saunaan
+multi-entity,swedish-finnish :: Potilas: {{Benita Sjöholm|P}}, {{030791-6180|H}}, puh. {{+358 50 337 2915|T}}.
+multi-entity,email,nickname,ablative :: {{Jaakko Mustonen|P}} ({{jaska.mustonen@gmail.com|E}}) hoitaa ilmoittautumiset. {{Jaskalta|P|Jaska|Jaakko Mustonen|lempinimi, ablatiivi; viittaa edellisen lauseen Jaakko Mustoseen}} saa lisätietoja.
+multi-entity,iban,allative,inflected :: Maksu {{Veera Kettuselle|P|Veera Kettunen||allatiivi}} tilille {{FI0857293847561027|I}}, viestiksi "{{Väinö Pesonen|P}} jäsenmaksu".
+multi-entity :: Varahenkilöt: {{Ari Savolainen|P}} {{040 118 7720|T}}, {{Liisa Turunen|P}} {{050 448 1932|T}}.
+multi-entity,email :: Laskutus: {{Revontulenkaari 15 A 2|A}}, {{96400 Rovaniemi|Z}}, {{laskutus@revontulirakennus.fi|E}}.
 """
 
 MARK = re.compile(r"\{\{(.+?)\}\}")
@@ -424,7 +631,7 @@ def text_slice(text: str, span: dict) -> str:
 def main() -> None:
     lines = [ln for ln in SRC.splitlines() if ln.strip() and not ln.startswith("#")]
     recs = [parse(i + 1, ln) for i, ln in enumerate(lines)]
-    assert len(recs) == 312, len(recs)
+    assert len(recs) == 512, len(recs)
     out = Path(__file__).with_name("corpus.jsonl")
     out.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in recs), encoding="utf-8")
     print(f"wrote {len(recs)} lines to {out}")

@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import type { AgentSessionEvent, ExtensionFactory } from '@earendil-works/pi-coding-agent';
 import { setup, toolMessageContent } from '@pa/contract-tests/src/harness.ts';
 import type { FakeTurn } from '@pa/fake-llm';
-import { afterEach, expect, test } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
 import { startFakeSidecar } from './fake-sidecar.ts';
 import { PseudoClient, pseudoExtension } from './index.ts';
 
@@ -27,14 +27,19 @@ async function boot(
   extra: ExtensionFactory[] = [],
   tools?: string[],
   learn = false,
+  collide: { names?: string[]; wait?: (ids: number[]) => Promise<boolean> } = {},
 ) {
-  const sc = await startFakeSidecar({ ...DICT }, { learn });
+  const sc = await startFakeSidecar(
+    { ...DICT },
+    { learn, ...(collide.names ? { collide: collide.names } : {}) },
+  );
   closers.push(sc.close);
   const logs: { level: string; msg: string; data?: any }[] = [];
   const ext = pseudoExtension({
     client: new PseudoClient(sc.url, 'u1'),
     sessionId: 'chat-1',
     log: (level, msg, data) => void logs.push({ level, msg, data }),
+    ...(collide.wait ? { awaitCollision: collide.wait } : {}),
   });
   const pi = await setup(turns, [ext, ...extra], tools ? { tools } : {});
   const events: AgentSessionEvent[] = [];
@@ -274,4 +279,70 @@ test('sidecar down: tool call blocked with pseudo_down', async () => {
     );
   expect(results.join()).toContain('pseudo_down');
   expect(llm.requests).toHaveLength(1); // the scan before the next request fails closed too
+});
+
+/** Boots with "Pekka Laaksonen" (the surrogate of Matti Virtanen) as a colliding name; `answer` ends the wait. */
+async function bootCollision() {
+  const asked: number[][] = [];
+  let answer: (ok: boolean) => void = () => {};
+  const wait = (ids: number[]) => {
+    asked.push(ids);
+    return new Promise<boolean>((r) => (answer = r));
+  };
+  const pi = await boot([{ text: 'ok' }], [], undefined, false, {
+    names: ['Pekka Laaksonen'],
+    wait,
+  });
+  const resolve = (action: 'accept' | 'reject') =>
+    fetch(`${pi.sc.url}/vault/pending/1`, {
+      method: 'POST',
+      body: JSON.stringify({ user_id: 'u1', action }),
+    });
+  return { ...pi, asked, answer: (ok: boolean) => answer(ok), resolve };
+}
+
+test('a name equal to an issued surrogate holds the input until accepted as a new person', async () => {
+  const { llm, sc, logs, asked, answer, resolve, session, sessionFile } = await bootCollision();
+  const turn = session.prompt('Soita Pekka Laaksonen huomenna');
+  await vi.waitFor(() => expect(asked).toEqual([[1]]));
+  expect(llm.requests).toHaveLength(0);
+  expect(logs).toContainEqual({
+    level: 'warn',
+    msg: 'pseudo_collision',
+    data: { hook: 'input', pendingIds: [1], kinds: ['PERSON'] },
+  });
+  expect(sc.requests.find((r) => r.path === '/mask')?.body.user_input).toBe(true);
+  await resolve('accept');
+  answer(true);
+  await turn;
+  // The new person has a surrogate of its own: the model never sees Matti Virtanen's surrogate here.
+  const body = JSON.stringify(llm.requests[0]?.body);
+  expect(body).toContain('Soita Uusi');
+  expect(body).not.toContain('Pekka Laaksonen');
+  expect(sessionFile()).not.toContain('Pekka Laaksonen');
+});
+
+test('a collision answered as the same entity keeps that surrogate; an unanswered one drops the input', async () => {
+  const { llm, asked, answer, resolve, session, sessionManager } = await bootCollision();
+  const dropped = session.prompt('Pekka Laaksonen?');
+  await vi.waitFor(() => expect(asked).toHaveLength(1));
+  answer(false); // timeout or stop: fail closed
+  await dropped;
+  expect(llm.requests).toHaveLength(0);
+  expect(sessionManager.getEntries().filter((e) => e.type === 'message')).toHaveLength(0);
+  const turn = session.prompt('Soita Pekka Laaksonen huomenna');
+  await vi.waitFor(() => expect(asked).toHaveLength(2));
+  await resolve('reject');
+  answer(true);
+  await turn;
+  expect(JSON.stringify(llm.requests[0]?.body)).toContain('Soita Pekka Laaksonen huomenna');
+});
+
+test('without awaitCollision (a child process) input is not checked for collisions', async () => {
+  const { sc, llm, session } = await boot([{ text: 'ok' }], [], undefined, false, {
+    names: ['Pekka Laaksonen'],
+  });
+  await session.prompt('Pekka Laaksonen kirjoitti tehtävän');
+  expect(sc.requests.find((r) => r.path === '/mask')?.body.user_input).toBeUndefined();
+  expect(llm.requests).toHaveLength(1);
 });

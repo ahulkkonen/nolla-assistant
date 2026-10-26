@@ -136,6 +136,13 @@ export const VaultPending = z.object({
   detector: z.string(),
   score: z.number(),
   chatId: id64,
+  /**
+   * `uncertain`: a low-score detection (confirm, allowlist, dismiss). `collision`: what the user
+   * typed equals an issued surrogate of `entityId`, and the message waits; accept makes it a new
+   * person, reject says it is that entity (phase-12 decision 9).
+   */
+  reason: z.enum(['uncertain', 'collision']),
+  entityId: z.int().nullable(),
 });
 export type VaultPending = z.infer<typeof VaultPending>;
 
@@ -405,7 +412,7 @@ export const ClientMessage = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('vault.pending.resolve'),
     pendingId: z.int(),
-    action: z.enum(['confirm', 'dismiss', 'allowlist']),
+    action: z.enum(['confirm', 'dismiss', 'allowlist', 'accept', 'reject']),
   }),
   z.object({ type: z.literal('memory.list') }),
   z.object({

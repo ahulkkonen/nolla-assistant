@@ -58,7 +58,12 @@ type RegistryOptions = {
   /** Called at every `agent_settled` through `pi-ext-topics`; `sessionId` is the chat id. */
   onSettled?: Parameters<typeof topicsExtension>[0]['onSettled'];
   /** Loads `pi-ext-pseudo` per chat when set; `log` receives its logs with the chat id. */
-  pseudo?: { client: PseudoClient; log: (chatId: string, ...args: Parameters<PseudoLog>) => void };
+  pseudo?: {
+    client: PseudoClient;
+    log: (chatId: string, ...args: Parameters<PseudoLog>) => void;
+    /** Holds user input that names an issued surrogate until the user answers (phase 12). */
+    awaitCollision?: (chatId: string, pendingIds: number[]) => Promise<boolean>;
+  };
   /** Loads `pi-ext-memory` when `pseudo` is set; `onChange` runs after each write or parked write. */
   memory?: {
     store: MemoryStore;
@@ -346,6 +351,12 @@ export class SessionRegistry {
                 client: pseudo.client,
                 sessionId: chatId,
                 log: (...args) => pseudo.log(chatId, ...args),
+                ...(pseudo.awaitCollision
+                  ? {
+                      awaitCollision: (ids: number[]) =>
+                        pseudo.awaitCollision?.(chatId, ids) ?? Promise.resolve(false),
+                    }
+                  : {}),
               }),
             ]
           : []),

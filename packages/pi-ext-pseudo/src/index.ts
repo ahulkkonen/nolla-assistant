@@ -7,6 +7,8 @@ export type PseudoLog = (level: 'warn' | 'debug', msg: string, data?: object) =>
 
 /** Logged (at `warn`) whenever the sidecar fails; the host tells the user. */
 export const PSEUDO_DOWN = 'pseudo_down';
+/** Logged (at `warn`) when user input names an issued surrogate; the host tells the user. */
+export const PSEUDO_COLLISION = 'pseudo_collision';
 
 /**
  * Masks everything that enters the Pi session and unmasks tool arguments (plan §6, invariant 1).
@@ -18,16 +20,38 @@ export function pseudoExtension(opts: {
   client: PseudoClient;
   sessionId: string;
   log?: PseudoLog;
+  /**
+   * When set, what the user types is checked for names equal to issued surrogates (phase-12
+   * decision 5). The input waits for this: true once the user answered every pending id (the text
+   * is masked again), false to drop it. Unset (a child process, no user to ask): no check.
+   */
+  awaitCollision?: (pendingIds: number[]) => Promise<boolean>;
 }): ExtensionFactory {
-  const { client, sessionId, log = () => {} } = opts;
+  const { client, sessionId, log = () => {}, awaitCollision } = opts;
   const down = (hook: string, err: unknown) =>
     log('warn', PSEUDO_DOWN, { hook, error: err instanceof Error ? err.name : 'unknown' });
 
   return (pi) => {
     pi.on('input', async (event) => {
       if (!event.text) return;
+      // Another extension's message may carry surrogates; only what a person sent is checked.
+      const userInput = !!awaitCollision && event.source !== 'extension';
       try {
-        const { masked, spans } = await client.mask(sessionId, event.text);
+        let r = await client.mask(sessionId, event.text, { userInput });
+        // Fail closed until the user answers in the vault; a later answer can raise a new collision.
+        for (let round = 0; r.collisions?.length; round++) {
+          const pendingIds = r.collisions.map((c) => c.pending_id);
+          // Waiting before the host hears of it, so an answer cannot come first.
+          const answered = round < 3 ? awaitCollision?.(pendingIds) : undefined;
+          log('warn', PSEUDO_COLLISION, {
+            hook: 'input',
+            pendingIds,
+            kinds: r.collisions.map((c) => c.kind),
+          });
+          if (!answered || !(await answered)) return { action: 'handled' };
+          r = await client.mask(sessionId, event.text, { userInput });
+        }
+        const { masked, spans } = r;
         // Whitelist: `real_form` and anything added later stay out of the session file.
         const kept = spans.map(({ start, end, entity_id, kind, surrogate }) => ({
           start,

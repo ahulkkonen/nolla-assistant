@@ -17,3 +17,4 @@ The build plan is `docs/plan.md`. Section numbers in records refer to it.
 - `phase-10-models.md`: model picker, thinking level, per-chat ZDR override; OpenRouter research.
 - `phase-11-15-plan.md`: decisions for files, pseudo hardening, thread depth, web search, admin (2026-10-26).
 - `phase-11-files.md`: the Files screen: routes, path guard, trash, origins, quota, attach and save artifact.
+- `phase-12-pseudo.md`: rare surrogate pairs, the surrogate collision check, email and street address surrogates, lone lower-case surnames, corpus gate.

@@ -354,7 +354,16 @@ test('vault: list, merge, pin and pending resolve answer with vault.state', {
   ]);
   expect(state.entities[0]?.lastSeen).toMatch(/Z$/);
   expect(state.pending).toEqual([
-    { id: 1, kind: 'person', text: 'Koski', detector: 'gliner', score: 0.4, chatId: '' },
+    {
+      id: 1,
+      kind: 'person',
+      text: 'Koski',
+      detector: 'gliner',
+      score: 0.4,
+      chatId: '',
+      reason: 'uncertain',
+      entityId: null,
+    },
   ]);
   const [matti, liisa] = state.entities.map((e) => e.id) as [number, number];
 

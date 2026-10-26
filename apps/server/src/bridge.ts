@@ -26,6 +26,7 @@ import type { Agents } from './agents.ts';
 import { type Approvals, DENIED_REASON, TIMEOUT_REASON } from './approval.ts';
 import { extractArtifacts, messageArtifacts } from './artifacts.ts';
 import type { Automations } from './automations.ts';
+import type { CollisionWaits } from './collisions.ts';
 import { AttachmentNotFound, chatFiles, ingestAttachments, splitBlocks } from './files.ts';
 import { MemoryError, type MemoryStore, PSEUDO_REQUIRED } from './memory.ts';
 import { GUARD_REASON } from './pi/guard.ts';
@@ -66,6 +67,8 @@ export type BridgeDeps = {
    * memory: a restart clears it. Shared by all connections of one server.
    */
   refusals: Map<string, string>;
+  /** User inputs held by a surrogate collision (phase-12 decision 8); answered via the vault. */
+  collisions: CollisionWaits;
 };
 
 type AgentMessage = AgentSession['messages'][number];
@@ -82,6 +85,7 @@ const ERRORS = {
   prompt_failed: 'Prompt failed',
   llm_failed: 'Model call failed',
   pseudo_down: 'Pseudonymization service unavailable',
+  pseudo_collision: 'A name in the message is already a pseudonym; answer in the vault to send it',
   memory_full: 'Memory is full',
   memory_conflict: 'Memory changed; the write no longer applies',
   zdr_unavailable: 'No zero-data-retention endpoint for this model',
@@ -253,6 +257,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
     push,
     catalog,
     refusals,
+    collisions,
   } = deps;
   const open = new Set<string>();
   sockets.add(socket);
@@ -382,14 +387,11 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
         break;
       case 'vault.pending.resolve':
         await pseudo.vaultPending(msg.pendingId, msg.action);
+        // A message held by this collision now masks again and runs.
+        collisions.answered(msg.pendingId);
         break;
     }
-    const { entities, pending } = await pseudo.vaultList();
-    send(socket, {
-      type: 'vault.state',
-      entities: entities.map(vaultEntity),
-      pending: pending.map(vaultPending),
-    });
+    send(socket, await vaultState(pseudo));
   };
 
   /**
@@ -603,6 +605,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
           return rows.map((r) => r.path);
         });
         approvals.cancel(chatId);
+        collisions.cancel(chatId);
         broadcast(rooms, chatId, { type: 'subagent.state', chatId, children: [] });
         await registry
           .remove(chatId)
@@ -696,6 +699,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
       }
       case 'user.stop':
         owned(msg.chatId);
+        collisions.cancel(msg.chatId); // a message held by a collision is dropped
         if (registry.has(msg.chatId)) await (await registry.get(msg.chatId)).abort();
         return;
       case 'automations.list':
@@ -1013,7 +1017,18 @@ const vaultPending = (p: VaultPendingRow) => ({
   detector: p.detector,
   score: p.score,
   chatId: p.session_id,
+  reason: p.reason,
+  entityId: p.entity_id,
 });
+
+export async function vaultState(pseudo: PseudoClient): Promise<ServerMessage> {
+  const { entities, pending } = await pseudo.vaultList();
+  return {
+    type: 'vault.state',
+    entities: entities.map(vaultEntity),
+    pending: pending.map(vaultPending),
+  };
+}
 
 function toolRows(m: AgentMessage, statuses: Map<string, ToolStatus>): ToolRow[] {
   if (m.role !== 'assistant') return [];

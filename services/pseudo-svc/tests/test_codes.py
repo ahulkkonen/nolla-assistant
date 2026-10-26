@@ -54,7 +54,7 @@ def test_plates_need_context():
 def test_addresses_and_postcodes():
     found = kinds("Asun Hämeenkadulla 21 A 4, 33100 Tampereella. Paketti Asema-aukiolta 1 ja Kalevankaari 11 as 3.")
     assert ("ADDRESS", "Hämeenkadulla 21 A 4") in found
-    assert ("POSTCODE_CITY", "33100") in found
+    assert not [k for k in found if k[0] == "POSTCODE_CITY"]  # postcode and city stay as they are (phase 12)
     assert ("ADDRESS", "Asema-aukiolta 1") in found
     assert ("ADDRESS", "Kalevankaari 11 as 3") in found
     assert not kinds("Remontti maksoi 12500 euroa.")
@@ -62,3 +62,23 @@ def test_addresses_and_postcodes():
 
 def test_email():
     assert kinds("Posti matti.v@example.com nyt") == [("EMAIL", "matti.v@example.com")]
+
+
+def test_phase12_streets():
+    found = kinds("Asumme Lehtikaarteella 4, Sepänpiha 3 A 5 ja Sammonportilla 7. Mökki: Strandvägen 12.")
+    assert [s for k, s in found] == ["Lehtikaarteella 4", "Sepänpiha 3 A 5", "Sammonportilla 7", "Strandvägen 12"]
+    assert not kinds("Ruuhka alkaa Valtatie 4:llä, käänny Kantatie 51:lle.")  # road numbers
+    assert not kinds("asun koivukuja 7 b 12")  # lower case only in plain text
+
+
+def test_phase12_lowercase_street_in_plain_text():
+    from app.mask import Ctx
+
+    found = [(c.kind, c.surface, c.canonical) for c in detect("asun koivukuja 7 b 12", Ctx(None, "u", lower=True))]
+    assert found == [("ADDRESS", "koivukuja 7 b 12", "Koivukuja 7 b 12")]
+
+
+def test_phase12_emails():
+    assert kinds("Kuva logo@2x.png ja ikoni@3x.webp") == []
+    assert kinds("Kirjoitin x.y@firma.fi:hin ja a@b.com:iin, c@d.fi:xyz") == [
+        ("EMAIL", "x.y@firma.fi:hin"), ("EMAIL", "a@b.com:iin"), ("EMAIL", "c@d.fi")]

@@ -1,6 +1,6 @@
 import { createServer } from 'node:http';
 import { listenLocal } from '@pa/fake-llm';
-import type { Json, VaultEntityRow, VaultPendingRow } from './client.ts';
+import type { Collision, Json, VaultEntityRow, VaultPendingRow } from './client.ts';
 
 type Pair = { from: string; to: string; id: number };
 type Hit = { start: number; end: number; pair: Pair };
@@ -49,7 +49,7 @@ function holdOf(s: string, surrogates: string[]) {
 
 const kindOf = (real: string) => (/\d/.test(real) ? 'hetu' : 'person');
 
-type PendingSeed = Omit<VaultPendingRow, 'id' | 'session_id'>;
+type PendingSeed = Omit<VaultPendingRow, 'id' | 'session_id' | 'reason' | 'entity_id'>;
 
 /**
  * Test double for `pseudo-svc` (contract in docs/decisions/phase-3.md). `dictionary` maps real
@@ -58,11 +58,13 @@ type PendingSeed = Omit<VaultPendingRow, 'id' | 'session_id'>;
  * return its input unchanged (for seeding a leak); `scanFail` makes `/scan` answer 404. Vault entities appear on their first mask (or
  * seed); `pending` fills the pending lane. `learn` adds every unknown email and `Name Surname`
  * pair seen by `/mask` to the dictionary with a generated surrogate (digits keep surrogates from
- * matching again).
+ * matching again). `collide` lists texts that `/mask` with `user_input` reports as collisions
+ * (phase 12) until the pending row is answered: accept adds the text with a new surrogate, reject
+ * leaves it as it is.
  */
 export async function startFakeSidecar(
   dictionary: Record<string, string>,
-  opts: { pending?: PendingSeed[]; learn?: boolean } = {},
+  opts: { pending?: PendingSeed[]; learn?: boolean; collide?: string[] } = {},
 ) {
   const byLength = (a: Pair, b: Pair) => b.from.length - a.from.length;
   const entries = Object.entries(dictionary);
@@ -80,7 +82,12 @@ export async function startFakeSidecar(
     ...p,
     id: i + 1,
     session_id: '',
+    reason: 'uncertain',
+    entity_id: null,
   }));
+  let nextPending = pending.length + 1;
+  /** Collision texts answered so far. */
+  const answered = new Set<string>();
   const entity = (kind: string, canonical: string, surrogate: string, id = nextId++) => {
     const e: VaultEntityRow = {
       id,
@@ -124,6 +131,20 @@ export async function startFakeSidecar(
       const i = pending.findIndex((p) => p.id === Number(m[2]));
       const [p] = i >= 0 ? pending.splice(i, 1) : [];
       if (!p) return;
+      if (p.reason === 'collision') {
+        answered.add(p.text);
+        if (body.action === 'accept') {
+          const id = nextId++;
+          const to = `Uusi${id} Henkilö${id}`;
+          entity(p.kind, p.text, to, id);
+          dictionary[p.text] = to;
+          toFake.push({ from: p.text, to, id });
+          toReal.push({ from: to, to: p.text, id });
+          toFake.sort(byLength);
+          toReal.sort(byLength);
+        }
+        return { ok: true };
+      }
       if (body.action !== 'dismiss') {
         const e = entity(p.kind, p.text, `[${p.kind} ${nextId}]`);
         e.allowlisted = body.action === 'allowlist';
@@ -188,6 +209,29 @@ export async function startFakeSidecar(
     switch (path) {
       case '/mask': {
         const value: Json = 'text' in body ? body.text : body.json;
+        if (body.user_input && typeof value === 'string') {
+          const collisions: Collision[] = [];
+          for (const text of opts.collide ?? []) {
+            if (!value.includes(text) || answered.has(text)) continue;
+            const owner = toReal.find((p) => p.from === text)?.id ?? 0;
+            let row = pending.find((p) => p.reason === 'collision' && p.text === text);
+            if (!row) {
+              row = {
+                id: nextPending++,
+                kind: 'PERSON',
+                text,
+                detector: 'fake',
+                score: 1,
+                session_id: body.session_id,
+                reason: 'collision',
+                entity_id: owner,
+              };
+              pending.push(row);
+            }
+            collisions.push({ pending_id: row.id, entity_id: owner, kind: 'PERSON' });
+          }
+          if (collisions.length) return { masked: '', spans: [], collisions };
+        }
         if (opts.learn && !state.passthrough) learn(value);
         const live = toFake.filter((p) => !ignored.has(p.id));
         const masked = state.passthrough ? value : deep(value, live, hits);
@@ -202,7 +246,7 @@ export async function startFakeSidecar(
           score: 1,
           pending: false,
         }));
-        return { masked, spans };
+        return { masked, spans, ...(body.user_input ? { collisions: [] } : {}) };
       }
       case '/unmask': {
         const restored = deep('text' in body ? body.text : body.json, toReal, hits);

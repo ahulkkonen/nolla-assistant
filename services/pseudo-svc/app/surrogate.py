@@ -9,7 +9,8 @@ import re
 from functools import lru_cache
 
 from . import forms
-from .detect.codes import STREET_RE, STREET_SUFFIX, SUFFIX_CASE, hetu_check_char, luhn_ok
+from .detect.codes import (STREET_RE, STREET_SUFFIX, SUFFIX_CASE, SWEDISH, email_forms, hetu_check_char,
+                           luhn_ok)
 from .detect.gazetteer import names
 from .vault import SurrogateConflict
 
@@ -21,7 +22,16 @@ FAKE_STREETS = [
     "Kallio", "Louhi", "Kivikko", "Lähde", "Puro", "Kaarna", "Tähkä", "Sarka", "Pelto", "Niitty",
     "Paja", "Mylly", "Sahan", "Veräjä", "Aitta", "Riihi", "Torppa", "Kehto", "Lyhty", "Purje",
 ]
+FAKE_STREETS_SV = ["Björk", "Lind", "Ek", "Strand", "Sjö", "Berg", "Rönn", "Gran", "Asp", "Hag", "Kvarn", "Ström"]
 FIRST_MIN, LAST_MIN = 300, 200
+# Phase-12 decision 1: a surrogate first name + surname pair has fewer than PAIR_MAX estimated real holders,
+# and a one-word surrogate (a lone first name or surname) comes from names with fewer than LONE_MAX holders.
+PAIR_MAX, LONE_MAX = 5, 1000
+# Webmail and ISP domains anyone can have an address at: an email surrogate keeps them (decision 10).
+PUBLIC_MAIL = frozenset("""gmail.com googlemail.com hotmail.com hotmail.fi outlook.com outlook.fi live.com live.fi
+msn.com yahoo.com yahoo.fi icloud.com me.com mac.com protonmail.com proton.me pm.me aol.com gmx.com gmx.net mail.com
+yandex.com zoho.com elisanet.fi kolumbus.fi saunalahti.fi suomi24.fi luukku.com netti.fi pp.inet.fi inet.fi
+dnainternet.net welho.com kotiposti.net mbnet.fi sci.fi jippii.fi surffi.net""".split())
 
 
 def self_label() -> str:
@@ -37,11 +47,29 @@ def rng(vault, user_id: str, canonical: str, gen: int, attempt: int) -> random.R
 
 
 @lru_cache(maxsize=1)
+def population() -> int:
+    """Sum of the DVV surname counts. It leaves out names with fewer than 20 holders, so it is a lower bound
+    of the people the counts describe, and a pair estimate made with it errs high."""
+    return sum(names()["last"].values())
+
+
+def pair_limit(first: str) -> float:
+    """Surname count below which `first` + surname has fewer than PAIR_MAX estimated holders, with the names
+    taken as independent: count(first) * count(last) / population < PAIR_MAX. The first-name counts include
+    every given name, not only the first one, which also errs high."""
+    c = names()["first"].get(first, (0, None))[0]
+    return PAIR_MAX * population() / c if c else float("inf")
+
+
+@lru_cache(maxsize=1)
 def pools() -> dict:
-    """bucket key -> (names, cumulative weights); keys from specific to general."""
+    """bucket key -> (names, counts, cumulative weights), sorted by count ascending so that the names under
+    a count limit are a prefix; keys from specific to general. A first name too common to pair with any
+    pool surname (pair_limit <= LAST_MIN: Juhani, Maria) is left out."""
     raw: dict[tuple, list] = {}
     db = names()
-    rows = [("first", n, c, g) for n, (c, g) in db["first"].items() if c >= FIRST_MIN and n.isalpha()]
+    rows = [("first", n, c, g) for n, (c, g) in db["first"].items()
+            if c >= FIRST_MIN and n.isalpha() and pair_limit(n) > LAST_MIN]
     rows += [("last", n, c, None) for n, c in db["last"].items() if c >= LAST_MIN and n.isalpha()]
     pre = {k: forms.table(k) for k in ("first", "last")}  # precomputed names only, when the tables exist
     rows = [r for r in rows if not pre[r[0]] or r[1] in pre[r[0]]]
@@ -51,12 +79,20 @@ def pools() -> dict:
             raw.setdefault(key, []).append((n, c))
     out = {}
     for key, lst in raw.items():
+        lst.sort(key=lambda nc: nc[1])
         acc, cum = 0, []
         for _, c in lst:
             acc += c
             cum.append(acc)
-        out[key] = ([n for n, _ in lst], cum)
+        out[key] = ([n for n, _ in lst], [c for _, c in lst], cum)
     return out
+
+
+def pool_pairs() -> int:
+    """Number of first name + surname pairs the pair rule allows (the pool size, logged at startup)."""
+    firsts, _, _ = pools()[("first", None)]
+    _, counts, _ = pools()[("last", None)]
+    return sum(bisect.bisect_left(counts, pair_limit(f)) for f in firsts)
 
 
 def keys(kind, g, cls, hv, gr) -> tuple:
@@ -67,16 +103,26 @@ def keys(kind, g, cls, hv, gr) -> tuple:
 WIDEN = 4  # pool levels make_surrogate tries before it falls back to placeholder mode
 
 
-def pick_name(r: random.Random, kind: str, real: str, level: int = 0) -> str:
+def pick_name(r: random.Random, kind: str, real: str, level: int = 0, below: float = float("inf")) -> str:
+    """A pool name like `real` (gender, inflection class), weighted by its count, with fewer than `below` holders."""
     db = names()
     gender = db["first"].get(real, (0, None))[1] if kind == "first" else None
     cls, hv, gr = forms.classify(real, kind), forms.harmony(real), forms.grades(real, kind)
     for key in keys(kind, gender, cls, hv, gr)[level:]:
         pool = pools().get(key)
-        if pool and len(pool[0]) >= 3:
-            names_, cum = pool
-            return names_[bisect.bisect_right(cum, r.random() * cum[-1])]
+        k = bisect.bisect_left(pool[1], below) if pool else 0
+        if k >= 3:
+            return pool[0][bisect.bisect_right(pool[2], r.random() * pool[2][k - 1])]
     raise LookupError("no surrogate pool")
+
+
+def pick_person(r: random.Random, parts: list[tuple[str, str]], level: int) -> list[tuple[str, str]]:
+    """Surrogate names per part. The surname is drawn under the pair limit of the first given name."""
+    out: list[tuple[str, str]] = []
+    for part, lemma in parts:
+        below = LONE_MAX if len(parts) == 1 else pair_limit(out[0][1]) if part == "last" else float("inf")
+        out.append((part, pick_name(r, part_kind(part), lemma, level, below)))
+    return out
 
 
 def person_parts(canonical: str) -> list[tuple[str, str]]:
@@ -117,7 +163,10 @@ def street_forms(street: str) -> list[tuple[str, str]]:
     if not m:
         return [(street, "S0")]
     cls = SUFFIX_CASE[m.group(2)][0]
-    return [(m.group(1) + suf + m.group(3), f"S{i}") for i, suf in enumerate(STREET_SUFFIX[cls].split())]
+    out = {}  # a Swedish name has one form for every case: keep the first
+    for i, suf in enumerate(STREET_SUFFIX[cls].split()):
+        out.setdefault(m.group(1) + suf + m.group(3), f"S{i}")
+    return list(out.items())
 
 
 def code_surrogate(r: random.Random, kind: str, canonical: str) -> str:
@@ -136,10 +185,6 @@ def code_surrogate(r: random.Random, kind: str, canonical: str) -> str:
     if kind == "PHONE":
         d = _digits(r, 7)
         return f"048 {d[:3]} {d[3:]}"
-    if kind == "EMAIL":
-        f = pick_name(r, "first", "Anna")
-        last = pick_name(r, "last", "Virtanen")
-        return f"{_ascii(f)}.{_ascii(last)}@example.invalid"
     if kind == "PLATE":
         letters, digits = canonical.split("-")
         if letters == "ÅL":
@@ -155,8 +200,16 @@ def code_surrogate(r: random.Random, kind: str, canonical: str) -> str:
         num = str(r.randrange(1, 60))
         tail = re.sub(r"^\d+", "", rest)  # keep the shape of "B 12" / "as 3"
         tail = re.sub(r"\d+", lambda x: str(r.randrange(1, 40)), tail)
-        return f"{r.choice(FAKE_STREETS).capitalize()}{cls} {num}{tail}"
+        return f"{r.choice(FAKE_STREETS_SV if cls in SWEDISH else FAKE_STREETS).capitalize()}{cls} {num}{tail}"
     raise ValueError(kind)
+
+
+def email_surrogate(vault, user_id: str, r: random.Random, canonical: str) -> str:
+    """Name-shaped local part with two digits; a webmail domain stays, any other becomes example-N.fi, with N
+    fixed per real domain for the user, so colleagues still share a domain."""
+    domain = canonical.rsplit("@", 1)[1]
+    local = f"{_ascii(pick_name(r, 'first', 'Anna'))}.{_ascii(pick_name(r, 'last', 'Virtanen'))}{r.randrange(10, 100)}"
+    return f"{local}@{domain if domain in PUBLIC_MAIL else f'example-{vault.domain_number(user_id, domain)}.fi'}"
 
 
 def make_surrogate(vault, user_id: str, kind: str, canonical: str, gen: int):
@@ -167,7 +220,10 @@ def make_surrogate(vault, user_id: str, kind: str, canonical: str, gen: int):
         r = rng(vault, user_id, canonical, gen, attempt)
         if kind == "PERSON":
             parts = person_parts(canonical)
-            surr = [(part, pick_name(r, part_kind(part), lemma, attempt // per_level)) for part, lemma in parts]
+            try:
+                surr = pick_person(r, parts, attempt // per_level)
+            except LookupError:
+                continue
             if any(s == lemma for (_, s), (_, lemma) in zip(surr, parts)):
                 continue
             om = forms.omorfi()
@@ -178,6 +234,9 @@ def make_surrogate(vault, user_id: str, kind: str, canonical: str, gen: int):
             infl = " ".join(f"{p}:{forms.classify(lemma, part_kind(p))}" for p, lemma in parts)
             if any(vault.real_taken(user_id, s) for _, s in surr):
                 continue
+        elif kind == "EMAIL":
+            text, infl = email_surrogate(vault, user_id, r, canonical), None
+            rows = [(f, c, "") for f, c in email_forms(text)]
         else:
             text, infl = code_surrogate(r, kind, canonical), None
             rows = [(f, c, "") for f, c in street_forms(text)] if kind == "ADDRESS" else [(text, "NOM", "")]
@@ -207,6 +266,8 @@ def real_rows(kind: str, canonical: str, surface: str) -> list[tuple[str, str, s
         return name_rows(parts + [(p, n) for p, lemma in parts if p != "last" for n in nicknames().get(lemma, ())])
     if kind == "ADDRESS":
         return [(f, c, "") for f, c in street_forms(canonical)]
+    if kind == "EMAIL":  # the surface may carry a case ending: x@firma.fi:hin
+        return list(dict.fromkeys((f, c, "") for a in (surface.partition(":")[0], canonical) for f, c in email_forms(a)))
     return [(surface, "NOM", ""), (canonical, "NOM", "")]
 
 
@@ -248,6 +309,16 @@ def ensure_self(vault, user_id: str):
                                                [(label, "NOM", "self")])
 
 
+def accept_collision(vault, user_id: str, pending) -> None:
+    """The user says a mention equal to an issued surrogate is someone new (phase-12 decision 9): it gets its
+    own entity, and the entity whose surrogate it matched gets a fresh one unless pinned. The old surrogate
+    forms stay, so earlier transcripts still restore."""
+    get_or_create_entity(vault, user_id, pending["kind"], pending["canonical"], pending["text"])
+    old = vault.entity(user_id, pending["entity_id"])
+    if old and not old["pinned"]:
+        regenerate(vault, user_id, old)
+
+
 def regenerate(vault, user_id: str, entity) -> None:
     gen = entity["gen"] + 1
     surr, infl, rows, mode = make_surrogate(vault, user_id, entity["kind"], entity["canonical"], gen)
@@ -284,4 +355,6 @@ def surrogate_form(entity, part: str, case: str | None) -> str:
         return f.get(case or "NOM", s)
     if entity["kind"] == "ADDRESS" and case:
         return dict((c, f) for f, c in street_forms(entity["surrogate"])).get(case, entity["surrogate"])
+    if entity["kind"] == "EMAIL" and case:
+        return dict((c, f) for f, c in email_forms(entity["surrogate"])).get(case, entity["surrogate"])
     return entity["surrogate"]

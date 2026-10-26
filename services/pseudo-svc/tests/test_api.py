@@ -118,3 +118,24 @@ async def test_scan_leak_path(client):
     sc = await post(client, "/scan", {"session_id": "s", "messages": [
         {"role": "tool", "content": [{"type": "text", "text": "Mikko Virtanen"}]}]})
     assert sc["leaked"][0]["path"] == [0, "text"]
+
+
+async def test_collision_round_trip(client):
+    (eid,) = (await post(client, "/vault/seed", {"entities": [{"canonical": "Mikko Virtanen", "kind": "PERSON"}]}))["ids"]
+    lst = (await client.get("/vault/entities", params=U)).json()
+    surrogate = next(e["surrogate"] for e in lst["entities"] if e["id"] == eid)
+    await post(client, "/mask", {"session_id": "s", "text": "Mikko Virtanen tuli."})
+    echo = await post(client, "/mask", {"session_id": "s", "text": f"Hei {surrogate}!"})
+    assert echo == {"masked": f"Hei {surrogate}!", "spans": []}  # model text: an echo, no collision check
+    m = await post(client, "/mask", {"session_id": "s", "text": f"Hei {surrogate}!", "user_input": True})
+    assert m["masked"] == "" and m["spans"] == []
+    (c,) = m["collisions"]
+    assert set(c) == {"pending_id", "entity_id", "kind"} and c["kind"] == "PERSON"
+    pending = (await client.get("/vault/entities", params=U)).json()["pending"]
+    row = next(p for p in pending if p["id"] == c["pending_id"])
+    assert row["reason"] == "collision" and row["entity_id"] == c["entity_id"]
+    bad = await client.post(f"/vault/pending/{c['pending_id']}", json={**U, "action": "confirm"})
+    assert bad.status_code == 422
+    assert (await post(client, f"/vault/pending/{c['pending_id']}", {"action": "accept"}))["ok"]
+    again = await post(client, "/mask", {"session_id": "s", "text": f"Hei {surrogate}!", "user_input": True})
+    assert again["collisions"] == [] and surrogate not in again["masked"]

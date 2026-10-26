@@ -23,6 +23,8 @@ class TextOrJson(BaseModel):
 
 class MaskReq(TextOrJson):
     session_id: str = Field(min_length=1, max_length=200)
+    # what the user typed: names equal to issued surrogates are parked as collisions (phase-12 decisions 5-7)
+    user_input: bool = False
 
 
 class MaskSpan(BaseModel):
@@ -38,9 +40,16 @@ class MaskSpan(BaseModel):
     path: list[str | int] | None = None
 
 
+class Collision(BaseModel):
+    pending_id: int
+    entity_id: int
+    kind: str
+
+
 class MaskRes(BaseModel):
     masked: Any
     spans: list[MaskSpan]
+    collisions: list[Collision] | None = None
 
 
 class UnmaskSpan(BaseModel):
@@ -109,6 +118,8 @@ class Pending(BaseModel):
     detector: str
     score: float
     session_id: str | None
+    reason: Literal["uncertain", "collision"] = "uncertain"
+    entity_id: int | None = None  # collision: the entity whose surrogate the text equals
 
 
 class EntitiesRes(BaseModel):
@@ -149,7 +160,8 @@ class SeedReq(BaseModel):
 
 class PendingReq(BaseModel):
     user_id: str = UserId
-    action: Literal["confirm", "dismiss", "allowlist"]
+    # confirm, dismiss, allowlist: an uncertain detection; accept (a new person), reject (that entity): a collision
+    action: Literal["confirm", "dismiss", "allowlist", "accept", "reject"]
 
 
 class Ok(BaseModel):

@@ -29,6 +29,8 @@ export type Leak = {
 };
 /** `content` is the whole message as JSON; the sidecar masks its string values. */
 export type ScanMessage = { role: string; content: Json };
+/** User input equal to an issued surrogate of `entity_id`, parked in the pending lane (phase-12 decision 7). */
+export type Collision = { pending_id: number; entity_id: number; kind: string };
 
 /** `canonical` and pending `text` are real values: never log them. */
 export type VaultEntityRow = {
@@ -49,7 +51,12 @@ export type VaultPendingRow = {
   detector: string;
   score: number;
   session_id: string;
+  /** `collision`: `text` equals an issued surrogate of `entity_id`; answered with accept or reject. */
+  reason: 'uncertain' | 'collision';
+  entity_id: number | null;
 };
+/** confirm, dismiss, allowlist: an uncertain detection. accept (a new person), reject (that entity): a collision. */
+export type PendingAction = 'confirm' | 'dismiss' | 'allowlist' | 'accept' | 'reject';
 export type VaultPatch = {
   pinned?: boolean;
   allowlisted?: boolean;
@@ -73,11 +80,16 @@ export class PseudoClient {
     this.userId = userId;
   }
 
-  /** A string is sent as `text`, anything else as `json`; the result has the same shape. */
-  mask<T extends Json>(sessionId: string, value: T) {
-    return this.post<{ masked: T; spans: MaskSpan[] }>('/mask', {
+  /**
+   * A string is sent as `text`, anything else as `json`; the result has the same shape. `userInput`
+   * (text the user typed) also checks for names equal to issued surrogates: with `collisions`,
+   * `masked` is empty.
+   */
+  mask<T extends Json>(sessionId: string, value: T, opts: { userInput?: boolean } = {}) {
+    return this.post<{ masked: T; spans: MaskSpan[]; collisions?: Collision[] }>('/mask', {
       session_id: sessionId,
       ...(typeof value === 'string' ? { text: value } : { json: value }),
+      ...(opts.userInput ? { user_input: true } : {}),
     });
   }
 
@@ -122,7 +134,7 @@ export class PseudoClient {
     return this.post<{ entity: VaultEntityRow }>(`/vault/entity/${entityId}`, patch);
   }
 
-  vaultPending(pendingId: number, action: 'confirm' | 'dismiss' | 'allowlist') {
+  vaultPending(pendingId: number, action: PendingAction) {
     return this.post<{ ok: true }>(`/vault/pending/${pendingId}`, { action });
   }
 

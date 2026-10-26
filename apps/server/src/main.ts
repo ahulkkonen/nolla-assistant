@@ -1,13 +1,21 @@
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openDb, users } from '@pa/db';
-import { PSEUDO_DOWN, PseudoClient, type PseudoLog } from '@pa/pi-ext-pseudo';
+import { PSEUDO_COLLISION, PSEUDO_DOWN, PseudoClient, type PseudoLog } from '@pa/pi-ext-pseudo';
 import type { ServerMessage } from '@pa/protocol';
 import { loadAgents, watchAgents } from './agents.ts';
 import { approvals as approvalStore } from './approval.ts';
 import { purgeExpiredSessions } from './auth/session.ts';
 import { startAutomations } from './automations.ts';
-import { agentsState, type BridgeDeps, broadcast, chatRow, errorMsg } from './bridge.ts';
+import {
+  agentsState,
+  type BridgeDeps,
+  broadcast,
+  chatRow,
+  errorMsg,
+  vaultState,
+} from './bridge.ts';
+import { collisionWaits } from './collisions.ts';
 import { type Config, loadConfig } from './config.ts';
 import { buildServer } from './http.ts';
 import { integrations as integrationStore } from './integrations.ts';
@@ -94,7 +102,15 @@ export async function start(
     const hook = (data as { hook?: string } | undefined)?.hook;
     if (msg === PSEUDO_DOWN && (hook === 'input' || hook === 'context_with_system'))
       broadcast(rooms, chatId, errorMsg('pseudo_down', chatId));
+    // The message waits for an answer in the vault (phase-12 decision 7): say so, and show the item.
+    if (msg === PSEUDO_COLLISION && pseudo) {
+      broadcast(rooms, chatId, errorMsg('pseudo_collision', chatId));
+      vaultState(pseudo).then(sendAll, (err: unknown) =>
+        app.log.warn({ chatId, error: String(err) }, 'vault state after collision failed'),
+      );
+    }
   };
+  const collisions = collisionWaits();
   // `app` exists by the time any memory callback runs.
   const memory = memoryStore({
     db,
@@ -133,7 +149,9 @@ export async function start(
     mcp,
     mcpWarn: (chatId, missing) => app.log.warn({ chatId, missing }, 'mcp tools missing'),
     onSettled: ({ sessionId }) => titles.scheduleTitleJob(sessionId),
-    ...(pseudo ? { pseudo: { client: pseudo, log: pseudoLog } } : {}),
+    ...(pseudo
+      ? { pseudo: { client: pseudo, log: pseudoLog, awaitCollision: collisions.wait } }
+      : {}),
     memory: {
       store: memory,
       onChange: (chatId) => broadcast(rooms, chatId, memory.state()),
@@ -162,6 +180,7 @@ export async function start(
     work,
     catalog,
     refusals: new Map(),
+    collisions,
     ...(logStream ? { logStream } : {}),
     ...(pseudo ? { pseudo } : {}),
   });

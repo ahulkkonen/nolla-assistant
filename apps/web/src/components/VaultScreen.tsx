@@ -89,10 +89,18 @@ function actionsOf(e: VaultEntity, askNeverDetect: (e: VaultEntity) => void): Ac
 }
 
 const pendingActions = (p: VaultPending) => {
-  const resolve = (action: 'confirm' | 'allowlist' | 'dismiss') => () =>
+  const resolve = (action: 'confirm' | 'allowlist' | 'dismiss' | 'accept' | 'reject') => () =>
     send({ type: 'vault.pending.resolve', pendingId: p.id, action });
+  // Phase 12: the typed name is already a pseudonym, and the message waits for this answer.
+  if (p.reason === 'collision')
+    return {
+      confirm: resolve('accept'),
+      confirmLabel: 'Uusi henkilö',
+      more: [{ label: 'Sama henkilö', Icon: UserRound, run: resolve('reject') }] satisfies Action[],
+    };
   return {
     confirm: resolve('confirm'),
+    confirmLabel: 'Vahvista',
     more: [
       { label: 'Lähetä sellaisenaan', Icon: ShieldOff, run: resolve('allowlist') },
       { label: 'Hylkää', Icon: X, run: resolve('dismiss') },
@@ -100,7 +108,7 @@ const pendingActions = (p: VaultPending) => {
   };
 };
 
-function PendingLane({ pending }: { pending: VaultPending[] }) {
+function PendingLane({ pending, entities }: { pending: VaultPending[]; entities: VaultEntity[] }) {
   return (
     <section aria-labelledby="pending-title" className="flex flex-col gap-3">
       <h2 id="pending-title" className="text-heading">
@@ -108,7 +116,8 @@ function PendingLane({ pending }: { pending: VaultPending[] }) {
       </h2>
       <ul className="flex flex-col gap-2">
         {pending.map((p) => {
-          const { confirm, more } = pendingActions(p);
+          const { confirm, confirmLabel, more } = pendingActions(p);
+          const owner = entities.find((e) => e.id === p.entityId)?.canonical;
           return (
             // Phones: "Vahvista" goes under the text so the text keeps its width.
             <li
@@ -118,7 +127,9 @@ function PendingLane({ pending }: { pending: VaultPending[] }) {
               <div className="col-start-1 row-start-1 min-w-0">
                 <div className="truncate font-medium">{p.text}</div>
                 <div className="text-meta text-muted-foreground">
-                  {kind(p.kind)} · suojattu kunnes vahvistat · {Math.round(p.score * 100)} %
+                  {p.reason === 'collision'
+                    ? `Onko tämä uusi henkilö? · nimi on jo pseudonyymi${owner ? ` henkilölle ${owner}` : ''} · viesti odottaa vastausta`
+                    : `${kind(p.kind)} · suojattu kunnes vahvistat · ${Math.round(p.score * 100)} %`}
                 </div>
               </div>
               <Button
@@ -128,7 +139,7 @@ function PendingLane({ pending }: { pending: VaultPending[] }) {
                 className="col-start-1 row-start-2 justify-self-start md:col-start-2 md:row-start-1"
               >
                 <Check size={16} />
-                Vahvista
+                {confirmLabel}
               </Button>
               <div className="col-start-2 row-start-1 md:col-start-3">
                 <ActionMenu label={`Toiminnot: ${p.text}`} actions={more} small />
@@ -211,7 +222,9 @@ export function VaultScreen() {
               line="Ne näkyvät täällä, kun viestissä tunnistetaan nimi tai tunnus."
             />
           )}
-          {vault.pending.length > 0 && <PendingLane pending={vault.pending} />}
+          {vault.pending.length > 0 && (
+            <PendingLane pending={vault.pending} entities={vault.entities} />
+          )}
           {entities.length > 0 && (
             <section aria-labelledby="entities-title" className="flex flex-col gap-3">
               <h2 id="entities-title" className="text-heading">

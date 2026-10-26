@@ -7,7 +7,7 @@ All names are synthetic combinations of common Finnish first names and surnames.
 
 | File | Purpose |
 |---|---|
-| `corpus.jsonl` | 312 labelled texts. Do not edit by hand. |
+| `corpus.jsonl` | 512 labelled texts: c001–c312 from phase 3, c313–c512 from phase 12. Do not edit by hand. |
 | `generate.py` | Hand-written source of the corpus with inline markup. Edit this file, then run it to rebuild `corpus.jsonl`. |
 | `validate.py` | Checks the corpus and prints the counts per kind and per tag. |
 | `vault-seed.json` | The 15 people that the harness registers in the vault before a run. |
@@ -41,21 +41,25 @@ PSEUDO_URL=http://pseudo-svc:8000 python3 -I tests/pii/harness.py
 
 `PERSON`, `HETU`, `IBAN`, `PHONE`, `ADDRESS`, `POSTCODE_CITY`, `PLATE`, `EMAIL`, `ORG`.
 `ORG` spans are not recall targets. They make false positives on brand names measurable.
+`POSTCODE_CITY` spans are not recall targets either. Since phase 12 the postcode and the city stay as
+they are in the text (`docs/decisions/phase-12-pseudo.md`), so a prediction on them is a false positive.
 
 ## Scoring
 
-1. The harness registers the people in `vault-seed.json` through `seed_vault()`. The phase-3 contract has no create endpoint. Thus the function tries `POST /vault/seed` first. If the sidecar returns 404 or 405, the function sends one short sentence per person to `POST /mask`. Change only this function when the sidecar adds a seed endpoint.
+1. The harness registers the people in `vault-seed.json` through `seed_vault()`. The phase-3 contract has no create endpoint. Thus the function tries `POST /vault/seed` first. If the sidecar returns 404 or 405, the function sends one short sentence per person to `POST /mask`. Change only this function when the sidecar adds a seed endpoint. Each run uses a new vault user (`pii-harness-<random>`), because the entities of an earlier run would turn unseen names into vault hits.
 2. The harness sends each `text` to `POST /mask` with its own `session_id`. The response spans have offsets in the masked text. The harness maps them back to the original text with `real_form`.
 3. A gold span is found when a predicted span overlaps it. The predicted kind does not have to match, because the requirement is that the value is masked.
-4. A predicted span is a true positive when it overlaps a gold span that is not `ORG`. All other predictions are false positives.
+4. A predicted span is a true positive when it overlaps a gold span that is not `ORG` or `POSTCODE_CITY`. All other predictions are false positives.
 5. Recall is computed per gold kind and per group. Precision is computed per predicted kind and per `detector` value in the response. For each detector, the report also gives the share of gold spans that it found first.
 
-Groups and thresholds (plan §6). A run fails (exit code 1) if one threshold is not met:
+Thresholds (phase-12 gate, `docs/decisions/phase-12-pseudo.md`). A run fails (exit code 1) if one threshold is not met:
 
-| Group | Gold spans | Minimum recall |
+| Gate | Spans | Minimum |
 |---|---|---|
-| `codes` | `HETU`, `IBAN`, `PHONE`, `EMAIL` | 99 % |
-| `vault_known_names` | `PERSON` spans whose `ref` is in `vault-seed.json` | 95 % |
-| `unseen_names` | all other `PERSON` spans | 85 % |
+| `codes` | recall of `HETU`, `IBAN`, `PHONE` | 100 % |
+| `PERSON` | recall of all `PERSON` spans | 98 % |
+| `EMAIL` | recall of `EMAIL` spans | 95 % |
+| `ADDRESS` | recall of `ADDRESS` spans (street name and number) | 95 % |
+| `precision <kind>` | precision of each predicted kind `PERSON`, `EMAIL`, `ADDRESS`, `HETU`, `IBAN`, `PHONE` | 97 % |
 
-`ADDRESS`, `POSTCODE_CITY` and `PLATE` have recall and precision in the report but no threshold. Plates without a context word are expected misses (plan §6, layer 1).
+The report also gives recall for `vault_known_names` (`PERSON` spans whose `ref` is in `vault-seed.json`) and `unseen_names` (all other `PERSON` spans), and recall and precision for `PLATE`, without a threshold. Plates without a context word are expected misses (plan §6, layer 1).

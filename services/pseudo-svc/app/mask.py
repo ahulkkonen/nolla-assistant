@@ -6,14 +6,17 @@ from dataclasses import dataclass
 
 from . import forms
 from .detect import codes, gazetteer, ner, trie_pattern, vault_rec
-from .detect.codes import SUFFIX_CASE, STREET_RE
+from .detect.codes import SUFFIX_CASE, STREET_RE, email_case
 from .detect.gazetteer import cap
 from .detect.resolve import PENDING_BELOW, resolve
-from .surrogate import ensure_self, get_or_create_entity, part_kind, surrogate_form
+from .surrogate import ensure_self, get_or_create_entity, part_kind, person_parts, surrogate_form
 
 log = logging.getLogger("pseudo")
 FULL = (codes, vault_rec, gazetteer, ner)
 FAST = (codes, vault_rec)
+# kinds whose surrogates look like real values (a real person can have the name, the address, the gmail
+# address); code surrogates come from ranges no real code uses (hetu 900-999, IBAN 9..., phone 048)
+REALISH = ("PERSON", "ADDRESS", "EMAIL")
 
 
 MAX_DEPTH, MAX_NODES, MAX_TEXT = 32, 20000, 200_000
@@ -100,24 +103,32 @@ def _pieces(vault, user_id: str, c, e) -> list[tuple[int, int, str]]:
             out.append((p["start"], p["end"], surrogate_form(e, p["part"], case)))
         return out
     if e["kind"] == "ADDRESS":
-        m = STREET_RE.match(c.surface)
+        m = STREET_RE.match(c.surface[:1].upper() + c.surface[1:])
         case = f"S{SUFFIX_CASE[m.group(2)][1]}" if m else None
         return [(c.start, c.end, surrogate_form(e, "", case) + (c.surface[m.end(3):] if m else ""))]
+    if e["kind"] == "EMAIL":  # x@firma.com:iin -> y@example-3.fi:hin; an unknown ending stays as typed
+        base, case = email_case(c.surface)
+        return [(c.start, c.end, surrogate_form(e, "", case) if case else e["surrogate"] + c.surface[len(base):])]
     return [(c.start, c.end, e["surrogate"])]
 
 
-def _surrogate_cover(vault, user_id: str, session_id: str | None, text: str) -> list[tuple[int, int]]:
-    """Regions of text that are surrogates: code surrogates, and name or address forms of entities with
+def _surrogate_cover(vault, user_id: str, session_id: str | None, text: str,
+                     user_input: bool = False) -> list[tuple[int, int]]:
+    """Regions of text that are surrogates: code surrogates, and name, address or email forms of entities with
     a span in this session, unless the form is also someone's real form. A surrogate-shaped name from elsewhere may be
-    a real person with the same name, so it is masked."""
+    a real person with the same name, so it is masked. User input covers code surrogates only: the user
+    sees real values, so a name there is never an echo (phase-12 decision 6)."""
     rx, table = vault_rec.matcher(vault, user_id, "surrogate")
     if not rx or not session_id:
         return []
     _, real = vault_rec.matcher(vault, user_id)
     hits = [(m, *table[m.group(0)][0][::3]) for m in rx.finditer(text) if m.group(0) not in real]
+    codes_only = [(m.start(), m.end()) for m, _, kind in hits
+                  if kind not in REALISH or m.group(0).endswith("@example.invalid")]  # pre-phase-12 email surrogates
+    if user_input:
+        return codes_only
     seen = vault.last_seen(session_id, list({eid for _, eid, _ in hits})) if hits else {}
-    # code surrogates come from ranges no real code uses (hetu 900-999, IBAN 9..., phone 048): always skip
-    return [(m.start(), m.end()) for m, eid, kind in hits if eid in seen or kind not in ("PERSON", "ADDRESS")]
+    return codes_only + [(m.start(), m.end()) for m, eid, kind in hits if eid in seen and kind in REALISH]
 
 
 def _covered(c, cover: list[tuple[int, int]], text: str) -> bool:
@@ -143,6 +154,56 @@ def _echo(vault, user_id: str, session_id: str | None, cands: list) -> list:
     return [c for c in new if names and all(p.get("lemma") in names for p in c.parts)]
 
 
+def _surrogate_index(vault, user_id: str):
+    """(kind, part, base form) -> entity ids over the base surrogate forms, plus the number of name parts per
+    entity; cached per vault version."""
+    cache = vault.__dict__.setdefault("matchers", {})
+    ver = vault.version.get(user_id, 0)
+    hit = cache.get((user_id, "bases"))
+    if hit and hit[0] == ver:
+        return hit[1], hit[2]
+    index, nparts = {}, {}
+    for form, part, eid, kind, canonical in vault.surrogate_bases(user_id):
+        key = (kind, part_kind(part), form) if kind == "PERSON" else (kind, "", form.lower())
+        index.setdefault(key, set()).add(eid)
+        if kind == "PERSON":
+            nparts[eid] = len(person_parts(canonical))
+    cache[(user_id, "bases")] = (ver, index, nparts)
+    return index, nparts
+
+
+def _owner(vault, user_id: str, c) -> int | None:
+    """The entity whose whole surrogate the new mention c equals: every name part, or the address or email.
+    None for a mention of a known real value (a later mention of someone accepted as new)."""
+    if c.entity_id or c.kind not in REALISH or vault.find(user_id, ("PERSON", "SELF") if c.kind == "PERSON"
+                                                           else (c.kind,), c.canonical):
+        return None
+    index, nparts = _surrogate_index(vault, user_id)
+    if c.kind != "PERSON":
+        return min(index.get((c.kind, "", c.canonical.lower()), ()), default=None)
+    if not c.parts:
+        return None
+    ids = set.intersection(*[index.get(("PERSON", part_kind(p["part"]), cap(p.get("lemma") or "")), set())
+                             for p in c.parts])
+    return min((e for e in ids if nparts.get(e) == len(c.parts)), default=None)
+
+
+def _collisions(vault, user_id: str, session_id: str, cands: list) -> tuple[list[dict], list]:
+    """User input equal to an issued surrogate is a different real person or value with the same name or
+    address (phase-12 decisions 6 and 7). Each one is parked in the pending lane; the caller fails the turn closed.
+    A mention the user said is that entity (rejected) stays as it is: it is that entity's surrogate."""
+    found, keep = [], []
+    for c in cands:
+        eid = _owner(vault, user_id, c)
+        status = vault.collision_status(user_id, eid, c.surface) if eid else None
+        if eid is None or status == "accepted":
+            keep.append(c)
+        elif status != "rejected":
+            pid = vault.pending_add(user_id, session_id, c, eid, reason="collision")
+            found.append(dict(pending_id=pid, entity_id=eid, kind=c.kind))
+    return found, keep
+
+
 def _entities(vault, user_id: str, cands: list) -> list:
     """Vault rows for the candidates. A lone first name or surname of a full name found in the same text
     is that person (Liisa Kallion ... Liisalle), not a new one."""
@@ -160,23 +221,32 @@ def _entities(vault, user_id: str, cands: list) -> list:
     return [ents[id(c)] for c in cands]
 
 
-def mask_text(vault, user_id: str, session_id: str, text: str, path=None, layers=FULL, lower=False):
+def mask_text(vault, user_id: str, session_id: str, text: str, path=None, layers=FULL, lower=False,
+              collisions: list | None = None):
+    """`collisions` (a list) marks user input: names equal to issued surrogates are checked, appended there, and
+    a text with any comes back empty and unrecorded (the turn fails closed until the user answers)."""
     ctx = Ctx(vault, user_id, session_id, lower=lower)
 
-    cover = _surrogate_cover(vault, user_id, session_id, text)
+    cover = _surrogate_cover(vault, user_id, session_id, text, collisions is not None)
 
     def resolved(cands):
         return resolve([c for c in cands if not _covered(c, cover, text)], vault.never_detect(user_id))
 
     cands = resolved([c for layer in layers for c in layer.detect(text, ctx)])
-    echo = _echo(vault, user_id, session_id, cands)
-    cands = [c for c in cands if c not in echo]
+    if collisions is None:
+        echo = _echo(vault, user_id, session_id, cands)
+        cands = [c for c in cands if c not in echo]
+    else:
+        found, cands = _collisions(vault, user_id, session_id, cands)
+        if found:
+            collisions.extend(found)
+            return "", []
     ents = _entities(vault, user_id, cands)
     new = tuple(dict.fromkeys(e["id"] for c, e in zip(cands, ents) if not c.entity_id))
     if new and vault_rec in layers:
         # new people: let the vault find their later mentions (Marja Saari ... Marjan); first-pass spans stay.
         # Only the new entities are matched, with a small ad-hoc regex.
-        later = resolved(vault_rec.detect(text, Ctx(vault, user_id, session_id, new)))
+        later = resolved(vault_rec.detect(text, Ctx(vault, user_id, session_id, new, lower)))
         extra = [(c, vault.entity(user_id, c.entity_id)) for c in later
                  if not any(c.start < d.end and d.start < c.end for d in cands)]
         pairs = sorted([*zip(cands, ents), *extra], key=lambda ce: ce[0].start)
@@ -217,6 +287,15 @@ def mask(vault, user_id: str, session_id: str, text=None, json=None):
         return mask_text(vault, user_id, session_id, text, lower=True)
     # JSON (tool results) carries code, paths and English: capitalised names only
     return walk(json, lambda s, p: mask_text(vault, user_id, session_id, s, p))
+
+
+def mask_input(vault, user_id: str, session_id: str, text: str):
+    """What the user typed (the extension's `input` hook): plain text plus the collision check.
+    Returns (masked, spans, collisions); with collisions, masked is empty and nothing is recorded."""
+    ensure_self(vault, user_id)
+    collisions: list[dict] = []
+    masked, spans = mask_text(vault, user_id, session_id, text, lower=True, collisions=collisions)
+    return masked, spans, collisions
 
 
 def _surrogates(vault, user_id: str):

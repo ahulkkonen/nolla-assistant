@@ -24,6 +24,7 @@ TITLES = re.compile(
 # capitalised words that start sentences and are also names (Usko, Toivo, Onni): need extra context
 MIN_SURNAME_COUNT = 40
 MIN_FIRST_COUNT = 50
+LONE_SURNAME_MIN = 200  # a lone lower-case surname the lexicon does not know needs this many DVV holders
 
 
 @lru_cache(maxsize=1)
@@ -185,17 +186,29 @@ def known_name(word: str) -> bool:
     return bool(readings(word) & {"FIRST", "LAST"})
 
 
+@lru_cache(maxsize=50000)
+def surname_shaped(word: str) -> str | None:
+    """The DVV surname with at least LONE_SURNAME_MIN holders that the capitalised token is an inflected form
+    of (Nyströmille -> Nyström), else None. The bare nominative does not count: from and said are DVV surnames."""
+    return next((lemma for lemma, kind in lemmas(word) if kind == "last" and word != lemma
+                 and _count(lemma, "last") >= LONE_SURNAME_MIN and word in forms.generate_forms(lemma, "last").values()),
+                None)
+
+
 def lower_names(text: str) -> list[Candidate]:
-    """Lower-case names, as typed on a phone. Every word must be a name the lexicon knows (this also keeps
-    the DVV lookups off ordinary words). A first name followed by a surname is a name unless both words
-    are ordinary words (toivo laine); it goes to the pending lane if one of them is. A lone word must
-    be no ordinary word and no place, and a common first name or a surname. Without Voikko or Omorfi
+    """Lower-case names, as typed on a phone. Every word must be a name the lexicon knows, or no ordinary
+    word and an inflected form of a DVV surname with at least LONE_SURNAME_MIN holders (phase-12 decision 15):
+    this also keeps the DVV lookups off ordinary words. A first name followed by a surname is a name unless
+    both words are ordinary words (toivo laine); it goes to the pending lane if one of them is. A lone word
+    must be no ordinary word and no place, and a common first name or a surname. Without Voikko or Omorfi
     only pairs are found: nothing tells an ordinary word."""
     lexicon = _voikko() is not None or forms.omorfi() is not None
     info = []
     for m in LOWER_RE.finditer(text):
         w = m.group(0)
-        if w in LOWER_STOP or not plain_word(text, m.start(), m.end()) or lexicon and not known_name(cap(w)):
+        if w in LOWER_STOP or not plain_word(text, m.start(), m.end()):
+            continue
+        if lexicon and not known_name(cap(w)) and (common_word(w) or not surname_shaped(cap(w))):
             continue
         lem = lemmas(cap(w))
         first = next((l for l, k in lem if k == "first" and _count(l, "first") >= MIN_FIRST_COUNT), None)
@@ -228,6 +241,28 @@ def lower_names(text: str) -> list[Candidate]:
     return out
 
 
+@lru_cache(maxsize=1)
+def _particles() -> dict[str, list[str]]:
+    """Lower-case particle -> the rest of each DVV surname that starts with it: von -> [Hertzen, ...]."""
+    out: dict[str, list[str]] = defaultdict(list)
+    for n in names()["last"]:
+        head, _, rest = n.partition(" ")
+        if rest and head.islower():
+            out[head].append(rest)
+    return out
+
+
+def _particle_name(text: str, m) -> tuple[int, int, str] | None:
+    """'Carl von Hertzenin' after the first name m: (start, end, lemma) of the inflected surname after the particle
+    (Hertzenin -> Hertzen); the particle itself stays in the text, unmasked."""
+    pm = re.match(r" ([a-z]{2,3}) ([A-ZÅÄÖ][a-zåäöéü]+)", text[m.end():m.end() + 80])
+    if not pm or pm.group(1) not in _particles():
+        return None
+    tail = pm.group(2)
+    lemma = next((n for n in _particles()[pm.group(1)] if tail in forms.rule_forms(n, "last").values()), None)
+    return (m.end() + pm.start(2), m.end() + pm.end(2), lemma) if lemma else None
+
+
 def detect(text: str, ctx=None) -> list[Candidate]:
     toks = [m for m in TOKEN_RE.finditer(text) if m.group(0) not in STOP]
     info = []
@@ -245,6 +280,15 @@ def detect(text: str, ctx=None) -> list[Candidate]:
         m, first, last = info[i]
         nxt = info[i + 1] if i + 1 < len(info) else None
         adjacent = nxt and text[m.end():nxt[0].start()] == " "
+        noble = _particle_name(text, m) if first else None
+        if noble:  # Carl von Hertzenin: a DVV surname with a particle
+            start, end, lemma = noble
+            parts = [dict(start=m.start(), end=m.end(), part="first", lemma=first),
+                     dict(start=start, end=end, part="last", lemma=lemma)]
+            out.append(Candidate(m.start(), end, "PERSON", f"{first} {lemma}", "gazetteer", 0.95, text[m.start():end], parts))
+            full_firsts.add(first)
+            i += 2 if nxt and nxt[0].start() == start else 1
+            continue
         # full name: first name followed by a surname or a capitalised word that is not a place
         if first and adjacent and (nxt[2] or not nxt[1] or nxt[0].group(0).endswith("nen")) \
                 and not (not nxt[2] and place(nxt[0].group(0))):

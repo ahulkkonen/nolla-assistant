@@ -27,9 +27,11 @@ CREATE TABLE IF NOT EXISTS span (id INTEGER PRIMARY KEY, user_id TEXT NOT NULL, 
   surrogate_form TEXT, detector TEXT, score REAL, created_at TEXT);
 CREATE INDEX IF NOT EXISTS span_session ON span(session_id, entity_id);
 CREATE TABLE IF NOT EXISTS merge_log (from_id INTEGER, into_id INTEGER, at TEXT);
+-- reason: 'uncertain' (low score) or 'collision' (user input equal to an issued surrogate of entity_id;
+-- canonical is the mention's base form, for the entity an accept creates)
 CREATE TABLE IF NOT EXISTS pending (id INTEGER PRIMARY KEY, user_id TEXT NOT NULL, session_id TEXT,
   kind TEXT, text TEXT, start INTEGER, end INTEGER, detector TEXT, score REAL,
-  status TEXT DEFAULT 'open', created_at TEXT, entity_id INTEGER);
+  status TEXT DEFAULT 'open', created_at TEXT, entity_id INTEGER, reason TEXT DEFAULT 'uncertain', canonical TEXT);
 CREATE INDEX IF NOT EXISTS pending_dedupe ON pending(user_id, entity_id, kind, text);
 CREATE TABLE IF NOT EXISTS never_detect (user_id TEXT NOT NULL, kind TEXT NOT NULL, canonical TEXT NOT NULL,
   PRIMARY KEY(user_id, kind, canonical));
@@ -56,6 +58,10 @@ class Vault:
         self.db.execute("PRAGMA journal_mode = WAL")
         self.db.execute("PRAGMA foreign_keys = ON")
         self.db.executescript(SCHEMA)
+        cols = {r[1] for r in self.db.execute("PRAGMA table_info(pending)")}  # vaults made before phase 12
+        for col, decl in (("reason", "TEXT DEFAULT 'uncertain'"), ("canonical", "TEXT")):
+            if col not in cols:
+                self.db.execute(f"ALTER TABLE pending ADD COLUMN {col} {decl}")
         self.lock = threading.RLock()
         self.version: dict[str, int] = {}  # user_id -> bump on every form change (matcher caches)
         # surrogate seed key: random per vault, created once, kept inside the encrypted file.
@@ -132,6 +138,17 @@ class Vault:
             return self.db.execute("INSERT INTO counter VALUES (?,?,1) ON CONFLICT(user_id, name)"
                                    " DO UPDATE SET value=value+1 RETURNING value", (user_id, name)).fetchone()[0]
 
+    def domain_number(self, user_id: str, domain: str) -> int:
+        """N of example-N.fi for a real email domain: assigned once per user and domain, never reused."""
+        key = f"email_domain:{domain}"
+        with self.lock:
+            hit = self.q("SELECT value FROM counter WHERE user_id=? AND name=?", (user_id, key))
+            if hit:
+                return hit[0][0]
+            n = self.next_counter(user_id, "email_domain")
+            self.x("INSERT INTO counter VALUES (?,?,?)", (user_id, key, n))
+            return n
+
     def surrogate_taken(self, user_id: str, forms: list[str]) -> bool:
         marks = ",".join("?" * len(forms))
         return bool(self.q(f"SELECT 1 FROM entity_form WHERE user_id=? AND side='surrogate' AND form IN ({marks})"
@@ -167,6 +184,13 @@ class Vault:
         return {r[0]: r[1] for r in self.q(
             f"SELECT entity_id, max(id) FROM span WHERE session_id IN (?,?) AND entity_id IN ({marks}) GROUP BY entity_id",
             (*self._scope(session_id), *entity_ids))}
+
+    def surrogate_bases(self, user_id: str) -> list:
+        """(form, part, entity_id, kind, canonical) of the base surrogate forms (nominative names, plain email
+        addresses, nominative streets) of every PERSON, EMAIL and ADDRESS entity of the user, all generations."""
+        return self.q("SELECT f.form, f.part, f.entity_id, e.kind, e.canonical FROM entity_form f JOIN entity e"
+                      " ON e.id=f.entity_id WHERE f.user_id=? AND f.side='surrogate' AND f.analysis IN ('NOM','S0')"
+                      " AND e.kind IN ('PERSON','EMAIL','ADDRESS')", (user_id,))
 
     def session_surrogate_names(self, user_id: str, session_id: str) -> set[str]:
         """Base forms (nominative) of the surrogate names of the people this session has seen."""
@@ -236,19 +260,28 @@ class Vault:
             self.bump(user_id)
 
     # -- pending lane
-    def pending_add(self, user_id: str, session_id: str, c, entity_id: int) -> int | None:
-        """Queue a low-confidence detection once per (entity, kind, text), whatever its later status."""
+    def pending_add(self, user_id: str, session_id: str, c, entity_id: int, reason: str = "uncertain") -> int | None:
+        """Queue a detection once per (entity, kind, text, reason), whatever its later status. Returns the id of
+        the open row (new or queued before), None when the row was answered already."""
         with self.lock:
-            if self.q("SELECT 1 FROM pending WHERE user_id=? AND entity_id=? AND kind=? AND text=? LIMIT 1",
-                      (user_id, entity_id, c.kind, c.surface)):
-                return None
+            hit = self.q("SELECT id, status FROM pending WHERE user_id=? AND entity_id=? AND kind=? AND text=?"
+                         " AND reason=? ORDER BY id DESC LIMIT 1", (user_id, entity_id, c.kind, c.surface, reason))
+            if hit:
+                return hit[0]["id"] if hit[0]["status"] == "open" else None
             return self.x("INSERT INTO pending(user_id,session_id,kind,text,start,end,detector,score,created_at,"
-                          "entity_id) VALUES (?,?,?,?,?,?,?,?,?,?)", (user_id, session_id, c.kind, c.surface, c.start,
-                                                                     c.end, c.detector, c.score, now(), entity_id))
+                          "entity_id,reason,canonical) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                          (user_id, session_id, c.kind, c.surface, c.start, c.end, c.detector, c.score, now(),
+                           entity_id, reason, c.canonical))
+
+    def collision_status(self, user_id: str, entity_id: int, text: str) -> str | None:
+        """Status of the latest collision row for this mention of the entity's surrogate, None when there is none."""
+        r = self.q("SELECT status FROM pending WHERE user_id=? AND entity_id=? AND text=? AND reason='collision'"
+                   " ORDER BY id DESC LIMIT 1", (user_id, entity_id, text))
+        return r[0][0] if r else None
 
     def pending_list(self, user_id: str) -> list:
-        return self.q("SELECT id, kind, text, detector, score, coalesce(session_id, '') AS session_id FROM pending"
-                      " WHERE user_id=? AND status='open' ORDER BY id", (user_id,))
+        return self.q("SELECT id, kind, text, detector, score, coalesce(session_id, '') AS session_id, reason, entity_id"
+                      " FROM pending WHERE user_id=? AND status='open' ORDER BY id", (user_id,))
 
     def pending_get(self, user_id: str, pid: int):
         r = self.q("SELECT * FROM pending WHERE id=? AND user_id=?", (pid, user_id))

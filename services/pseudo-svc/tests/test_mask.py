@@ -1,3 +1,5 @@
+import re
+
 import pytest
 from conftest import KEY
 
@@ -31,7 +33,7 @@ def test_codes_mask_and_restore(vault):
     text = "Hetu 131052-308T, tili FI21 1234 5600 0007 85, puh. 040 123 4567, posti matti.v@example.com."
     masked, spans = mask(vault, text)
     assert [s["kind"] for s in spans] == ["HETU", "IBAN", "PHONE", "EMAIL"]
-    assert "131052-308T" not in masked and "048 " in masked and "@example.invalid" in masked
+    assert "131052-308T" not in masked and "048 " in masked and "@example-1.fi" in masked  # a company domain
     hetu = spans[0]["surrogate"]
     assert 900 <= int(hetu[7:10]) <= 999 and hetu[6] == "-"
     assert unmask(vault, masked)[0] == text
@@ -304,3 +306,119 @@ def test_lowercase_lone_names_and_ordinary_words(vault):
     for text in ["toivo on hyvä asia ja onni myös", "satu kertoi sadun", "meri oli tyyni ja saari kaunis",
                  "max 50 euroa", "tulen illalla kotiin", "usko pois", "lahja oli kiva"]:
         assert mask(vault, text)[1] == [], text
+
+
+# -- phase 12 (docs/decisions/phase-12-pseudo.md)
+
+def test_surrogate_pairs_are_rare(vault):
+    db = gazetteer.names()
+    for canonical in ["Mikko Virtanen", "Sanna Hyvönen", "Anna-Liisa Mäkelä", "Matti Juhani Laine", "Erik Åkerlund"]:
+        parts = S.get_or_create_entity(vault, U, "PERSON", canonical)["surrogate"].split()
+        first, last = db["first"][parts[0]][0], db["last"][parts[-1]]
+        assert first * last / S.population() < S.PAIR_MAX, (canonical, parts)
+        assert last >= S.LAST_MIN and first >= S.FIRST_MIN
+    for canonical in ["Hyvönen", "Sirpa"]:  # one-word surrogates come from names with < LONE_MAX holders
+        (name,) = S.get_or_create_entity(vault, U, "PERSON", canonical)["surrogate"].split()
+        assert max(db["first"].get(name, (0,))[0], db["last"].get(name, 0)) < S.LONE_MAX
+    assert S.pool_pairs() > 1_000_000 and "Juhani" not in S.pools()[("first", None)][0]
+
+
+def _collide(vault, canonical="Mikko Virtanen"):
+    """An entity and user input that names its whole surrogate in the genitive."""
+    a = S.get_or_create_entity(vault, U, "PERSON", canonical)
+    first, _ = a["surrogate"].split()
+    return a, f"Soitin eilen {first} {S.surrogate_form(a, 'last', 'GEN')} kanssa."
+
+
+def test_collision_parks_user_input_until_answered(vault):
+    a, text = _collide(vault)
+    mask(vault, "Mikko Virtanen tuli.")  # the surrogate went to the model in this session
+    masked, spans, found = M.mask_input(vault, U, "s1", text)
+    assert (masked, spans) == ("", []) and found == [{"pending_id": found[0]["pending_id"], "entity_id": a["id"],
+                                                     "kind": "PERSON"}]
+    assert M.mask_input(vault, U, "s1", text)[2] == found  # asked once, also when sent again
+    (row,) = vault.pending_list(U)
+    assert (row["reason"], row["entity_id"], row["text"]) == ("collision", a["id"], text[13:-8])
+    assert vault.q("SELECT count(*) FROM span WHERE session_id='s1'")[0][0] == 1  # the dropped text left no span
+    # a lone part of the surrogate is no collision: a real first name like any other
+    assert M.mask_input(vault, U, "s1", f"Hei {a['surrogate'].split()[0]}!")[2] == []
+    # not user input (model text, tool results, titles): the old echo rule
+    assert mask(vault, text) == (text, [])
+
+
+def test_collision_accept_makes_a_new_person_and_renames_the_old(vault):
+    a, text = _collide(vault)
+    pid = M.mask_input(vault, U, "s1", text)[2][0]["pending_id"]
+    S.accept_collision(vault, U, vault.pending_get(U, pid))
+    vault.pending_set(U, pid, "accepted")
+    masked, spans, found = M.mask_input(vault, U, "s1", text)
+    new = vault.entity(U, spans[0]["entity_id"])
+    assert found == [] and new["id"] != a["id"] and new["canonical"] == " ".join(a["surrogate"].split())
+    assert a["surrogate"].split()[0] not in masked  # the new person has a surrogate of its own
+    renamed = vault.entity(U, a["id"])
+    assert renamed["surrogate"] != a["surrogate"] and renamed["gen"] == 1
+    assert unmask(vault, f"{a['surrogate']} soitti.")[0] == "Mikko Virtanen soitti."  # old transcripts restore
+
+
+def test_collision_reject_keeps_that_entity_and_pinned_keeps_its_surrogate(vault):
+    a, text = _collide(vault)
+    pid = M.mask_input(vault, U, "s1", text)[2][0]["pending_id"]
+    vault.pending_set(U, pid, "rejected")
+    assert M.mask_input(vault, U, "s1", text) == (text, [], [])  # it is that entity's surrogate: stays
+    b, text_b = _collide(vault, "Sanna Hyvönen")
+    vault.set_fields(U, b["id"], pinned=1)
+    S.accept_collision(vault, U, vault.pending_get(U, M.mask_input(vault, U, "s1", text_b)[2][0]["pending_id"]))
+    assert vault.entity(U, b["id"])["surrogate"] == b["surrogate"]
+
+
+def test_email_surrogates_keep_the_domain_class(vault):
+    masked, spans = mask(vault, "Kirjoitin tuomas@firma.com:iin, liisa@firma.com ja x.y@gmail.com sekä a@toinen.fi.")
+    s1, s2, s3, s4 = [s["surrogate"] for s in spans]
+    assert s1.endswith("@example-1.fi:hin") and s2.endswith("@example-1.fi") and s4.endswith("@example-2.fi")
+    assert re.fullmatch(r"[a-z]+\.[a-z]+\d\d@gmail\.com", s3)  # webmail stays webmail
+    assert unmask(vault, masked)[0] == "Kirjoitin tuomas@firma.com:iin, liisa@firma.com ja x.y@gmail.com sekä a@toinen.fi."
+    e = vault.entity(U, spans[0]["entity_id"])
+    assert S.surrogate_form(e, "", "ELA") == e["surrogate"] + ":stä"
+
+
+def test_street_addresses_keep_postcode_and_city(vault):
+    text = "Asumme Lehtikaarteella 4, 02210 Espoo. Mökki: Strandvägen 3."
+    masked, spans = mask(vault, text)
+    assert [s["kind"] for s in spans] == ["ADDRESS", "ADDRESS"] and "02210 Espoo" in masked
+    assert re.search(r"[A-ZÅÄÖ][a-zäö]+kaarteella \d+, 02210 Espoo", masked) and "vägen " in masked
+    assert unmask(vault, masked)[0] == text
+    assert mask(vault, "asun koivukuja 7 b 12")[1][0]["kind"] == "ADDRESS"  # plain text: lower case too
+    assert M.mask(vault, U, "s1", json={"p": "koivukuja 7 b 12"})[1] == []  # tool results: capitalised only
+
+
+def test_lower_case_nickname_of_a_new_person(vault):
+    masked, spans = mask(vault, "veikko hakala soitti ja veke tulee illalla")
+    assert len(spans) == 2 and len({s["entity_id"] for s in spans}) == 1 and "veke" not in masked
+
+
+def test_lone_surname_needs_200_holders_and_a_surname_form():
+    from app.detect.gazetteer import LONE_SURNAME_MIN, surname_shaped
+
+    assert surname_shaped("Lahtiseksi") == "Lahtinen" and surname_shaped("Nyströmille") == "Nyström"
+    assert surname_shaped("Lahtinen") is None and surname_shaped("From") is None  # the nominative is no evidence
+    rare = next(n for n, c in gazetteer.names()["last"].items() if n.endswith("nen") and 50 <= c < LONE_SURNAME_MIN)
+    assert surname_shaped(forms.generate_forms(rare, "last")["ALL"]) is None
+
+
+@needs_lexicon
+def test_lowercase_lone_surname_rule(vault):
+    # Voikko knows Kettunen as a surname; Halinen (822 holders) and Paaso (852) only the DVV list knows
+    for text, canonical in [("kysyin kettuselta", "Kettunen"), ("soitin eilen haliselle", "Halinen"),
+                            ("vie tämä paasolle", "Paaso")]:
+        assert [vault.entity(U, s["entity_id"])["canonical"] for s in mask(vault, text)[1]] == [canonical], text
+    # ordinary words that are surnames too (lahtiseksi: Voikko reads it as the adjective lahtinen), and
+    # English words that are DVV surnames
+    for text in ["kokko paloi juhannuksena", "meri oli tyyni", "nimi vaihtu lahtiseksi", "a gift from said friend"]:
+        assert mask(vault, text)[1] == [], text
+
+
+def test_surname_with_a_particle_is_masked_whole(vault):
+    text = "Puhuin eilen Carl von Hertzenin kanssa."
+    masked, spans = mask(vault, text)
+    assert "Hertzen" not in masked and " von " in masked and len(spans) == 1
+    assert unmask(vault, masked)[0] == text

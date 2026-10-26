@@ -30,6 +30,7 @@ async def lifespan(app: FastAPI):
     t = time.perf_counter()
     state["vault"] = Vault(os.environ.get("VAULT_PATH", "/data/vault.db"), os.environ.get("PSEUDO_VAULT_KEY", ""))
     gazetteer.names(), gazetteer._index(), codes.municipalities(), S.pools(), S.nicknames()
+    log.info("surrogate pool pairs=%d", S.pool_pairs())
     layers = {"omorfi": forms.omorfi() is not None, "voikko": gazetteer._voikko() is not None,
               "ner": ner.engine() is not None}
     state["layers"] = layers
@@ -69,6 +70,10 @@ def healthz():
 @app.post("/mask", response_model=m.MaskRes, response_model_exclude_none=True)
 def mask(req: m.MaskReq):
     t = time.perf_counter()
+    if req.user_input and req.text is not None:
+        masked, spans, collisions = pipeline.mask_input(vault(), req.user_id, req.session_id, req.text)
+        timed("mask", t, spans=len(spans), collisions=len(collisions))
+        return {"masked": masked, "spans": spans, "collisions": collisions}
     masked, spans = pipeline.mask(vault(), req.user_id, req.session_id, req.text, req.json_)
     timed("mask", t, spans=len(spans))
     return {"masked": masked, "spans": spans}
@@ -164,6 +169,8 @@ def pending(pending_id: int, req: m.PendingReq):
     p = v.pending_get(req.user_id, pending_id)
     if not p:
         raise HTTPException(404, "pending not found")
+    if (p["reason"] == "collision") != (req.action in ("accept", "reject")):
+        raise HTTPException(422, "action does not fit this pending item")
     e = v.entity(req.user_id, p["entity_id"]) if p["entity_id"] else None
     if req.action == "allowlist" and e:
         v.set_fields(req.user_id, e["id"], allowlisted=1)
@@ -171,5 +178,10 @@ def pending(pending_id: int, req: m.PendingReq):
         v.set_fields(req.user_id, e["id"], confirmed=1)  # later low-score mentions are not queued again
     if req.action == "dismiss" and e:
         v.add_never_detect(req.user_id, e["kind"], e["canonical"])
-    v.pending_set(req.user_id, pending_id, {"confirm": "confirmed", "dismiss": "dismissed", "allowlist": "allowlisted"}[req.action])
+    if req.action == "accept":
+        S.accept_collision(v, req.user_id, p)
+    # reject: the row's status alone makes later input with this text that entity's surrogate again
+    v.pending_set(req.user_id, pending_id, {"confirm": "confirmed", "dismiss": "dismissed", "allowlist": "allowlisted",
+                                            "accept": "accepted", "reject": "rejected"}[req.action])
+    log.info("pending id=%d reason=%s action=%s", pending_id, p["reason"], req.action)
     return {"ok": True}

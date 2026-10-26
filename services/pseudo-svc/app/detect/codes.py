@@ -17,11 +17,16 @@ BBAN_RE = re.compile(r"(?<![\w-])(\d{6}-\d{2,8}|\d{14})(?![\w-])")
 BBAN_CTX = re.compile(r"^(tilinumero|tili|iban|pankkitili)", re.I)
 EMAIL_RE = re.compile(r"\b[\w.+-]{1,64}@[\w-]{1,63}(?:\.[\w-]{1,63}){0,8}\.[A-Za-z]{2,24}\b")
 EMAIL_MAX = 254
+# logo@2x.png is a file name: these endings are no top-level domains
+FILE_EXT = frozenset("png jpg jpeg gif svg webp heic bmp tif tiff pdf txt json csv docx xlsx pptx".split())
+EMAIL_SUFFIX = re.compile(r":[a-zåäö]{1,5}(?!\w)")
+EMAIL_CASES = ("NOM", "GEN", "PAR", "ESS", "TRA", "INE", "ELA", "ILL", "ADE", "ABL", "ALL")
 WINDOW = 200  # context lookups read at most this many characters around a match
 PLATE_RE = re.compile(r"\b(?:[A-ZÅÄÖ]{2,3}-[1-9]\d{0,2}|ÅL-\d{1,5})(?![\w-])")
 PLATE_CTX = re.compile(r"\b(auto|rekisteri|rekkari|pysäk|kilpi|kilve|kilv|ajoneuvo)", re.I)
 
-# case order: NOM GEN PAR ADE ABL ALL INE ELA ILL (the index is the case key for surrogates)
+# case order: NOM GEN PAR ADE ABL ALL INE ELA ILL (the index is the case key for surrogates).
+# Swedish names stay uninflected in Finnish text: one form for every case.
 STREET_SUFFIX = {
     "katu": "katu kadun katua kadulla kadulta kadulle kadussa kadusta katuun",
     "tie": "tie tien tietä tiellä tieltä tielle tiessä tiestä tiehen",
@@ -34,15 +39,26 @@ STREET_SUFFIX = {
     "ranta": "ranta rannan rantaa rannalla rannalta rannalle rannassa rannasta rantaan",
     "tori": "tori torin toria torilla torilta torille torissa torista toriin",
     "aukio": "aukio aukion aukiota aukiolla aukiolta aukiolle aukiossa aukiosta aukioon",
+    "kaarre": "kaarre kaarteen kaarretta kaarteella kaarteelta kaarteelle kaarteessa kaarteesta kaarteeseen",
+    "piha": "piha pihan pihaa pihalla pihalta pihalle pihassa pihasta pihaan",
+    "portti": "portti portin porttia portilla portilta portille portissa portista porttiin",
+    **{sv: " ".join([sv] * 9) for sv in ("vägen", "gatan", "gränden", "stigen", "backen", "torget")},
 }
-SUFFIX_CASE = {f: (cls, i) for cls, forms in STREET_SUFFIX.items() for i, f in enumerate(forms.split())}
+SWEDISH = frozenset(c for c, forms in STREET_SUFFIX.items() if len(set(forms.split())) == 1)
+SUFFIX_CASE: dict[str, tuple[str, int]] = {}
+for _cls, _forms in STREET_SUFFIX.items():
+    for _i, _f in enumerate(_forms.split()):
+        SUFFIX_CASE.setdefault(_f, (_cls, _i))
 _suf = "|".join(sorted(SUFFIX_CASE, key=len, reverse=True))
+_NUM = r"(\s\d{1,4}(?:\s?[A-Za-z](?![\wåäö])(?:\s?\d{1,3})?|\s(?:as\.?|asunto)\s?\d{1,3})?(?::[a-zä]{1,3})?)(?![\w-])"
 STREET_RE = re.compile(
     rf"\b((?:(?:Vanha|Uusi|Iso|Pikku|Pieni|Ylä|Ala|Itäinen|Läntinen|Pohjoinen|Eteläinen) )?"
-    rf"[A-ZÅÄÖ][a-zåäö]*(?:-[a-zåäö]*)*?)({_suf})"
-    r"(\s\d{1,4}(?:\s?[A-Za-z](?![\wåäö])(?:\s?\d{1,3})?|\s(?:as\.?|asunto)\s?\d{1,3})?(?::[a-zä]{1,3})?)(?![\w-])"
+    rf"[A-ZÅÄÖ][a-zåäö]*(?:-[a-zåäö]*)*?)({_suf}){_NUM}"
 )
-POSTCODE_RE = re.compile(r"\b(\d{5})\s+([A-ZÅÄÖ][A-Za-zÅÄÖåäö-]+)")
+# plain text typed on a phone: "asun koivukuja 7 b 12"
+STREET_LOWER_RE = re.compile(rf"(?<![\w-])([a-zåäö][a-zåäö]*(?:-[a-zåäö]*)*?)({_suf}){_NUM}")
+# road numbers, not addresses: Valtatie 4, Kantatie 51:lle
+ROADS = frozenset("valtatie kantatie seututie yhdystie moottoritie".split())
 
 
 @lru_cache(maxsize=1)
@@ -134,9 +150,37 @@ def _near(text: str, start: int, end: int, pattern: re.Pattern, tokens: int = 5)
     return any(pattern.match(t.strip("(),.;:")) for t in before + after)
 
 
-def streets(text: str) -> list[Candidate]:
-    return [Candidate(m.start(), m.end(), "ADDRESS", m.group(1) + STREET_SUFFIX[SUFFIX_CASE[m.group(2)][0]].split()[0]
-                      + m.group(3).split(":")[0], "codes", 1.0, m.group(0)) for m in STREET_RE.finditer(text)]
+def email_endings(address: str) -> list[str]:
+    """Case endings after a colon, in EMAIL_CASES order, by how the last label is read: fi:hin, com:iin."""
+    tld = address.rsplit(".", 1)[-1].lower()
+    a = "a" if set(tld) & set("aou") else "ä"
+    if tld[-1:] in tuple("aeiouyäö"):
+        return ["", ":n", f":t{a}", f":n{a}", ":ksi", f":ss{a}", f":st{a}", f":h{tld[-1]}n", f":ll{a}", f":lt{a}", ":lle"]
+    return ["", ":in", f":i{a}", f":in{a}", ":iksi", f":iss{a}", f":ist{a}", ":iin", f":ill{a}", f":ilt{a}", ":ille"]
+
+
+def email_forms(address: str) -> list[tuple[str, str]]:
+    """(form, case) for every case ending of an address."""
+    return [(address + e, c) for e, c in zip(email_endings(address), EMAIL_CASES)]
+
+
+def email_case(surface: str) -> tuple[str, str | None]:
+    """'x@firma.fi:hin' -> ('x@firma.fi', 'ILL'); the case is None for an ending of no known case."""
+    base, colon, rest = surface.partition(":")
+    return base, dict(zip(email_endings(base), EMAIL_CASES)).get(colon + rest)
+
+
+def streets(text: str, lower: bool = False) -> list[Candidate]:
+    out = []
+    for rx in (STREET_RE, STREET_LOWER_RE) if lower else (STREET_RE,):
+        for m in rx.finditer(text):
+            cls = SUFFIX_CASE[m.group(2)][0]
+            name = m.group(1)[:1].upper() + m.group(1)[1:]
+            if name.lower() + cls in ROADS:
+                continue
+            out.append(Candidate(m.start(), m.end(), "ADDRESS", name + STREET_SUFFIX[cls].split()[0]
+                                 + m.group(3).split(":")[0], "codes", 1.0, m.group(0)))
+    return out
 
 
 def detect(text: str, ctx=None) -> list[Candidate]:
@@ -166,18 +210,18 @@ def detect(text: str, ctx=None) -> list[Candidate]:
             canon = phonenumbers.format_number(m.number, phonenumbers.PhoneNumberFormat.E164)
             out.append(Candidate(m.start, m.end, "PHONE", canon, "codes", 1.0, raw))
     for m in EMAIL_RE.finditer(text):
-        if len(m.group(0)) <= EMAIL_MAX:
-            out.append(_cand(m, "EMAIL", m.group(0).lower()))
+        addr = m.group(0)
+        if len(addr) > EMAIL_MAX or addr.rsplit(".", 1)[1].lower() in FILE_EXT:
+            continue
+        end, suf = m.end(), EMAIL_SUFFIX.match(text, m.end())
+        if suf and suf.group(0) in email_endings(addr):
+            end = suf.end()  # "osoitteeseen x@firma.fi:hin": the ending follows the surrogate's domain
+        out.append(Candidate(m.start(), end, "EMAIL", addr.lower(), "codes", 1.0, text[m.start():end]))
     for m in PLATE_RE.finditer(text):
         if _near(text, m.start(), m.end(), PLATE_CTX):
             out.append(_cand(m, "PLATE", m.group(0)))
-    st = streets(text)
-    out += st
-    ends = [c.end for c in st]
-    for m in POSTCODE_RE.finditer(text):
-        after_street = any(0 <= m.start() - e <= 3 for e in ends)
-        if after_street or locality(m.group(2)):
-            out.append(_cand(m, "POSTCODE_CITY", m.group(1), 1.0, 1))  # the locality itself stays
+    # postcode and city stay as they are (phase-12 decision 13); only street name and number are masked
+    out += streets(text, ctx is not None and ctx.lower)
     return out
 
 

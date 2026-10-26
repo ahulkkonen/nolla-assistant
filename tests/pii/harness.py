@@ -12,14 +12,21 @@ import importlib.util
 import json
 import os
 import sys
+import uuid
 import urllib.error
 import urllib.request
 from collections import Counter, defaultdict
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-CODE_KINDS = {"HETU", "IBAN", "PHONE", "EMAIL"}
-THRESHOLDS = {"codes": 0.99, "vault_known_names": 0.95, "unseen_names": 0.85}
+CODE_KINDS = {"HETU", "IBAN", "PHONE"}
+# Phase-12 gate (docs/decisions/phase-12-pseudo.md): recall per group, precision per predicted kind.
+THRESHOLDS = {"codes": 1.0, "PERSON": 0.98, "EMAIL": 0.95, "ADDRESS": 0.95}
+PRECISION_MIN = 0.97
+PRECISION_KINDS = ("PERSON", "EMAIL", "ADDRESS", "HETU", "IBAN", "PHONE")
+# Not recall targets: brand names, and postcodes with their city, which stay as they are (phase 12).
+# A prediction that overlaps only these is a false positive.
+NOT_TARGETS = {"ORG", "POSTCODE_CITY"}
 
 
 def _validate_module():
@@ -82,8 +89,8 @@ def score(recs: list[dict], preds: dict[str, list[dict]], known: set[str]) -> di
     """Recall per gold kind and group; precision per predicted kind and per detector.
 
     A gold span counts as found when any predicted span overlaps it (the kind does not have to match:
-    what matters is that the value is masked). ORG gold spans are not recall targets; a prediction
-    that only overlaps ORG or nothing counts as a false positive.
+    what matters is that the value is masked). ORG and POSTCODE_CITY gold spans are not recall targets;
+    a prediction that only overlaps them or nothing counts as a false positive.
     """
     gold_tot, gold_hit = Counter(), Counter()
     pred_tot, pred_tp = Counter(), Counter()
@@ -91,7 +98,7 @@ def score(recs: list[dict], preds: dict[str, list[dict]], known: set[str]) -> di
     misses, false_pos, decoy_hits = [], [], []
     for r in recs:
         ps = preds.get(r["id"], [])
-        targets = [s for s in r["spans"] if s["kind"] != "ORG"]
+        targets = [s for s in r["spans"] if s["kind"] not in NOT_TARGETS]
         for g in targets:
             groups = [g["kind"]]
             if g["kind"] in CODE_KINDS:
@@ -115,19 +122,20 @@ def score(recs: list[dict], preds: dict[str, list[dict]], known: set[str]) -> di
             if not tp:
                 false_pos.append({"id": r["id"], "kind": p["kind"], "detector": p["detector"],
                                   "surface": surface(r["text"], p),
-                                  "org": any(overlaps(p, g) for g in r["spans"] if g["kind"] == "ORG")})
+                                  "non_target": any(overlaps(p, g) for g in r["spans"] if g["kind"] in NOT_TARGETS)})
             for d in r.get("decoys", []):
                 if overlaps(p, d):
                     decoy_hits.append({"id": r["id"], "decoy_kind": d["kind"], "surface": surface(r["text"], d)})
     ratio = lambda a, b: round(a / b, 4) if b else None  # noqa: E731
-    total_targets = sum(1 for r in recs for s in r["spans"] if s["kind"] != "ORG")
+    total_targets = sum(1 for r in recs for s in r["spans"] if s["kind"] not in NOT_TARGETS)
+    gates = {k: (v, ratio(gold_hit[k], gold_tot[k])) for k, v in THRESHOLDS.items()}
+    gates.update({f"precision {k}": (PRECISION_MIN, ratio(pred_tp[k], pred_tot[k])) for k in PRECISION_KINDS})
     return {
         "recall": {k: {"found": gold_hit[k], "total": gold_tot[k], "recall": ratio(gold_hit[k], gold_tot[k])} for k in sorted(gold_tot)},
         "precision_by_kind": {k: {"tp": pred_tp[k], "predicted": pred_tot[k], "precision": ratio(pred_tp[k], pred_tot[k])} for k in sorted(pred_tot)},
         "by_detector": {d: {"predicted": det_tot[d], "tp": det_tp[d], "precision": ratio(det_tp[d], det_tot[d]),
                             "gold_found_first": det_first[d], "recall_share": ratio(det_first[d], total_targets)} for d in sorted(det_tot)},
-        "thresholds": {k: {"min": v, "recall": ratio(gold_hit[k], gold_tot[k]),
-                           "pass": gold_tot[k] > 0 and gold_hit[k] / gold_tot[k] >= v} for k, v in THRESHOLDS.items()},
+        "thresholds": {k: {"min": v, "value": got, "pass": got is not None and got >= v} for k, (v, got) in gates.items()},
         "misses": misses, "false_positives": false_pos, "decoy_hits": decoy_hits,
     }
 
@@ -148,7 +156,7 @@ def report(res: dict) -> None:
         print(f"  {k:18} predicted {v['predicted']:4} precision {v['precision']}  recall share {v['recall_share']}")
     print(f"false positives: {len(res['false_positives'])}  decoy hits: {len(res['decoy_hits'])}  misses: {len(res['misses'])}")
     for k, v in res["thresholds"].items():
-        print(f"  {'PASS' if v['pass'] else 'FAIL'} {k}: {v['recall']} (min {v['min']})")
+        print(f"  {'PASS' if v['pass'] else 'FAIL'} {k}: {v['value']} (min {v['min']})")
 
 
 def self_test() -> None:
@@ -163,8 +171,9 @@ def self_test() -> None:
         {"start": 6, "end": 16, "kind": "PERSON", "canonical": "Virtanen", "ref": "Mikko Virtanen", "note": ""},
         {"start": 26, "end": 37, "kind": "PHONE", "canonical": "+358405562190", "note": ""}]}
     res = score([rec], {"t1": got}, {"Mikko Virtanen"})
-    assert res["thresholds"]["codes"]["pass"] and res["thresholds"]["vault_known_names"]["pass"]
-    assert res["thresholds"]["unseen_names"]["recall"] is None and not res["thresholds"]["unseen_names"]["pass"]
+    assert res["thresholds"]["codes"]["pass"] and res["thresholds"]["PERSON"]["pass"]
+    assert res["recall"]["vault_known_names"]["recall"] == 1.0 and res["thresholds"]["precision PERSON"]["pass"]
+    assert res["thresholds"]["EMAIL"]["value"] is None and not res["thresholds"]["EMAIL"]["pass"]
     assert score([rec], {"t1": got[:1]}, set())["recall"]["PHONE"]["recall"] == 0.0
 
 
@@ -172,7 +181,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--dry-run", action="store_true", help="validate the corpus and print counts; no HTTP")
     ap.add_argument("--url", default=os.environ.get("PSEUDO_URL"))
-    ap.add_argument("--user-id", default="pii-harness")
+    # A fresh vault user per run: entities from an earlier run would turn unseen names into vault hits.
+    ap.add_argument("--user-id", default=f"pii-harness-{uuid.uuid4().hex[:8]}")
     args = ap.parse_args()
 
     val = _validate_module()

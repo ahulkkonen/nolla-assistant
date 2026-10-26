@@ -28,6 +28,8 @@ def matcher(vault, user_id: str, side: str = "real"):
     global compiles
     table = defaultdict(list)
     for form, eid, part, analysis, kind in vault.all_forms(user_id, side):
+        if side == "real" and kind == "POSTCODE_CITY":
+            continue  # postcodes stay as they are since phase 12; old entities still restore
         if len(form) <= MAX_FORM:
             table[form].append((eid, part, analysis, kind))
             if side == "real" and kind in NAMES and form.lower() != form:
@@ -76,20 +78,24 @@ class _Finder:
         return sorted(hits, key=_Hit.start)
 
 
-def scoped(vault, user_id: str, entity_ids) -> tuple:
+def scoped(vault, user_id: str, entity_ids, lower: bool = False) -> tuple:
     """Ad-hoc (finder, table) over the real forms of a few entities: finds the later mentions of
-    people created in this request without recompiling the whole vault."""
+    people created in this request without recompiling the whole vault. `lower` adds the lower-case
+    variants of name forms, as matcher() does (veikko hakala ... veke)."""
     table = defaultdict(list)
     kinds = {i: vault.entity(user_id, i)["kind"] for i in entity_ids}
     for eid in entity_ids:
         for r in vault.forms_for(eid):
             if r["side"] == "real" and len(r["form"]) <= MAX_FORM:
-                table[r["form"]].append((eid, r["part"], r["analysis"], kinds[eid]))
+                row = (eid, r["part"], r["analysis"], kinds[eid])
+                table[r["form"]].append(row)
+                if lower and kinds[eid] in NAMES and r["form"].lower() != r["form"]:
+                    table[r["form"].lower()].append(row)
     return _Finder(table), table
 
 
 def detect(text: str, ctx) -> list[Candidate]:
-    rx, table = scoped(ctx.vault, ctx.user_id, ctx.only) if ctx.only else matcher(ctx.vault, ctx.user_id)
+    rx, table = scoped(ctx.vault, ctx.user_id, ctx.only, ctx.lower) if ctx.only else matcher(ctx.vault, ctx.user_id)
     if not rx:
         return []
     hits = []
