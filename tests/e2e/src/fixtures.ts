@@ -9,6 +9,7 @@ import { startFakeSidecar } from '@pa/pi-ext-pseudo/fake-sidecar';
 import { hashPassword } from '@pa/server/src/auth/password.ts';
 import { loadConfig } from '@pa/server/src/config.ts';
 import { start } from '@pa/server/src/main.ts';
+import { seedAgents } from '@pa/server/src/test-utils.ts';
 import { type Browser, test as base, expect, type Page } from '@playwright/test';
 import { WEB } from './global-setup.ts';
 
@@ -231,6 +232,8 @@ export const test = base.extend<{
     mkdirSync(join(dataDir, 'work/aleksi'), { recursive: true });
     if (workFiles) seedWork(join(dataDir, 'work/aleksi'));
     mkdirSync(join(dataDir, 'automations'));
+    // The repository's agents plus a second profile for the picker and editor tests.
+    seedAgents(join(dataDir, 'agents'));
     if (automation) writeFileSync(join(dataDir, 'automations/aamu.yaml'), AUTOMATION);
     if (memoryUser) {
       mkdirSync(join(dataDir, 'memory/aleksi'), { recursive: true });
@@ -255,7 +258,7 @@ export const test = base.extend<{
         USER_ID: 'aleksi',
         LOG_LEVEL: 'warn',
         AUTOMATIONS_DIR: join(dataDir, 'automations'),
-        // A copy of the repository's agents/ (seeded at start): the editor tests write to it.
+        // The editor tests write to this copy.
         AGENTS_DIR: join(dataDir, 'agents'),
         // Push on, any endpoint host: the browser side is mocked (see `mockPush`).
         VAPID_PUBLIC: VAPID.publicKey,

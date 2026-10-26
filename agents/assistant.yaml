@@ -3,10 +3,11 @@ name: Avustaja
 model: zdr/strong
 prompt: prompts/assistant.md
 tools:
-  allow: [read, write, edit, recall, memory, web_search]
+  allow: [read, write, edit, bash, recall, memory, web_search]
   mcp: [workspace]
 approval:
-  always: [write, edit]
+  always: [write, edit, bash]
+  # Children ask for their own gated tools.
   # web_search asks only when the query names a vault entity (phase-14 decision 7).
-  never: [read, recall, memory, web_search]
-subagents: false
+  never: [read, subagent, recall, memory, web_search]
+subagents: true

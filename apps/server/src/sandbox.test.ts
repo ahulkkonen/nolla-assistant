@@ -1,9 +1,9 @@
 import { afterEach, expect, test } from 'vitest';
-import { boot, bootResearch, connect, runCleanups } from './test-utils.ts';
+import { boot, bootBroker, connect, runCleanups } from './test-utils.ts';
 
 afterEach(runCleanups);
 test('bash runs through the broker after approval', { timeout: 30_000 }, async () => {
-  const { c, chat, srv, broker } = await bootResearch([
+  const { c, chat, srv, broker } = await bootBroker([
     { toolCalls: [{ name: 'bash', args: { command: 'echo hei' } }] },
     { text: 'Valmis.' },
   ]);
@@ -25,7 +25,7 @@ test("without the broker a profile with bash never gets Pi's bash", {
   const { config, run } = await boot([]);
   const srv = await run();
   const c = await connect(config.port);
-  c.send({ type: 'chat.create', agentId: 'research' });
+  c.send({ type: 'chat.create' });
   const { chat } = await c.next('chat.created');
   const tools = (await srv.registry.get(chat.id)).getActiveToolNames();
   expect(tools).toContain('read');
@@ -33,7 +33,7 @@ test("without the broker a profile with bash never gets Pi's bash", {
 });
 
 test('a subagent child runs bash through the broker', { timeout: 60_000 }, async () => {
-  const { c, chat, broker } = await bootResearch([
+  const { c, chat, broker } = await bootBroker([
     {
       toolCalls: [
         { name: 'subagent', args: { mode: 'single', tasks: [{ label: 'a', task: 'aja' }] } },

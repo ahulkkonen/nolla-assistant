@@ -232,3 +232,7 @@ LiteLLM egress. Only the OpenRouter keys are real; nothing leaves the machine ex
 The `backup` service does not start here because it needs an S3 bucket. Add `--profile backup`
 when `.env` has the S3 values. Stop everything with `docker compose ... down`; add `-v` to
 delete the data volume too.
+
+## Upgrade notes
+
+- Phase 16 (one agent): after this upgrade, open Settings › Agentit and delete "Tutkija". Avustaja now has its tools, and the delete moves the chats of Tutkija to Avustaja.

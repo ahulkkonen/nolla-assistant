@@ -1163,7 +1163,7 @@ for (const scheme of ['light', 'dark'] as const) {
         test('agent-picker', async ({ app, page }) => {
           await app.login(page);
           await page.getByRole('button', { name: 'Agentti: Avustaja' }).click();
-          await expect(page.getByRole('menuitemradio', { name: 'Tutkija' })).toBeVisible();
+          await expect(page.getByRole('menuitemradio', { name: 'Kirjoittaja' })).toBeVisible();
           await shot(page, 'agent-picker', vp.width, scheme);
         });
 
@@ -1184,8 +1184,6 @@ for (const scheme of ['light', 'dark'] as const) {
           app.llm.push({ match: parent, text: 'Valmis.' });
           const hold = await holdAfter(page, 'subagent.state');
           await app.login(page);
-          await page.getByRole('button', { name: 'Agentti: Avustaja' }).click();
-          await page.getByRole('menuitemradio', { name: 'Tutkija' }).click();
           await sendMessage(page, 'Tiivistä kolme aihetta');
           await hold.reached;
           const row = page.getByRole('button', { name: '3 aliagenttia jonossa' });
@@ -1213,7 +1211,7 @@ for (const scheme of ['light', 'dark'] as const) {
         test('settings-agents', async ({ app, page }) => {
           await app.login(page);
           await openSettings(page, 'Agentit');
-          await expect(page.getByText('Tutkija')).toBeVisible();
+          await expect(page.getByText('Kirjoittaja', { exact: true })).toBeVisible();
           await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
           await shot(page, 'settings-agents', vp.width, scheme);
         });
@@ -1419,23 +1417,25 @@ for (const scheme of ['light', 'dark'] as const) {
 
         test('agents-editor', async ({ app, page }) => {
           await app.login(page);
-          await editAgent(page, 'Tutkija');
+          await editAgent(page, 'Kirjoittaja');
           await blur(page);
           await shot(page, 'agents-editor', vp.width, scheme);
         });
 
         test('agents-editor-yaml', async ({ app, page }) => {
           await app.login(page);
-          await editAgent(page, 'Tutkija');
+          await editAgent(page, 'Kirjoittaja');
           await page.getByRole('tab', { name: 'YAML' }).click();
-          await expect(page.getByLabel('Tiedosto', { exact: true })).toHaveValue(/^id: research$/m);
+          await expect(page.getByLabel('Tiedosto', { exact: true })).toHaveValue(
+            /^id: kirjoittaja$/m,
+          );
           await blur(page);
           await shot(page, 'agents-editor-yaml', vp.width, scheme);
         });
 
         test('agents-editor-error', async ({ app, page }) => {
           await app.login(page);
-          await editAgent(page, 'Tutkija');
+          await editAgent(page, 'Kirjoittaja');
           await page.getByLabel('Nimi', { exact: true }).fill('');
           await page.getByRole('button', { name: 'Tallenna' }).click();
           await expect(page.getByText('Tarkista kenttä.')).toBeVisible();

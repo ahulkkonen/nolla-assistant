@@ -5,7 +5,7 @@ import { boot, connect, runCleanups } from './test-utils.ts';
 
 afterEach(runCleanups);
 
-test('research profile: a parallel subagent run streams subagent.state', {
+test('default profile: a parallel subagent run streams subagent.state', {
   timeout: 60_000,
 }, async () => {
   const tasks = ['a', 'b', 'c'].map((label) => ({ label, task: `task ${label}` }));
@@ -18,7 +18,7 @@ test('research profile: a parallel subagent run streams subagent.state', {
   ]);
   const srv = await run();
   const c = await connect(config.port);
-  c.send({ type: 'chat.create', agentId: 'research' });
+  c.send({ type: 'chat.create' });
   const { chat } = await c.next('chat.created');
   c.send({ type: 'user.message', chatId: chat.id, text: 'Tutki kolme asiaa' });
   const states = [];

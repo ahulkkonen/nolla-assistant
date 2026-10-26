@@ -827,13 +827,13 @@ test('agent picker: a new chat is created with the picked agent', async ({ app, 
   app.llm.push({ text: 'Tutkitaan.' });
   await app.login(page);
   await page.getByRole('button', { name: 'Agentti: Avustaja' }).click();
-  await page.getByRole('menuitemradio', { name: 'Tutkija' }).click();
-  await expect(page.getByRole('button', { name: 'Agentti: Tutkija' })).toBeVisible();
+  await page.getByRole('menuitemradio', { name: 'Kirjoittaja' }).click();
+  await expect(page.getByRole('button', { name: 'Agentti: Kirjoittaja' })).toBeVisible();
   await page.getByLabel('Viesti').fill('Tutki tätä');
   await page.getByLabel('Viesti').press('ControlOrMeta+Enter');
   await expect(page.locator('.md').last()).toHaveText('Tutkitaan.');
   // The chip now reads the chat's own agentId from the server and is locked.
-  const chip = page.getByRole('button', { name: 'Agentti: Tutkija' });
+  const chip = page.getByRole('button', { name: 'Agentti: Kirjoittaja' });
   await expect(chip).toHaveAttribute('aria-disabled', 'true');
   await page.getByRole('button', { name: 'Uusi keskustelu' }).first().click();
   await expect(page.getByRole('button', { name: 'Agentti: Avustaja' })).toBeVisible();
@@ -864,22 +864,22 @@ test.describe('admin', () => {
     page,
   }) => {
     await app.login(page);
-    await editAgent(page, 'Tutkija');
+    await editAgent(page, 'Kirjoittaja');
     const name = page.getByLabel('Nimi', { exact: true });
-    await name.fill('Tutkija Pro');
+    await name.fill('Kirjoittaja Pro');
     // The dry run merges the form into the file: the comments stay.
     await page.getByRole('tab', { name: 'YAML' }).click();
     const yaml = page.getByLabel('Tiedosto', { exact: true });
-    await expect(yaml).toHaveValue(/^name: Tutkija Pro$/m);
-    await expect(yaml).toHaveValue(/# Children ask for their own gated tools\./);
-    await yaml.fill((await yaml.inputValue()).replace('Tutkija Pro', 'Tutkija Plus'));
+    await expect(yaml).toHaveValue(/^name: Kirjoittaja Pro$/m);
+    await expect(yaml).toHaveValue(/# Test-only second profile/);
+    await yaml.fill((await yaml.inputValue()).replace('Kirjoittaja Pro', 'Kirjoittaja Plus'));
     await page.getByRole('tab', { name: 'Lomake' }).click();
-    await expect(name).toHaveValue('Tutkija Plus');
+    await expect(name).toHaveValue('Kirjoittaja Plus');
     await page.getByRole('button', { name: 'Tallenna' }).click();
-    await expect(page.getByRole('button', { name: 'Toiminnot: Tutkija Plus' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Toiminnot: Kirjoittaja Plus' })).toBeVisible();
     await newChat(page);
     await page.getByRole('button', { name: 'Agentti: Avustaja' }).click();
-    await expect(page.getByRole('menuitemradio', { name: 'Tutkija Plus' })).toBeVisible();
+    await expect(page.getByRole('menuitemradio', { name: 'Kirjoittaja Plus' })).toBeVisible();
   });
 
   test('automations: Arkisin klo 7.30 shows five next runs, saves, turns off', async ({
@@ -924,7 +924,7 @@ test.describe('admin', () => {
     page,
   }) => {
     await app.login(page);
-    await editAgent(page, 'Tutkija');
+    await editAgent(page, 'Kirjoittaja');
     await page.getByRole('tab', { name: 'YAML' }).click();
     const yaml = page.getByLabel('Tiedosto', { exact: true });
     const bad = (await yaml.inputValue()).replace('model: zdr/strong', 'model: zdr/ei-ole');
@@ -934,7 +934,7 @@ test.describe('admin', () => {
     await expect(page.getByRole('tab', { name: 'YAML' })).toHaveAttribute('aria-selected', 'true');
     await expect(yaml).toHaveValue(bad);
     await expect(yaml).toBeFocused();
-    expect(readFileSync(join(app.dataDir, 'agents/research.yaml'), 'utf8')).toContain(
+    expect(readFileSync(join(app.dataDir, 'agents/kirjoittaja.yaml'), 'utf8')).toContain(
       'model: zdr/strong',
     );
     // Unsaved: a navigation away is held and asked.

@@ -10,14 +10,7 @@ import { afterEach, expect, test } from 'vitest';
 import { loadModel } from './embeddings.ts';
 import { lineDiff, MemoryError, memoryStore } from './memory.ts';
 import { indexChat } from './search.ts';
-import {
-  bootChat,
-  bootPseudo,
-  bootResearch,
-  cleanups,
-  connect,
-  runCleanups,
-} from './test-utils.ts';
+import { bootBroker, bootChat, bootPseudo, cleanups, connect, runCleanups } from './test-utils.ts';
 
 afterEach(runCleanups);
 
@@ -151,7 +144,7 @@ test.skipIf(!modelOk)(
 test('a memory write after bash waits for approval, then applies and commits', {
   timeout: 60_000,
 }, async () => {
-  const { llm, config, c, chat } = await bootResearch(
+  const { llm, config, c, chat } = await bootBroker(
     [
       { toolCalls: [{ name: 'bash', args: { command: 'echo hei' } }] },
       add('Sähkösopimus päättyy 30.11.'),

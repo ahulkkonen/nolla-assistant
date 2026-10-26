@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { cpSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer as httpServer } from 'node:http';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -9,7 +9,7 @@ import { startFakeBroker } from '@pa/pi-ext-sandbox/fake-broker';
 import type { ClientMessageInput, ServerMessage } from '@pa/protocol';
 import WebSocket from 'ws';
 import { hashPassword } from './auth/password.ts';
-import { loadConfig } from './config.ts';
+import { BUNDLED_AGENTS, loadConfig } from './config.ts';
 import { start } from './main.ts';
 
 /** Shared server test harness. Each test file runs `afterEach(runCleanups)`. */
@@ -154,15 +154,40 @@ export async function bootPseudo(
 
 const TOKEN = 'broker-test-token';
 
-/** Boots with the fake broker rooted at the work dir; returns a socket on a new research chat. */
-export async function bootResearch(turns: FakeTurn[], env: Record<string, string> = {}) {
+/**
+ * Copies the repository's agents to `dir` and adds the test-only profile `kirjoittaja`, so the
+ * tests that need a second agent have one (phase-16 decision 2).
+ */
+export function seedAgents(dir: string) {
+  cpSync(BUNDLED_AGENTS, dir, { recursive: true });
+  writeFileSync(
+    join(dir, 'kirjoittaja.yaml'),
+    [
+      '# Test-only second profile (phase-16 decision 2).',
+      'id: kirjoittaja',
+      'name: Kirjoittaja',
+      'model: zdr/strong',
+      'prompt: prompts/kirjoittaja.md',
+      'tools:',
+      '  allow: [read, write, edit]',
+      'approval:',
+      '  always: [write, edit]',
+      '  never: [read]',
+      '',
+    ].join('\n'),
+  );
+  writeFileSync(join(dir, 'prompts', 'kirjoittaja.md'), 'Olet kirjoittaja.\n');
+}
+
+/** Boots with the fake broker rooted at the work dir; returns a socket on a new chat. */
+export async function bootBroker(turns: FakeTurn[], env: Record<string, string> = {}) {
   const broker = await startFakeBroker({ token: TOKEN, root: '' });
   cleanups.push(broker.close);
   const b = await boot(turns, { BROKER_URL: broker.url, BROKER_TOKEN: TOKEN, ...env });
   const srv = await b.run();
   broker.state.root = srv.registry.cwd;
   const c = await connect(b.config.port);
-  c.send({ type: 'chat.create', agentId: 'research' });
+  c.send({ type: 'chat.create' });
   const { chat } = await c.next('chat.created');
   return { ...b, srv, c, chat, broker };
 }

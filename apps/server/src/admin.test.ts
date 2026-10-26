@@ -62,10 +62,7 @@ test('agents: create, update from the form keeps comments, YAML tab, dry run, de
   };
   const list = (await (await call('GET', '/api/agents')).json()) as AgentList;
   expect(list.defaultId).toBe('assistant');
-  expect(list.agents.map((a) => [a.id, a.error])).toEqual([
-    ['assistant', null],
-    ['research', null],
-  ]);
+  expect(list.agents.map((a) => [a.id, a.error])).toEqual([['assistant', null]]);
   expect(list.options.tools).toContain('web_search');
   expect(list.options.aliases.map((a) => a.id)).toContain('zdr/strong');
   const a = list.agents[0] as AgentDoc & { profile: NonNullable<AgentDoc['profile']> };
@@ -216,7 +213,7 @@ test('agents: validation errors name the field', { timeout: 30_000 }, async () =
   await put({ model: 'zdr/acme/none' }, 'model');
   await put({ model: 'zdr/nope' }, 'model');
   await put({ id: 'other' }, 'id');
-  await put({ prompt: 'prompts/research.md' }, 'prompt');
+  await put({ prompt: 'prompts/muu.md' }, 'prompt');
   await put({ tools: { allow: ['read'], extra: 1 } }, 'tools');
   await post({ name: 'B', tools: { allow: ['bash'] } }, 'approval');
   await post({ name: '', tools: { allow: [] } }, 'name');

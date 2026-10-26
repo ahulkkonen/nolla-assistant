@@ -19,7 +19,7 @@ import {
 import { sandboxExtension } from '@pa/pi-ext-sandbox';
 import { type Child, subagentsExtension } from '@pa/pi-ext-subagents';
 import { topicsExtension } from '@pa/pi-ext-topics';
-import { WEB_SEARCH_TOOL } from '@pa/protocol';
+import { DEFAULT_AGENT_ID, WEB_SEARCH_TOOL } from '@pa/protocol';
 import type { AgentProfile, Agents } from '../agents.ts';
 import { type Ask, approvalGate } from '../approval.ts';
 import {
@@ -169,7 +169,7 @@ export class SessionRegistry {
   async get(chatId: string): Promise<AgentSession> {
     for (;;) {
       const chat = this.opts.getChat(chatId) ?? {
-        agentId: 'assistant',
+        agentId: DEFAULT_AGENT_ID,
         modelId: null,
         reasoning: 'auto',
         dataPolicy: 'zdr',
@@ -268,7 +268,13 @@ export class SessionRegistry {
 
   /** Built with the stored policy and the current profile object of its agent. */
   private fresh(e: Entry, now: ChatModel): boolean {
-    return samePolicy(e.chat, now) && e.profile === this.opts.agents().get(now.agentId);
+    return samePolicy(e.chat, now) && e.profile === this.profileOf(now.agentId);
+  }
+
+  /** The chat's profile; a deleted agent's chat runs with the default agent (phase-16 decision 3). */
+  private profileOf(agentId: string): AgentProfile | undefined {
+    const agents = this.opts.agents();
+    return agents.get(agentId) ?? agents.get(DEFAULT_AGENT_ID);
   }
 
   /**
@@ -332,7 +338,7 @@ export class SessionRegistry {
       return existing.session;
     }
     // `build` reads the same profile before its first await.
-    const profile = this.opts.agents().get(chat.agentId);
+    const profile = this.profileOf(chat.agentId);
     const session = this.build(chatId, chat, manager);
     const entry: Entry = { session, lastUsed: Date.now(), chat, profile };
     this.entries.set(chatId, entry);
@@ -352,9 +358,9 @@ export class SessionRegistry {
     chat: ChatModel,
     manager: () => SessionManager,
   ): Promise<AgentSession> {
-    const { agentId } = chat;
-    const profile = this.opts.agents().get(agentId);
-    if (!profile) throw new Error(`Agent profile ${agentId} not found`);
+    const profile = this.profileOf(chat.agentId);
+    if (!profile) throw new Error(`Agent profile ${chat.agentId} not found`);
+    const agentId = profile.id;
     const sessionManager = manager();
     const { pseudo, subagents, memory } = this.opts;
     const withSubagents = profile.subagents && subagents;

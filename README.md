@@ -168,3 +168,4 @@ Status on 2026-10-25. The plan, section 13, defines each gate.
 | 13 | Thread depth: fork, thinking, cost, find (`docs/decisions/phase-13-thread.md`) | done |
 | 14 | Web search tool with entity guard (`docs/decisions/phase-14-search.md`) | done, plugin defaults are a user step |
 | 15 | Admin: agent and automation editors, devices, encrypted full export (`docs/decisions/phase-15-admin.md`) | done |
+| 16 | Polish: one deep agent, CSP reports, prompt cache counts, OCR for scanned PDFs (`docs/decisions/phase-16-polish.md`) | in progress |

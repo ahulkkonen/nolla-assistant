@@ -244,10 +244,10 @@ An agent is a profile, not a process: a YAML file in `agents/` that sets the sys
 **Agent profile (`agents/<id>.yaml`)**
 
 ```yaml
-id: research
-name: Tutkija
+id: assistant
+name: Avustaja
 model: zdr/strong          # LiteLLM alias
-prompt: prompts/research.md
+prompt: prompts/assistant.md
 skills: [web-digest, cite]  # from skills/
 tools:
   allow: [read, write, bash, web_fetch, recall, memory]

@@ -4,7 +4,7 @@ import { chats, openDb, usage } from '@pa/db';
 import type { CallUsage } from '@pa/protocol';
 import { eq } from 'drizzle-orm';
 import { afterEach, expect, test } from 'vitest';
-import { bootChat, bootResearch, runCleanups, tempDir } from './test-utils.ts';
+import { bootBroker, bootChat, runCleanups, tempDir } from './test-utils.ts';
 import {
   messageUsage,
   monthOf,
@@ -24,7 +24,7 @@ function freshDb() {
     .values({
       id: 'c1',
       userId: 'u1',
-      agentId: 'research',
+      agentId: 'kirjoittaja',
       sessionPath: 's/',
       createdAt: now,
       updatedAt: now,
@@ -104,7 +104,7 @@ test('usageRecorder: one row, the chat totals in the same transaction, the chat 
   record({ kind: 'chat', chatId: 'c1' }, undefined);
   const rows = db.select().from(usage).all();
   expect(rows.map((r) => [r.kind, r.chatId, r.agentId])).toEqual([
-    ['task', 'c1', 'research'],
+    ['task', 'c1', 'kirjoittaja'],
     ['chat', 'c1', 'assistant'],
     ['task', null, null],
   ]);
@@ -269,7 +269,7 @@ test('the title job writes a task row of its chat', { timeout: 20_000 }, async (
 });
 
 test('a subagent child writes a subagent row of the parent chat', { timeout: 60_000 }, async () => {
-  const { c, chat, srv } = await bootResearch([
+  const { c, chat, srv } = await bootBroker([
     {
       toolCalls: [
         { name: 'subagent', args: { mode: 'chain', tasks: [{ label: 'a', task: 'task a' }] } },
@@ -285,7 +285,7 @@ test('a subagent child writes a subagent row of the parent chat', { timeout: 60_
     expect.objectContaining({
       kind: 'subagent',
       chatId: chat.id,
-      agentId: 'research',
+      agentId: 'assistant',
       input: 50,
       output: 10,
       estimated: true,
@@ -383,10 +383,10 @@ test('usage.state: per agent and search count', () => {
     costUsd,
     estimated,
   });
-  // c1 is a `research` chat; the row takes the chat's agent unless the caller names one.
+  // c1 is a `kirjoittaja` chat; the row takes the chat's agent unless the caller names one.
   at({ kind: 'chat', chatId: 'c1' }, call('zdr/strong', 1));
-  at({ kind: 'search', chatId: 'c1', agentId: 'research' }, call('zdr/search', 0.01));
-  at({ kind: 'search', chatId: 'c1', agentId: 'research' }, call('zdr/search', 0.01, true));
+  at({ kind: 'search', chatId: 'c1', agentId: 'kirjoittaja' }, call('zdr/search', 0.01));
+  at({ kind: 'search', chatId: 'c1', agentId: 'kirjoittaja' }, call('zdr/search', 0.01, true));
   at({ kind: 'chat', chatId: null, agentId: 'assistant' }, call('zdr/strong', 2));
   // The consolidation: no chat, no agent.
   at({ kind: 'task', chatId: null }, call('zdr/task-small', 0.5));
@@ -394,7 +394,7 @@ test('usage.state: per agent and search count', () => {
   expect(state.searches).toBe(2);
   expect(state.agents).toEqual([
     { agentId: 'assistant', calls: 1, tokens: 15, costUsd: 2, estimated: false },
-    { agentId: 'research', calls: 3, tokens: 45, costUsd: 1.02, estimated: true },
+    { agentId: 'kirjoittaja', calls: 3, tokens: 45, costUsd: 1.02, estimated: true },
     { agentId: null, calls: 1, tokens: 15, costUsd: 0.5, estimated: false },
   ]);
   expect(usageMonth(db, 'u1', '2026-09', { get: () => undefined })).toMatchObject({

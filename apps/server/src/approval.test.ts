@@ -1,9 +1,19 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { chats, usage } from '@pa/db';
 import type { FakeTurn } from '@pa/fake-llm';
+import { eq } from 'drizzle-orm';
 import { afterEach, expect, test, vi } from 'vitest';
 import { DENIED_REASON, TIMEOUT_REASON } from './approval.ts';
-import { boot, bootChat, bootPseudo, connect, runCleanups } from './test-utils.ts';
+import {
+  boot,
+  bootChat,
+  bootPseudo,
+  connect,
+  runCleanups,
+  seedAgents,
+  tempDir,
+} from './test-utils.ts';
 
 afterEach(runCleanups);
 
@@ -104,29 +114,50 @@ test('read never asks', { timeout: 30_000 }, async () => {
   expect(c.inbox.some((m) => m.type === 'approval.request')).toBe(false);
 });
 
-test('research agent: own prompt, kept per chat; unknown agent errors', {
+test('second agent: own prompt, kept per chat; unknown agent errors', {
   timeout: 30_000,
 }, async () => {
-  const { config, run, llm } = await boot([{ text: 'a' }, { text: 'b' }]);
+  const agentsDir = join(tempDir('pa-agents-'), 'agents');
+  seedAgents(agentsDir);
+  const { config, run, llm } = await boot([{ text: 'a' }, { text: 'b' }], {
+    AGENTS_DIR: agentsDir,
+  });
   await run();
   const c = await connect(config.port);
   const { agents } = await c.next('agents.state');
   expect(agents.map((a) => [a.id, a.name, a.subagents])).toEqual([
-    ['assistant', 'Avustaja', false],
-    ['research', 'Tutkija', true],
+    ['assistant', 'Avustaja', true],
+    ['kirjoittaja', 'Kirjoittaja', false],
   ]);
-  c.send({ type: 'chat.create', agentId: 'research' });
+  c.send({ type: 'chat.create', agentId: 'kirjoittaja' });
   const { chat } = await c.next('chat.created');
-  expect(chat.agentId).toBe('research');
+  expect(chat.agentId).toBe('kirjoittaja');
   c.send({ type: 'user.message', chatId: chat.id, text: 'Moi' });
   await c.idle();
-  expect(body(llm, 0)).toContain('Olet tutkija');
+  expect(body(llm, 0)).toContain('Olet kirjoittaja');
   // An existing chat keeps its agent.
   c.send({ type: 'user.message', chatId: chat.id, text: 'Moi', agentId: 'assistant' });
   await c.idle();
-  expect(body(llm, 1)).toContain('Olet tutkija');
+  expect(body(llm, 1)).toContain('Olet kirjoittaja');
   c.send({ type: 'chat.open', chatId: chat.id });
-  expect((await c.next('chat.state')).chat.agentId).toBe('research');
+  expect((await c.next('chat.state')).chat.agentId).toBe('kirjoittaja');
   c.send({ type: 'chat.create', agentId: 'nope' });
   await expect(c.next('chat.created')).rejects.toThrow('not_found');
+});
+
+test('registry: a chat whose agent profile is gone opens with the default agent', {
+  timeout: 30_000,
+}, async () => {
+  const { c, chat, srv, llm } = await bootChat([
+    { text: 'Hei.', usage: { prompt_tokens: 10, completion_tokens: 2 } },
+  ]);
+  // An install that deleted `research.yaml` by hand still has chats with that id.
+  srv.db.update(chats).set({ agentId: 'research' }).where(eq(chats.id, chat.id)).run();
+  await srv.registry.drop(chat.id);
+  c.send({ type: 'chat.open', chatId: chat.id });
+  expect((await c.next('chat.state')).chat.agentId).toBe('research');
+  c.send({ type: 'user.message', chatId: chat.id, text: 'Moi' });
+  await c.idle();
+  expect(body(llm, 0)).toContain('henkilökohtainen avustaja');
+  expect(srv.db.select().from(usage).get()?.agentId).toBe('assistant');
 });
