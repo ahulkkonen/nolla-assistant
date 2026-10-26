@@ -4,6 +4,7 @@ import {
   ArchiveRestore,
   ChevronRight,
   FileDown,
+  FolderOpen,
   Keyboard,
   Lightbulb,
   Lock,
@@ -234,6 +235,7 @@ export function Sidebar({
   // Skeleton rows only after 300 ms of loading (brief 7.5).
   const slow = useSlow(!loaded);
   const searching = useStore((s) => s.screen === 'search');
+  const filesScreen = useStore((s) => s.screen === 'files');
   // The results page has its own field; two filled fields would read as two searches.
   useEffect(() => {
     if (searching) setQuery('');
@@ -267,6 +269,10 @@ export function Sidebar({
     send({ type: 'chat.list', archived: !archivedView });
   };
   const shortcuts = () => useStore.setState({ shortcutsOpen: true });
+  const files = () => {
+    useStore.getState().setScreen('files');
+    onNavigate?.();
+  };
 
   if (!expanded) {
     // Rail (brief 7.5): 40 px icon buttons, 20 px icons, tooltips on the right.
@@ -294,6 +300,15 @@ export function Sidebar({
         </IconButton>
         <IconButton label="Hae keskusteluja" tipSide="right" className={rail} onClick={search}>
           <Search size={20} className="size-5" />
+        </IconButton>
+        <IconButton
+          label="Tiedostot"
+          tipSide="right"
+          className={cn(rail, filesScreen && 'bg-sidebar-accent text-foreground')}
+          aria-current={filesScreen ? 'page' : undefined}
+          onClick={files}
+        >
+          <FolderOpen size={20} className="size-5" />
         </IconButton>
         <div className="mt-auto pb-[max(env(safe-area-inset-bottom),8px)]">
           <SettingsButton className={rail} tipSide="right" />
@@ -407,6 +422,22 @@ export function Sidebar({
             {keys('K')}
           </kbd>
         )}
+      </div>
+      {/* A destination, not a chat row: outside the list (`nav li > button` counts chats). */}
+      <div className="mx-2 mb-1 shrink-0">
+        <Button
+          variant="ghost"
+          aria-current={filesScreen ? 'page' : undefined}
+          onClick={files}
+          className={cn(
+            'w-full justify-start gap-2 px-3 font-normal hover:bg-sidebar-accent',
+            rowH,
+            filesScreen && 'bg-sidebar-accent font-medium',
+          )}
+        >
+          <FolderOpen size={16} className="text-muted-foreground" />
+          Tiedostot
+        </Button>
       </div>
       {archivedView && <p className={groupLabel}>Arkistoidut</p>}
       {loaded && !chats.length && (

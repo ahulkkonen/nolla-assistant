@@ -1,5 +1,5 @@
 import type { Artifact } from '@pa/protocol';
-import { Check, ChevronDown, Copy, Download, ExternalLink, X } from 'lucide-react';
+import { Check, ChevronDown, Copy, Download, ExternalLink, Save, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import {
   DropdownMenu,
@@ -8,20 +8,17 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { saveFile } from '@/lib/utils';
+import { saveArtifact } from '../api.ts';
 import runtimeUrl from '../artifact-runtime.ts?worker&url';
-import { useMedia } from '../media.ts';
+import { fileError, showInFiles } from '../files.ts';
 import { useStore } from '../store.ts';
 import { IconButton } from './IconButton.tsx';
+import { CSP_META, htmlDocument, SandboxFrame, SCHEME_META } from './Sandbox.tsx';
+import { SidePanel } from './SidePanel.tsx';
 
 const EMPTY: Artifact[] = [];
-const CSP =
-  "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; form-action 'none'; base-uri 'none'";
-const CSP_META = `<meta http-equiv="Content-Security-Policy" content="${CSP}">`;
-/** The artifact keeps its own white page in both schemes (brief 7.5). */
-const SCHEME_META = '<meta name="color-scheme" content="light">';
 /** The open-in-tab wrapper runs no script; it only frames the sandboxed document. */
 const WRAPPER_CSP = "default-src 'none'; frame-src 'self' about:; style-src 'unsafe-inline'";
 const EXT: Record<string, string> = { html: 'html', react: 'jsx', mermaid: 'mmd' };
@@ -87,11 +84,7 @@ const escapeHtml = (s: string) =>
 
 /** The sandboxed document for an artifact; `code` and `file` have none. */
 async function documentFor(a: Artifact): Promise<string | null> {
-  if (a.kind === 'html') {
-    // Our CSP is always the first element, before anything of the artifact's (even a <script>
-    // ahead of <head>); a later, looser policy cannot widen it.
-    return `<!doctype html>${CSP_META}${SCHEME_META}${a.content.replace(/^\s*<!doctype[^>]*>/i, '')}`;
-  }
+  if (a.kind === 'html') return htmlDocument(a.content);
   if (a.kind === 'react') {
     const [rt, code] = await Promise.all([loadRuntime(), transpile(a.content)]);
     const boot = `(function(){var exports={},module={exports:exports};function require(n){if(n==='react')return React;if(n==='react-dom/client'||n==='react-dom')return ReactDOMClient;throw new Error('Moduulia ei ole saatavilla: '+n)}try{${code}
@@ -122,6 +115,19 @@ function download(a: Artifact) {
   );
 }
 
+/** "Tallenna tiedostoksi" (phase-11 decision 12): into the work dir, with real values. */
+async function saveToWork(chatId: string, artifactId: string) {
+  try {
+    const { entry } = await saveArtifact(chatId, artifactId);
+    useStore.getState().notify('Tallennettu Työkansioon', {
+      label: 'Näytä',
+      onClick: () => showInFiles(entry.path),
+    });
+  } catch (err) {
+    useStore.getState().pushError(fileError(err));
+  }
+}
+
 /**
  * A new tab gets a script-free wrapper page around a sandboxed iframe: a blob URL shares the app's
  * origin, so the artifact must never run in it directly.
@@ -142,7 +148,6 @@ function openInTab(a: Artifact, doc: string | null) {
 export function ArtifactPanel() {
   const open = useStore((s) => s.openArtifact);
   const list = useStore((s) => (s.openArtifact ? s.artifacts[s.openArtifact.chatId] : undefined));
-  const docked = useMedia('(min-width: 1024px)');
   const artifacts = list ?? EMPTY;
   const a = artifacts.find((x) => x.id === open?.id);
   const [doc, setDoc] = useState<{ id: string; html: string | null; error?: string } | null>(null);
@@ -185,13 +190,7 @@ export function ArtifactPanel() {
   const preview = ready?.error ? (
     <p className="p-1 text-muted-foreground">Artefaktin näyttäminen epäonnistui: {ready.error}</p>
   ) : ready?.html ? (
-    // Its own white page in both schemes, inset 12 with radius 12 and a border.
-    <iframe
-      title={a.title}
-      sandbox="allow-scripts"
-      srcDoc={ready.html}
-      className="block size-full rounded-lg border bg-white"
-    />
+    <SandboxFrame title={a.title} html={ready.html} />
   ) : (
     <p className="p-1 text-muted-foreground">Ladataan…</p>
   );
@@ -255,6 +254,16 @@ export function ArtifactPanel() {
             <IconButton label="Lataa" className="size-8" onClick={() => download(a)}>
               <Download size={16} />
             </IconButton>
+            {/* A code block opened from a message (`local-…`) has no artifact on the server. */}
+            {!a.id.startsWith('local-') && (
+              <IconButton
+                label="Tallenna tiedostoksi"
+                className="size-8"
+                onClick={() => void saveToWork(open.chatId, a.id)}
+              >
+                <Save size={16} />
+              </IconButton>
+            )}
             <IconButton
               label="Avaa uudessa ikkunassa"
               className="size-8"
@@ -284,19 +293,9 @@ export function ArtifactPanel() {
     </Tabs>
   );
 
-  if (docked)
-    return <div className="w-110 shrink-0 border-l xl:w-[clamp(440px,40vw,640px)]">{panel}</div>;
   return (
-    <Sheet open onOpenChange={(o) => !o && close()}>
-      <SheetContent
-        side="right"
-        showCloseButton={false}
-        className="gap-0 p-0 pt-[env(safe-area-inset-top)] data-[side=right]:w-full data-[side=right]:border-l-0 data-[side=right]:sm:max-w-none"
-      >
-        <SheetTitle className="sr-only">{a.title}</SheetTitle>
-        <SheetDescription className="sr-only">Artefakti</SheetDescription>
-        {panel}
-      </SheetContent>
-    </Sheet>
+    <SidePanel title={a.title} description="Artefakti" onClose={close}>
+      {panel}
+    </SidePanel>
   );
 }

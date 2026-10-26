@@ -1,17 +1,33 @@
-import type { AttachmentRef, ExportFormat } from '@pa/protocol';
+import type {
+  AttachmentRef,
+  ExportFormat,
+  FileError,
+  FileRoot,
+  FileUsage,
+  TrashEntry,
+  TrashListing,
+  TreeEntry,
+  TreeListing,
+} from '@pa/protocol';
 import { startAuthentication, startRegistration } from '@simplewebauthn/browser';
 
 export class HttpError extends Error {
   readonly status: number;
-  constructor(status: number) {
+  /** The `{ error }` code of the answer body, when it has one (the file routes). */
+  readonly code: FileError | undefined;
+  constructor(status: number, code?: FileError) {
     super(`HTTP ${status}`);
     this.status = status;
+    this.code = code;
   }
 }
 
+/** The error code of a failed answer body (`{ error: FileError }`), if any. */
+const codeOf = (body: unknown) => (body as { error?: FileError } | null)?.error;
+
 async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
   const r = await fetch(path, { credentials: 'same-origin', ...init });
-  if (!r.ok) throw new HttpError(r.status);
+  if (!r.ok) throw new HttpError(r.status, codeOf(await r.json().catch(() => null)));
   return (r.status === 204 ? undefined : await r.json()) as T;
 }
 
@@ -96,3 +112,59 @@ export const integrationsStatus = () =>
   req<{ google: { connected: boolean; email?: string } }>('/api/integrations/status');
 export const googleConnect = () =>
   post<{ authUrl: string } | { connected: true }>('/api/integrations/google/connect');
+
+/** Tiedostot (phase-11): `GET/POST/DELETE /api/files/tree…`. */
+const q = (params: Record<string, string | undefined>) =>
+  new URLSearchParams(
+    Object.entries(params).filter((e): e is [string, string] => e[1] !== undefined),
+  ).toString();
+
+export const treeList = (root: FileRoot, path: string, cursor?: string) =>
+  req<TreeListing>(`/api/files/tree?${q({ root, path, cursor })}`);
+export const treeRawUrl = (root: FileRoot, path: string, download = false) =>
+  `/api/files/tree/raw?${q({ root, path, download: download ? '1' : '0' })}`;
+export const treeMkdir = (path: string) =>
+  post<{ entry: TreeEntry }>('/api/files/tree/mkdir', { path });
+export const treeMove = (from: string, to: string) =>
+  post<{ entry: TreeEntry }>('/api/files/tree/move', { from, to });
+export const treeDelete = (path: string) =>
+  req<{ entry: TrashEntry }>(`/api/files/tree?${q({ path })}`, { method: 'DELETE' });
+export const trashList = (cursor?: string) =>
+  req<TrashListing>(`/api/files/tree/trash?${q({ cursor })}`);
+export const trashRestore = (id: string) =>
+  post<{ entry: TreeEntry }>('/api/files/tree/restore', { id });
+/** One entry for good, or (no id) the whole trash. */
+export const trashDelete = (id?: string) =>
+  req<void>(`/api/files/tree/trash?${q({ id })}`, { method: 'DELETE' });
+export const fileUsage = () => req<FileUsage>('/api/files/tree/usage');
+export const treeAttach = async (path: string) =>
+  (await post<{ file: AttachmentRef }>('/api/files/tree/attach', { path })).file;
+export const saveArtifact = (chatId: string, artifactId: string) =>
+  post<{ entry: TreeEntry }>('/api/files/tree/artifact', { chatId, artifactId });
+
+/**
+ * One file into a work-dir folder, one request per file (record risk 8). XHR, not fetch: only XHR
+ * reports upload progress.
+ */
+export function treeUpload(path: string, file: File, onProgress: (done: number) => void) {
+  const xhr = new XMLHttpRequest();
+  const done = new Promise<TreeEntry[]>((resolve, reject) => {
+    xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total);
+    xhr.onload = () => {
+      let body: unknown = null;
+      try {
+        body = JSON.parse(xhr.responseText);
+      } catch {}
+      if (xhr.status === 201) resolve((body as { entries: TreeEntry[] }).entries);
+      else reject(new HttpError(xhr.status, codeOf(body)));
+    };
+    xhr.onerror = () => reject(new HttpError(0));
+    xhr.onabort = () => reject(new DOMException('aborted', 'AbortError'));
+  });
+  const form = new FormData();
+  form.append('files', file);
+  xhr.open('POST', `/api/files/tree/upload?${q({ path })}`);
+  xhr.withCredentials = true;
+  xhr.send(form);
+  return { done, abort: () => xhr.abort() };
+}

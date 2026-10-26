@@ -3,6 +3,7 @@ import {
   Brain,
   CalendarClock,
   ChevronRight,
+  FolderOpen,
   KeyRound,
   LogOut,
   Monitor,
@@ -33,6 +34,7 @@ import { disablePush, enablePush, pushSubscription, pushSupported } from '../pus
 import { type Theme, useStore } from '../store.ts';
 import { disconnect } from '../ws.ts';
 import { IconButton } from './IconButton.tsx';
+import { Segmented } from './Segmented.tsx';
 
 export const THEMES: { value: Theme; label: string; Icon: typeof Sun }[] = [
   { value: 'system', label: 'Järjestelmä', Icon: Monitor },
@@ -46,6 +48,7 @@ export const SCREENS = [
   ['topics', Tags, 'Aiheet'],
   ['agents', Bot, 'Agentit'],
   ['automations', CalendarClock, 'Automaatiot'],
+  ['files', FolderOpen, 'Tiedostot'],
 ] as const;
 
 /** Opens the one settings dialog (rendered by the app shell). */
@@ -293,30 +296,13 @@ export function SettingsDialog() {
         <Body mobile={mobile}>
           <div className="px-6 pb-6 max-md:px-4">
             <Section title="Teema">
-              {/* Segmented control: track --muted, the selected item a raised card. */}
-              <div
-                role="group"
-                aria-label="Teema"
-                className="my-2 flex h-9 gap-1 rounded-md bg-muted p-0.5 max-md:h-11"
-              >
-                {THEMES.map(({ value, label, Icon }) => (
-                  <button
-                    key={value}
-                    type="button"
-                    aria-pressed={theme === value}
-                    onClick={() => setTheme(value)}
-                    className={cn(
-                      'flex flex-1 items-center justify-center gap-1.5 rounded-sm text-ui transition-colors duration-100',
-                      theme === value
-                        ? 'bg-card font-medium text-foreground shadow-sm'
-                        : 'text-muted-foreground hover:text-foreground',
-                    )}
-                  >
-                    <Icon size={16} />
-                    {label}
-                  </button>
-                ))}
-              </div>
+              <Segmented
+                label="Teema"
+                options={THEMES}
+                value={theme}
+                onChange={setTheme}
+                className="my-2"
+              />
               <Row
                 label="Näytä mitä malli näki"
                 htmlFor="model-saw"

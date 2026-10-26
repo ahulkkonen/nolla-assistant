@@ -1,7 +1,6 @@
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { deflateSync } from 'node:zlib';
 import AxeBuilder from '@axe-core/playwright';
 import type { Page } from '@playwright/test';
 import {
@@ -11,8 +10,10 @@ import {
   memoryTurns,
   mockMic,
   mockPush,
+  openFiles,
   openSettings,
   openVault,
+  png,
   search,
   sendMessage,
   showSidebar,
@@ -198,36 +199,6 @@ const gate = async (page: Page, type: string) => {
   };
 };
 
-/** 64x64 solid grey RGB PNG. */
-const png = () => {
-  const crcT = Array.from({ length: 256 }, (_, n) => {
-    let c = n;
-    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-    return c >>> 0;
-  });
-  const chunk = (type: string, data: Buffer) => {
-    const body = Buffer.concat([Buffer.from(type), data]);
-    let c = 0xffffffff;
-    for (const x of body) c = (crcT[(c ^ x) & 0xff] as number) ^ (c >>> 8);
-    const out = Buffer.alloc(12 + data.length);
-    out.writeUInt32BE(data.length, 0);
-    body.copy(out, 4);
-    out.writeUInt32BE((c ^ 0xffffffff) >>> 0, 8 + data.length);
-    return out;
-  };
-  const ihdr = Buffer.alloc(13);
-  ihdr.writeUInt32BE(64, 0);
-  ihdr.writeUInt32BE(64, 4);
-  ihdr.set([8, 2, 0, 0, 0], 8);
-  const row = Buffer.concat([Buffer.from([0]), Buffer.alloc(64 * 3, 128)]);
-  return Buffer.concat([
-    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-    chunk('IHDR', ihdr),
-    chunk('IDAT', deflateSync(Buffer.concat(Array(64).fill(row)))),
-    chunk('IEND', Buffer.alloc(0)),
-  ]);
-};
-
 const LONG = Array.from(
   { length: 80 },
   (_, i) => `Kappale ${i + 1}: tämä on pitkä vastaus, joka virtaa hitaasti näytölle. `,
@@ -379,6 +350,196 @@ for (const scheme of ['light', 'dark'] as const) {
         await expect(page.getByRole('button', { name: /, Ei ZDR$/ })).toBeVisible();
         await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
         await shot(page, 'zdr-open-badge', vp.width, scheme);
+      });
+
+      test.describe('files', () => {
+        test.use({ workFiles: true });
+        const phone = vp.width < 768;
+        const blur = (page: Page) =>
+          page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+        /** A row action: an icon button on hover at ≥ 768 px, the card's ⋯ menu on phones. */
+        const rowAction = async (page: Page, menu: string, action: string) => {
+          if (phone) {
+            await page.getByRole('button', { name: menu }).click();
+            await page.getByRole('menuitem', { name: action }).click();
+          } else await page.getByRole('button', { name: action }).click();
+        };
+        const preview = async (page: Page, name: string) => {
+          await openFiles(page);
+          await rowAction(page, `Tiedoston toiminnot: ${name}`, `Esikatsele: ${name}`);
+          await expect(page.getByRole('complementary', { name: 'Esikatselu' })).toBeVisible();
+        };
+
+        test('files-tree', async ({ app, page }) => {
+          // A saved artifact gives one row a "Lähde" link.
+          app.llm.push({ text: HTML_REPLY });
+          app.llm.push(titleTurn('Esittelysivu', 'Käyttäjä pyysi sivun.'));
+          await app.login(page);
+          await sendMessage(page, 'Tee sivu');
+          await page.getByRole('button', { name: 'Tallenna tiedostoksi' }).click();
+          const toast = page.getByText('Tallennettu Työkansioon');
+          await expect(toast).toBeVisible();
+          await expect(page.getByText('Esittelysivu').first()).toBeVisible({ timeout: 15_000 });
+          await page.getByRole('button', { name: 'Sulje artefaktit' }).click();
+          await openFiles(page);
+          // Phones: no "Lähde" column; the card's ⋯ menu opens the chat.
+          await expect(
+            phone
+              ? page.getByRole('button', { name: 'Tiedoston toiminnot: Hei artefakti.html' })
+              : page.getByRole('link', { name: 'Esittelysivu' }),
+          ).toBeVisible();
+          await expect(toast).toBeHidden({ timeout: 10_000 });
+          await blur(page);
+          await shot(page, 'files-tree', vp.width, scheme);
+        });
+
+        test('files-folder', async ({ app, page }) => {
+          await app.login(page);
+          await openFiles(page);
+          await page.getByRole('button', { name: 'Raportit', exact: true }).click();
+          await expect(
+            page.getByRole('navigation', { name: 'Kansiopolku' }).getByText('Raportit'),
+          ).toHaveAttribute('aria-current', 'page');
+          await blur(page);
+          await shot(page, 'files-folder', vp.width, scheme);
+        });
+
+        test('files-preview-text', async ({ app, page }) => {
+          await app.login(page);
+          await preview(page, 'tulokset.csv');
+          await expect(page.getByRole('region', { name: 'tulokset.csv: sisältö' })).toContainText(
+            'helmikuu,135,82',
+          );
+          await blur(page);
+          await shot(page, 'files-preview-text', vp.width, scheme);
+        });
+
+        test('files-preview-image', async ({ app, page }) => {
+          await app.login(page);
+          await preview(page, 'kansikuva.png');
+          const img = page.getByRole('img', { name: 'kansikuva.png' });
+          await expect(img).toBeVisible();
+          await expect
+            .poll(() => img.evaluate((el) => (el as HTMLImageElement).naturalWidth))
+            .toBeGreaterThan(0);
+          await blur(page);
+          await shot(page, 'files-preview-image', vp.width, scheme);
+        });
+
+        test('files-preview-html', async ({ app, page }) => {
+          await app.login(page);
+          await preview(page, 'esittely.html');
+          const frame = page.getByRole('complementary', { name: 'Esikatselu' }).locator('iframe');
+          await expect(
+            frame.contentFrame().getByRole('heading', { name: 'Esittely' }),
+          ).toBeVisible();
+          await blur(page);
+          await shot(page, 'files-preview-html', vp.width, scheme);
+        });
+
+        test('files-trash', async ({ app, page }) => {
+          await app.login(page);
+          await openFiles(page);
+          for (const name of ['laskuri.py', 'arkisto.zip']) {
+            await page.getByRole('button', { name: `Tiedoston toiminnot: ${name}` }).click();
+            await page.getByRole('menuitem', { name: 'Poista' }).click();
+            await expect(page.getByText(name, { exact: true })).toHaveCount(0);
+          }
+          await page.getByRole('button', { name: 'Kansion toiminnot: Kuvat' }).click();
+          await page.getByRole('menuitem', { name: 'Poista' }).click();
+          await page.getByRole('button', { name: 'Roskakori', exact: true }).click();
+          await expect(
+            page.getByRole('button', {
+              name: phone ? 'Roskakorin toiminnot: Kuvat' : 'Palauta: Kuvat',
+            }),
+          ).toBeVisible();
+          await expect(page.getByText('Siirretty roskakoriin').first()).toBeHidden({
+            timeout: 10_000,
+          });
+          await blur(page);
+          await shot(page, 'files-trash', vp.width, scheme);
+        });
+
+        test('files-upload', async ({ app, page }) => {
+          await app.login(page);
+          await openFiles(page);
+          // A slow uplink (64 kB/s): the rows stay long enough to show their bars part way.
+          const cdp = await page.context().newCDPSession(page);
+          await cdp.send('Network.emulateNetworkConditions', {
+            offline: false,
+            latency: 0,
+            downloadThroughput: -1,
+            uploadThroughput: 64 * 1024,
+          });
+          const dir = mkdtempSync(join(tmpdir(), 'pa-e2e-up-'));
+          writeFileSync(join(dir, 'kokouspöytäkirja.txt'), 'Pöytäkirja.\n'.repeat(60_000));
+          writeFileSync(join(dir, 'mittaukset.csv'), 'aika,arvo\n'.repeat(60_000));
+          await page
+            .locator('#files-upload')
+            .setInputFiles([join(dir, 'kokouspöytäkirja.txt'), join(dir, 'mittaukset.csv')]);
+          const bar = page.getByRole('progressbar', { name: 'Lataus: kokouspöytäkirja.txt' });
+          await expect
+            .poll(async () => Number(await bar.getAttribute('aria-valuenow')))
+            .toBeGreaterThan(5);
+          await blur(page);
+          await shot(page, 'files-upload', vp.width, scheme);
+        });
+
+        test('files-quota', async ({ app, page }) => {
+          const quota = 10 * 1024 ** 3;
+          await page.route('**/api/files/tree/usage', (route) =>
+            route.fulfill({
+              json: {
+                used: quota,
+                quota,
+                work: quota - 2 * 1024 ** 3,
+                trash: 1024 ** 3,
+                files: 1024 ** 3,
+                maxFileSize: 200 * 1024 ** 2,
+                maxAttachSize: 25 * 1024 ** 2,
+              },
+            }),
+          );
+          await page.route('**/api/files/tree/upload**', (route) =>
+            route.fulfill({ status: 413, json: { error: 'quota' } }),
+          );
+          await app.login(page);
+          await openFiles(page);
+          const dir = mkdtempSync(join(tmpdir(), 'pa-e2e-quota-'));
+          writeFileSync(join(dir, 'video.mp4'), Buffer.alloc(2048));
+          await page.locator('#files-upload').setInputFiles(join(dir, 'video.mp4'));
+          await expect(
+            page.getByText('Tallennustila on täynnä. Tyhjennä roskakori tai poista'),
+          ).toBeVisible();
+          await expect(
+            page.getByText('Tallennustila on täynnä. Tyhjennä roskakori.'),
+          ).toBeVisible();
+          await blur(page);
+          await shot(page, 'files-quota', vp.width, scheme);
+        });
+
+        test('files-picker', async ({ app, page }) => {
+          await app.login(page);
+          await page.getByRole('button', { name: 'Liitä tiedosto' }).click();
+          await page.getByRole('menuitem', { name: 'Valitse työkansiosta' }).click();
+          const dialog = page.getByRole('dialog', { name: 'Valitse työkansiosta' });
+          await dialog.getByRole('button', { name: /^muistiinpanot\.md/ }).click();
+          await expect(dialog.getByRole('button', { name: /^muistiinpanot\.md/ })).toHaveAttribute(
+            'aria-pressed',
+            'true',
+          );
+          await shot(page, 'files-picker', vp.width, scheme);
+        });
+
+        test('files-move', async ({ app, page }) => {
+          await app.login(page);
+          await openFiles(page);
+          await page.getByRole('button', { name: 'Tiedoston toiminnot: muistiinpanot.md' }).click();
+          await page.getByRole('menuitem', { name: 'Siirrä' }).click();
+          const dialog = page.getByRole('dialog', { name: 'Siirrä kohteeseen' });
+          await expect(dialog.getByRole('button', { name: 'Raportit' })).toBeVisible();
+          await shot(page, 'files-move', vp.width, scheme);
+        });
       });
 
       test('empty-chat', async ({ app, page }) => {

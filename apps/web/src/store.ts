@@ -1,12 +1,15 @@
 import type {
   Annotation,
   Artifact,
+  AttachmentRef,
   ChatSummary,
+  FileRoot,
   Message,
   ModelChoice,
   ModelPolicy,
   ServerMessage,
   ToolRow,
+  TreeEntry,
   VaultEntity,
   VaultPending,
 } from '@pa/protocol';
@@ -88,7 +91,16 @@ type State = {
   /** Annotated spans show the surrogate the model saw instead of the real value. */
   showModelSaw: boolean;
   /** What `main` shows. Choosing a chat returns to `chat`. */
-  screen: 'chat' | 'vault' | 'search' | 'topics' | 'agents' | 'automations' | 'memory';
+  screen: 'chat' | 'vault' | 'search' | 'topics' | 'agents' | 'automations' | 'memory' | 'files';
+  /**
+   * Where Tiedostot stands (phase-11): a root or the trash, the folder, and an entry to show
+   * (opened in the preview) once the folder is listed.
+   */
+  filesView: { root: FileRoot | 'trash'; path: string; focus: string | null };
+  /** The file whose preview is open in Tiedostot; the shell treats it as a side panel. */
+  filePreview: { root: FileRoot; entry: TreeEntry } | null;
+  /** Work-dir copies to add to the composer as attachments ("Liitä keskusteluun"). */
+  attachQueue: AttachmentRef[];
   agents: Agent[];
   /** Agent for the next `chat.create` (the empty chat's picker). */
   pendingAgentId: string;
@@ -158,7 +170,7 @@ type State = {
   /** Keeps the chat's first `keep` messages and ends the turn (a retry in place). */
   rewind(chatId: string, keep: number): void;
   pushError(message: string): void;
-  notify(message: string): void;
+  notify(message: string, action?: { label: string; onClick: () => void }): void;
   setSidebarOpen(open: boolean): void;
   setTheme(theme: Theme): void;
   setShowModelSaw(on: boolean): void;
@@ -235,6 +247,8 @@ const ERROR_TEXT: Record<string, string> = {
   not_implemented: 'Ei vielä tuettu.',
   failed: 'Toiminto epäonnistui.',
   pseudo_down: 'Pseudonymisointipalvelu ei vastaa.',
+  pseudo_collision:
+    'Viestissä on nimi, joka on jo pseudonyymi. Vastaa Nimisuojassa, niin viesti lähtee.',
   memory_full: 'Muisti on täynnä.',
   memory_conflict: 'Teksti on muuttunut, lataa uudelleen.',
   zdr_unavailable: 'Mallilla ei ole ZDR-reittiä. Avaa keskustelu ja valitse toinen malli.',
@@ -282,6 +296,9 @@ export const useStore = create<State>()((set, get) => {
     archivedView: false,
     activeChatId: null,
     screen: 'chat',
+    filesView: { root: 'work', path: '', focus: null },
+    filePreview: null,
+    attachQueue: [],
     agents: [],
     pendingAgentId: 'assistant',
     pendingModel: DEFAULT_MODEL,
@@ -604,7 +621,7 @@ export const useStore = create<State>()((set, get) => {
       toast.error(message, { duration: 6000, closeButton: true });
       set((st) => ({ errorCount: st.errorCount + 1 }));
     },
-    notify: (message) => void toast.success(message),
+    notify: (message, action) => void toast.success(message, action ? { action } : {}),
     setSidebarOpen: (sidebarOpen) => set({ sidebarOpen }),
     setTheme(theme) {
       try {

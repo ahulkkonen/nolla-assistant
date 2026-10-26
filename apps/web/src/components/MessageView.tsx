@@ -50,41 +50,32 @@ const hash = (s: string) => {
   return (h >>> 0).toString(36);
 };
 
-function Pre(props: ComponentProps<'pre'>) {
+/**
+ * The thread's code block (brief 7.5): --muted, radius 12, a 36 px header (language, actions),
+ * body 16, scrolls sideways. `onOpen` adds "Avaa artefaktina"; the file preview has none.
+ */
+export function CodeBlock({
+  lang,
+  children,
+  onOpen,
+}: {
+  lang: string;
+  children: ReactNode;
+  onOpen?: (content: string) => void;
+}) {
   const ref = useRef<HTMLPreElement>(null);
-  const child = props.children;
-  const className = isValidElement<{ className?: string; children?: unknown }>(child)
-    ? (child.props.className ?? '')
-    : '';
-  const lang = /language-(\S+)/.exec(className)?.[1]?.toLowerCase() ?? '';
-  const source =
-    isValidElement<{ children?: unknown }>(child) && typeof child.props.children === 'string'
-      ? child.props.children
-      : '';
-  const kind =
-    ARTIFACT_KIND[lang as keyof typeof ARTIFACT_KIND] ??
-    (source.split('\n').length > 30 ? 'code' : undefined);
-  const open = () => {
-    const st = useStore.getState();
-    const content = ref.current?.textContent ?? source;
-    if (!kind || !st.activeChatId) return;
-    st.showArtifact(st.activeChatId, {
-      id: `local-${hash(content)}`,
-      kind,
-      title: lang ? `${lang} (viestistä)` : 'Koodi (viestistä)',
-      ...(lang ? { language: lang } : {}),
-      content,
-    });
-  };
-  // Brief 7.5: --muted, radius 12, a 36 px header (language, actions), body 16, scrolls sideways.
   return (
     <div className="overflow-hidden rounded-lg bg-muted">
       <div className="flex h-9 items-center gap-1 pr-1 pl-4 max-md:h-12">
         <span className="min-w-0 flex-1 truncate font-sans text-micro text-muted-foreground">
           {lang || 'koodi'}
         </span>
-        {kind && (
-          <IconButton label="Avaa artefaktina" className="size-7" onClick={open}>
+        {onOpen && (
+          <IconButton
+            label="Avaa artefaktina"
+            className="size-7"
+            onClick={() => onOpen(ref.current?.textContent ?? '')}
+          >
             <PanelRight size={16} />
           </IconButton>
         )}
@@ -99,9 +90,41 @@ function Pre(props: ComponentProps<'pre'>) {
         tabIndex={0}
         className="overflow-x-auto px-4 pb-4 font-mono"
       >
-        {props.children}
+        {children}
       </pre>
     </div>
+  );
+}
+
+function Pre(props: ComponentProps<'pre'>) {
+  const child = props.children;
+  const className = isValidElement<{ className?: string; children?: unknown }>(child)
+    ? (child.props.className ?? '')
+    : '';
+  const lang = /language-(\S+)/.exec(className)?.[1]?.toLowerCase() ?? '';
+  const source =
+    isValidElement<{ children?: unknown }>(child) && typeof child.props.children === 'string'
+      ? child.props.children
+      : '';
+  const kind =
+    ARTIFACT_KIND[lang as keyof typeof ARTIFACT_KIND] ??
+    (source.split('\n').length > 30 ? 'code' : undefined);
+  const open = (shown: string) => {
+    const st = useStore.getState();
+    const content = shown || source;
+    if (!kind || !st.activeChatId) return;
+    st.showArtifact(st.activeChatId, {
+      id: `local-${hash(content)}`,
+      kind,
+      title: lang ? `${lang} (viestistä)` : 'Koodi (viestistä)',
+      ...(lang ? { language: lang } : {}),
+      content,
+    });
+  };
+  return (
+    <CodeBlock lang={lang} {...(kind ? { onOpen: open } : {})}>
+      {props.children}
+    </CodeBlock>
   );
 }
 

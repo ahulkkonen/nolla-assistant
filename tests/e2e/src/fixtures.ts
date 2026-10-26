@@ -1,8 +1,9 @@
 import { createECDH } from 'node:crypto';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { deflateSync } from 'node:zlib';
 import { type FakeTurn, startFakeLlm } from '@pa/fake-llm';
 import { startFakeSidecar } from '@pa/pi-ext-pseudo/fake-sidecar';
 import { hashPassword } from '@pa/server/src/auth/password.ts';
@@ -69,6 +70,66 @@ export const mockMic = (page: Page) =>
     };
   });
 
+/** A solid RGB PNG (default 64 × 64 grey). */
+export const png = (rgb: [number, number, number] = [128, 128, 128], w = 64, h = 64) => {
+  const crcT = Array.from({ length: 256 }, (_, n) => {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    return c >>> 0;
+  });
+  const chunk = (type: string, data: Buffer) => {
+    const body = Buffer.concat([Buffer.from(type), data]);
+    let c = 0xffffffff;
+    for (const x of body) c = (crcT[(c ^ x) & 0xff] as number) ^ (c >>> 8);
+    const out = Buffer.alloc(12 + data.length);
+    out.writeUInt32BE(data.length, 0);
+    body.copy(out, 4);
+    out.writeUInt32BE((c ^ 0xffffffff) >>> 0, 8 + data.length);
+    return out;
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(w, 0);
+  ihdr.writeUInt32BE(h, 4);
+  ihdr.set([8, 2, 0, 0, 0], 8);
+  const row = Buffer.concat([Buffer.from([0]), Buffer.from(Array(w).fill(rgb).flat())]);
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', ihdr),
+    chunk('IDAT', deflateSync(Buffer.concat(Array(h).fill(row)))),
+    chunk('IEND', Buffer.alloc(0)),
+  ]);
+};
+
+/** Synthetic work-dir files for Tiedostot (`workFiles: true`): no real names or data. */
+export const WORK_FILES: Record<string, string | Buffer> = {
+  'Raportit/Raportti 2.md':
+    '# Raportti 2\n\nKuukauden luvut kasvoivat hieman.\n\n- Myynti: 120\n- Kulut: 80\n',
+  'Raportit/Raportti 10.md': '# Raportti 10\n\nVuoden yhteenveto.\n',
+  'Raportit/luonnos.txt': 'Luonnos seuraavaa raporttia varten.\n',
+  'Kuvat/kaavio.png': png([64, 120, 200], 320, 200),
+  'muistiinpanot.md':
+    '# Muistiinpanot\n\n## Tehtävät\n\n- Kokoa kuukauden luvut\n- Kirjoita yhteenveto\n\nLuvut ovat taulukossa `tulokset.csv`.\n',
+  'tulokset.csv':
+    'kuukausi,myynti,kulut\ntammikuu,120,80\nhelmikuu,135,82\nmaaliskuu,128,90\nhuhtikuu,141,88\n',
+  'laskuri.py':
+    'def summa(luvut):\n    """Laskee lukujen summan."""\n    return sum(luvut)\n\n\nprint(summa([1, 2, 3]))\n',
+  'esittely.html':
+    '<!doctype html><html lang="fi"><body><h1>Esittely</h1><p>Tämä sivu näkyy hiekkalaatikossa.</p></body></html>',
+  'kansikuva.png': png([217, 119, 87], 480, 300),
+  'arkisto.zip': Buffer.from([0x50, 0x4b, 0x05, 0x06, ...Array(18).fill(0)]),
+};
+/** One fixed time for every seeded entry, so the screenshots keep their dates. */
+const SEEDED_AT = new Date('2026-10-25T14:20:00Z');
+
+function seedWork(dir: string) {
+  for (const [path, body] of Object.entries(WORK_FILES)) {
+    mkdirSync(dirname(join(dir, path)), { recursive: true });
+    writeFileSync(join(dir, path), body);
+    utimesSync(join(dir, path), SEEDED_AT, SEEDED_AT);
+  }
+  for (const folder of ['Raportit', 'Kuvat']) utimesSync(join(dir, folder), SEEDED_AT, SEEDED_AT);
+}
+
 /** An assistant reply with one HTML block (an artifact). */
 export const HTML_REPLY =
   'Tässä sivu:\n\n```html\n<h1>Hei artefakti</h1>\n<p>Tämä sivu toimii hiekkalaatikossa.</p>\n```';
@@ -110,6 +171,7 @@ export const test = base.extend<{
   automation: boolean;
   approvalTimeoutMs: number;
   memoryUser: string;
+  workFiles: boolean;
 }>({
   // Starts the fake sidecar and sets PSEUDO_URL: `full` has DICT plus one pending item.
   pseudo: ['off', { option: true }],
@@ -119,7 +181,9 @@ export const test = base.extend<{
   approvalTimeoutMs: [0, { option: true }],
   // Written to DATA_DIR/memory/aleksi/USER.md before start when non-empty.
   memoryUser: ['', { option: true }],
-  app: async ({ pseudo, automation, approvalTimeoutMs, memoryUser }, use) => {
+  // Seeds DATA_DIR/work/aleksi with WORK_FILES.
+  workFiles: [false, { option: true }],
+  app: async ({ pseudo, automation, approvalTimeoutMs, memoryUser, workFiles }, use) => {
     const llm = await startFakeLlm([]);
     const sidecar =
       pseudo === 'off'
@@ -131,6 +195,7 @@ export const test = base.extend<{
             });
     const dataDir = mkdtempSync(join(tmpdir(), 'pa-e2e-'));
     mkdirSync(join(dataDir, 'work/aleksi'), { recursive: true });
+    if (workFiles) seedWork(join(dataDir, 'work/aleksi'));
     mkdirSync(join(dataDir, 'automations'));
     if (automation) writeFileSync(join(dataDir, 'automations/aamu.yaml'), AUTOMATION);
     if (memoryUser) {
@@ -179,6 +244,14 @@ export const test = base.extend<{
   },
   baseURL: async ({ app }, use) => use(app.url),
 });
+
+/** Opens Tiedostot from the sidebar (the drawer under 768 px). */
+export const openFiles = async (page: Page) => {
+  const menu = page.getByRole('button', { name: 'Valikko' });
+  if (await menu.isVisible()) await menu.click();
+  await page.getByRole('button', { name: 'Tiedostot', exact: true }).click();
+  await expect(page.getByRole('group', { name: 'Näkymä' })).toBeVisible();
+};
 
 /** Opens a settings entry; settings sits in the drawer under 768 px, in the sidebar above. */
 export const openSettings = async (

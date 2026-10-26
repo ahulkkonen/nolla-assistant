@@ -40,14 +40,18 @@ import { EmptyState, ListSkeleton, Page } from './Page.tsx';
 export const VAULT_TITLE = 'Nimisuoja';
 
 const KIND: Record<string, string> = {
-  person: 'henkilö',
-  hetu: 'henkilötunnus',
-  iban: 'tilinumero',
-  phone: 'puhelinnumero',
-  address: 'osoite',
-  email: 'sähköposti',
+  PERSON: 'henkilö',
+  SELF: 'sinä',
+  HETU: 'henkilötunnus',
+  IBAN: 'tilinumero',
+  PHONE: 'puhelinnumero',
+  ADDRESS: 'osoite',
+  POSTCODE_CITY: 'postinumero',
+  EMAIL: 'sähköposti',
+  PLATE: 'rekisterinumero',
 };
-const kind = (k: string) => KIND[k] ?? k;
+// The sidecar sends kinds in upper case.
+const kind = (k: string) => KIND[k.toUpperCase()] ?? k;
 const MODE = { realistic: 'realistinen', placeholder: 'paikkamerkki' } as const;
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString('fi-FI') : '–');
 

@@ -1,5 +1,15 @@
 import type { AttachmentRef } from '@pa/protocol';
-import { ArrowUp, Eye, FileText, LoaderCircle, Paperclip, Square, X } from 'lucide-react';
+import {
+  ArrowUp,
+  Eye,
+  FileText,
+  FolderOpen,
+  LoaderCircle,
+  Paperclip,
+  Square,
+  Upload,
+  X,
+} from 'lucide-react';
 import {
   type ClipboardEvent,
   type KeyboardEvent,
@@ -8,6 +18,12 @@ import {
   useRef,
   useState,
 } from 'react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import { uploadFiles } from '../api.ts';
 import { touch } from '../media.ts';
@@ -15,54 +31,16 @@ import { useShortcuts } from '../shortcuts.ts';
 import { useStore } from '../store.ts';
 import { send, sendUserMessage } from '../ws.ts';
 import { AgentPicker } from './AgentPicker.tsx';
+import { DropOverlay, useFileDrop } from './FileDrop.tsx';
 import { IconButton } from './IconButton.tsx';
 import { clock, MicButton, type MicState } from './MicButton.tsx';
 import { ModelPicker } from './ModelPicker.tsx';
+import { WorkPicker } from './TreeDialogs.tsx';
 
 type Chip = { key: string; name: string; preview?: string; ref?: AttachmentRef };
 
 /** The textarea grows to min(40dvh, 320px), then scrolls (brief 7.5). */
 const maxHeight = () => Math.min(window.innerHeight * 0.4, 320);
-
-/** Drag with files anywhere in the window shows the drop overlay. */
-function useFileDrop(enabled: boolean, onFiles: (files: File[]) => void) {
-  const [over, setOver] = useState(false);
-  const filesRef = useRef(onFiles);
-  filesRef.current = onFiles;
-  useEffect(() => {
-    if (!enabled) return;
-    let depth = 0;
-    const hasFiles = (e: DragEvent) => e.dataTransfer?.types.includes('Files') ?? false;
-    const enter = (e: DragEvent) => {
-      if (!hasFiles(e)) return;
-      depth++;
-      setOver(true);
-    };
-    const leave = () => {
-      depth = Math.max(0, depth - 1);
-      if (!depth) setOver(false);
-    };
-    const overFn = (e: DragEvent) => hasFiles(e) && e.preventDefault();
-    const drop = (e: DragEvent) => {
-      if (!hasFiles(e)) return;
-      e.preventDefault();
-      depth = 0;
-      setOver(false);
-      filesRef.current([...(e.dataTransfer?.files ?? [])]);
-    };
-    window.addEventListener('dragenter', enter);
-    window.addEventListener('dragleave', leave);
-    window.addEventListener('dragover', overFn);
-    window.addEventListener('drop', drop);
-    return () => {
-      window.removeEventListener('dragenter', enter);
-      window.removeEventListener('dragleave', leave);
-      window.removeEventListener('dragover', overFn);
-      window.removeEventListener('drop', drop);
-    };
-  }, [enabled]);
-  return over;
-}
 
 export function Composer() {
   const chatId = useStore((s) => s.activeChatId);
@@ -73,6 +51,8 @@ export function Composer() {
   const [chips, setChips] = useState<Chip[]>([]);
   const [mic, setMic] = useState<MicState>('idle');
   const [elapsed, setElapsed] = useState(0);
+  const [workPicker, setWorkPicker] = useState(false);
+  const queued = useStore((s) => s.attachQueue);
   const area = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
   const box = useRef<HTMLDivElement>(null);
@@ -135,6 +115,21 @@ export function Composer() {
     }
   };
   const dropping = useFileDrop(chatScreen, (files) => void addFiles(files));
+
+  // Work-dir copies ("Liitä keskusteluun", "Valitse työkansiosta") arrive already uploaded.
+  useEffect(() => {
+    if (!queued.length) return;
+    setChips((c) => [
+      ...c,
+      ...queued.map((ref) => ({
+        key: crypto.randomUUID(),
+        name: ref.name,
+        ref,
+        ...(ref.kind === 'image' ? { preview: `/api/files/${encodeURIComponent(ref.id)}` } : {}),
+      })),
+    ]);
+    useStore.setState({ attachQueue: [] });
+  }, [queued]);
 
   const remove = (keys: string[]) =>
     setChips((c) =>
@@ -305,13 +300,25 @@ export function Composer() {
           </div>
         )}
         <div className="flex h-12 items-center gap-1 px-2 py-1.5 max-md:h-14">
-          <IconButton
-            label="Liitä tiedosto"
-            className="rounded-full"
-            onClick={() => picker.current?.click()}
-          >
-            <Paperclip size={16} />
-          </IconButton>
+          {/* Not modal: a modal menu hides the page from assistive technology (axe). */}
+          <DropdownMenu modal={false}>
+            <DropdownMenuTrigger asChild>
+              <IconButton label="Liitä tiedosto" className="rounded-full">
+                <Paperclip size={16} />
+              </IconButton>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent side="top" align="start" collisionPadding={8}>
+              <DropdownMenuItem onSelect={() => picker.current?.click()}>
+                <Upload size={16} className="text-muted-foreground" />
+                Lataa laitteelta
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setWorkPicker(true)}>
+                <FolderOpen size={16} className="text-muted-foreground" />
+                Valitse työkansiosta
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <WorkPicker open={workPicker} onClose={() => setWorkPicker(false)} />
           <input
             ref={picker}
             type="file"
@@ -349,13 +356,7 @@ export function Composer() {
           </div>
         </div>
       </div>
-      {dropping && (
-        <div className="pointer-events-none fixed inset-0 z-(--z-toast) bg-background/90">
-          <div className="absolute inset-4 flex items-center justify-center rounded-xl border-2 border-dashed border-border text-heading">
-            Pudota tiedostot tähän
-          </div>
-        </div>
-      )}
+      {dropping && <DropOverlay />}
     </div>
   );
 }

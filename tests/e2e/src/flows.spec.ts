@@ -1,7 +1,6 @@
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { deflateSync } from 'node:zlib';
 import type { Page } from '@playwright/test';
 import {
   acceptProposal,
@@ -11,8 +10,10 @@ import {
   memoryTurns,
   mockMic,
   mockPush,
+  openFiles,
   openSettings,
   openVault,
+  png,
   search,
   TAX,
   taxChat,
@@ -28,42 +29,6 @@ const newChat = (page: Page) =>
   page.getByRole('button', { name: 'Uusi keskustelu' }).first().click();
 /** The thread, not `main`: `main` also holds the sr-only chat title (h1). */
 const thread = (page: Page) => page.getByRole('region', { name: 'Keskustelu' });
-
-const crcTable = Array.from({ length: 256 }, (_, n) => {
-  let c = n;
-  for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-  return c >>> 0;
-});
-const crc = (b: Buffer) => {
-  let c = 0xffffffff;
-  for (const x of b) c = crcTable[(c ^ x) & 0xff]! ^ (c >>> 8);
-  return (c ^ 0xffffffff) >>> 0;
-};
-const chunk = (type: string, data: Buffer) => {
-  const body = Buffer.concat([Buffer.from(type), data]);
-  const out = Buffer.alloc(12 + data.length);
-  out.writeUInt32BE(data.length, 0);
-  body.copy(out, 4);
-  out.writeUInt32BE(crc(body), 8 + data.length);
-  return out;
-};
-/** 64x64 solid red RGB PNG. */
-const png = () => {
-  const ihdr = Buffer.alloc(13);
-  ihdr.writeUInt32BE(64, 0);
-  ihdr.writeUInt32BE(64, 4);
-  ihdr.set([8, 2, 0, 0, 0], 8);
-  const row = Buffer.concat([
-    Buffer.from([0]),
-    Buffer.alloc(64 * 3, 0).map((_, i) => (i % 3 ? 0 : 255)),
-  ]);
-  return Buffer.concat([
-    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-    chunk('IHDR', ihdr),
-    chunk('IDAT', deflateSync(Buffer.concat(Array(64).fill(row)))),
-    chunk('IEND', Buffer.alloc(0)),
-  ]);
-};
 
 test('login: wrong password errors, right password shows shell', async ({ app, page }) => {
   await page.goto(app.url);
@@ -113,7 +78,7 @@ test('attach image reaches the LLM as image_url', async ({ app, page }) => {
   app.llm.push({ text: 'Näen kuvan.' });
   await app.login(page);
   const file = join(mkdtempSync(join(tmpdir(), 'pa-e2e-img-')), 'punainen.png');
-  writeFileSync(file, png());
+  writeFileSync(file, png([255, 0, 0]));
   await page.locator('input[type=file]').setInputFiles(file);
   const chip = page.getByLabel('Liitteet').getByText('punainen.png');
   await expect(chip).toBeVisible();
@@ -404,6 +369,100 @@ test('Yritä uudelleen: a failed reply runs again in place, and the thread shows
   const chat = app.llm.requests.filter((r) => r.body.stream === true);
   expect(chat).toHaveLength(2);
   expect(JSON.stringify(chat[1]?.body.messages).split('Hei uudelleen')).toHaveLength(2);
+});
+
+test.describe('files', () => {
+  test.use({ workFiles: true });
+
+  test('files: upload, folder, preview, rename, trash and restore, attach, save artifact', async ({
+    app,
+    page,
+  }) => {
+    // Phase-11 gate item 3.
+    await app.login(page);
+    await openFiles(page);
+    const table = page.getByRole('region', { name: 'Työkansio' });
+
+    // Two files with progress: each upload waits a moment, so the bars show.
+    await page.route('**/api/files/tree/upload**', async (route) => {
+      await new Promise((r) => setTimeout(r, 400));
+      await route.continue();
+    });
+    const dir = mkdtempSync(join(tmpdir(), 'pa-e2e-files-'));
+    writeFileSync(join(dir, 'ensimmäinen.txt'), 'Ensimmäinen tiedosto.\n');
+    writeFileSync(join(dir, 'toinen.txt'), 'Toinen tiedosto.\n');
+    await page
+      .locator('#files-upload')
+      .setInputFiles([join(dir, 'ensimmäinen.txt'), join(dir, 'toinen.txt')]);
+    await expect(page.getByRole('progressbar', { name: 'Lataus: toinen.txt' })).toBeVisible();
+    await expect(table.getByText('ensimmäinen.txt', { exact: true })).toBeVisible();
+    await expect(table.getByText('toinen.txt', { exact: true })).toBeVisible();
+    await expect(page.getByRole('progressbar')).toHaveCount(0);
+
+    // A folder, then the Markdown preview with real text.
+    await table.getByRole('button', { name: 'Raportit', exact: true }).click();
+    await expect(
+      page.getByRole('navigation', { name: 'Kansiopolku' }).getByText('Raportit'),
+    ).toHaveAttribute('aria-current', 'page');
+    await page.getByRole('button', { name: 'Esikatsele: Raportti 2.md' }).click();
+    const pane = page.getByRole('complementary', { name: 'Esikatselu' });
+    await expect(pane.getByRole('heading', { name: 'Raportti 2' })).toBeVisible();
+    await expect(pane.getByText('Myynti: 120')).toBeVisible();
+    await pane.getByRole('button', { name: 'Sulje esikatselu' }).click();
+
+    // Rename.
+    await page.getByRole('button', { name: 'Tiedoston toiminnot: Raportti 2.md' }).click();
+    await page.getByRole('menuitem', { name: 'Nimeä uudelleen' }).click();
+    await page.getByLabel('Nimi').fill('Yhteenveto.md');
+    await page.getByRole('button', { name: 'Tallenna' }).click();
+    await expect(table.getByText('Yhteenveto.md', { exact: true })).toBeVisible();
+    await expect(table.getByText('Raportti 2.md', { exact: true })).toHaveCount(0);
+
+    // Delete to the trash, then restore it from there.
+    await page.getByRole('button', { name: 'Tiedoston toiminnot: Yhteenveto.md' }).click();
+    await page.getByRole('menuitem', { name: 'Poista' }).click();
+    await expect(page.getByText('Siirretty roskakoriin')).toBeVisible();
+    await expect(table.getByText('Yhteenveto.md', { exact: true })).toHaveCount(0);
+    await page.getByRole('button', { name: 'Roskakori', exact: true }).click();
+    const bin = page.getByRole('region', { name: 'Roskakori' });
+    await expect(bin.getByText('Raportit/Yhteenveto.md')).toBeVisible();
+    await page.getByRole('button', { name: 'Palauta: Yhteenveto.md' }).click();
+    await expect(page.getByText('Roskakori on tyhjä')).toBeVisible();
+    await page.getByRole('button', { name: 'Työkansio', exact: true }).click();
+    await table.getByRole('button', { name: 'Raportit', exact: true }).click();
+    await expect(table.getByText('Yhteenveto.md', { exact: true })).toBeVisible();
+
+    // Attach a work file from the composer picker and send it: the model gets its text.
+    app.llm.push({ text: 'Luin muistiinpanot.' });
+    await newChat(page);
+    await page.getByRole('button', { name: 'Liitä tiedosto' }).click();
+    await page.getByRole('menuitem', { name: 'Valitse työkansiosta' }).click();
+    const picker = page.getByRole('dialog', { name: 'Valitse työkansiosta' });
+    await picker.getByRole('button', { name: /^muistiinpanot\.md/ }).click();
+    await picker.getByRole('button', { name: 'Liitä', exact: true }).click();
+    await expect(page.getByLabel('Liitteet').getByText('muistiinpanot.md')).toBeVisible();
+    await send(page, 'Lue liite');
+    await expect(page.locator('.md').last()).toHaveText('Luin muistiinpanot.');
+    expect(JSON.stringify(app.llm.requests.at(-1)?.body)).toContain('Kokoa kuukauden luvut');
+
+    // Save an artifact and find it in Tiedostot.
+    app.llm.push({ text: HTML_REPLY });
+    await send(page, 'Tee sivu');
+    await page.getByRole('button', { name: 'Tallenna tiedostoksi' }).click();
+    await page.getByRole('button', { name: 'Näytä' }).click();
+    await expect(page.getByRole('group', { name: 'Näkymä' })).toBeVisible();
+    await expect(table.getByText('Hei artefakti.html', { exact: true })).toBeVisible();
+    const saved = page.getByRole('complementary', { name: 'Esikatselu' }).locator('iframe');
+    await expect(
+      saved.contentFrame().getByRole('heading', { name: 'Hei artefakti' }),
+    ).toBeVisible();
+
+    // The attached copy is in Liitteet, with its chat as the source.
+    await page.getByRole('button', { name: 'Liitteet', exact: true }).click();
+    const uploads = page.getByRole('region', { name: 'Liitteet' });
+    await expect(uploads.getByText('muistiinpanot.md', { exact: true })).toBeVisible();
+    await expect(uploads.getByRole('link')).toHaveCount(1);
+  });
 });
 
 test('agent picker: a new chat is created with the picked agent', async ({ app, page }) => {

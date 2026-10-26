@@ -11,6 +11,7 @@ import { AUTOMATIONS_TITLE, AutomationsScreen } from './components/AutomationsSc
 import { CommandPalette } from './components/CommandPalette.tsx';
 import { Composer } from './components/Composer.tsx';
 import { ExportDialog } from './components/ExportDialog.tsx';
+import { FILES_TITLE, FilesScreen } from './components/FilesScreen.tsx';
 import { IconButton } from './components/IconButton.tsx';
 import { Login } from './components/Login.tsx';
 import { MEMORY_TITLE, MemoryScreen } from './components/MemoryScreen.tsx';
@@ -33,6 +34,7 @@ const SCREEN_TITLE = {
   agents: AGENTS_TITLE,
   automations: AUTOMATIONS_TITLE,
   memory: MEMORY_TITLE,
+  files: FILES_TITLE,
 };
 
 /** `--background` of each scheme (tokens.css), for the browser chrome (brief 7.7). */
@@ -107,7 +109,7 @@ function Shell() {
   const drawer = mobile || !!overlay.current?.matches;
   // 1024–1279 px: the sidebar steps down to the rail while the side panel is open (brief 7.4).
   const wide = useMedia('(min-width: 1280px)');
-  const panel = useStore((s) => !!s.openArtifact);
+  const panel = useStore((s) => !!s.openArtifact || (s.screen === 'files' && !!s.filePreview));
   const docked = sidebarOpen && !drawer && (wide || !panel);
   const openDrawer = useRef(() => setSidebarOpen(true)).current;
   useEdgeSwipe(mobile && !sidebarOpen, openDrawer);
@@ -205,6 +207,7 @@ function Shell() {
         {screen === 'agents' && <AgentsScreen />}
         {screen === 'automations' && <AutomationsScreen />}
         {screen === 'memory' && <MemoryScreen />}
+        {screen === 'files' && <FilesScreen />}
         {/* Hidden, not unmounted, on other screens: the composer owns the global shortcuts. */}
         <div className={cn('flex min-h-0 flex-1 flex-col', screen !== 'chat' && 'hidden')}>
           {empty ? (
