@@ -335,6 +335,23 @@ for (const scheme of ['light', 'dark'] as const) {
         await shot(page, 'model-catalog', vp.width, scheme);
       });
 
+      test('model-menu-chat', async ({ app, page }) => {
+        // Phones only: a started chat has no agent chip, so the model sheet names the agent.
+        if (vp.width >= 768) return;
+        app.llm.push({ text: 'Hei.' });
+        await app.login(page);
+        await page.getByLabel('Viesti').fill('Hei');
+        await page.getByLabel('Viesti').press('ControlOrMeta+Enter');
+        await expect(page.locator('.md').last()).toHaveText('Hei.');
+        await expect(page.getByRole('button', { name: 'Lähetä', exact: true })).toBeVisible();
+        await expect(page.getByRole('button', { name: /^Agentti: / })).toHaveCount(0);
+        await modelMenu(page);
+        await expect(
+          page.getByRole('dialog', { name: 'Mallin valinta' }),
+        ).toHaveAccessibleDescription('Agentti: Avustaja');
+        await shot(page, 'model-menu-chat', vp.width, scheme);
+      });
+
       test('zdr-refusal', async ({ app, page }) => {
         app.llm.push(REFUSAL);
         await app.login(page);

@@ -1,4 +1,4 @@
-import { Bot, ChevronDown } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -13,15 +13,20 @@ import { Tip } from './IconButton.tsx';
 
 const chip = 'h-8 rounded-full px-3 font-normal text-muted-foreground max-md:h-11';
 
-/** Composer chip: picks the agent for a new chat; an existing chat keeps its agent. */
-export function AgentPicker() {
+/** The agent of the open chat, or the pending agent of a new chat. */
+export function useAgent() {
   const chatId = useStore((s) => s.activeChatId);
   const chatAgent = useStore((s) => s.chats.find((c) => c.id === s.activeChatId)?.agentId);
   const pending = useStore((s) => s.pendingAgentId);
   const agents = useStore((s) => s.agents);
-  const mobile = useMobile();
   const current = chatId ? (chatAgent ?? 'assistant') : pending;
-  const name = agents.find((a) => a.id === current)?.name ?? current;
+  return { chatId, agents, current, name: agents.find((a) => a.id === current)?.name ?? current };
+}
+
+/** Composer chip: picks the agent for a new chat; an existing chat keeps its agent. */
+export function AgentPicker() {
+  const { chatId, agents, current, name } = useAgent();
+  const mobile = useMobile();
   const label = (
     <>
       <span className="sr-only">Agentti: </span>
@@ -29,24 +34,17 @@ export function AgentPicker() {
     </>
   );
 
+  // Phones, started chat: no chip; the model sheet names the agent on its first line.
+  if (chatId && mobile) return null;
   if (chatId)
     return (
       <Tip label="Agentti valitaan uuden keskustelun alussa">
         <Button
           variant="ghost"
           aria-disabled="true"
-          // Phones, started chat: a 44 px icon, the name stays for assistive technology (phase-10).
-          {...(mobile ? { size: 'icon' as const } : {})}
-          className={`${mobile ? 'rounded-full text-muted-foreground' : chip} cursor-not-allowed hover:bg-transparent hover:text-muted-foreground`}
+          className={`${chip} cursor-not-allowed hover:bg-transparent hover:text-muted-foreground`}
         >
-          {mobile ? (
-            <>
-              <Bot size={16} />
-              <span className="sr-only">Agentti: {name}</span>
-            </>
-          ) : (
-            label
-          )}
+          {label}
         </Button>
       </Tip>
     );

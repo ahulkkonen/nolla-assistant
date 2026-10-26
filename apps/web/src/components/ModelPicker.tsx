@@ -34,14 +34,24 @@ import { useMobile } from '../media.ts';
 import { useStore } from '../store.ts';
 import { aliasName, EFFORT_LABEL, shortName, useModel } from '../useModel.ts';
 import { send, setDataPolicy } from '../ws.ts';
+import { useAgent } from './AgentPicker.tsx';
 import { Tip } from './IconButton.tsx';
 
 /** "1 M", "200 k": a context length. */
 const tokens = (n: number) =>
   n >= 1e6 ? `${String(Math.round(n / 1e5) / 10).replace('.', ',')} M` : `${Math.round(n / 1e3)} k`;
-/** "2,00 / 10,00 $": input and output price per 1M tokens. */
-const price = (m: CatalogModel) =>
-  `${m.price.input.toFixed(2).replace('.', ',')} / ${m.price.output.toFixed(2).replace('.', ',')} $`;
+const usd = (n: number) => n.toFixed(2).replace('.', ',');
+/** "2,00 / 10,00": input and output price in $ per 1M tokens; the column header names the unit. */
+const price = (m: CatalogModel) => (
+  <>
+    {usd(m.price.input)}
+    <span className="text-muted-foreground">{'\u2009/\u2009'}</span>
+    {usd(m.price.output)}
+  </>
+);
+/** The catalog's two number columns: fixed widths, so the header and every row line up. */
+const COL_CTX = 'w-14 shrink-0 text-right tabular-nums';
+const COL_PRICE = 'w-32 shrink-0 text-right tabular-nums';
 
 const ALIAS = '__alias__';
 
@@ -54,6 +64,7 @@ export function ModelPicker() {
   const setOpen = (modelMenuOpen: boolean) => useStore.setState({ modelMenuOpen });
   const [catalogOpen, setCatalogOpen] = useState(false);
   const mobile = useMobile();
+  const agent = useAgent().name;
   const isOpen = policy.dataPolicy === 'open';
 
   // A run disables the chip: nothing may pop open again when it ends.
@@ -176,9 +187,17 @@ export function ModelPicker() {
             className="max-h-[85dvh] gap-1 overflow-y-auto rounded-t-xl px-2 pt-2 pb-[max(env(safe-area-inset-bottom),8px)]"
           >
             <SheetTitle className="sr-only">Mallin valinta</SheetTitle>
-            <SheetDescription className="sr-only">
-              Valitse keskustelun malli ja ajattelun taso
-            </SheetDescription>
+            {/* A started chat keeps its agent, so the sheet names it read-only (the composer has no
+                agent chip on phones then). */}
+            {chatId ? (
+              <SheetDescription className="px-3 pt-2 pb-1 text-meta text-muted-foreground">
+                Agentti: <span className="text-foreground">{agent}</span>
+              </SheetDescription>
+            ) : (
+              <SheetDescription className="sr-only">
+                Valitse keskustelun malli ja ajattelun taso
+              </SheetDescription>
+            )}
             <Choices
               label="Malli"
               options={modelOptions}
@@ -415,16 +434,23 @@ function CatalogDialog({
           data-cell={pick}
           tabIndex={tabStop === pick ? 0 : -1}
           onClick={() => onPick(m.id)}
-          className="flex min-h-11 min-w-0 flex-1 flex-col justify-center rounded-md px-3 py-1 text-left"
+          // Wraps: the columns stay on the name's line while the name fits beside them, else they
+          // drop to a second line, right-aligned. The id has no intrinsic width, so only the name
+          // and the badge decide the wrap; the id fills what is left and truncates.
+          className="flex min-h-11 min-w-0 flex-1 flex-wrap items-center gap-x-2 rounded-md px-3 py-1 text-left"
         >
-          <span className="truncate text-ui">{m.name}</span>
-          <span className="flex min-w-0 gap-2 text-meta text-muted-foreground">
-            <span className="truncate font-mono text-[13px]">{m.id}</span>
-            <span className="shrink-0 tabular-nums">{tokens(m.contextLength)}</span>
-            <span className="shrink-0 tabular-nums">{price(m)}</span>
+          <span className="flex grow basis-0 items-center gap-2">
+            <span className="max-w-56 truncate text-ui md:max-w-80">{m.name}</span>
+            {!m.zdr && <Badge variant="warning">Ei ZDR</Badge>}
+            <span className="w-0 min-w-0 flex-1 truncate font-mono text-[13px] text-muted-foreground">
+              {m.id}
+            </span>
+          </span>
+          <span className="ml-auto flex gap-2 text-meta">
+            <span className={cn(COL_CTX, 'text-muted-foreground')}>{tokens(m.contextLength)}</span>
+            <span className={COL_PRICE}>{price(m)}</span>
           </span>
         </button>
-        {!m.zdr && <Badge variant="warning">Ei ZDR</Badge>}
         {/* No tooltip per row: the label names the model, and a few hundred tooltips cost. */}
         <Button
           type="button"
@@ -489,18 +515,23 @@ function CatalogDialog({
             const at = (e.target as HTMLElement).dataset.cell;
             if (at) setCursor(at);
           }}
-          className="max-h-[min(60dvh,420px)] overflow-y-auto p-2 max-md:max-h-[50dvh]"
+          className="max-h-[min(60dvh,420px)] overflow-y-auto px-2 pb-2 max-md:max-h-[50dvh]"
         >
           {!models?.catalog.length ? (
-            <p className="px-3 py-6 text-center text-meta text-muted-foreground">
+            <p className="px-3 pt-8 pb-6 text-center text-meta text-muted-foreground">
               Mallilista ei ole saatavilla. Yritä myöhemmin.
             </p>
           ) : !shown.length ? (
-            <p className="px-3 py-6 text-center text-meta text-muted-foreground">
+            <p className="px-3 pt-8 pb-6 text-center text-meta text-muted-foreground">
               Ei tuloksia haulle ”{q.trim()}”
             </p>
           ) : (
             <>
+              {/* Right padding = the row's star (28), its gap (8), the row's pr-1 and px-3. */}
+              <div className="sticky top-0 z-10 flex justify-end gap-2 bg-card pt-2 pr-[52px] pb-1 text-micro whitespace-nowrap text-muted-foreground">
+                <span className={COL_CTX}>Konteksti</span>
+                <span className={COL_PRICE}>$ / M tok, sisään / ulos</span>
+              </div>
               {favorites.length > 0 && (
                 <section aria-labelledby="models-favorites">
                   <h3

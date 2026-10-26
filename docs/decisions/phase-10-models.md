@@ -423,7 +423,7 @@ The UI follows the design brief in `docs/decisions/phase-9-ui.md`, section 7. Al
 | --- | --- | --- |
 | ≥ 768 | Liitä, agent chip, model chip | mic, send |
 | < 768, empty chat | Liitä, agent chip (name and chevron), model chip without chevron | mic, send |
-| < 768, started chat | Liitä, agent chip as a 44 px icon button (`Bot` 16) with the name kept as sr-only text, model chip without chevron | mic, send |
+| < 768, started chat | Liitä, model chip without chevron (no agent control: the model sheet shows "Agentti: <name>" as its first line and its description) | mic, send |
 
 - Space check at 390 px: the toolbar has 340 px inside. In a started chat, the other controls and gaps take 200 px. The sum is 44 + 4 + 44 + 4 + 8 + 44 + 8 + 44. That leaves 140 px for the model chip. In an empty chat, the agent chip takes 104 px, which leaves 80 px. "Auto" fits in 80 px.
 - The model chip copies the agent chip: ghost, 32 h (44 on phones), radius full, `--text-ui`. It truncates with an ellipsis at 200 px (desktop) or at the space that is left (phone). The accessible name is "Malli: Auto", from an `aria-label` with the full model name.
@@ -475,8 +475,8 @@ Effort labels:
 - The list is a plain list with roving focus, not a `cmdk` `Command` (as built). The arrow keys up and down move between rows. The arrow keys left and right move between a row and its star button. `cmdk` is not used because a star button inside a `cmdk` option fails the axe `nested-interactive` rule.
 - The input is 48 h with the placeholder and accessible name "Hae malleja".
 - Two groups (as built): "Suosikit" and "Kaikki mallit". Each favourite is listed once, under "Suosikit". The group "Kaikki mallit" lists the other models.
-- Rows are 44 h. A row shows the name (`--text-ui`) and a meta line. The meta line holds the id in mono 13, the context ("1 M") and the price ("4,00 / 20,00 $").
-- At the right of a row: the `Badge` "Ei ZDR" when the model has no ZDR endpoint, and a 28 px star button. The star button is "Lisää suosikkeihin" or "Poista suosikeista", with `Star` filled for a favourite.
+- Rows are 44 h. Left: the name (`--text-ui`), the "Ei ZDR" badge and the id in mono 13 (truncates). Right: two fixed-width, right-aligned `tabular-nums` columns, the context ("1 M", muted) and the price ("4,00 / 20,00", foreground, muted slash). A sticky header line under the search names them: "Konteksti" and "$ / M tok, sisään / ulos". When the name does not fit beside the columns (phones), the columns wrap to a second line, right-aligned.
+- At the right of a row: a 28 px star button. The star button is "Lisää suosikkeihin" or "Poista suosikeista", with `Star` filled for a favourite.
 - Enter or a click selects the model for the chat and closes the dialog.
 - No hits: "Ei tuloksia haulle ”…”". No catalog: "Mallilista ei ole saatavilla. Yritä myöhemmin."
 - The desktop footer is "↑↓ liiku · ↵ valitse · Esc sulje". On a phone, the dialog follows the palette rules (inset 8, list max-height 50dvh).
