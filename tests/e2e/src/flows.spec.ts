@@ -759,11 +759,14 @@ test.describe('thread depth', () => {
     const reply = msgs(page).last();
     await expect(reply.getByText(/^klo \d{1,2}\.\d{2}$/)).toBeVisible();
     await expect(reply.getByText('0,012 €')).toBeVisible();
-    await expect(reply.getByText('3,4 k tokenia')).toBeVisible();
+    // Phase 16: the prompt cache hit rate, here and in the menu.
+    await expect(reply.getByText('3,4 k tokenia · välimuisti 82 %')).toBeVisible();
     const row = page.locator('nav li', { hasText: 'Kasvimaa' });
     await row.hover();
     await row.getByRole('button', { name: 'Lisää: Kasvimaa' }).click();
-    await expect(page.getByRole('menu').getByText('0,012 € · 3,4 k tokenia')).toBeVisible();
+    await expect(
+      page.getByRole('menu').getByText('0,012 € · 3,4 k tokenia · välimuisti 82 %'),
+    ).toBeVisible();
   });
 
   test('find: Ctrl+F, two hits 1/2, Enter 2/2, Esc closes', async ({ app, page }) => {
@@ -795,6 +798,8 @@ test.describe('thread depth', () => {
     const table = page.getByRole('region', { name: 'Mallit' });
     await expect(table.getByText('Gemini 4 Argon')).toBeVisible();
     await expect(table.getByText('0,012 €')).toBeVisible();
+    await expect(table.getByRole('columnheader', { name: 'Välimuisti' })).toBeVisible();
+    await expect(table.getByRole('cell', { name: '82 %' })).toBeVisible();
     await expect(page.getByText('Kurssi: EKP 23.10.2026, 1 € = 1,1193 $.')).toBeVisible();
   });
 });

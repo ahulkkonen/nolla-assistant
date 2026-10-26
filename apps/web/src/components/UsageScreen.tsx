@@ -17,7 +17,9 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { cn } from '@/lib/utils';
 import { useStore } from '../store.ts';
+import { cacheRate } from '../thread.ts';
 import { openRoute } from '../useModel.ts';
 import { send } from '../ws.ts';
 import { EmptyState, ListSkeleton, Page } from './Page.tsx';
@@ -53,6 +55,8 @@ type BreakdownRow = {
   tokens: number;
   costUsd: number;
   estimated: boolean;
+  /** The month's cache hit rate (phase 16); a model row without the counts has none. */
+  cache?: string | undefined;
 };
 
 /** One grouping of the month: a table at 768 and up, cards below (brief 7.10 4a). */
@@ -61,11 +65,14 @@ function Breakdown({
   head,
   rows,
   cost,
+  cacheColumn = false,
 }: {
   label: string;
   head: string;
   rows: BreakdownRow[];
   cost: (usd: number, estimated: boolean) => string;
+  /** The "Välimuisti" column: model rows carry the token split, agent rows do not. */
+  cacheColumn?: boolean;
 }) {
   return (
     <>
@@ -79,6 +86,7 @@ function Breakdown({
               <TableHead>{head}</TableHead>
               <TableHead className="text-right">Kutsut</TableHead>
               <TableHead className="text-right">Tokenit</TableHead>
+              {cacheColumn && <TableHead className="text-right">Välimuisti</TableHead>}
               <TableHead className="text-right">Kustannus</TableHead>
             </TableRow>
           </TableHeader>
@@ -93,6 +101,13 @@ function Breakdown({
                 </TableCell>
                 <TableCell className="text-right tabular-nums">{num.format(r.calls)}</TableCell>
                 <TableCell className="text-right tabular-nums">{num.format(r.tokens)}</TableCell>
+                {cacheColumn && (
+                  <TableCell
+                    className={cn('text-right tabular-nums', !r.cache && 'text-muted-foreground')}
+                  >
+                    {r.cache ?? '–'}
+                  </TableCell>
+                )}
                 <TableCell className="text-right tabular-nums">
                   {cost(r.costUsd, r.estimated)}
                 </TableCell>
@@ -111,6 +126,7 @@ function Breakdown({
               </div>
               <p className="text-meta text-muted-foreground tabular-nums">
                 {callCount(r.calls)} · {formatTokens(r.tokens)}
+                {r.cache && ` · välimuisti ${r.cache}`}
               </p>
             </div>
             <span className="shrink-0 tabular-nums">{cost(r.costUsd, r.estimated)}</span>
@@ -201,7 +217,13 @@ export function UsageScreen() {
               label="Mallit"
               head="Malli"
               cost={cost}
-              rows={rows.map((r) => ({ ...r, key: r.model, badge: zdrOff(r.model) }))}
+              cacheColumn
+              rows={rows.map((r) => ({
+                ...r,
+                key: r.model,
+                badge: zdrOff(r.model),
+                cache: cacheRate(r),
+              }))}
             />
           </div>
           {agentRows.length > 0 && (

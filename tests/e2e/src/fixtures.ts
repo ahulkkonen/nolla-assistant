@@ -165,7 +165,14 @@ export const THINKING_TURN = {
   reasoning:
     'Käyttäjä kysyy aloitusajasta. Mietin ensin säätä ja maata. Sitten vertailen kevättä ja syksyä.',
   thinkMs: 1500,
-  usage: { prompt_tokens: 3100, completion_tokens: 300, reasoning_tokens: 120, cost: 0.0134 },
+  // 2,542 of the 3,100 prompt tokens from the cache: "välimuisti 82 %" (phase 16).
+  usage: {
+    prompt_tokens: 3100,
+    completion_tokens: 300,
+    reasoning_tokens: 120,
+    cached_tokens: 2542,
+    cost: 0.0134,
+  },
 };
 
 /**

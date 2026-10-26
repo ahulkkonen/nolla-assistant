@@ -27,6 +27,24 @@ export const fullTime = (iso: string) => {
   return `${weekday.format(d)} ${fullDate.format(d)} klo ${clock.format(d)}`;
 };
 
+const percent = new Intl.NumberFormat('fi', { style: 'percent', maximumFractionDigits: 0 });
+
+/**
+ * The prompt cache hit rate (phase-16 decision 10), "82 %": `cacheRead / (input + cacheRead +
+ * cacheWrite)`. Undefined when the counts are missing (older totals) or the divisor is 0.
+ */
+type CacheCounts = {
+  input?: number | undefined;
+  cacheRead?: number | undefined;
+  cacheWrite?: number | undefined;
+};
+export function cacheRate(u: CacheCounts | undefined) {
+  if (u?.input === undefined) return undefined;
+  const read = u.cacheRead ?? 0;
+  const all = u.input + read + (u.cacheWrite ?? 0);
+  return all ? percent.format(read / all) : undefined;
+}
+
 /** Tokens of a call: input, output and both cache parts, as Pi's `totalTokens`. */
 export const tokensOf = (u: CallUsage) => u.input + u.output + u.cacheRead + u.cacheWrite;
 

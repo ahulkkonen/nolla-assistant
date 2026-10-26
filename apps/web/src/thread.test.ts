@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  cacheRate,
   duration,
   findOffsets,
   mdBlocks,
@@ -126,5 +127,14 @@ describe('settleTail', () => {
   it('leaves code inside an open fence alone', () => {
     expect(settleTail('```js\nconst a = `x')).toBe('```js\nconst a = `x');
     expect(settleTail('```\nx\n```\nsee `y')).toBe('```\nx\n```\nsee `y`');
+  });
+});
+
+describe('cacheRate', () => {
+  it('is the read share of all prompt tokens, none without a divisor', () => {
+    expect(cacheRate({ input: 10, cacheRead: 82, cacheWrite: 8 })).toBe('82\u00a0%');
+    expect(cacheRate({ input: 0, cacheRead: 0, cacheWrite: 0 })).toBeUndefined();
+    expect(cacheRate({ cacheRead: 5 })).toBeUndefined();
+    expect(cacheRate(undefined)).toBeUndefined();
   });
 });

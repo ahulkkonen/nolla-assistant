@@ -1,21 +1,28 @@
 import { type CallUsage, type FxRate, formatCost, formatTokens } from '@pa/protocol';
 import { useStore } from '../store.ts';
-import { fullTime, messageTime, tokensOf } from '../thread.ts';
+import { cacheRate, fullTime, messageTime, tokensOf } from '../thread.ts';
 import { modelLabel } from '../useModel.ts';
 import { Tip } from './IconButton.tsx';
 
 const count = new Intl.NumberFormat('fi');
+
+/** "3,4 k tokenia · välimuisti 82 %"; the rate only when the call had prompt tokens. */
+const tokenText = (u: CallUsage) => {
+  const rate = cacheRate(u);
+  return `${formatTokens(tokensOf(u))}${rate ? ` · välimuisti ${rate}` : ''}`;
+};
 
 /** The meta as one line of text, for the touch sheet (no tooltips there). */
 export function metaText(createdAt: string, usage: CallUsage | undefined, fx: FxRate | null) {
   const time = messageTime(createdAt);
   if (!usage) return time;
   const cost = formatCost(usage.costUsd, fx, { reply: true, estimated: usage.estimated });
-  return `${time} · ${cost} · ${formatTokens(tokensOf(usage))}`;
+  return `${time} · ${cost} · ${tokenText(usage)}`;
 }
 
 /**
- * The action row meta (phase-13 UI): "klo 17.20 · 0,012 € · 3,4 k tokenia". The time's tooltip
+ * The action row meta (phase-13 UI): "klo 17.20 · 0,012 € · 3,4 k tokenia · välimuisti 82 %" (the
+ * cache hit rate is phase 16). The time's tooltip
  * gives the full date; the cost's gives the model, the token parts and an estimate's note.
  */
 export function MessageMeta({
@@ -68,7 +75,7 @@ export function MessageMeta({
             </span>
           </Tip>
           <span aria-hidden="true">·</span>
-          <span className="truncate">{formatTokens(tokensOf(usage))}</span>
+          <span className="truncate">{tokenText(usage)}</span>
         </>
       )}
     </span>

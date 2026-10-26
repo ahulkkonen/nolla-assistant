@@ -24,6 +24,7 @@ import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { firstUserLine, useStore } from '../store.ts';
+import { cacheRate } from '../thread.ts';
 import { openChat, runSearch, send } from '../ws.ts';
 import { type Action, ActionMenu, ActionRow } from './Actions.tsx';
 import { ConfirmDialog } from './ConfirmDialog.tsx';
@@ -125,8 +126,9 @@ function ChatRow({
   ];
   const name = label ?? UNTITLED;
   // The chat's cost at the end of its menu (phase 13); none before the first tokens.
+  const rate = cacheRate(chat.usage);
   const note = chat.usage?.tokens
-    ? `${formatCost(chat.usage.costUsd, fx, { reply: true })} · ${formatTokens(chat.usage.tokens)}`
+    ? `${formatCost(chat.usage.costUsd, fx, { reply: true })} · ${formatTokens(chat.usage.tokens)}${rate ? ` · välimuisti ${rate}` : ''}`
     : undefined;
 
   return (
