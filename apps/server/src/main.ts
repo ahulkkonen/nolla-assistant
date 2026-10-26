@@ -149,16 +149,6 @@ export async function start(
       );
     },
   });
-  // A restart drops every held message: close their items, and release the chats to new sockets.
-  if (pseudo)
-    pseudo.vaultList().then(
-      ({ pending }) => {
-        const open = pending.filter((p) => p.reason === 'collision');
-        collisions.orphan([...new Set(open.map((p) => p.session_id))]);
-        for (const p of open) void pseudo.vaultPending(p.id, 'expire').catch(() => {});
-      },
-      (err: unknown) => app.log.warn({ error: String(err) }, 'collision cleanup at startup failed'),
-    );
   // Model calls into `usage` and the chat totals (phase-13 decision 13).
   const recordUsage = usageRecorder(db, config.userId, (msg, data) =>
     app.log.warn(data ?? {}, msg),
@@ -283,6 +273,16 @@ export async function start(
   if (!pseudo) app.log.warn('memory disabled: PSEUDO_URL unset');
   if (!push.enabled) app.log.info('push disabled: VAPID_PUBLIC/VAPID_PRIVATE/VAPID_SUBJECT unset');
   const selfSeed = new AbortController();
+  // After `app` exists: a sidecar that is still booting rejects at once. A restart drops every held message: close their items, and release the chats to new sockets.
+  if (pseudo)
+    pseudo.vaultList().then(
+      ({ pending }) => {
+        const open = pending.filter((p) => p.reason === 'collision');
+        collisions.orphan([...new Set(open.map((p) => p.session_id))]);
+        for (const p of open) void pseudo.vaultPending(p.id, 'expire').catch(() => {});
+      },
+      (err: unknown) => app.log.warn({ error: String(err) }, 'collision cleanup at startup failed'),
+    );
   if (pseudo && config.selfEmail)
     void allowlistSelf(pseudo, config.selfEmail, app.log, selfSeed.signal);
   if (mcp.has('workspace') && !config.selfEmail)
