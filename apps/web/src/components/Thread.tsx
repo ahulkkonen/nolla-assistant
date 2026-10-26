@@ -419,6 +419,11 @@ export function Thread() {
           {!(stream || running) && cards}
         </div>
       </section>
+      {/* Prose fades out above the composer instead of ending on a hard cut. */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-linear-to-t from-background"
+      />
       {away && (
         // Brief 7.5: 12 px above the composer, centred on the thread column. Dark has no
         // shadow-sm; floating elements take the dark floating shadow there (7.4).

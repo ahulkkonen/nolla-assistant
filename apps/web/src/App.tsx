@@ -206,9 +206,13 @@ function Shell() {
           </header>
         ) : screen === 'chat' && !empty ? (
           // Desktop chat header (phase 16): the title, and the chat's cost at the right.
-          <header className="z-(--z-header) flex h-12 shrink-0 items-center gap-4 px-4">
-            <h1 className="min-w-0 flex-1 truncate text-ui font-medium">{title}</h1>
-            <ChatCost />
+          // On the thread column's edges (672, or the narrower column beside the side panel); the
+          // bottom border meets the artifact panel's header.
+          <header className="z-(--z-header) h-12 shrink-0 border-b border-border px-4">
+            <div className="mx-auto flex h-full w-full max-w-(--thread-max) items-center gap-4">
+              <h1 className="min-w-0 flex-1 truncate text-ui font-medium">{title}</h1>
+              <ChatCost />
+            </div>
           </header>
         ) : (
           screen === 'chat' && <h1 className="sr-only">{title}</h1>

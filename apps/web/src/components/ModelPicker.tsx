@@ -48,7 +48,7 @@ const price = (m: CatalogModel) => (
     <span className="text-muted-foreground">{'\u2009/\u2009'}</span>
     {usd(m.price.output)}
     {/* The unit lives in the visual column header; screen readers hear it here. */}
-    <span className="sr-only"> $ / M tok</span>
+    <span className="sr-only"> $ / M</span>
   </>
 );
 /** The catalog's two number columns: fixed widths, so the header and every row line up. */
@@ -92,8 +92,9 @@ export function ModelPicker() {
   // The whole name as one label (sr-only parts inside a flex button gain stray spaces). It ends
   // with the badge's own text, so the name contains the visible label (axe).
   const ariaLabel = `Malli: ${name}${isOpen ? ', Ei ZDR' : ''}`;
-  // Truncates: `shrink` beats the kit button's `shrink-0`. Phones: a fill, as there is no chevron.
-  const chip = 'h-8 min-w-0 shrink rounded-full px-3 font-normal max-md:h-11 max-md:bg-secondary';
+  // Truncates: `shrink` beats the kit button's `shrink-0`. Ghost at rest like the agent chip; the
+  // accent fill only while its menu or sheet is open (`aria-expanded`).
+  const chip = 'h-8 min-w-0 shrink rounded-full px-3 font-normal max-md:h-11';
 
   const catalog = models?.catalog ?? [];
   const favorites = (models?.favorites ?? []).filter((id) => id !== models?.auto);
@@ -444,13 +445,21 @@ function CatalogDialog({
           <span className="flex grow basis-0 items-center gap-2">
             <span className="max-w-56 truncate text-ui md:max-w-80">{m.name}</span>
             {!m.zdr && <Badge variant="warning">Ei ZDR</Badge>}
-            <span className="w-0 min-w-0 flex-1 truncate font-mono text-[13px] text-muted-foreground">
-              {m.id}
+            {/* Truncates the provider first: the model part of the id stays readable. */}
+            <span className="flex w-0 min-w-0 flex-1 font-mono text-[13px] text-muted-foreground">
+              <span className="min-w-0 truncate">{m.id.slice(0, m.id.indexOf('/') + 1)}</span>
+              <span className="max-w-full min-w-0 shrink-0 truncate">
+                {m.id.slice(m.id.indexOf('/') + 1)}
+              </span>
             </span>
           </span>
-          <span className="ml-auto flex gap-2 text-meta">
+          <span className="ml-auto flex gap-6 text-meta max-md:hidden">
             <span className={cn(COL_CTX, 'text-muted-foreground')}>{tokens(m.contextLength)}</span>
             <span className={COL_PRICE}>{price(m)}</span>
+          </span>
+          {/* Phones: no header row, so the meta line names its units. */}
+          <span className="w-full text-meta text-muted-foreground tabular-nums md:hidden">
+            {tokens(m.contextLength)} · {usd(m.price.input)} / {usd(m.price.output)} $ / M
           </span>
         </button>
         {/* No tooltip per row: the label names the model, and a few hundred tooltips cost. */}
@@ -462,7 +471,8 @@ function CatalogDialog({
           tabIndex={tabStop === star ? 0 : -1}
           aria-label={`${fav ? 'Poista suosikeista' : 'Lisää suosikkeihin'}: ${m.name}`}
           aria-pressed={fav}
-          className="size-7 text-muted-foreground hover:text-foreground"
+          // No transparent border: the 44 px phone target is the whole hover fill.
+          className="size-7 border-0 text-muted-foreground hover:text-foreground"
           onClick={() => {
             refocus.current = star;
             send({ type: 'models.favorite', modelId: m.id, favorite: !fav });
@@ -530,9 +540,9 @@ function CatalogDialog({
           ) : (
             <>
               {/* Right padding = the row's star (28), its gap (8), the row's pr-1 and px-3. */}
-              <div className="sticky top-0 z-10 flex justify-end gap-2 bg-card pt-2 pr-[52px] pb-1 text-micro whitespace-nowrap text-muted-foreground">
+              <div className="sticky top-0 z-10 flex justify-end gap-6 bg-card pt-2 pr-[52px] pb-1 text-micro whitespace-nowrap text-muted-foreground max-md:hidden">
                 <span className={COL_CTX}>Konteksti</span>
-                <span className={COL_PRICE}>$ / M tok, sisään / ulos</span>
+                <span className={COL_PRICE}>$ / M sisään / ulos</span>
               </div>
               {favorites.length > 0 && (
                 <section aria-labelledby="models-favorites">

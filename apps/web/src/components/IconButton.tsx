@@ -8,17 +8,23 @@ type TipProps = {
   label: ReactNode;
   children: ReactElement;
   side?: 'top' | 'right' | 'bottom' | 'left';
+  align?: 'start' | 'center' | 'end';
   /** Controlled: `false` keeps it shut (e.g. while recording), `true` shows a hint. */
   open?: boolean;
 };
 
 /** Kit tooltip around one trigger element; none on touch screens (brief 7.5). */
-export function Tip({ label, children, side, open }: TipProps) {
+export function Tip({ label, children, side, align, open }: TipProps) {
   if (touch && open === undefined) return children;
   return (
     <Tooltip {...(open === undefined ? {} : { open })}>
       <TooltipTrigger asChild>{children}</TooltipTrigger>
-      <TooltipContent sideOffset={4} collisionPadding={8} {...(side ? { side } : {})}>
+      <TooltipContent
+        sideOffset={4}
+        collisionPadding={8}
+        {...(side ? { side } : {})}
+        {...(align ? { align } : {})}
+      >
         {label}
       </TooltipContent>
     </Tooltip>

@@ -103,13 +103,21 @@ export function ChatCost() {
   const rate = cacheRate(usage);
   return (
     <Tip
+      // Left of the cost, top-aligned: it stays out of the thread column's first lines.
+      side="left"
+      align="start"
       label={
+        // One labelled item per line, as text and <br> only (see MessageMeta's tooltip: axe).
         <>
           {usage.input !== undefined && (
             <>
-              Syöte {count.format(usage.input)} · välimuistista {count.format(usage.cacheRead ?? 0)}{' '}
-              · välimuistiin {count.format(usage.cacheWrite ?? 0)} · tuloste{' '}
-              {count.format(usage.output ?? 0)}
+              Syöte {count.format(usage.input)}
+              <br />
+              Välimuistista {count.format(usage.cacheRead ?? 0)}
+              <br />
+              Välimuistiin {count.format(usage.cacheWrite ?? 0)}
+              <br />
+              Tuloste {count.format(usage.output ?? 0)}
               <br />
             </>
           )}

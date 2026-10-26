@@ -71,7 +71,10 @@ function Breakdown({
   head: string;
   rows: BreakdownRow[];
   cost: (usd: number, estimated: boolean) => string;
-  /** The "Välimuisti" column: model rows carry the token split, agent rows do not. */
+  /**
+   * Model rows carry the token split; agent rows do not, so their "Välimuisti" column stays empty.
+   * Both tables keep the column, so they share one grid.
+   */
   cacheColumn?: boolean;
 }) {
   return (
@@ -79,15 +82,18 @@ function Breakdown({
       <div className="max-md:hidden">
         <Table
           label={label}
-          className="[&_td:first-child]:pl-0 [&_td:last-child]:pr-0 [&_th:first-child]:pl-0 [&_th:last-child]:pr-0"
+          className="table-fixed [&_td:first-child]:pl-0 [&_td:last-child]:pr-0 [&_th:first-child]:pl-0 [&_th:last-child]:pr-0"
         >
           <TableHeader>
             <TableRow>
               <TableHead>{head}</TableHead>
-              <TableHead className="text-right">Kutsut</TableHead>
-              <TableHead className="text-right">Tokenit</TableHead>
-              {cacheColumn && <TableHead className="text-right">Välimuisti</TableHead>}
-              <TableHead className="text-right">Kustannus</TableHead>
+              {/* Fixed numeric widths: the model and agent tables line up. */}
+              <TableHead className="w-20 text-right">Kutsut</TableHead>
+              <TableHead className="w-24 text-right">Tokenit</TableHead>
+              <TableHead className="w-24 text-right">
+                {cacheColumn ? 'Välimuisti' : <span className="sr-only">Välimuisti</span>}
+              </TableHead>
+              <TableHead className="w-24 text-right">Kustannus</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -101,13 +107,11 @@ function Breakdown({
                 </TableCell>
                 <TableCell className="text-right tabular-nums">{num.format(r.calls)}</TableCell>
                 <TableCell className="text-right tabular-nums">{num.format(r.tokens)}</TableCell>
-                {cacheColumn && (
-                  <TableCell
-                    className={cn('text-right tabular-nums', !r.cache && 'text-muted-foreground')}
-                  >
-                    {r.cache ?? '–'}
-                  </TableCell>
-                )}
+                <TableCell
+                  className={cn('text-right tabular-nums', !r.cache && 'text-muted-foreground')}
+                >
+                  {cacheColumn ? (r.cache ?? '–') : null}
+                </TableCell>
                 <TableCell className="text-right tabular-nums">
                   {cost(r.costUsd, r.estimated)}
                 </TableCell>
@@ -232,15 +236,14 @@ export function UsageScreen() {
               <Breakdown label="Agenteittain" head="Agentti" cost={cost} rows={agentRows} />
             </div>
           )}
-          {data.searches !== undefined && (
-            <p className="text-meta text-muted-foreground tabular-nums">
-              Verkkohaut: {num.format(data.searches)}
-            </p>
-          )}
         </>
       )}
       {rows.length > 0 && (
-        <div className="flex flex-col gap-1 text-meta text-muted-foreground">
+        // One footer group, 32 px under the last table (the page gap), lines 8 px apart.
+        <div className="flex flex-col gap-2 text-meta text-muted-foreground">
+          {data?.searches !== undefined && (
+            <p className="tabular-nums">Verkkohaut: {num.format(data.searches)}</p>
+          )}
           <p>
             {fx
               ? `Kurssi: EKP ${rateDate.format(new Date(fx.date))}, 1 € = ${rateValue.format(fx.usdPerEur)} $.`

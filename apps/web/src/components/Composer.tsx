@@ -308,7 +308,7 @@ export function Composer() {
             Litteroidaan…
           </div>
         )}
-        <div className="flex h-12 items-center gap-1 px-2 py-1.5 max-md:h-14">
+        <div className="flex h-12 items-center gap-1 px-2 py-1.5 max-md:h-14 max-md:px-1.5">
           {/* Not modal: a modal menu hides the page from assistive technology (axe). */}
           <DropdownMenu modal={false}>
             <DropdownMenuTrigger asChild>
@@ -351,7 +351,8 @@ export function Composer() {
               <IconButton
                 label="Pysäytä"
                 variant="primary"
-                className="rounded-full"
+                // No transparent border: the fill is the whole 36 / 44 px target.
+                className="rounded-full border-0"
                 onClick={() => send({ type: 'user.stop', chatId })}
               >
                 <Square size={14} fill="currentColor" />
@@ -360,7 +361,7 @@ export function Composer() {
               <IconButton
                 label="Lähetä"
                 variant="primary"
-                className="rounded-full"
+                className="rounded-full border-0"
                 disabled={!canSend}
                 onClick={() => void submit()}
               >
