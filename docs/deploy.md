@@ -58,6 +58,11 @@ Phase 2 ships only `pa-server`. Later phases add services to `infra/compose.yaml
    | `TRUST_PROXY` | `1` |
    | `USER_ID` | your short user id, letters and digits only |
 
+   These optional variables control the two public, key-free lookups of `pa-server`. Neither call carries user data.
+
+   - `ECB_RATES`: the base URL of the ECB exchange-rate API. The default is `https://data-api.ecb.europa.eu`. Set `off` to stop every request. The server still loads the cached rate from `DATA_DIR/fx`. Without a rate, the UI shows costs in USD.
+   - `OPENROUTER_CATALOG`: the base URL of the public OpenRouter model catalog. The default is `https://openrouter.ai/api/v1`. Set `off` to stop every request. The server still loads the cached catalog from `DATA_DIR/openrouter`.
+
 5. Deploy. Wait until the health check reports healthy.
 
 ## 3. First login and passkey

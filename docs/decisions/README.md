@@ -18,3 +18,4 @@ The build plan is `docs/plan.md`. Section numbers in records refer to it.
 - `phase-11-15-plan.md`: decisions for files, pseudo hardening, thread depth, web search, admin (2026-10-26).
 - `phase-11-files.md`: the Files screen: routes, path guard, trash, origins, quota, attach and save artifact.
 - `phase-12-pseudo.md`: rare surrogate pairs, the surrogate collision check, email and street address surrogates, lone lower-case surnames, corpus gate.
+- `phase-13-thread.md`: fork into a new chat, thinking row, usage and cost in EUR, timestamps, find bar.

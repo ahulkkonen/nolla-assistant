@@ -115,6 +115,7 @@ Total steady state is about 4 GB, leaving headroom for Pi subagent processes and
 - `createAgentSession` options: `DefaultResourceLoader` pointed at `skills/` and the per-agent profile; `extensionFactories` = pseudo, memory, topics, notify, subagents, plus `createMcpExtension()` (MCP is not loaded by default in SDK sessions). Call `session.bindExtensions()` after construction.
 - Provider config: a custom OpenAI-compatible provider in `models.json` named `zdr` with `baseUrl = LITELLM_URL`. Every agent profile and every subagent uses model ids of the form `zdr/<alias>`. No other provider is configured, so there is no path around the proxy.
 - Wildcard deployments (amended 2026-10-26, phase 10): LiteLLM has two wildcard deployments, `zdr/*` and `open/*`. Both map to `openrouter/*`. The model name carries the data policy: `zdr/<openrouter id>` or `open/<openrouter id>`. The `zdr/*` deployment uses the ZDR key (`OPENROUTER_API_KEY`) and sets `provider: { zdr: true, data_collection: "deny" }`. The `open/*` deployment uses the open key (`OPENROUTER_OPEN_API_KEY`) and sets only `data_collection: "deny"`. Only a chat that the user opted out of ZDR uses `open/*`. The fixed aliases keep their own deployments. `pa-server` reads the public OpenRouter model catalog (`GET /api/v1/models`, no key, no user data) at start and every 24 hours. It writes the catalog models into `models.json` for both providers. See `docs/decisions/phase-10-models.md`, decisions 1, 2, 3 and 8.
+- ECB rate (amended 2026-10-26, phase 13): `pa-server` also calls the public ECB exchange-rate API (`data-api.ecb.europa.eu`) at start and every 6 hours to show costs in EUR, and this call carries no key and no user data. See `docs/decisions/phase-13-thread.md`, decision 16 and the Egress table.
 - Events: subscribe once per session; forward `message_update`, `message_end`, `tool_execution_*`, `agent_settled`, approval requests (from `ctx.ui.confirm`) and errors to the bridge. `agent_settled`, not `agent_end`, is the signal that Pi will not continue on its own.
 - Steering and queueing: the bridge maps `user.message` to `session.prompt()` when idle and to the steering queue when the agent is running; `user.stop` calls `session.abort()`.
 
@@ -314,6 +315,13 @@ The UI mirrors the 2026 ChatGPT and Claude apps: a collapsible left sidebar of c
 | Memory | Two editable markdown panes (USER.md, MEMORY.md) with character counters; pending writes list with approve / reject; consolidation diff viewer. |
 | Topics | List with counts; inbox of proposed topics with accept / rename / merge. |
 | Settings | Agents (list, edit YAML in a code editor), integrations (connect / disconnect MCP servers), automations (list with last run), models (LiteLLM aliases, read-only), backups (last snapshot time, "run now"), account (passkeys, push). |
+
+**Thread depth**
+
+- **Fork into a new chat (amended 2026-10-26, phase 13):** "Muokkaa" on a user message opens an edit box. "Haarauta" starts a new chat from that point. The server copies the masked entries up to the edit and masks nothing again. The original chat does not change. The new chat shows a link to its source.
+- **Thinking row (amended 2026-10-26, phase 13):** A reply of a thinking model shows a collapsed row "Ajatteli 12 s". The row opens to the thinking text. The server restores the text only when the user opens the row, with the same masking as the reply. The setting "Näytä ajattelu" turns the row off.
+- **Cost and usage in EUR (amended 2026-10-26, phase 13):** Each reply shows its cost in the action row, each chat shows its total in the chat menu, and Settings shows each month. Prices are stored in USD and shown in EUR with the newest ECB rate. Without a rate, the UI shows USD.
+- **Find bar (amended 2026-10-26, phase 13):** Ctrl+F or Cmd+F in an open chat opens a find bar. The bar searches the visible text of the open chat in the browser. It does not use the search index.
 
 **UI reviewer checklist (per PR touching `apps/web`)**
 
