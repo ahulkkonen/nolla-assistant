@@ -142,3 +142,48 @@ async def test_collision_round_trip(client):
     assert twice.status_code == 409  # a double tap does not regenerate the entity again
     again = await post(client, "/mask", {"session_id": "s", "text": f"Hei {surrogate}!", "user_input": True})
     assert again["collisions"] == [] and surrogate not in again["masked"]
+
+
+def _now() -> str:
+    from datetime import UTC, datetime
+    return datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
+async def test_session_fork_keeps_copied_surrogates(client):
+    """Phase-13 decision 3: a fork keeps the surrogates its source knew up to the fork point."""
+    await post(client, "/vault/seed", {"entities": [
+        {"canonical": "Mikko Virtanen", "kind": "PERSON"}, {"canonical": "Liisa Korhonen", "kind": "PERSON"}]})
+    first = (await post(client, "/mask", {"session_id": "src", "text": "Mikko Virtanen tuli."}))["masked"]
+    until = _now()
+    import asyncio
+    await asyncio.sleep(0.01)
+    later = (await post(client, "/mask", {"session_id": "src", "text": "Liisa Korhonen lähti."}))["masked"]
+    before = (await client.get("/vault/entities", params=U)).json()["entities"]
+
+    async def tool_result(session, text):  # pi-ext-pseudo's tool_result path: /mask with all layers
+        return (await post(client, "/mask", {"session_id": session, "json": {"content": [text]}}))["masked"]["content"][0]
+
+    async def scan(session, text):
+        sc = await post(client, "/scan", {"session_id": session, "messages": [{"role": "assistant", "content": text}]})
+        return sc["messages"][0]["content"]
+
+    r = await post(client, "/session/fork", {"from_session_id": "src", "to_session_id": "fork", "until": until})
+    assert r == {"ok": True, "entities": 1}
+    assert await tool_result("fork", first) == first
+    assert await scan("fork", first) == first
+    # The vault list leaves the copied rows out of the seen count and the last-seen time.
+    after = (await client.get("/vault/entities", params=U)).json()["entities"]
+    pick = lambda es: [(e["id"], e["seen_count"], e["last_seen"]) for e in es]
+    assert pick(after) == pick(before)
+    # A span after `until` is not copied.
+    assert await tool_result("fork", later) != later
+    # Without the copy, a session masks the copied surrogate again: it becomes a "real" person, and from then
+    # on /scan masks it in every other session too.
+    assert await tool_result("plain", first) != first
+    assert await scan("other", first) != first
+
+
+async def test_session_fork_validates(client):
+    body = {"from_session_id": "a", "to_session_id": "a", "until": _now()}
+    assert (await client.post("/session/fork", json={**U, **body})).status_code == 422
+    assert (await client.post("/session/fork", json={**U, **body, "to_session_id": "b", "until": "26.10.2026"})).status_code == 422

@@ -9,13 +9,17 @@ import type { AddressInfo } from 'node:net';
  */
 export type FakeTurn = (
   | ({ text: string } & FakeReply)
-  | ({ toolCalls: { id?: string; name: string; args: Record<string, unknown> }[]; text?: string } & FakeReply)
+  | ({
+      toolCalls: { id?: string; name: string; args: Record<string, unknown> }[];
+      text?: string;
+    } & FakeReply)
   /** An HTTP error before the stream, as LiteLLM passes an upstream refusal or outage on. */
   | { error: { status: number; message: string } }
 ) & { match?: string | RegExp };
 /**
- * Phase 13: `reasoning` streams as `reasoning_content` deltas before the text (LiteLLM's field),
- * `thinkMs` waits after them. `usage.cost` is OpenRouter's billed USD, which LiteLLM passes on.
+ * Phase 13: `reasoning` streams as `reasoning_content` deltas before the text (LiteLLM's field);
+ * `thinkMs` waits after the first of them. `usage.cost` is OpenRouter's billed USD, which LiteLLM
+ * passes on.
  */
 type FakeReply = {
   reasoning?: string;
@@ -240,8 +244,11 @@ export async function startFakeLlm(
         send([{ index: 0, delta: d, finish_reason }]);
 
       delta({ role: 'assistant', content: '' });
-      for (const part of split(turn.reasoning ?? '', 8)) delta({ reasoning_content: part });
-      if (turn.thinkMs) await new Promise((r) => setTimeout(r, turn.thinkMs));
+      // The thinking lasts `thinkMs`: from the first reasoning delta to the last one.
+      for (const [i, part] of split(turn.reasoning ?? '', 8).entries()) {
+        if (i === 1 && turn.thinkMs) await new Promise((r) => setTimeout(r, turn.thinkMs));
+        delta({ reasoning_content: part });
+      }
       for (const part of split(text, 8)) delta({ content: part });
       calls.forEach((c, index) => {
         delta({

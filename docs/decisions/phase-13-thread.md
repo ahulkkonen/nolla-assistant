@@ -128,8 +128,12 @@ and `@earendil-works+pi-coding-agent@1.3.0_*`), the repository code and one live
   a real person with the same name, so it is masked".
 - A subagent session `<chat>/sub/<id>` shares the scope of its chat (`_scope`, `vault.py:177-180`).
   A fork has no such link.
-- Consequence: a fork with a new session id and no spans would mask the copied surrogates again at
-  `/scan` and in tool results. The model would see a surrogate of a surrogate. Decision 3 closes this.
+- Consequence: a fork with a new session id and no spans would mask a copied surrogate again when it
+  comes back in a tool result (`/mask` with all layers). The model would see a surrogate of a
+  surrogate. The vault would also keep the surrogate as the real form of a new person, so `/scan`
+  would then mask it in every other session. `/scan` alone uses only the vault and code layers, so it
+  does not mask a surrogate that no entity holds as a real form (verified by the pytest of task
+  card 1). Decision 3 closes this.
 
 ### 7. Repository facts
 
@@ -657,8 +661,8 @@ the user asks.
    patterns need checksums, so the chance is very small. The failure is a normal model error.
 8. **Fork scope and clocks.** The scope copy compares the Pi entry time of pa-server with the span
    time of the sidecar. Both containers read the same host clock. If the clock stepped back between
-   two turns, the copy could miss or add the spans of one turn. A missed span makes `/scan` mask a
-   copied surrogate again. Phase-12 rare pairs keep an added span harmless.
+   two turns, the copy could miss or add the spans of one turn. A missed span lets a tool result mask
+   a copied surrogate again. Phase-12 rare pairs keep an added span harmless.
 9. **Fork files.** The copied messages show their attachment chips only while the source chat
    exists. Deleting the source deletes the files. The fork's session still holds the masked document
    text and the image data, so the model context does not change.

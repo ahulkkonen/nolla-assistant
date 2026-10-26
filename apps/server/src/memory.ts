@@ -20,6 +20,7 @@ import cron from 'node-cron';
 import { z } from 'zod';
 import { search } from './search.ts';
 import { taskSmall } from './topics.ts';
+import type { RecordUsage } from './usage.ts';
 
 /**
  * A memory operation that cannot run. `message` is `FULL` (over cap), `CONFLICT` (files or text
@@ -88,6 +89,8 @@ export function memoryStore(deps: {
   warn: (msg: string, data?: object) => void;
   /** Receives `memory.state` after the weekly consolidation. */
   sendAll: (msg: ServerMessage) => void;
+  /** The consolidation call as a `task` row (phase-13 decision 14). */
+  onUsage?: RecordUsage | undefined;
 }) {
   const { db, userId, pseudo, warn } = deps;
   const dir = resolve(deps.dataDir, 'memory', userId);
@@ -183,7 +186,7 @@ export function memoryStore(deps: {
         .get() ?? null,
   });
 
-  const ask = taskSmall(deps.litellmUrl, deps.litellmMasterKey);
+  const ask = taskSmall(deps.litellmUrl, deps.litellmMasterKey, deps.onUsage);
   const consolidate = async () => {
     const user = read('user');
     const memory = read('memory');

@@ -52,6 +52,7 @@ export async function buildServer({
   | 'catalog'
   | 'refusals'
   | 'collisions'
+  | 'fx'
 > & {
   config: Config;
   integrations: Integrations;

@@ -263,11 +263,7 @@
       "indexes": {
         "chats_user_archived_updated_idx": {
           "name": "chats_user_archived_updated_idx",
-          "columns": [
-            "userId",
-            "archived",
-            "updatedAt"
-          ],
+          "columns": ["userId", "archived", "updatedAt"],
           "isUnique": false
         }
       },
@@ -276,12 +272,8 @@
           "name": "chats_topicId_topics_id_fk",
           "tableFrom": "chats",
           "tableTo": "topics",
-          "columnsFrom": [
-            "topicId"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["topicId"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -353,10 +345,7 @@
       "indexes": {
         "chunks_user_chat_idx": {
           "name": "chunks_user_chat_idx",
-          "columns": [
-            "userId",
-            "chatId"
-          ],
+          "columns": ["userId", "chatId"],
           "isUnique": false
         }
       },
@@ -365,12 +354,8 @@
           "name": "chunks_chatId_chats_id_fk",
           "tableFrom": "chunks",
           "tableTo": "chats",
-          "columnsFrom": [
-            "chatId"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["chatId"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -424,22 +409,15 @@
           "name": "fileOrigins_chatId_chats_id_fk",
           "tableFrom": "fileOrigins",
           "tableTo": "chats",
-          "columnsFrom": [
-            "chatId"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["chatId"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
         "fileOrigins_userId_path_pk": {
-          "columns": [
-            "userId",
-            "path"
-          ],
+          "columns": ["userId", "path"],
           "name": "fileOrigins_userId_path_pk"
         }
       },
@@ -482,10 +460,7 @@
       "foreignKeys": {},
       "compositePrimaryKeys": {
         "fileTrash_userId_id_pk": {
-          "columns": [
-            "userId",
-            "id"
-          ],
+          "columns": ["userId", "id"],
           "name": "fileTrash_userId_id_pk"
         }
       },
@@ -558,12 +533,8 @@
           "name": "files_chatId_chats_id_fk",
           "tableFrom": "files",
           "tableTo": "chats",
-          "columnsFrom": [
-            "chatId"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["chatId"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -713,12 +684,8 @@
           "name": "memoryPending_chatId_chats_id_fk",
           "tableFrom": "memoryPending",
           "tableTo": "chats",
-          "columnsFrom": [
-            "chatId"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["chatId"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -756,10 +723,7 @@
       "foreignKeys": {},
       "compositePrimaryKeys": {
         "modelFavorites_userId_modelId_pk": {
-          "columns": [
-            "userId",
-            "modelId"
-          ],
+          "columns": ["userId", "modelId"],
           "name": "modelFavorites_userId_modelId_pk"
         }
       },
@@ -868,9 +832,7 @@
       "indexes": {
         "pushSubscriptions_endpoint_unique": {
           "name": "pushSubscriptions_endpoint_unique",
-          "columns": [
-            "endpoint"
-          ],
+          "columns": ["endpoint"],
           "isUnique": true
         }
       },
@@ -907,10 +869,7 @@
       "indexes": {
         "tags_user_tag_idx": {
           "name": "tags_user_tag_idx",
-          "columns": [
-            "userId",
-            "tag"
-          ],
+          "columns": ["userId", "tag"],
           "isUnique": false
         }
       },
@@ -919,22 +878,15 @@
           "name": "tags_chatId_chats_id_fk",
           "tableFrom": "tags",
           "tableTo": "chats",
-          "columnsFrom": [
-            "chatId"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["chatId"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
         "tags_chatId_tag_pk": {
-          "columns": [
-            "chatId",
-            "tag"
-          ],
+          "columns": ["chatId", "tag"],
           "name": "tags_chatId_tag_pk"
         }
       },
@@ -1001,12 +953,8 @@
           "name": "topicProposals_chatId_chats_id_fk",
           "tableFrom": "topicProposals",
           "tableTo": "chats",
-          "columnsFrom": [
-            "chatId"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["chatId"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1166,10 +1114,7 @@
       "indexes": {
         "usage_user_created_idx": {
           "name": "usage_user_created_idx",
-          "columns": [
-            "userId",
-            "createdAt"
-          ],
+          "columns": ["userId", "createdAt"],
           "isUnique": false
         }
       },

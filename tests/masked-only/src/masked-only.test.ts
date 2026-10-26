@@ -220,6 +220,7 @@ test('masked-only: 10-turn tool conversation, then restart and chat.open', async
     LITELLM_URL: llm.url,
     LITELLM_MASTER_KEY: KEY,
     OPENROUTER_CATALOG: llm.url,
+    ECB_RATES: llm.url,
     PORT: String(await freePort()),
     HOST: '127.0.0.1',
     LOG_LEVEL: 'debug',
@@ -311,5 +312,42 @@ test('masked-only: 10-turn tool conversation, then restart and chat.open', async
   c.send({ type: 'chat.open', chatId: chat.id });
   const state = await c.next('chat.state');
   expect(restored(state.messages)).toBe(true);
+  check();
+
+  // Phase 13: a thinking reply and a fork. Each turn is queued just before its call: the title job
+  // runs only 2 s after the last settle, and finds the chat running before that.
+  const sur0 = lineSurrogates[0] ?? [];
+  llm.push({ text: 'Selvä.', reasoning: `Ajattelen: ${sur0.join(', ')}.` });
+  c.send({ type: 'user.message', chatId: chat.id, text: `Pohdi: ${lines[0]?.text}` });
+  await c.idle();
+  const thought = c.inbox.findLast((m) => m.type === 'message.final');
+  const thoughtId = thought?.type === 'message.final' ? thought.message.id : '';
+  c.send({ type: 'thinking.get', chatId: chat.id, messageId: thoughtId });
+  const thinking = await c.next('thinking.text');
+  expect(restored([thinking])).toBe(true);
+  llm.push({ text: 'Jatkan.' });
+  c.send({ type: 'user.message', chatId: chat.id, text: 'Jatka.' });
+  await c.idle();
+  // The thinking goes back to the model, masked.
+  expect(JSON.stringify(llm.requests.at(-1)?.body)).toContain('Ajattelen:');
+  c.send({ type: 'chat.open', chatId: chat.id });
+  const last = (await c.next('chat.state')).messages.findLast((m) => m.role === 'user');
+  llm.push({ text: 'Haaran vastaus.' });
+  c.send({
+    type: 'chat.fork',
+    chatId: chat.id,
+    messageId: last?.id ?? '',
+    text: `Haaraudu: ${lines[1]?.text}`,
+  });
+  const { chat: fork } = await c.next('chat.created');
+  expect(restored((await c.next('chat.state')).messages)).toBe(true);
+  await c.idle();
+  const forkBody = JSON.stringify(llm.requests.at(-1)?.body);
+  expect(forkBody).toContain('Haaraudu:');
+  expect(forkBody).toContain('Ajattelen:');
+  for (const s of lineSurrogates[1] ?? []) expect(forkBody).toContain(s);
+  expect(
+    sc.requests.some((r) => r.path === '/session/fork' && r.body.to_session_id === fork.id),
+  ).toBe(true);
   check();
 });

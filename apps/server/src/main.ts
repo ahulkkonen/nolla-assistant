@@ -23,6 +23,7 @@ import {
 } from './bridge.ts';
 import { collisionWaits } from './collisions.ts';
 import { type Config, loadConfig } from './config.ts';
+import { fxRates } from './fx.ts';
 import { buildServer } from './http.ts';
 import { integrations as integrationStore } from './integrations.ts';
 import { loadMcp } from './mcp.ts';
@@ -33,6 +34,7 @@ import { pushService } from './push.ts';
 import { indexIdle } from './search.ts';
 import { titleJobs } from './topics.ts';
 import { purgeTrash, workStore } from './tree.ts';
+import { usageRecorder } from './usage.ts';
 
 export async function start(
   config: Config = loadConfig(),
@@ -138,6 +140,17 @@ export async function start(
       },
       (err: unknown) => app.log.warn({ error: String(err) }, 'collision cleanup at startup failed'),
     );
+  // Model calls into `usage` and the chat totals (phase-13 decision 13).
+  const recordUsage = usageRecorder(db, config.userId, (msg, data) =>
+    app.log.warn(data ?? {}, msg),
+  );
+  // ECB rate (phase-13 "Egress"); `start` below runs once `app` exists.
+  const fx = fxRates({
+    dataDir: config.dataDir,
+    source: config.ecbRates,
+    onChange: (rate) => sendAll({ type: 'fx.state', rate }),
+    warn: (msg, data) => app.log.warn(data ?? {}, msg),
+  });
   // `app` exists by the time any memory callback runs.
   const memory = memoryStore({
     db,
@@ -148,6 +161,7 @@ export async function start(
     litellmMasterKey: config.litellmMasterKey,
     warn: (msg, data) => app.log.warn(data ?? {}, msg),
     sendAll,
+    onUsage: recordUsage,
   });
   // Pi entries per catalog model (phase-10 decision 8); `start` below runs once `app` exists.
   const catalog = modelCatalog({
@@ -176,6 +190,7 @@ export async function start(
     mcp,
     mcpWarn: (chatId, missing) => app.log.warn({ chatId, missing }, 'mcp tools missing'),
     onSettled: ({ sessionId }) => titles.scheduleTitleJob(sessionId),
+    onUsage: recordUsage,
     ...(pseudo
       ? { pseudo: { client: pseudo, log: pseudoLog, awaitCollision: collisions.wait } }
       : {}),
@@ -208,10 +223,12 @@ export async function start(
     catalog,
     refusals: new Map(),
     collisions,
+    fx,
     ...(logStream ? { logStream } : {}),
     ...(pseudo ? { pseudo } : {}),
   });
   await catalog.start();
+  fx.start();
   const titles = titleJobs({
     db,
     registry,
@@ -221,6 +238,7 @@ export async function start(
     litellmMasterKey: config.litellmMasterKey,
     pseudo,
     log: app.log,
+    onUsage: recordUsage,
   });
   automations = startAutomations({
     dir: config.automationsDir,
@@ -262,6 +280,7 @@ export async function start(
     stopWatch();
     automations?.close();
     catalog.close();
+    fx.close();
     memory.close();
     clearInterval(timer);
     clearInterval(purge);

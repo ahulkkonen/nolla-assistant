@@ -122,6 +122,7 @@ test('export: md and json, masked and real names; real names fail while the side
       createdAt: expect.any(String),
       agent: { id: 'assistant', name: 'Avustaja' },
       topic,
+      usage: { costUsd: 0, tokens: 0 },
     });
     expect(e.messages.map((m) => [m.role, m.text])).toEqual([
       ['user', text],

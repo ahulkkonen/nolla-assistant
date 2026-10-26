@@ -208,6 +208,16 @@ class Vault:
                 " VALUES (?,?,?,?,?,?,?,?,?,?)", (user_id, session_id, entry_id, s["start"], s["end"], s["entity_id"],
                                                   s["surrogate"], s["detector"], s["score"], t)).lastrowid for s in spans]
 
+    def fork_spans(self, user_id: str, from_session: str, to_session: str, until: str) -> int:
+        """A forked chat copies masked entries, so its session must know the entities its source had seen up to
+        `until` (phase-13 decision 3): one span row per entity, `detector='fork'`, at the first time seen."""
+        with self.lock:
+            return self.db.execute(
+                "INSERT INTO span(user_id,session_id,entry_id,start,end,entity_id,surrogate_form,detector,score,created_at)"
+                " SELECT user_id, ?, NULL, 0, 0, entity_id, min(surrogate_form), 'fork', 1.0, min(created_at) FROM span"
+                " WHERE user_id=? AND session_id=? AND created_at<=? AND entity_id IS NOT NULL GROUP BY entity_id",
+                (to_session, user_id, from_session, until)).rowcount
+
     # -- never detect
     def never_detect(self, user_id: str) -> set[tuple[str, str]]:
         return {(r[0], r[1]) for r in self.q("SELECT kind, canonical FROM never_detect WHERE user_id=?", (user_id,))}
@@ -220,7 +230,7 @@ class Vault:
     def list_entities(self, user_id: str) -> list:
         return self.q(
             "SELECT e.*, count(s.id) AS seen_count, max(s.created_at) AS last_seen FROM entity e"
-            " LEFT JOIN span s ON s.entity_id=e.id WHERE e.user_id=? AND NOT EXISTS (SELECT 1 FROM never_detect n"
+            " LEFT JOIN span s ON s.entity_id=e.id AND s.detector IS NOT 'fork' WHERE e.user_id=? AND NOT EXISTS (SELECT 1 FROM never_detect n"
             " WHERE n.user_id=e.user_id AND n.kind=e.kind AND n.canonical=e.canonical) GROUP BY e.id ORDER BY e.id", (user_id,))
 
     def merge(self, user_id: str, from_ids: list[int], into_id: int) -> None:

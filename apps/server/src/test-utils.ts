@@ -22,6 +22,12 @@ export const cleanups: (() => Promise<void> | void)[] = [];
 export async function runCleanups() {
   for (const c of cleanups.splice(0).reverse()) await c();
 }
+/** A temp dir that `runCleanups` removes. */
+export function tempDir(prefix: string) {
+  const dir = mkdtempSync(join(tmpdir(), prefix));
+  cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+  return dir;
+}
 
 async function freePort() {
   const s = createServer();
@@ -49,6 +55,8 @@ export async function boot(turns: FakeTurn[], env: Record<string, string> = {}) 
     MCP_CONFIG: 'none',
     // The fake LLM serves the model catalog (Auto is a catalog model); no call to openrouter.ai.
     OPENROUTER_CATALOG: llm.url,
+    // The fake LLM serves the ECB rate too; no call to data-api.ecb.europa.eu.
+    ECB_RATES: llm.url,
     ...env,
   });
   cleanups.push(

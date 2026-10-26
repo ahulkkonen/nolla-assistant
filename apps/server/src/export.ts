@@ -1,16 +1,30 @@
 import { topics } from '@pa/db';
 import { PseudoDownError } from '@pa/pi-ext-pseudo';
-import { type ChatExport, type ExportFormat, ExportQuery, TOOL_STATUS_WORD } from '@pa/protocol';
+import {
+  type ChatExport,
+  type ExportFormat,
+  ExportQuery,
+  formatCost,
+  formatTokens,
+  TOOL_STATUS_WORD,
+} from '@pa/protocol';
 import { and, eq } from 'drizzle-orm';
 import type { FastifyInstance, preHandlerHookHandler } from 'fastify';
 import { extractArtifacts } from './artifacts.ts';
-import { type BridgeDeps, chatRow, history, restorer, transcript } from './bridge.ts';
-import { chatFiles } from './files.ts';
+import {
+  type BridgeDeps,
+  chatRow,
+  history,
+  ownUsage,
+  restorer,
+  threadFiles,
+  transcript,
+} from './bridge.ts';
 import { ChatNotFound } from './pi/registry.ts';
 
 /** One chat to a file (docs/decisions/phase-9-ui.md 7.11). */
 
-type Deps = Pick<BridgeDeps, 'db' | 'registry' | 'pseudo' | 'agents'>;
+type Deps = Pick<BridgeDeps, 'db' | 'registry' | 'pseudo' | 'agents' | 'fx'>;
 
 /** More messages than this answer 413: the file is built in memory, one `/unmask` per message. */
 export const MAX_EXPORT_MESSAGES = 2000;
@@ -34,7 +48,7 @@ const when = (iso: string) => `${day.format(new Date(iso))} klo ${time.format(ne
  * name with no masked form) is left out.
  */
 export async function chatExport(
-  { db, registry, pseudo, agents }: Deps,
+  { db, registry, pseudo, agents, fx }: Deps,
   userId: string,
   chatId: string,
   unmask: boolean,
@@ -50,7 +64,7 @@ export async function chatExport(
     down = true;
   });
   const blocks = new Map<string, string[]>();
-  const messages = await history(session, chatFiles(db, userId, chatId), restore, blocks);
+  const messages = ownUsage(await history(session, threadFiles(db, userId, r), restore, blocks), r);
   if (down) throw new PseudoDownError('sidecar down');
   const topic =
     unmask && r.topicId
@@ -69,7 +83,9 @@ export async function chatExport(
       createdAt: r.createdAt,
       agent: { id: r.agentId, name: agents().get(r.agentId)?.name ?? r.agentId },
       topic: topic ?? null,
+      usage: { costUsd: r.costUsd, tokens: r.tokens },
     },
+    fx: fx.get(),
     messages: messages.map((m) => {
       // Masked: the document names the model saw, only when their count matches; never image names.
       const names = blocks.get(m.id) ?? [];
@@ -90,6 +106,7 @@ export async function chatExport(
         tools: m.tools.map(({ name, status }) => ({ name, status })),
         artifacts:
           m.role === 'assistant' ? extractArtifacts(m.id, m.text).map(({ id: _, ...a }) => a) : [],
+        ...(m.usage ? { usage: m.usage } : {}),
       };
     }),
   };
@@ -141,6 +158,13 @@ export function toMarkdown(e: ChatExport): string {
     ...(chat.topic ? [`- Aihe: ${oneLine(chat.topic)}`] : []),
     `- Nimet: ${e.masked ? 'niin kuin malli näki ne' : 'oikeat nimet, sisältää henkilötietoja'}`,
   ];
+  // Phase 13: costs are not personal data, so the masked form has them too. Older chats have none.
+  const fx = e.fx ?? null;
+  const rate = fx ? ` (EKP ${fx.date.split('-').reverse().join('.')})` : '';
+  if (chat.usage?.tokens)
+    lines.push(
+      `- Kustannus: ${formatCost(chat.usage.costUsd, fx)} · ${formatTokens(chat.usage.tokens)}${rate}`,
+    );
   for (const m of e.messages) {
     lines.push('', `## ${m.role === 'user' ? 'Sinä' : agent} · ${when(m.createdAt)}`);
     if (m.text) lines.push('', quote(m.text));
@@ -158,6 +182,14 @@ export function toMarkdown(e: ChatExport): string {
         '',
         ...m.tools.map((t) => `- \`${t.name}\` · ${TOOL_STATUS_WORD[t.status]}`),
       );
+    if (m.usage) {
+      const { costUsd, estimated, input, output, cacheRead, cacheWrite } = m.usage;
+      const cost = formatCost(costUsd, fx, { reply: true, estimated });
+      lines.push(
+        '',
+        `Kustannus: ${cost} · ${formatTokens(input + output + cacheRead + cacheWrite)}`,
+      );
+    }
   }
   return `${lines.join('\n')}\n`;
 }

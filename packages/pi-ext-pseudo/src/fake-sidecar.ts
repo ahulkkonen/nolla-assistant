@@ -286,6 +286,10 @@ export async function startFakeSidecar(
         });
         return { messages, leaked };
       }
+      // Phase-13 decision 3. The double keeps no per-session scope: `requests` shows the call.
+      case '/session/fork':
+        if (body.from_session_id === body.to_session_id) return;
+        return { ok: true, entities: entities.size };
     }
   };
 

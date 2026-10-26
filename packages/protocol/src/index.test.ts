@@ -205,9 +205,9 @@ describe('thread depth (phase-13)', () => {
     expect(ClientMessage.safeParse({ ...fork, text: '' }).success).toBe(false);
     expect(ClientMessage.safeParse({ type: 'usage.get', month: '2026-10' }).success).toBe(true);
     expect(ClientMessage.safeParse({ type: 'usage.get', month: '2026-13' }).success).toBe(false);
-    expect(ClientMessage.safeParse({ type: 'thinking.get', chatId: 'c1', messageId: 'e1' }).success).toBe(
-      true,
-    );
+    expect(
+      ClientMessage.safeParse({ type: 'thinking.get', chatId: 'c1', messageId: 'e1' }).success,
+    ).toBe(true);
   });
   it('a message carries usage and thinking; both stay optional', () => {
     const message = {

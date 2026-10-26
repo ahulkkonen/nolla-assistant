@@ -40,6 +40,8 @@ export type SubagentsOptions = {
   /** Child tools that need the user's approval (the profile's `approval.always`). */
   approvalAlways?: string[];
   onState: (children: Pick<Child, 'id' | 'label' | 'status'>[]) => void;
+  /** Each assistant message of a child (its RPC `message_end` record), for usage (phase 13). */
+  onUsage?: (message: unknown) => void;
   ask: Ask;
   log: (level: 'warn' | 'debug', msg: string, data?: object) => void;
   /** Per child; tests shorten it. */
@@ -196,7 +198,10 @@ export function subagentsExtension(opts: SubagentsOptions): ExtensionFactory {
             if (!e.success) fail(`${e.command}: ${e.error}`);
             break;
           case 'message_end':
-            if (e.message?.role === 'assistant') last = e.message;
+            if (e.message?.role === 'assistant') {
+              last = e.message;
+              opts.onUsage?.(e.message);
+            }
             break;
           case 'tool_execution_start':
           case 'tool_execution_end':

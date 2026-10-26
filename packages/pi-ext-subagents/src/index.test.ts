@@ -188,3 +188,26 @@ test.each([
   },
   60_000,
 );
+
+test('onUsage gets each assistant message of a child with its usage (phase 13)', async () => {
+  const usage: unknown[] = [];
+  const { session } = await boot(
+    [
+      {
+        toolCalls: [
+          { name: 'subagent', args: { mode: 'chain', tasks: [{ label: 'one', task: 'task' }] } },
+        ],
+      },
+      { text: 'child result', usage: { prompt_tokens: 120, completion_tokens: 30, cost: 0.002 } },
+      { text: 'done' },
+    ],
+    { onUsage: (m) => void usage.push(m) },
+  );
+  await session.prompt('go');
+  expect(usage).toHaveLength(1);
+  expect(usage[0]).toMatchObject({
+    role: 'assistant',
+    model: 'zdr/strong',
+    usage: { input: 120, output: 30 },
+  });
+}, 60_000);

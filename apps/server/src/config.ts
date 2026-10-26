@@ -84,6 +84,9 @@ export function loadConfig(env: Env = process.env) {
       /\/+$/,
       '',
     ),
+    // ECB USD/EUR rate (phase-13 "Egress"): the API base, or `off` (no request; the cached
+    // DATA_DIR/fx/usd-eur.json still loads). Tests point it at the fake LLM.
+    ecbRates: (env.ECB_RATES || 'https://data-api.ecb.europa.eu').replace(/\/+$/, ''),
     // Both or nothing: without them no `bash` tool exists (Pi's built-in one is never enabled).
     broker:
       env.BROKER_URL && env.BROKER_TOKEN

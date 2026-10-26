@@ -115,6 +115,18 @@ export class PseudoClient {
     );
   }
 
+  /**
+   * A forked chat (`to`) knows the entities that `from` had seen up to `until` (ISO 8601 UTC), so
+   * its copied surrogates are not masked again (phase-13 decision 3).
+   */
+  forkSession(from: string, to: string, until: string) {
+    return this.post<{ ok: true; entities: number }>('/session/fork', {
+      from_session_id: from,
+      to_session_id: to,
+      until,
+    });
+  }
+
   vaultList() {
     return this.post<{ entities: VaultEntityRow[]; pending: VaultPendingRow[] }>(
       `/vault/entities?user_id=${encodeURIComponent(this.userId)}`,

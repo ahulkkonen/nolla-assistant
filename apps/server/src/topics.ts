@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { type BridgeDeps, transcript as branch, broadcast, chatRow, summary } from './bridge.ts';
 import type { SessionRegistry } from './pi/registry.ts';
 import { indexChat } from './search.ts';
+import { type RecordUsage, rawUsage } from './usage.ts';
 
 const DEBOUNCE_MS = 2000;
 const TIMEOUT_MS = 20_000;
@@ -35,13 +36,16 @@ const Reply = z.object({
 
 export type ChatMessage = { role: 'system' | 'user' | 'assistant'; content: string };
 
+const TASK_MODEL = 'zdr/task-small';
+
 /**
  * JSON-only calls to the LiteLLM alias `zdr/task-small`: validates the reply with `schema` and
- * retries once with a repair message. Resolves `undefined` when the reply stays invalid.
+ * retries once with a repair message. Resolves `undefined` when the reply stays invalid. Each call
+ * goes to `onUsage` as a `task` row of `chatId` (phase-13 decision 14).
  */
-export function taskSmall(litellmUrl: string, litellmMasterKey: string) {
+export function taskSmall(litellmUrl: string, litellmMasterKey: string, onUsage?: RecordUsage) {
   let jsonMode = true;
-  const complete = async (messages: ChatMessage[]): Promise<string> => {
+  const complete = async (messages: ChatMessage[], chatId: string | null): Promise<string> => {
     for (;;) {
       const res = await fetch(`${litellmUrl}/chat/completions`, {
         method: 'POST',
@@ -50,7 +54,7 @@ export function taskSmall(litellmUrl: string, litellmMasterKey: string) {
           authorization: `Bearer ${litellmMasterKey}`,
         },
         body: JSON.stringify({
-          model: 'zdr/task-small',
+          model: TASK_MODEL,
           stream: false,
           messages,
           ...(jsonMode ? { response_format: { type: 'json_object' } } : {}),
@@ -63,7 +67,11 @@ export function taskSmall(litellmUrl: string, litellmMasterKey: string) {
         continue;
       }
       if (!res.ok) throw new Error(`task-small call status ${res.status}`);
-      const body = (await res.json()) as { choices?: { message?: { content?: string | null } }[] };
+      const body = (await res.json()) as {
+        choices?: { message?: { content?: string | null } }[];
+        usage?: unknown;
+      };
+      onUsage?.({ kind: 'task', chatId }, rawUsage(TASK_MODEL, body.usage));
       return body.choices?.[0]?.message?.content ?? '';
     }
   };
@@ -75,17 +83,20 @@ export function taskSmall(litellmUrl: string, litellmMasterKey: string) {
       return undefined;
     }
   };
-  return async <T>(schema: z.ZodType<T>, messages: ChatMessage[]): Promise<T | undefined> => {
-    const content = await complete(messages);
+  return async <T>(
+    schema: z.ZodType<T>,
+    messages: ChatMessage[],
+    chatId: string | null = null,
+  ): Promise<T | undefined> => {
+    const content = await complete(messages, chatId);
     return (
       parse(schema, content) ??
       parse(
         schema,
-        await complete([
-          ...messages,
-          { role: 'assistant', content },
-          { role: 'user', content: REPAIR },
-        ]),
+        await complete(
+          [...messages, { role: 'assistant', content }, { role: 'user', content: REPAIR }],
+          chatId,
+        ),
       )
     );
   };
@@ -133,6 +144,7 @@ export function titleJobs(deps: {
   litellmMasterKey: string;
   pseudo?: PseudoClient | undefined;
   log: FastifyBaseLogger;
+  onUsage?: RecordUsage | undefined;
 }) {
   const { db, registry, rooms, userId, pseudo, log } = deps;
   const timers = new Map<string, NodeJS.Timeout>();
@@ -140,7 +152,7 @@ export function titleJobs(deps: {
   const lastRunChars = new Map<string, number>();
   let chain = Promise.resolve();
   let closed = false;
-  const ask = taskSmall(deps.litellmUrl, deps.litellmMasterKey);
+  const ask = taskSmall(deps.litellmUrl, deps.litellmMasterKey, deps.onUsage);
 
   const run = async (chatId: string) => {
     const chat = chatRow(db, userId, chatId);
@@ -169,7 +181,7 @@ export function titleJobs(deps: {
         content: `Aiheet:\n${JSON.stringify(list)}\n\nKeskustelu:\n${transcript.slice(-TAIL_CHARS)}`,
       },
     ];
-    const reply = await ask(Reply, messages);
+    const reply = await ask(Reply, messages, chatId);
     if (!reply) return log.warn({ chatId }, 'title reply invalid');
 
     const known = new Set(list.map((t) => t.id));

@@ -1,7 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { rmSync } from 'node:fs';
 import { join as joinPath, resolve, sep } from 'node:path';
-import type { AgentSession, AgentSessionEvent } from '@earendil-works/pi-coding-agent';
+import {
+  type AgentSession,
+  type AgentSessionEvent,
+  SessionManager,
+} from '@earendil-works/pi-coding-agent';
 import { chats, type Db, files, modelFavorites, topicProposals, topics } from '@pa/db';
 import { FULL } from '@pa/pi-ext-memory';
 import {
@@ -14,6 +18,7 @@ import {
   type Annotation,
   type ChatSummary,
   ClientMessage,
+  type ForkLink,
   type Message,
   type ModelChoice,
   type ServerMessage,
@@ -28,6 +33,7 @@ import { extractArtifacts, messageArtifacts } from './artifacts.ts';
 import type { Automations } from './automations.ts';
 import type { CollisionWaits } from './collisions.ts';
 import { AttachmentNotFound, chatFiles, ingestAttachments, splitBlocks } from './files.ts';
+import type { Fx } from './fx.ts';
 import { MemoryError, type MemoryStore, PSEUDO_REQUIRED } from './memory.ts';
 import { GUARD_REASON } from './pi/guard.ts';
 import { AUTO_MODEL, type Catalog, isZdrRefusal, policyOf, resolveModelId } from './pi/models.ts';
@@ -35,6 +41,7 @@ import { ChatNotFound, type SessionRegistry } from './pi/registry.ts';
 import { BadSubscription, type Push } from './push.ts';
 import { indexChat, related, search } from './search.ts';
 import { topicState } from './topics.ts';
+import { messageUsage, type PaMeta, usageMonth } from './usage.ts';
 
 export type Socket = {
   send(data: string): void;
@@ -69,6 +76,8 @@ export type BridgeDeps = {
   refusals: Map<string, string>;
   /** User inputs held by a surrogate collision (phase-12 decision 8); answered via the vault. */
   collisions: CollisionWaits;
+  /** ECB USD/EUR rate for `fx.state` (phase-13 decision 16). */
+  fx: Pick<Fx, 'get'>;
 };
 
 type AgentMessage = AgentSession['messages'][number];
@@ -132,6 +141,7 @@ export const summary = (r: ChatRow): ChatSummary => ({
   archived: r.archived,
   titleLocked: r.titleLocked,
   modelPolicy: policyOf(r),
+  usage: { costUsd: r.costUsd, tokens: r.tokens },
   updatedAt: r.updatedAt,
 });
 
@@ -149,6 +159,47 @@ export function textOf(m: AgentMessage): string {
   if (!('content' in m)) return '';
   if (typeof m.content === 'string') return m.content;
   return m.content.map((b) => (b.type === 'text' ? b.text : '')).join('');
+}
+
+/** An assistant message's thinking: its non-redacted thinking blocks (phase-13 decision 10). */
+export function thinkingOf(m: AgentMessage): string {
+  if (m.role !== 'assistant') return '';
+  return m.content
+    .flatMap((b) => (b.type === 'thinking' && !b.redacted && b.thinking.trim() ? [b.thinking] : []))
+    .join('\n\n');
+}
+
+/** `thinking.get` cuts here, before the restore (a surrogate split by the cut stays masked). */
+const THINKING_MAX = 50_000;
+
+/**
+ * The files of a chat's thread. A fork also shows the source chat's files on the copied messages,
+ * while the source exists (phase-13 decision 7).
+ */
+export function threadFiles(db: Db, userId: string, r: ChatRow) {
+  const own = chatFiles(db, userId, r.id);
+  if (!r.forkedFromChatId || !r.forkedAt) return own;
+  const until = r.forkedAt;
+  return [...chatFiles(db, userId, r.forkedFromChatId).filter((f) => f.createdAt <= until), ...own];
+}
+
+/** A fork's copied replies cost in the source chat, not here (phase-13 decision 7). */
+export function ownUsage(messages: Message[], r: ChatRow) {
+  const { forkedAt } = r;
+  if (forkedAt) for (const m of messages) if (m.createdAt < forkedAt) delete m.usage;
+  return messages;
+}
+
+/** Where a forked chat came from; null for other chats. */
+function forkLink(db: Db, userId: string, r: ChatRow): ForkLink | null {
+  if (!r.forkedFromChatId || !r.forkedFromMessageId) return null;
+  const source = chatRow(db, userId, r.forkedFromChatId);
+  return {
+    chatId: r.forkedFromChatId,
+    messageId: r.forkedFromMessageId,
+    title: source?.title ?? null,
+    deleted: !source,
+  };
 }
 
 /** Text blocks of a Pi tool result (`{ content: [...] }`); never the raw object. */
@@ -258,6 +309,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
     catalog,
     refusals,
     collisions,
+    fx,
   } = deps;
   const open = new Set<string>();
   sockets.add(socket);
@@ -299,6 +351,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
     if (registry.running(chatId)) throw new RunActive();
   };
   send(socket, agentsState(agents()));
+  send(socket, { type: 'fx.state', rate: fx.get() });
   // A reload must not lose open approvals.
   for (const r of approvals.list()) send(socket, r);
   // Nor held messages (phase-12 decision 8), nor the drops a restart caused.
@@ -473,6 +526,129 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
     return undefined;
   };
 
+  /** `chat.state` of a chat and its session (`chat.open`, `chat.fork`). */
+  const chatState = async (r: ChatRow, session: AgentSession): Promise<ServerMessage> => {
+    const restore = restorer(pseudo, () => send(socket, errorMsg('pseudo_down', r.id)));
+    const messages = ownUsage(await history(session, threadFiles(db, userId, r), restore), r);
+    const link = forkLink(db, userId, r);
+    return {
+      type: 'chat.state',
+      chat: summary(r),
+      messages,
+      artifacts: messageArtifacts(messages),
+      ...(link ? { forkedFrom: link } : {}),
+    };
+  };
+
+  /**
+   * "Haarauta" (phase-13 decisions 1 to 6): a new chat from the masked session up to the edited user
+   * message, copied unchanged, then the edited text as its first turn. The source does not change.
+   */
+  const fork = async ({
+    chatId,
+    messageId,
+    text,
+  }: Extract<ClientMessage, { type: 'chat.fork' }>) => {
+    const src = owned(chatId);
+    const session = await registry.get(chatId);
+    assertIdle(chatId);
+    const branch = session.sessionManager.getBranch();
+    const at = branch.findIndex((e) => e.id === messageId);
+    const edited = branch[at];
+    if (edited?.type !== 'message' || edited.message.role !== 'user')
+      return send(socket, errorMsg('bad_message', chatId));
+    // Before the edited entry, past its own `pseudo-spans` entry (pi-ext-pseudo's input hook).
+    const prev = branch[at - 1];
+    const point =
+      prev?.type === 'custom' && prev.customType === 'pseudo-spans' ? branch[at - 2] : prev;
+    // The original attachments go with the edited text: its images, and its document blocks
+    // restored (the input hook masks the whole text once), as `rerun` does.
+    const { content } = edited.message;
+    const images =
+      typeof content === 'string' ? [] : content.flatMap((b) => (b.type === 'image' ? [b] : []));
+    let down = false;
+    const restored = await restorer(pseudo, () => {
+      down = true;
+    })(textOf(edited.message));
+    if (down) return send(socket, errorMsg('pseudo_down', chatId));
+    const createdAt = (e: (typeof branch)[number]) =>
+      e.type === 'message' ? new Date(e.message.timestamp).toISOString() : '';
+    const before = branch
+      .slice(0, at)
+      .findLast((e) => e.type === 'message' && e.message.role === 'user');
+    const docs = filesOf(
+      threadFiles(db, userId, src),
+      before ? createdAt(before) : '',
+      createdAt(edited),
+    )
+      .filter((f) => f.kind === 'document')
+      .map((f) => f.name);
+    const blocks = restored.text.slice(splitBlocks(restored.text, docs).own.length);
+
+    // The copy: the masked entries from the root to the fork point, unchanged (no sidecar call).
+    let id: string = randomUUID();
+    const file = session.sessionManager.getSessionFile();
+    if (point && file) {
+      const copy = SessionManager.open(file, registry.sessionDir);
+      copy.createBranchedSession(point.id);
+      id = copy.getSessionId();
+    }
+    const drop = () => registry.remove(id).catch(() => {});
+    // The sidecar must know the copied surrogates, or a tool result masks them again (decision 3).
+    if (pseudo && point)
+      try {
+        await pseudo.forkSession(chatId, id, point.timestamp);
+      } catch {
+        await drop();
+        return send(socket, errorMsg('pseudo_down', chatId));
+      }
+    const now = new Date().toISOString();
+    const haara = (t: string | null) => (t ? `${t} (haara)` : null);
+    const r = db
+      .insert(chats)
+      .values({
+        id,
+        userId,
+        agentId: src.agentId,
+        topicId: src.topicId,
+        title: haara(src.title),
+        titleMasked: haara(src.titleMasked),
+        titleLocked: !!src.title,
+        modelId: src.modelId,
+        reasoning: src.reasoning,
+        // Consent for `open` was for the source chat only (phase-10 proof 1).
+        dataPolicy: 'zdr',
+        sessionPath: src.sessionPath,
+        forkedFromChatId: chatId,
+        forkedFromMessageId: messageId,
+        forkedAt: now,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning()
+      .get();
+    let forked: AgentSession;
+    try {
+      forked = await registry.get(id);
+    } catch (err) {
+      db.delete(chats)
+        .where(and(eq(chats.id, id), eq(chats.userId, userId)))
+        .run();
+      await drop();
+      throw err;
+    }
+    send(socket, { type: 'chat.created', chat: summary(r) });
+    send(socket, await chatState(r, forked));
+    join(id, forked);
+    registry.hold(
+      id,
+      forked.prompt(text + blocks, { images }).catch((err: unknown) => {
+        log.warn({ chatId: id, err }, 'fork prompt failed');
+        broadcast(rooms, id, errorMsg('prompt_failed', id));
+      }),
+    );
+  };
+
   const handle = async (msg: ClientMessage) => {
     switch (msg.type) {
       case 'ping':
@@ -523,14 +699,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
         const r = owned(msg.chatId);
         const session = await registry.get(msg.chatId);
         join(msg.chatId, session);
-        const restore = restorer(pseudo, () => send(socket, errorMsg('pseudo_down', msg.chatId)));
-        const messages = await history(session, chatFiles(db, userId, msg.chatId), restore);
-        send(socket, {
-          type: 'chat.state',
-          chat: summary(r),
-          messages,
-          artifacts: messageArtifacts(messages),
-        });
+        send(socket, await chatState(r, session));
         for (const a of approvals.list(msg.chatId)) send(socket, a);
         if (r.summary)
           send(socket, {
@@ -540,6 +709,28 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
           });
         return;
       }
+      case 'chat.fork':
+        return fork(msg);
+      case 'thinking.get': {
+        owned(msg.chatId);
+        const entry = (await registry.get(msg.chatId)).sessionManager.getEntry(msg.messageId);
+        const thinking = entry?.type === 'message' ? thinkingOf(entry.message) : '';
+        if (!thinking) throw new NotFound();
+        let down = false;
+        const { text, annotations } = await restorer(pseudo, () => {
+          down = true;
+        })(thinking.slice(0, THINKING_MAX));
+        if (down) return send(socket, errorMsg('pseudo_down', msg.chatId));
+        return send(socket, {
+          type: 'thinking.text',
+          chatId: msg.chatId,
+          messageId: msg.messageId,
+          text,
+          annotations,
+        });
+      }
+      case 'usage.get':
+        return send(socket, usageMonth(db, userId, msg.month, catalog));
       case 'chat.related':
         owned(msg.chatId);
         return send(socket, {
@@ -849,6 +1040,11 @@ function forward(
   let pending: AgentMessage | undefined;
   /** Masked text of the streaming message not yet sent (the hold-back). */
   let held = '';
+  let thinking = false;
+  const think = (active: boolean) => {
+    thinking = active;
+    emit({ type: 'message.thinking', chatId, messageId: streamId, active });
+  };
   const statuses = new Map<string, ToolStatus>();
   // Once per turn: the restorer reports the first failure and is reset at `agent_start`.
   const restore = restorer(pseudo, () => emit(errorMsg('pseudo_down', chatId)));
@@ -894,14 +1090,21 @@ function forward(
         if (e.message.role === 'assistant') {
           streamId = randomUUID();
           held = '';
+          thinking = false;
         }
         return;
-      case 'message_update':
+      case 'message_update': {
+        // Live "Ajattelee…" (phase-13 decision 9); Pi's `thinking_end` comes only at the end.
+        const t = e.assistantMessageEvent.type;
+        if (t === 'thinking_start' && !thinking) think(true);
+        else if (thinking && (t === 'text_delta' || t === 'toolcall_start')) think(false);
         if (e.assistantMessageEvent.type !== 'text_delta') return;
         held += e.assistantMessageEvent.delta;
         return stream(false);
+      }
       case 'message_end':
         if (e.message.role !== 'assistant') return;
+        if (thinking) think(false);
         await stream(true);
         if (e.message.stopReason === 'error') {
           log.warn({ chatId, error: e.message.errorMessage }, 'model call failed');
@@ -1053,7 +1256,7 @@ function toolRows(m: AgentMessage, statuses: Map<string, ToolStatus>): ToolRow[]
 }
 
 function toMessage(id: string, m: AgentMessage, tools: ToolRow[]): Message {
-  return {
+  const msg: Message = {
     id,
     role: m.role === 'user' ? 'user' : 'assistant',
     text: textOf(m),
@@ -1062,6 +1265,22 @@ function toMessage(id: string, m: AgentMessage, tools: ToolRow[]): Message {
     tools,
     createdAt: new Date(m.timestamp).toISOString(),
   };
+  // Phase 13: cost and tokens per call, and whether the row "Ajatteli … s" has a text to load.
+  const usage = messageUsage(m);
+  if (usage) msg.usage = usage;
+  if (thinkingOf(m)) msg.thinking = { ms: (m as { pa?: PaMeta }).pa?.thinkingMs ?? null };
+  return msg;
+}
+
+/**
+ * The files of the user message at `at`: uploaded after `prev` (the previous user message) and up
+ * to its own time.
+ */
+// ponytail: timestamp window, not a stored message link; a file uploaded but sent with a later message shows on the earlier one. Add files.messageId if that happens.
+function filesOf(files: ReturnType<typeof chatFiles>, prev: string, at: string) {
+  return files
+    .filter((f) => f.createdAt > prev && f.createdAt <= at)
+    .map(({ createdAt: _, ...ref }) => ref);
 }
 
 /**
@@ -1070,7 +1289,6 @@ function toMessage(id: string, m: AgentMessage, tools: ToolRow[]): Message {
  * from its text (`splitBlocks`); `blocks` gets their names per message id, as the text has them
  * (masked when `restore` does not restore). The export (export.ts) uses both.
  */
-// ponytail: timestamp window, not a stored message link; a file uploaded but sent with a later message shows on the earlier one. Add files.messageId if that happens.
 export async function history(
   session: AgentSession,
   files: ReturnType<typeof chatFiles>,
@@ -1090,9 +1308,7 @@ export async function history(
       return [];
     const m = toMessage(e.id, e.message, toolRows(e.message, statuses));
     if (m.role === 'user') {
-      m.attachments = files
-        .filter((f) => f.createdAt > prev && f.createdAt <= m.createdAt)
-        .map(({ createdAt: _, ...ref }) => ref);
+      m.attachments = filesOf(files, prev, m.createdAt);
       prev = m.createdAt;
     }
     return [m];

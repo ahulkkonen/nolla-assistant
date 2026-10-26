@@ -165,6 +165,20 @@ class PendingReq(BaseModel):
     action: Literal["confirm", "dismiss", "allowlist", "accept", "reject", "expire"]
 
 
+class ForkReq(BaseModel):
+    """Phase-13 decision 3: `to_session_id` (the new chat) knows what `from_session_id` had seen up to `until`."""
+    user_id: str = UserId
+    from_session_id: str = Field(min_length=1, max_length=200)
+    to_session_id: str = Field(min_length=1, max_length=200)
+    # the fork point entry's time: ISO 8601 UTC, as both pa-server and the vault write it
+    until: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$")
+
+
+class ForkRes(BaseModel):
+    ok: bool = True
+    entities: int
+
+
 class Ok(BaseModel):
     ok: bool = True
     new_entity_id: int | None = None

@@ -103,6 +103,15 @@ def _entity(row) -> dict:
                 last_seen=row["last_seen"] if "last_seen" in keys else None)
 
 
+@app.post("/session/fork", response_model=m.ForkRes)
+def fork(req: m.ForkReq):
+    if req.from_session_id == req.to_session_id:
+        raise HTTPException(422, "a session cannot fork into itself")
+    n = vault().fork_spans(req.user_id, req.from_session_id, req.to_session_id, req.until)
+    log.info("fork entities=%d", n)
+    return {"ok": True, "entities": n}
+
+
 @app.get("/vault/entities", response_model=m.EntitiesRes)
 def entities(user_id: str = Query(min_length=1, max_length=200)):
     S.ensure_self(vault(), user_id)

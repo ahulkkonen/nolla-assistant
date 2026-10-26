@@ -29,6 +29,7 @@ import {
   writeTools,
 } from '../mcp.ts';
 import type { MemoryStore } from '../memory.ts';
+import { messageUsage, type RecordUsage, usageExtension } from '../usage.ts';
 import { pathGuard, type WorkHooks } from './guard.ts';
 import { type Catalog, piModelId, policyOf, resolveModelId, thinkingLevel } from './models.ts';
 
@@ -62,6 +63,8 @@ type RegistryOptions = {
   mcpWarn?: (chatId: string, missing: string[]) => void;
   /** Called at every `agent_settled` through `pi-ext-topics`; `sessionId` is the chat id. */
   onSettled?: Parameters<typeof topicsExtension>[0]['onSettled'];
+  /** Each model call of a chat and of its subagent children (phase-13 decision 11). */
+  onUsage?: RecordUsage;
   /** Loads `pi-ext-pseudo` per chat when set; `log` receives its logs with the chat id. */
   pseudo?: {
     client: PseudoClient;
@@ -408,10 +411,14 @@ export class SessionRegistry {
                 },
                 ask: this.opts.approval.ask,
                 log: (...args) => withSubagents.log(chatId, ...args),
+                onUsage: (m) =>
+                  this.opts.onUsage?.({ kind: 'subagent', chatId, agentId }, messageUsage(m)),
               }),
             ]
           : []),
         pathGuard(this.cwd, chatId, this.opts.work),
+        // LiteLLM's cost and the thinking time into each assistant message (phase-13).
+        usageExtension({ kind: 'chat', chatId, agentId }, this.opts.onUsage),
         // Fail closed: without the sidecar nothing could be masked (invariant 1).
         ...(memory && pseudo
           ? [
