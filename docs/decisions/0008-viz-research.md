@@ -214,3 +214,54 @@ Read the CSS variables with `getComputedStyle` in the parent page. Freeze them i
 36. Dependabot PR with vega-embed 7.2.0/7.3.0 notes — https://github.com/KyleWhyet/dsh-u-20261026-streamlit__streamlit/pull/9
 
 [S] = subagent verification on 2026-10-26 from: Snyk mermaid https://security.snyk.io/package/npm/mermaid ; Mermaid 12.0.0 release https://github.com/mermaid-js/mermaid/releases/tag/mermaid@12.0.0 ; Snyk vega https://security.snyk.io/package/npm/vega ; Snyk d3 https://security.snyk.io/package/npm/d3 ; jsDelivr vega-lite https://www.jsdelivr.com/package/npm/vega-lite ; npmx terrastruct https://npmx.dev/org/terrastruct ; npmx excalidraw https://npmx.dev/package/@excalidraw/excalidraw/v/%5E0.18.1 ; libraries.io penrose https://libraries.io/npm/@penrose%2Fcore ; typst.ts releases https://github.com/myriad-dreamin/typst.ts/releases ; PlantUML https://github.com/plantuml/plantuml and https://plantuml.com/ ; plantuml-core https://github.com/plantuml/plantuml-core ; xddxdd dependabot PR https://github.com/xddxdd/blog/pull/2840.
+
+---
+
+## Addendum 2026-10-26: findings from rendering tests (user)
+
+Method: own tests in headless Chromium, network blocked, our fonts and warm light tokens, at 640 px and 390 px. Versions: vega 6.4.0, vega-lite 6.5.0, vega-embed 7.3.0, d3 7.9.0, @observablehq/plot 0.6.17, chart.js 4.5.1, echarts 6.1.0, plotly.js-dist-min 4.1.2, mermaid 12.2.0, @antv/infographic 0.2.20. One chart per test, so treat results as indicative.
+
+### Results
+| Test | HTML (D3/CSS) | Vega-Lite | Model-written size |
+|---|---|---|---|
+| Two-series line chart: shaded band between series, direct end labels, one note | Reference | Visually equivalent at 640 and 390 px after renderer fixes R1–R5 | VL ~2,550 chars (~730 tokens); HTML ~4,400 chars (~1,260 tokens) |
+| Annotated before/after timeline: bars, cutoff line, shaded window, notes | Phone layout with one media query | Equal on desktop. Phone needed 4 workarounds: width expressions, text widths guessed from character count, background bars behind labels, band alignment | Equal, ~4,000 chars (~1,100 tokens) each |
+| Same line chart in Chart.js, ECharts, Plotly, Observable Plot | Not tested in HTML | Plot and VL cleanest. Plotly `separators` does not apply to custom text labels | Not measured |
+| Mermaid xychart | Not tested in HTML | Weakest look. Parse error on unquoted labels with ä ("kesä") | Not measured |
+| AntV Infographic (2 templates) | Not tested in HTML | Two-line title overlapped subtitle. Icons load from weavefox.cn by default | Not measured |
+
+### Revised routing
+- Data-driven chart (≥ 4 values; trend, distribution, relationship, part-to-whole) → ```vega-lite
+- Explanatory chart with few values and many notes (timeline, before/after, timed process) → ```html with design kit and preloaded D3/Plot
+- Structure or flow without numbers → ```mermaid
+- Exact lookups → Markdown table. Fewer than 4 numbers → prose.
+- The deciding question is whether the chart is mostly data or mostly notes and layout.
+
+### Renderer requirements for every Vega-Lite block
+- R1 Title out of Vega. Lift `title.text`, `title.subtitle` and `usermeta.caption` out of the spec. Render them as HTML h2, p and figcaption. Vega titles do not wrap and cannot mix font weights. Allow `**bold**` in the subtitle. Insert a non-breaking space between number and unit (12 %, 30 s, 3 370 kWh).
+- R2 Theme injected, never written by the model. Font names ending in a digit must be quoted: `"'Source Serif 4', Georgia, serif"`. Unquoted, it silently falls back to another serif.
+- R3 Sizing. Use `autosize: {type: "fit-x", contains: "padding"}` with `width: "container"`. fit-x already reserves space for marks outside the plot (row labels), so never add padding for them; doing so shifted the plot and clipped notes. Direct end labels on the right need `padding.right` ≈ 44.
+- R4 Narrow screens. Below 480 px container width with an ordinal x axis, show every second label: `labelExpr: "round(datum.index*(n-1))%2 ? '' : datum.label"`. Axis `datum.index` is a 0–1 fraction, not an integer. Cap height at 200. `labelOverlap` did not hide colliding labels on a point scale.
+- R5 Wait for `document.fonts.ready` before `vegaEmbed`.
+- R6 Validate against the v6 schema. Reject `data.url`. Allow `params` with `expr`, and `containerSize()`. On error, one silent repair turn; then fall back to a table.
+- R7 (proposed, untested) Colour roles. The model writes `@fg @muted @faint @accent @accent-soft @c2 @band`. The renderer replaces them with the current theme's hex values before embedding. Dark mode then becomes a re-render.
+
+### Theme config, light (tested values; dark values to be added)
+The hex values below are the user's test values. The implementation reads the project tokens
+(`apps/web/src/tokens.css`) instead; the structure is what matters.
+```json
+{
+  "background": "#FBF8F3",
+  "font": "Inter",
+  "padding": {"left": 0, "top": 4, "right": 44, "bottom": 0},
+  "view": {"stroke": null},
+  "axis": {"labelFont": "Inter", "labelFontSize": 12, "labelColor": "#7A6F66",
+           "gridColor": "#E7DFD4", "domainColor": "#E7DFD4", "tickColor": "#E7DFD4",
+           "domain": false, "ticks": false, "labelPadding": 8, "labelAngle": 0},
+  "axisX": {"grid": false},
+  "text": {"font": "Inter", "fontSize": 13, "color": "#2B2622"},
+  "mark": {"color": "#C2602F"},
+  "bar": {"cornerRadius": 4}
+}
+```
+Role values: @fg #2B2622, @muted #7A6F66, @faint #A89E94, @border #E7DFD4, @accent #C2602F, @accent-soft #F3DFD2, @c2 #3E7C78, @band #F1EBE2.
