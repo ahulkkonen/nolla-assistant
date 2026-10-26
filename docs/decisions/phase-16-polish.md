@@ -252,3 +252,12 @@ older fixture stays valid. The server always sets them.
    from 1.10 GB to 1.25 GB on disk.
 6. **Report noise.** Browser extensions cause CSP reports. The log has the directive and the origin
    only, so the noise is short.
+
+## Status (2026-10-26)
+
+Server task cards 1 to 4 are done. Commits: `6e1e64f` (record), `755e49b` (one agent), `f7de9fb`
+(CSP reports), `7d499e9` (token split), `078017d` (OCR). Gate: `pnpm typecheck` and `pnpm lint`
+pass; server 168 tests pass and 1 is skipped locally (the OCR test, no `tesseract` on the Mac);
+protocol 40 and db 1 pass; the OCR test passes in the `server-test` image; the compose smoke has
+every service healthy. The e2e tests of the agent picker, the agent editor and the subagent row
+pass. Task cards 5 and 6 (web) are open.
