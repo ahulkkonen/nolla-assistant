@@ -514,3 +514,36 @@ def test_two_lone_first_names_without_a_session_make_a_new_person(vault):
     e = vault.entity(U, spans[0]["entity_id"])
     assert e["canonical"] == "Jari Pouta" and e["id"] not in (a["id"], b)
     assert sorted(c for _, c in _people(vault)) == ["Jari", "Jari", "Jari Pouta"]
+
+
+def test_upgrade_takes_the_one_lone_first_name_the_session_saw(vault):
+    a = S.get_or_create_entity(vault, U, "PERSON", "Jari")
+    b = S.split(vault, U, a["id"], [])
+    _, spans = mask(vault, "Tänään Jari soitti.")  # the newest "Jari" wins: the session sees b only
+    assert [s["entity_id"] for s in spans] == [b]
+    _, spans = mask(vault, "Tapasin Jari Pouta eilen.")
+    assert [s["entity_id"] for s in spans] == [b] and vault.entity(U, b)["canonical"] == "Jari Pouta"
+    assert vault.entity(U, a["id"])["canonical"] == "Jari"
+
+
+def test_ordinary_word_pair_never_upgrades(vault):
+    _, spans = mask(vault, "Tänään Jari soitti.")
+    lone = spans[0]["entity_id"]
+    _, spans = mask(vault, "nimeni on Jari pouta")  # pouta is an ordinary word (or no lexicon): 0.75
+    assert spans[0]["score"] == 0.75 and spans[0]["entity_id"] != lone
+    assert vault.entity(U, lone)["canonical"] == "Jari"
+    assert vault.entity(U, spans[0]["entity_id"])["canonical"] == "Jari Pouta"
+
+
+def test_no_upgrade_when_a_full_name_shares_the_first_name(vault):
+    lone = S.get_or_create_entity(vault, U, "PERSON", "Jari")
+    S.get_or_create_entity(vault, U, "PERSON", "Jari Virtanen")
+    _, spans = mask(vault, "Tapasin Jari Pouta eilen.", None)
+    assert spans[0]["entity_id"] != lone["id"] and vault.entity(U, lone["id"])["canonical"] == "Jari"
+    assert sorted(c for _, c in _people(vault)) == ["Jari", "Jari Pouta", "Jari Virtanen"]
+
+
+def test_old_one_word_surrogate_still_collides_after_the_upgrade(vault):
+    e, old = _upgrade(vault, "s1")
+    masked, spans, found = M.mask_input(vault, U, "s1", f"Hei {old}!")
+    assert (masked, spans) == ("", []) and [(f["entity_id"], f["kind"]) for f in found] == [(e["id"], "PERSON")]

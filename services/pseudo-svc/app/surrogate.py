@@ -27,6 +27,7 @@ FIRST_MIN, LAST_MIN = 300, 200
 # Phase-12 decision 1: a surrogate first name + surname pair has fewer than PAIR_MAX estimated real holders,
 # and a one-word surrogate (a lone first name or surname) comes from names with fewer than LONE_MAX holders.
 PAIR_MAX, LONE_MAX = 5, 1000
+UPGRADE_MIN = 0.9  # decision 19: an ordinary-word pair (Anna koski, 0.75) never changes an existing entity
 # Webmail and ISP domains anyone can have an address at: an email surrogate keeps them (decision 10).
 PUBLIC_MAIL = frozenset("""gmail.com googlemail.com hotmail.com hotmail.fi outlook.com outlook.fi live.com live.fi
 msn.com yahoo.com yahoo.fi icloud.com me.com mac.com protonmail.com proton.me pm.me aol.com gmx.com gmx.net mail.com
@@ -299,29 +300,43 @@ def get_or_create_entity(vault, user_id: str, kind: str, canonical: str, surface
             return vault.create(user_id, kind, canonical, surr, infl, real, rows, mode)
 
 
-def upgrade_first(vault, user_id: str, session_id: str | None, canonical: str):
-    """A full name whose first name alone is already a PERSON entity is that person (phase-12 decision 19): the
-    entity seen last in this session, else the only one in the vault. The entity takes the full name as its
-    canonical, keeps its surrogate first name and gets a surrogate surname under the pair rule. Its old forms stay,
-    so earlier transcripts still restore. None when no entity fits; the caller then creates a new one."""
+def upgrade_first(vault, user_id: str, session_id: str | None, canonical: str, score: float):
+    """A full name whose first name alone is already a PERSON entity is that person (phase-12 decision 19), when
+    the full name scores at least UPGRADE_MIN and the match is unique: the one lone entity this session saw, or,
+    when the session saw none, the only PERSON entity of the user with that first name as its first part. The
+    entity takes the full name as its canonical, keeps its surrogate first name and gets a surrogate surname
+    under the pair rule. Its old forms stay, so earlier transcripts still restore. None when nothing fits or a
+    concurrent change wins; the caller then creates a new entity."""
     parts = person_parts(canonical)
-    if len(parts) != 2 or vault.find(user_id, ("PERSON", "SELF"), canonical):
+    if score < UPGRADE_MIN or len(parts) != 2 or vault.find(user_id, ("PERSON", "SELF"), canonical):
         return None
     first = parts[0][1]
-    lone = [e for e in vault.q("SELECT * FROM entity WHERE user_id=? AND kind='PERSON' AND canonical=?"
-                               " AND surrogate_mode='realistic' AND allowlisted=0", (user_id, first))
-            if person_parts(first)[0][0] == "first"]
+    if person_parts(first)[0][0] != "first":
+        return None
+    same = vault.q("SELECT * FROM entity WHERE user_id=? AND kind='PERSON' AND (canonical=? OR canonical LIKE ?)",
+                   (user_id, first, first + " %"))
+    lone = [e for e in same if e["canonical"] == first]
     seen = vault.last_seen(session_id, [e["id"] for e in lone]) if lone and session_id else {}
-    e = max(lone, key=lambda e: seen[e["id"]]) if seen else lone[0] if len(lone) == 1 else None
-    if e is None:
+    if seen:
+        e = next(e for e in lone if e["id"] in seen) if len(seen) == 1 else None
+    else:
+        e = lone[0] if len(same) == 1 and lone else None
+    if e is None or e["surrogate_mode"] != "realistic" or e["allowlisted"]:
+        return None
+    real = real_rows("PERSON", canonical, canonical)
+    surr, infl, rows, mode = make_surrogate(vault, user_id, "PERSON", canonical, e["gen"], keep=e["surrogate"])  # Omorfi is slow
+    if mode != "realistic":
         return None
     with vault.lock:
-        surr, infl, rows, mode = make_surrogate(vault, user_id, "PERSON", canonical, e["gen"], keep=e["surrogate"])
-        if mode != "realistic":
+        cur = vault.entity(user_id, e["id"])
+        if not cur or (cur["canonical"], cur["surrogate"]) != (first, e["surrogate"]) \
+                or vault.find(user_id, ("PERSON", "SELF"), canonical):
             return None
-        vault.add_forms(user_id, e["id"], "real", real_rows("PERSON", canonical, canonical))
-        vault.add_forms(user_id, e["id"], "surrogate", rows)
-        vault.set_fields(user_id, e["id"], canonical=canonical, surrogate=surr, infl_class=infl)
+        try:
+            vault.upgrade(user_id, e["id"], real, rows, canonical=canonical, surrogate=surr, infl_class=infl,
+                          lone_surrogate=e["surrogate"])
+        except SurrogateConflict:
+            return None
         return vault.entity(user_id, e["id"])
 
 

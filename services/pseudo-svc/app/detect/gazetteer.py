@@ -159,7 +159,8 @@ def readings(word: str) -> frozenset[str]:
 
 
 LOWER_RE = re.compile(r"(?<![\w-])[a-zåäö][a-zåäöéü]{2,}(?:-[a-zåäö][a-zåäöéü]+)?(?![\w-])")
-# lower-case chat words that are also DVV names: English words, abbreviations and a conjunction
+# lower-case chat words that are also DVV names: English words, abbreviations and a conjunction.
+# A lower-case first name equal to one of these words is not detected, by choice.
 LOWER_STOP = frozenset("max min jan may mark will eli dan ron rose hope grace faith tom kim kai mutta from said and can with".split())
 
 
@@ -279,7 +280,9 @@ def _particle_name(text: str, m) -> tuple[int, int, str] | None:
 
 def _lower_surname(text: str, m) -> tuple[int, int, str, float] | None:
     """'Pekka pouta' after the first name m: (start, end, lemma, score) of the lower-case word after one space when
-    it is a DVV surname with at least MIN_SURNAME_COUNT holders, or an inflected form of one, and no place."""
+    it is a DVV surname with at least MIN_SURNAME_COUNT holders, or an inflected form of one, and no place.
+    The score is 0.9, or 0.75 when the word is also an ordinary word. Without Voikko or Omorfi nothing tells an
+    ordinary word, so every pair scores 0.75: such a pair never upgrades an existing entity (decision 19)."""
     lm = LOWER_RE.match(text, m.end() + 1) if text[m.end():m.end() + 1] == " " else None
     if not lm or lm.group(0) in LOWER_STOP or not plain_word(text, lm.start(), lm.end()) or place(cap(lm.group(0))):
         return None
@@ -291,7 +294,8 @@ def _lower_surname(text: str, m) -> tuple[int, int, str, float] | None:
     # ponytail: a surname that is also an ordinary word (pouta, laine, koski, mäki) still scores 0.75, above
     # PENDING_BELOW, because a leaked surname costs more than a masked word. Ceiling: "Pekka koski minua" is masked.
     # Upgrade: lower the score when Voikko reads the word as a verb in this position.
-    return lm.start(), lm.end(), last, 0.75 if common_word(lm.group(0)) else 0.9
+    lexicon = _voikko() is not None or forms.omorfi() is not None
+    return lm.start(), lm.end(), last, 0.9 if lexicon and not common_word(lm.group(0)) else 0.75
 
 
 def detect(text: str, ctx=None) -> list[Candidate]:

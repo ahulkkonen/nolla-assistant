@@ -155,21 +155,23 @@ def _echo(vault, user_id: str, session_id: str | None, cands: list) -> list:
 
 
 def _surrogate_index(vault, user_id: str):
-    """(kind, part, base form) -> entity ids over the base surrogate forms, plus the number of name parts per
-    entity; cached per vault version."""
+    """(kind, part, base form) -> entity ids over the base surrogate forms, the number of name parts per entity,
+    and the one-word surrogate an upgraded entity had (decision 19); cached per vault version."""
     cache = vault.__dict__.setdefault("matchers", {})
     ver = vault.version.get(user_id, 0)
     hit = cache.get((user_id, "bases"))
     if hit and hit[0] == ver:
-        return hit[1], hit[2]
-    index, nparts = {}, {}
-    for form, part, eid, kind, canonical in vault.surrogate_bases(user_id):
+        return hit[1], hit[2], hit[3]
+    index, nparts, lone = {}, {}, {}
+    for form, part, eid, kind, canonical, lone_surrogate in vault.surrogate_bases(user_id):
         key = (kind, part_kind(part), form) if kind == "PERSON" else (kind, "", form.lower())
         index.setdefault(key, set()).add(eid)
         if kind == "PERSON":
             nparts[eid] = len(person_parts(canonical))
-    cache[(user_id, "bases")] = (ver, index, nparts)
-    return index, nparts
+            if lone_surrogate:
+                lone[eid] = lone_surrogate
+    cache[(user_id, "bases")] = (ver, index, nparts, lone)
+    return index, nparts, lone
 
 
 def _owner(vault, user_id: str, c) -> int | None:
@@ -178,14 +180,16 @@ def _owner(vault, user_id: str, c) -> int | None:
     if c.entity_id or c.kind not in REALISH or vault.find(user_id, ("PERSON", "SELF") if c.kind == "PERSON"
                                                            else (c.kind,), c.canonical):
         return None
-    index, nparts = _surrogate_index(vault, user_id)
+    index, nparts, lone = _surrogate_index(vault, user_id)
     if c.kind != "PERSON":
         return min(index.get((c.kind, "", c.canonical.lower()), ()), default=None)
     if not c.parts:
         return None
     ids = set.intersection(*[index.get(("PERSON", part_kind(p["part"]), cap(p.get("lemma") or "")), set())
                              for p in c.parts])
-    return min((e for e in ids if nparts.get(e) == len(c.parts)), default=None)
+    # an upgraded entity still owns its old one-word surrogate alone
+    one = len(c.parts) == 1 and cap(c.parts[0].get("lemma") or "")
+    return min((e for e in ids if nparts.get(e) == len(c.parts) or one and lone.get(e) == one), default=None)
 
 
 def _collisions(vault, user_id: str, session_id: str, cands: list) -> tuple[list[dict], list]:
@@ -219,7 +223,7 @@ def _entities(vault, user_id: str, session_id: str | None, cands: list) -> list:
         elif c.kind == "PERSON" and len(c.parts) == 1 and (c.parts[0]["part"], c.parts[0].get("lemma")) in by_part:
             e = by_part[(c.parts[0]["part"], c.parts[0].get("lemma"))]
         else:
-            e = (c.kind == "PERSON" and len(c.parts) == 2 and upgrade_first(vault, user_id, session_id, c.canonical)) \
+            e = (c.kind == "PERSON" and len(c.parts) == 2 and upgrade_first(vault, user_id, session_id, c.canonical, c.score)) \
                 or get_or_create_entity(vault, user_id, c.kind, c.canonical, c.surface)
         if c.kind == "PERSON" and len(c.parts) > 1 and not c.entity_id:
             by_part.update({(p["part"], p.get("lemma")): e for p in c.parts})

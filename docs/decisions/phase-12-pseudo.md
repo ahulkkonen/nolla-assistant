@@ -152,19 +152,30 @@ lines and the harness enforces the plan's thresholds.
       at least 50 holders, one space, and a lower-case word. The pair is one person when the word is a
       DVV surname with at least 40 holders, or an inflected form of one, and no place. The score is
       0.9. When the surname is also an ordinary word (`pouta`, `laine`, `koski`, `mäki`), the score is
-      0.75. This is above the pending limit 0.6 on purpose: a leaked surname costs more than a masked
-      word. The cost is that `Pekka koski minua` is masked. JSON (tool results) does not use the rule.
+      0.75. Without Voikko and Omorfi nothing tells an ordinary word, so every such pair scores 0.75.
+      0.75 is above the pending limit 0.6 on purpose: a leaked surname costs more than a masked word.
+      The cost is that `Pekka koski minua` is masked. JSON (tool results) does not use the rule.
       `mutta`, `from`, `said`, `and`, `can` and `with` are DVV surnames, but the rule never reads them
-      as surnames.
-    - A full name whose first name alone is already a PERSON entity upgrades that entity. The sidecar
-      does not create a second one. The match order is: the entity that this session saw last, else
-      the only such entity of the user, else no match (a new entity). The memory injection masks with
-      the chat session. In a new chat that session saw nobody, and memory consolidation uses the session
-      `memory:<user>`, which also saw nobody. The second rule covers both. The entity takes
-      the full name as its canonical form. It keeps its surrogate first name and gets a surrogate
-      surname under the pair rule (decision 3). The real and surrogate case forms are stored as for a
-      new entity. The old forms stay, so earlier chats still restore the old surrogate to the same
-      person.
+      as surnames. A lower-case first name equal to one of these words is not detected either.
+    - A full name whose first name alone is already a PERSON entity can upgrade that entity instead of
+      creating a second one. Both conditions must be true:
+      - The full name scores at least 0.9. A 0.75 pair (`Anna koski`) never changes an existing entity.
+        It creates or matches entities in the usual way.
+      - The match is unique. Either this session saw exactly one lone entity with that first name, or
+        this session saw none and the user has exactly one PERSON entity with that first name as its
+        first part (lone or full). So when `Jari Virtanen` exists, a new `Jari Pouta` never takes a
+        lone `Jari`.
+
+      The memory injection masks with the chat session. In a new chat that session saw nobody, and
+      memory consolidation uses the session `memory:<user>`, which also saw nobody. The second form of
+      the unique match covers both. The entity takes the full name as its canonical form. It keeps its
+      surrogate first name and gets a surrogate surname under the pair rule (decision 3). The real and
+      surrogate case forms are stored as for a new entity, in one savepoint. The sidecar builds the
+      surrogate outside the vault lock and checks the entity again under the lock. When the entity
+      changed, or a surrogate form is taken, it writes nothing and creates a new entity. The old forms
+      stay, so earlier chats still restore the old surrogate to the same person. The entity keeps its
+      old one-word surrogate in `entity.lone_surrogate`, so user input equal to that word alone still
+      goes to the collision lane (decision 6).
     - Not covered: a lower-case surname that Omorfi also knows as a place (`Anu rannalle`, `Mika
       salmelle`) stays unmasked after a first name. A lone lower-case surname that is also an ordinary
       word (`pouta`) stays unmasked after the upgrade too (decision 15).
@@ -177,6 +188,8 @@ Vault (`services/pseudo-svc/app/vault.py`):
   `canonical TEXT` (the base form of the mention, for the entity that accept creates). A vault made
   before phase 12 gets the columns by `ALTER TABLE` at startup. A collision row can have the status
   `expired`. The next mention of the same text then gets a new row.
+- `entity` gets the column `lone_surrogate TEXT` (decision 19). A vault made before it gets the column by
+  `ALTER TABLE` at startup.
 - `counter` holds `email_domain` (the sequence) and `email_domain:<domain>` (the `N` of each real
   domain).
 - `entity_form` holds the 11 case forms of each new email entity (analysis = case key), the forms of

@@ -14,7 +14,8 @@ CREATE TABLE IF NOT EXISTS entity (id INTEGER PRIMARY KEY, user_id TEXT NOT NULL
   canonical TEXT NOT NULL, surrogate TEXT NOT NULL,
   surrogate_mode TEXT CHECK(surrogate_mode IN ('realistic','placeholder')) DEFAULT 'realistic',
   infl_class TEXT, pinned INTEGER DEFAULT 0, allowlisted INTEGER DEFAULT 0, confirmed INTEGER DEFAULT 0,
-  gen INTEGER DEFAULT 0, created_at TEXT, updated_at TEXT);
+  gen INTEGER DEFAULT 0, created_at TEXT, updated_at TEXT, lone_surrogate TEXT);
+-- lone_surrogate: the one-word surrogate of a lone first name that grew into a full name (phase-12 decision 19)
 CREATE INDEX IF NOT EXISTS entity_user ON entity(user_id, kind, canonical);
 -- real forms may repeat across entities (two people called Matti); a surrogate form maps to one
 -- entity per user. user_id is denormalised here so the unique index needs no join.
@@ -71,6 +72,8 @@ class Vault:
         for col, decl in (("reason", "TEXT DEFAULT 'uncertain'"), ("canonical", "TEXT")):
             if col not in cols:
                 self.db.execute(f"ALTER TABLE pending ADD COLUMN {col} {decl}")
+        if "lone_surrogate" not in {r[1] for r in self.db.execute("PRAGMA table_info(entity)")}:
+            self.db.execute("ALTER TABLE entity ADD COLUMN lone_surrogate TEXT")
         self.lock = threading.RLock()
         self.version: dict[str, int] = {}  # user_id -> bump on every form change (matcher caches)
         # surrogate seed key: random per vault, created once, kept inside the encrypted file.
@@ -141,6 +144,22 @@ class Vault:
                 self.db.execute("RELEASE forms")
         self.bump(user_id)
 
+    def upgrade(self, user_id: str, eid: int, real, surr, **fields) -> None:
+        """Adds real and surrogate forms and sets fields of one entity in one savepoint: all or nothing.
+        SurrogateConflict (a surrogate form taken meanwhile) rolls everything back."""
+        with self.lock:
+            self.db.execute("SAVEPOINT upgrade")
+            try:
+                self._forms(eid, "real", real)
+                self._forms(eid, "surrogate", surr)
+                self.set_fields(user_id, eid, **fields)
+            except Exception:
+                self.db.execute("ROLLBACK TO upgrade")
+                raise
+            finally:
+                self.db.execute("RELEASE upgrade")
+        self.bump(user_id)
+
     def next_counter(self, user_id: str, name: str) -> int:
         """Per-user monotonic counter (placeholder numbers); never reused, also after merges."""
         with self.lock:
@@ -195,9 +214,10 @@ class Vault:
             (*self._scope(session_id), *entity_ids))}
 
     def surrogate_bases(self, user_id: str) -> list:
-        """(form, part, entity_id, kind, canonical) of the base surrogate forms (nominative names, plain email
-        addresses, nominative streets) of every PERSON, EMAIL and ADDRESS entity of the user, all generations."""
-        return self.q("SELECT f.form, f.part, f.entity_id, e.kind, e.canonical FROM entity_form f JOIN entity e"
+        """(form, part, entity_id, kind, canonical, lone_surrogate) of the base surrogate forms (nominative names,
+        plain email addresses, nominative streets) of every PERSON, EMAIL and ADDRESS entity of the user, all
+        generations."""
+        return self.q("SELECT f.form, f.part, f.entity_id, e.kind, e.canonical, e.lone_surrogate FROM entity_form f JOIN entity e"
                       " ON e.id=f.entity_id WHERE f.user_id=? AND f.side='surrogate' AND f.analysis IN ('NOM','S0')"
                       " AND e.kind IN ('PERSON','EMAIL','ADDRESS')", (user_id,))
 
