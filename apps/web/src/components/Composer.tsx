@@ -53,6 +53,14 @@ export function Composer() {
   const [elapsed, setElapsed] = useState(0);
   const [workPicker, setWorkPicker] = useState(false);
   const queued = useStore((s) => s.attachQueue);
+  // Phase 12: a message held by the vault, and the text of one that was dropped.
+  const held = useStore((s) => (chatId ? s.held[chatId] !== undefined : false));
+  const draft = useStore((s) => s.draft);
+  useEffect(() => {
+    if (!draft || draft.chatId !== chatId) return;
+    setText((t) => t || draft.text);
+    useStore.setState({ draft: null });
+  }, [draft, chatId]);
   const area = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
   const box = useRef<HTMLDivElement>(null);
@@ -262,7 +270,7 @@ export function Composer() {
           ref={area}
           rows={1}
           value={text}
-          placeholder="Kirjoita viesti"
+          placeholder={held ? 'Odottaa Nimisuojaa' : 'Kirjoita viesti'}
           aria-label="Viesti"
           onChange={(e) => {
             setText(e.target.value);
@@ -307,7 +315,12 @@ export function Composer() {
                 <Paperclip size={16} />
               </IconButton>
             </DropdownMenuTrigger>
-            <DropdownMenuContent side="top" align="start" collisionPadding={8}>
+            <DropdownMenuContent
+              side="top"
+              align="start"
+              collisionPadding={8}
+              className="w-auto min-w-48"
+            >
               <DropdownMenuItem onSelect={() => picker.current?.click()}>
                 <Upload size={16} className="text-muted-foreground" />
                 Lataa laitteelta

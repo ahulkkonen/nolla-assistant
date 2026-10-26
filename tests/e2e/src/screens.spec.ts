@@ -545,6 +545,21 @@ for (const scheme of ['light', 'dark'] as const) {
           await shot(page, 'files-deep-path', vp.width, scheme);
         });
 
+        if (vp.width !== 1024)
+          test('toast-error', async ({ app, page }) => {
+            // A zip cannot be attached (415): an error toast with its close button.
+            await app.login(page);
+            await openFiles(page);
+            await page.getByRole('button', { name: 'Tiedoston toiminnot: arkisto.zip' }).click();
+            await page.getByRole('menuitem', { name: 'Liitä keskusteluun' }).click();
+            await expect(page.getByText('Tätä tiedostotyyppiä ei voi liittää.')).toBeVisible();
+            await expect(page.getByRole('button', { name: 'Sulje' }).last()).toBeVisible();
+            // Focus went back to ⋯ and its tooltip shows: a click on empty canvas clears both.
+            if (!phone) await page.mouse.click(vp.width / 2, vp.height - 60);
+            await expect(page.getByRole('tooltip')).toHaveCount(0);
+            await shot(page, 'toast-error', vp.width, scheme);
+          });
+
         test('files-attach-menu', async ({ app, page }) => {
           await app.login(page);
           await page.getByRole('button', { name: 'Liitä tiedosto' }).click();
