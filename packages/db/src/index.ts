@@ -21,6 +21,7 @@ export function openDb(
   migrate(db, { migrationsFolder });
   // Not managed by drizzle-kit: changes need DROP + rebuild. Row ids match `chunks.id`
   // (`chat_fts.chunk_id`, `chunk_vec.chunk_id`); kind: title | summary | transcript.
+  // Phase 17: `claims_fts` and `claims_vec` hold the real claim text (row id = `claims.id`).
   // Phase-4 `chat_fts` had no `chunk_id` and no writer: an old empty table is rebuilt.
   const ftsCols = sqlite.pragma('table_info(chat_fts)') as { name: string }[];
   if (ftsCols.length && !ftsCols.some((c) => c.name === 'chunk_id'))
@@ -32,6 +33,8 @@ export function openDb(
       DELETE FROM chat_fts WHERE chunk_id = old.id;
       DELETE FROM chunk_vec WHERE chunk_id = old.id;
     END;
+    CREATE VIRTUAL TABLE IF NOT EXISTS claims_fts USING fts5(claim_id UNINDEXED, user_id UNINDEXED, text, tokenize='trigram');
+    CREATE VIRTUAL TABLE IF NOT EXISTS claims_vec USING vec0(claim_id INTEGER PRIMARY KEY, user_id TEXT, embedding float[384] distance_metric=cosine);
   `);
   return { db, sqlite };
 }

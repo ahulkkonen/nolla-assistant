@@ -2,7 +2,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, test } from 'vitest';
-import { chats, fileOrigins, fileTrash, openDb, users } from './index.ts';
+import { chats, claims, evidence, fileOrigins, fileTrash, openDb, users } from './index.ts';
 
 test('open, insert, read, fts, wal', () => {
   const path = join(mkdtempSync(join(tmpdir(), 'pa-db-')), 't.db');
@@ -63,7 +63,44 @@ test('open, insert, read, fts, wal', () => {
       .values({ userId: 'u1', path: 'c.md', chatId: 'missing', updatedAt: now })
       .run(),
   ).toThrow();
+  // Phase-17: a claim and its evidence outlive the source chat.
+  const claimId = db
+    .insert(claims)
+    .values({
+      userId: 'u1',
+      kind: 'preference',
+      text: 'Käyttäjä haluaa lyhyet vastaukset.',
+      confidence: 0.9,
+      recordedAt: now,
+      sourceChatId: 'c1',
+    })
+    .returning({ id: claims.id })
+    .get().id;
+  db.insert(evidence)
+    .values({
+      userId: 'u1',
+      claimId,
+      chatId: 'c1',
+      messageId: 'm1',
+      quote: 'lyhyesti',
+      stance: 'supports',
+      createdAt: now,
+    })
+    .run();
+  sqlite
+    .prepare('INSERT INTO claims_fts (claim_id, user_id, text) VALUES (?, ?, ?)')
+    .run(claimId, 'u1', 'Käyttäjä haluaa lyhyet vastaukset.');
+  expect(
+    sqlite.prepare('SELECT claim_id FROM claims_fts WHERE claims_fts MATCH ?').get('"lyhye"'),
+  ).toEqual({
+    claim_id: claimId,
+  });
+  expect(
+    sqlite.prepare("SELECT name FROM sqlite_master WHERE name = 'claims_vec'").get(),
+  ).toBeTruthy();
   sqlite.prepare('DELETE FROM chats WHERE id = ?').run('c1');
+  expect(db.select().from(claims).all()).toHaveLength(1);
+  expect(db.select().from(evidence).all()).toHaveLength(1);
   expect(db.select().from(fileOrigins).all()).toEqual([]);
   expect(db.select().from(fileTrash).all()).toHaveLength(1);
 

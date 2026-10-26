@@ -424,6 +424,53 @@ export const FileError = z.enum([
 export type FileError = z.infer<typeof FileError>;
 
 /** Admin (docs/decisions/phase-15-admin.md). The agent every install has; it cannot be deleted. */
+/** Phase-17 claim kinds (same list as `CLAIM_KINDS` in `@pa/db`). */
+export const ClaimKind = z.enum([
+  'preference',
+  'rhythm',
+  'goal',
+  'fact',
+  'relationship',
+  'decision_pattern',
+  'quirk',
+]);
+export type ClaimKind = z.infer<typeof ClaimKind>;
+/** A day as `VVVV-KK-PP` or a month as `VVVV-KK`. */
+export const ClaimDay = z.string().regex(/^\d{4}-\d{2}(-\d{2})?$/);
+export const CLAIM_TEXT_MAX = 240;
+
+/** One claim with up to 3 evidence quotes (newest first). Texts are real values. */
+export const Claim = z.object({
+  id: z.int(),
+  kind: ClaimKind,
+  text: z.string(),
+  confidence: z.number(),
+  status: z.enum(['proposed', 'active', 'superseded', 'rejected']),
+  /** `auto`: activated at extraction (the chip); `user`: by the user or the `memory` tool. */
+  activatedBy: z.enum(['auto', 'user']).nullable(),
+  validFrom: z.string().nullable(),
+  validTo: z.string().nullable(),
+  recordedAt: z.string(),
+  lastConfirmedAt: z.string().nullable(),
+  timesSeen: z.int(),
+  sourceChatId: id64.nullable(),
+  /** Set on a supersede proposal (and on the claim that replaced another). */
+  supersedes: z.object({ id: z.int(), text: z.string() }).nullable(),
+  evidence: z
+    .array(
+      z.object({
+        chatId: id64.nullable(),
+        messageId: id64.nullable(),
+        quote: z.string(),
+        stance: z.enum(['supports', 'contradicts']),
+      }),
+    )
+    .max(3),
+});
+export type Claim = z.infer<typeof Claim>;
+/** The chat chip: claims that extraction activated at once. */
+export const ClaimChip = z.object({ id: z.int(), kind: ClaimKind, text: z.string() });
+
 export const DEFAULT_AGENT_ID = 'assistant';
 const toolNames = z.array(z.string().min(1).max(64));
 
@@ -671,6 +718,24 @@ export const ClientMessage = z.discriminatedUnion('type', [
     user: z.string().max(1500).optional(),
     memory: z.string().max(2500).optional(),
   }),
+  z.object({ type: z.literal('claims.list') }),
+  /** A proposed claim (or an `auto` active one: the chip's undo). `text` edits, `validTo` sets an expiry. */
+  z.object({
+    type: z.literal('claims.review'),
+    id: z.int(),
+    action: z.enum(['accept', 'reject']),
+    text: z.string().trim().min(3).max(CLAIM_TEXT_MAX).optional(),
+    validTo: ClaimDay.optional(),
+  }),
+  /** An active claim: edit the text or set (null: clear) the expiry. */
+  z.object({
+    type: z.literal('claims.update'),
+    id: z.int(),
+    text: z.string().trim().min(3).max(CLAIM_TEXT_MAX).optional(),
+    validTo: ClaimDay.nullable().optional(),
+  }),
+  /** The monthly stale list: keep (confirmed now) or lower the confidence by 0.2. */
+  z.object({ type: z.literal('claims.stale'), id: z.int(), action: z.enum(['keep', 'lower']) }),
   z.object({ type: z.literal('topic.list') }),
   z.object({ type: z.literal('automations.list') }),
   z.object({ type: z.literal('automations.run'), id: id64 }),
@@ -739,6 +804,8 @@ export const ServerMessage = z.discriminatedUnion('type', [
     artifacts: z.array(Artifact).optional(),
     /** Set for a chat that "Haarauta" started. */
     forkedFrom: ForkLink.nullable().optional(),
+    /** Phase 17: claims this chat activated at once in the last 7 days (the chip). */
+    claims: z.array(ClaimChip).optional(),
   }),
   z.object({ type: z.literal('chat.list'), chats: z.array(ChatSummary) }),
   z.object({ type: z.literal('chat.created'), chat: ChatSummary }),
@@ -973,6 +1040,19 @@ export const ServerMessage = z.discriminatedUnion('type', [
     requestId: id64.optional(),
   }),
   z.object({ type: z.literal('pong') }),
+  z.object({
+    type: z.literal('claims.state'),
+    /** Supersede proposals first, then newest first. */
+    proposed: z.array(Claim),
+    active: z.array(Claim),
+    /** Newest 50. */
+    superseded: z.array(Claim),
+    /** Active claims not confirmed in 90 days and not checked in 30. */
+    stale: z.array(Claim),
+    /** Reviewed extracted claims: claim precision = accepted / (accepted + rejected). */
+    precision: z.object({ accepted: z.int(), rejected: z.int() }),
+  }),
+  z.object({ type: z.literal('claims.activated'), chatId: id64, claims: z.array(ClaimChip) }),
 ]);
 export type ServerMessage = z.infer<typeof ServerMessage>;
 

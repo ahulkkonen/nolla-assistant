@@ -1,4 +1,12 @@
-import { index, integer, primaryKey, real, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import {
+  type AnySQLiteColumn,
+  index,
+  integer,
+  primaryKey,
+  real,
+  sqliteTable,
+  text,
+} from 'drizzle-orm/sqlite-core';
 
 export const users = sqliteTable('users', {
   id: text().primaryKey(),
@@ -49,6 +57,12 @@ export const chats = sqliteTable(
     forkedFromMessageId: text(),
     // The edited message's time in the source: copied messages are older, the fork's own newer.
     forkedAt: text(),
+    // Phase-17 claims: a turn had untrusted tool output; the chat was started by an automation;
+    // the last message id the extraction read and when.
+    tainted: integer({ mode: 'boolean' }).notNull().default(false),
+    fromAutomation: integer({ mode: 'boolean' }).notNull().default(false),
+    claimsThrough: text(),
+    claimsAt: text(),
     createdAt: text().notNull(),
     updatedAt: text().notNull(),
   },
@@ -246,4 +260,83 @@ export const usage = sqliteTable(
     createdAt: text().notNull(),
   },
   (t) => [index('usage_user_created_idx').on(t.userId, t.createdAt)],
+);
+
+export const CLAIM_KINDS = [
+  'preference',
+  'rhythm',
+  'goal',
+  'fact',
+  'relationship',
+  'decision_pattern',
+  'quirk',
+] as const;
+export type ClaimKind = (typeof CLAIM_KINDS)[number];
+
+/**
+ * Phase-17 claims about the user (real values). Never deleted: supersession, remove and expiry set
+ * `validTo`. Each row has a `claims_fts` row and a `claims_vec` row (raw SQL in index.ts, row id =
+ * `id`).
+ */
+export const claims = sqliteTable(
+  'claims',
+  {
+    id: integer().primaryKey({ autoIncrement: true }),
+    userId: text().notNull(),
+    // Vault entity id of the subject; null = the user.
+    subjectEntityId: integer(),
+    kind: text({ enum: CLAIM_KINDS }).notNull(),
+    text: text().notNull(),
+    confidence: real().notNull(),
+    status: text({ enum: ['proposed', 'active', 'superseded', 'rejected'] })
+      .notNull()
+      .default('proposed'),
+    activatedBy: text({ enum: ['auto', 'user'] }),
+    validFrom: text(),
+    validTo: text(),
+    recordedAt: text().notNull(),
+    supersedesId: integer().references((): AnySQLiteColumn => claims.id),
+    // No foreign key: a claim outlives a deleted chat.
+    sourceChatId: text(),
+    lastConfirmedAt: text(),
+    timesSeen: integer().notNull().default(1),
+    reviewedAt: text(),
+    checkedAt: text(),
+    inProfile: integer({ mode: 'boolean' }).notNull().default(false),
+  },
+  (t) => [index('claims_user_status_idx').on(t.userId, t.status)],
+);
+
+/** Quotes (real, ≤ 300 chars) from a user message that support or contradict a claim. */
+export const evidence = sqliteTable(
+  'evidence',
+  {
+    id: integer().primaryKey({ autoIncrement: true }),
+    userId: text().notNull(),
+    claimId: integer()
+      .notNull()
+      .references(() => claims.id),
+    chatId: text(),
+    messageId: text(),
+    quote: text().notNull(),
+    stance: text({ enum: ['supports', 'contradicts'] }).notNull(),
+    createdAt: text().notNull(),
+  },
+  (t) => [index('evidence_claim_idx').on(t.claimId)],
+);
+
+/** Vault entities a claim names (`entityId` lives in vault.db: no foreign key). */
+export const claimEntities = sqliteTable(
+  'claimEntities',
+  {
+    claimId: integer()
+      .notNull()
+      .references(() => claims.id),
+    entityId: integer().notNull(),
+    userId: text().notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.claimId, t.entityId] }),
+    index('claim_entities_entity_idx').on(t.userId, t.entityId),
+  ],
 );

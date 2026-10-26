@@ -21,6 +21,7 @@ import {
   errorMsg,
   vaultState,
 } from './bridge.ts';
+import { claimStore } from './claims.ts';
 import { collisionWaits } from './collisions.ts';
 import { BUNDLED_AGENTS, BUNDLED_AUTOMATIONS, type Config, loadConfig } from './config.ts';
 import { fxRates } from './fx.ts';
@@ -169,6 +170,11 @@ export async function start(
     sendAll,
     onUsage: recordUsage,
   });
+  const claimsDb = claimStore({
+    db,
+    userId: config.userId,
+    warn: (msg, data) => app.log.warn(data ?? {}, msg),
+  });
   // Pi entries per catalog model (phase-10 decision 8); `start` below runs once `app` exists.
   const catalog = modelCatalog({
     dataDir: config.dataDir,
@@ -267,6 +273,7 @@ export async function start(
     log: app.log,
   });
   checkBash();
+  await claimsDb.importMemory(memory.read('memory'));
   if (!pseudo) app.log.warn('memory disabled: PSEUDO_URL unset');
   if (!push.enabled) app.log.info('push disabled: VAPID_PUBLIC/VAPID_PRIVATE/VAPID_SUBJECT unset');
   const selfSeed = new AbortController();

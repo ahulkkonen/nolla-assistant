@@ -64,6 +64,13 @@
       "when": 1793040271525,
       "tag": "0008_fuzzy_hydra",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1793046933850,
+      "tag": "0009_unusual_wendigo",
+      "breakpoints": true
     }
   ]
 }
