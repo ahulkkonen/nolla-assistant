@@ -282,7 +282,10 @@ z.object({ type: z.literal('chat.setModel'), chatId: id64, ...ModelChoice.shape 
 z.object({ type: z.literal('chat.setDataPolicy'), chatId: id64, dataPolicy: DataPolicy }),
 z.object({ type: z.literal('models.list') }),
 z.object({ type: z.literal('models.favorite'), modelId: ModelId, favorite: z.boolean() }),
+z.object({ type: z.literal('user.retry'), chatId: id64 }), // (as built)
 ```
+
+`user.retry` (as built) re-runs the last user turn of the chat in place. The server moves the session leaf to the entry before the last user entry. Then the server prompts again with the last user text. The user message therefore appears once. The server answers with the normal message events.
 
 New server message. The server answers `chat.setModel` and `chat.setDataPolicy` with the existing `chat.updated`.
 
@@ -424,6 +427,7 @@ The UI follows the design brief in `docs/decisions/phase-9-ui.md`, section 7. Al
 
 - Space check at 390 px: the toolbar has 340 px inside. In a started chat, the other controls and gaps take 200 px. The sum is 44 + 4 + 44 + 4 + 8 + 44 + 8 + 44. That leaves 140 px for the model chip. In an empty chat, the agent chip takes 104 px, which leaves 80 px. "Auto" fits in 80 px.
 - The model chip copies the agent chip: ghost, 32 h (44 on phones), radius full, `--text-ui`. It truncates with an ellipsis at 200 px (desktop) or at the space that is left (phone). The accessible name is "Malli: Auto", from an `aria-label` with the full model name.
+- On phones the chip shows a short model name (as built), for example "Opus 5.5" or "Fable 5.1". "Gemini 4 Argon" stays whole. The phone chip has a `bg-secondary` fill and no chevron. The accessible name keeps the full model name.
 - The visible name is the catalog name without the vendor prefix ("Claude Opus 5.5", "Gemini 4 Argon"). A chat with a null `modelId` shows the alias name from `infra/models.json`, for example "Strong (ZDR)".
 - While a run is active, the chip is `aria-disabled` with the tooltip "Malli vaihdetaan, kun vastaus on valmis".
 
@@ -433,10 +437,11 @@ The UI follows the design brief in `docs/decisions/phase-9-ui.md`, section 7. Al
 - Under 768 px the badge is a 16 px `ShieldOff` icon in `--warning` before the name.
 - The accessible name becomes "Malli: Claude Fable 5.1, Ei ZDR".
 - The badge stays visible for the whole time that the chat is open, because the composer is always on screen in the thread.
+- The "Ei ZDR" badge sits on the composer chip only (as built). On phones it is the `ShieldOff` icon. The thread has no badge.
 
 ### Model menu
 
-The menu is a `DropdownMenu` with `modal={false}`, `side="top"`, `align="start"` and width 300 (phone: `min(300px, 100vw - 32px)`). It has these sections from top to bottom:
+On phones (under 768 px), the menu is a bottom `Sheet` named "Mallin valinta". (as built) The sheet holds the radio groups "Malli" and "Ajattelu", with 44 px rows. It also holds a "Kaikki mallit…" button and, in an open chat, the "Palauta ZDR" item. At 768 px and above, the menu is a `DropdownMenu` (as built) in which "Ajattelu" is a submenu. The submenu trigger shows the current level as meta, for example "Automaattinen · Keskitaso". The rest of this section describes the desktop `DropdownMenu`. It has `modal={false}`, `side="top"`, `align="start"` and width 300 (phone: `min(300px, 100vw - 32px)`). It has these sections from top to bottom:
 
 1. **Malli** (group label, micro muted). It holds radio items:
    - "Auto", with the meta line "Gemini 4 Argon".
@@ -466,9 +471,10 @@ Effort labels:
 
 ### Catalog dialog ("Kaikki mallit")
 
-- The dialog reuses the command palette pattern: `cmdk` in the kit `Dialog`, width 560, top at 15vh, radius 12, `--shadow-md`.
+- The dialog sits in the kit `Dialog`, width 560, top at 15vh, radius 12, `--shadow-md`.
+- The list is a plain list with roving focus, not a `cmdk` `Command` (as built). The arrow keys up and down move between rows. The arrow keys left and right move between a row and its star button. `cmdk` is not used because a star button inside a `cmdk` option fails the axe `nested-interactive` rule.
 - The input is 48 h with the placeholder and accessible name "Hae malleja".
-- Two groups: "Suosikit" and "Kaikki mallit".
+- Two groups (as built): "Suosikit" and "Kaikki mallit". Each favourite is listed once, under "Suosikit". The group "Kaikki mallit" lists the other models.
 - Rows are 44 h. A row shows the name (`--text-ui`) and a meta line. The meta line holds the id in mono 13, the context ("1 M") and the price ("4,00 / 20,00 $").
 - At the right of a row: the `Badge` "Ei ZDR" when the model has no ZDR endpoint, and a 28 px star button. The star button is "Lisää suosikkeihin" or "Poista suosikeista", with `Star` filled for a favourite.
 - Enter or a click selects the model for the chat and closes the dialog.
@@ -499,7 +505,7 @@ The refusal uses the place and shape of the existing failed-reply alert in `Thre
 | Failure | What the user sees | Server action |
 | --- | --- | --- |
 | ZDR refusal (decision 10) | The refusal alert with "Salli ilman ZDR:ää tässä keskustelussa" | Emits `zdr_unavailable` and records the refusal for this chat and model |
-| User clicks the allow button | The alert closes, the badge appears, and the last message runs again | Checks decision 9, stores `open`, evicts the session and broadcasts `chat.updated`. The client keeps a pending retry and calls `retryLast` when `chat.updated` shows `open` |
+| User clicks the allow button | The alert closes, the badge appears, and the last message runs again | Checks decision 9, stores `open`, evicts the session and broadcasts `chat.updated`. The client keeps a pending retry and sends `user.retry { chatId }` when `chat.updated` shows `open` (as built). The server re-runs the last user turn in place, so the user message appears once. "Yritä uudelleen" on the latest reply uses the same path (as built) |
 | Model call fails in an `open` chat (for example 404, when only training providers serve the model) | "Mallin kutsu epäonnistui." with "Yritä uudelleen" | `llm_failed`. The account-level training block stays, so there is no second override |
 | A ZDR model fails with 503 (outage) | "Mallin kutsu epäonnistui." with "Yritä uudelleen" | `llm_failed`, because the catalog shows ZDR endpoints |
 | Error after the stream starts | The existing failed-reply alert | `llm_failed`. Such an error cannot be a ZDR refusal |
