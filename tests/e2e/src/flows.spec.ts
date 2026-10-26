@@ -197,19 +197,27 @@ test.describe('collision', () => {
     app,
     page,
   }) => {
+    app.llm.push({ text: 'Selvä.' });
     app.llm.push({ text: 'Soitan hänelle huomenna.' });
     await app.login(page);
+    // Matti Virtanen gets his entity; his surrogate is the name the user types next.
+    await send(page, 'Matti Virtanen soitti eilen');
+    await expect(page.locator('.md').last()).toHaveText('Selvä.');
     const ask = `Soita ${COLLIDING} huomenna`;
     await send(page, ask);
     // Held: the toast asks for an answer, and the composer says what it waits for.
     await expect(page.getByText('Nimi on jo pseudonyymi. Vastaa Nimisuojassa.')).toBeVisible();
     await expect(page.getByLabel('Viesti')).toHaveAttribute('placeholder', 'Odottaa Nimisuojaa');
     await expect(thread(page).getByText(ask)).toBeVisible();
-    expect(app.llm.requests).toHaveLength(0);
+    // The held bubble says it too, after the toast has gone.
+    await expect(
+      thread(page).getByRole('button', { name: 'Avaa Nimisuoja ja vastaa' }),
+    ).toBeVisible();
+    expect(app.llm.requests).toHaveLength(1);
 
-    await page.getByRole('button', { name: 'Avaa Nimisuoja' }).click();
-    const row = page.getByRole('listitem').filter({ hasText: 'Onko tämä uusi henkilö?' });
-    await expect(row).toContainText(COLLIDING);
+    await page.getByRole('button', { name: 'Avaa Nimisuoja', exact: true }).click();
+    const row = page.getByRole('listitem').filter({ hasText: `Onko ${COLLIDING} uusi henkilö?` });
+    await expect(row).toContainText('Nimi on jo henkilön Matti Virtanen pseudonyymi.');
     await row.getByRole('button', { name: 'Uusi henkilö' }).click();
     await expect(page.getByRole('heading', { name: 'Vahvistettavat' })).toHaveCount(0);
 
@@ -217,7 +225,14 @@ test.describe('collision', () => {
     await page.locator('nav li > button').first().click();
     await expect(page.locator('.md').last()).toHaveText('Soitan hänelle huomenna.');
     await expect(page.getByLabel('Viesti')).toHaveAttribute('placeholder', 'Kirjoita viesti');
-    expect(JSON.stringify(app.llm.requests[0]?.body)).not.toContain(COLLIDING);
+    await expect(
+      thread(page).getByRole('button', { name: 'Avaa Nimisuoja ja vastaa' }),
+    ).toHaveCount(0);
+    // "Pekka Laaksonen" in that request is Matti Virtanen's surrogate in the earlier turn; the typed
+    // name went out as the new person's own surrogate.
+    const body = JSON.stringify(app.llm.requests[1]?.body);
+    expect(body).not.toContain(`Soita ${COLLIDING}`);
+    expect(body).toContain('Soita Uusi');
   });
 });
 

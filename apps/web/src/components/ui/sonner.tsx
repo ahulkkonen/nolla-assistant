@@ -23,7 +23,8 @@ const Toaster = ({ ...props }: ToasterProps) => {
     <Sonner
       theme={theme}
       position={mobile ? 'bottom-center' : 'bottom-right'}
-      offset={mobile ? bottom : 16}
+      // Above the composer on every width while it is on screen (`--toast-bottom`), else 16 px.
+      offset={mobile ? bottom : { bottom: 'var(--toast-bottom, 16px)', right: 16 }}
       mobileOffset={bottom}
       duration={4000}
       customAriaLabel="Ilmoitukset"
@@ -58,7 +59,8 @@ const Toaster = ({ ...props }: ToasterProps) => {
             'max-md:top-1/2! max-md:right-1! max-md:left-auto! max-md:size-11! max-md:-translate-y-1/2! max-md:transform-none! max-md:rounded-md! max-md:border-0! max-md:bg-transparent!',
           title: 'text-ui! font-medium!',
           description: 'text-meta! text-muted-foreground!',
-          actionButton: 'h-8! rounded-md! border! border-border! bg-transparent! text-foreground!',
+          actionButton:
+            'h-8! rounded-md! border! border-border! bg-transparent! text-foreground! max-md:h-11!',
         },
       }}
       {...props}

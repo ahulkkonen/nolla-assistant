@@ -63,7 +63,7 @@ export function Composer() {
   }, [draft, chatId]);
   const area = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
-  const box = useRef<HTMLDivElement>(null);
+  const wrap = useRef<HTMLDivElement>(null);
   const meter = useRef<HTMLDivElement>(null);
 
   const uploading = chips.some((c) => !c.ref);
@@ -77,9 +77,10 @@ export function Composer() {
     el.style.height = `${Math.min(el.scrollHeight, maxHeight())}px`;
   };
 
-  // Phone toasts sit 8 px above the composer (brief 7.5); without it, 16 px + safe area.
+  // Toasts sit 8 px above the composer, its bottom padding included (brief 7.5: never over it);
+  // off the chat screen, 16 px + safe area.
   useLayoutEffect(() => {
-    const el = box.current;
+    const el = wrap.current;
     const root = document.documentElement;
     if (!el || !chatScreen) return;
     const ro = new ResizeObserver(() =>
@@ -219,7 +220,10 @@ export function Composer() {
         : 'Vapauta lähettääksesi · Esc peruu';
 
   return (
-    <div className="shrink-0 px-4 pb-[max(env(safe-area-inset-bottom),8px)] md:pb-4 [[data-kb]_&]:pb-2">
+    <div
+      ref={wrap}
+      className="shrink-0 px-4 pb-[max(env(safe-area-inset-bottom),8px)] md:pb-4 [[data-kb]_&]:pb-2"
+    >
       {showModelSaw && (
         <div className="mx-auto mb-2 flex w-full max-w-(--thread-max) items-center gap-2 rounded-lg bg-info-subtle py-1 pr-1 pl-3 text-meta text-foreground">
           <Eye size={16} className="shrink-0 text-info" />
@@ -233,10 +237,7 @@ export function Composer() {
           </IconButton>
         </div>
       )}
-      <div
-        ref={box}
-        className="mx-auto w-full max-w-(--thread-max) rounded-2xl border border-border bg-card shadow-sm transition-colors duration-100 focus-within:border-input"
-      >
+      <div className="mx-auto w-full max-w-(--thread-max) rounded-2xl border border-border bg-card shadow-sm transition-colors duration-100 focus-within:border-input">
         {chips.length > 0 && (
           <ul className="flex flex-wrap gap-2 px-3 pt-3" aria-label="Liitteet">
             {chips.map((c) => (

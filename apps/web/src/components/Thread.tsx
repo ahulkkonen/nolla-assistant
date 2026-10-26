@@ -66,6 +66,7 @@ export function Thread() {
   const memoryChip = useStore((s) => (chatId ? s.memoryChip[chatId] : undefined));
   const subagents = useStore((s) => (chatId ? s.subagents[chatId] : undefined)) ?? EMPTY;
   const failed = useStore((s) => (chatId ? s.failed[chatId] : undefined));
+  const held = useStore((s) => (chatId ? s.held[chatId] !== undefined : false));
   const refusal = useStore((s) => (chatId ? s.zdrRefused[chatId] : undefined));
   const { name: modelName, policy } = useModel();
   // Only while the chat keeps the refused model: the name in the alert is that model's.
@@ -96,6 +97,21 @@ export function Thread() {
   }, [messages, scrollTo]);
 
   const lastUser = messages.findLastIndex((m) => m.role === 'user');
+  // Phase 12: the toast goes after 8 s, so the held bubble says what it waits for.
+  const heldNote = (
+    <p className="text-meta text-muted-foreground">
+      Odottaa Nimisuojaa ·{' '}
+      <button
+        type="button"
+        // Unique beside the toast's own "Avaa Nimisuoja" action.
+        aria-label="Avaa Nimisuoja ja vastaa"
+        onClick={() => useStore.getState().setScreen('vault')}
+        className="text-link underline-offset-4 hover:underline"
+      >
+        Avaa Nimisuoja
+      </button>
+    </p>
+  );
   // The memory chip belongs to the turn that wrote memory: the live one, else the last reply.
   const chip = memoryChip && <MemoryChipRow chip={memoryChip} />;
   const chipAt = stream || running ? -1 : messages.findLastIndex((m) => m.role === 'assistant');
@@ -197,6 +213,7 @@ export function Thread() {
                         tools={m.tools}
                         latest={i === lastUser || i === lastAssistant}
                         {...(i === chipAt ? { footer: chip } : {})}
+                        {...(held && i === lastUser ? { footer: heldNote } : {})}
                         {...(m.role === 'user'
                           ? { onEdit: (text: string) => void sendUserMessage(text) }
                           : {})}

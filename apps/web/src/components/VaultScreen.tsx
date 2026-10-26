@@ -6,6 +6,7 @@ import {
   Pin,
   PinOff,
   RefreshCw,
+  ShieldAlert,
   ShieldCheck,
   ShieldOff,
   Split,
@@ -130,13 +131,19 @@ function CollisionRow({
 }) {
   const same = more[0];
   return (
-    <li className="flex flex-col gap-3 rounded-lg border bg-card px-4 py-3 md:flex-row md:items-center">
-      <div className="min-w-0 flex-1">
-        <div className="truncate font-medium">{p.text}</div>
-        <p className="text-meta text-pretty text-muted-foreground">
-          Onko tämä uusi henkilö? Nimi on jo pseudonyymi{owner ? ` henkilölle ${owner}` : ''}.
-          Viesti odottaa vastausta.
-        </p>
+    // The approval card's warning outline: this row holds a message, unlike the others.
+    <li className="flex flex-col gap-3 rounded-lg border border-warning-line bg-card px-4 py-3 md:flex-row md:items-center">
+      <div className="flex min-w-0 flex-1 gap-3">
+        <ShieldAlert size={16} className="mt-1 shrink-0 text-warning" />
+        <div className="min-w-0">
+          <div className="text-body font-medium [overflow-wrap:anywhere]">
+            Onko {p.text} uusi henkilö?
+          </div>
+          <p className="text-meta text-pretty text-muted-foreground">
+            {owner ? `Nimi on jo henkilön ${owner} pseudonyymi.` : 'Nimi on jo pseudonyymi.'} Viesti
+            odottaa vastausta.
+          </p>
+        </div>
       </div>
       {/* Phones: 50 % each under the text, as the confirmation buttons (brief 7.5). */}
       <div className="grid shrink-0 grid-cols-2 gap-2 md:flex">

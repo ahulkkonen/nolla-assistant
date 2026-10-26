@@ -612,7 +612,9 @@ for (const scheme of ['light', 'dark'] as const) {
           test('chat-held', async ({ app, page }) => {
             await app.login(page);
             await sendMessage(page, `Soita ${COLLIDING} huomenna`);
-            await expect(page.getByRole('button', { name: 'Avaa Nimisuoja' })).toBeVisible();
+            await expect(
+              page.getByRole('button', { name: 'Avaa Nimisuoja', exact: true }),
+            ).toBeVisible();
             await expect(page.getByLabel('Viesti')).toHaveAttribute(
               'placeholder',
               'Odottaa Nimisuojaa',
@@ -622,10 +624,17 @@ for (const scheme of ['light', 'dark'] as const) {
           });
 
           test('vault-collision', async ({ app, page }) => {
+            // Matti Virtanen first: the card then names whose surrogate the typed name is.
+            app.llm.push({ text: 'Selvä.' });
             await app.login(page);
+            await sendMessage(page, 'Matti Virtanen soitti eilen');
+            await expect(page.locator('.md').last()).toHaveText('Selvä.');
             await sendMessage(page, `Soita ${COLLIDING} huomenna`);
-            await page.getByRole('button', { name: 'Avaa Nimisuoja' }).click();
-            await expect(page.getByText('Onko tämä uusi henkilö?')).toBeVisible();
+            await page.getByRole('button', { name: 'Avaa Nimisuoja', exact: true }).click();
+            await expect(page.getByText(`Onko ${COLLIDING} uusi henkilö?`)).toBeVisible();
+            await expect(
+              page.getByText('Nimi on jo henkilön Matti Virtanen pseudonyymi.'),
+            ).toBeVisible();
             await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
             await shot(page, 'vault-collision', vp.width, scheme);
           });
