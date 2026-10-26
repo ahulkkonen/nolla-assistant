@@ -364,3 +364,42 @@ test('usageRecorder: a chat deleted meanwhile gives a row without a chat', () =>
   ).toEqual([[null, null]]);
   close();
 });
+
+test('usage.state: per agent and search count', () => {
+  const { db, close } = freshDb();
+  const at = usageRecorder(
+    db,
+    'u1',
+    () => {},
+    () => new Date('2026-10-15T10:00:00.000Z'),
+  );
+  const call = (model: string, costUsd: number, estimated = false) => ({
+    model,
+    input: 10,
+    output: 5,
+    cacheRead: 0,
+    cacheWrite: 0,
+    reasoning: 0,
+    costUsd,
+    estimated,
+  });
+  // c1 is a `research` chat; the row takes the chat's agent unless the caller names one.
+  at({ kind: 'chat', chatId: 'c1' }, call('zdr/strong', 1));
+  at({ kind: 'search', chatId: 'c1', agentId: 'research' }, call('zdr/search', 0.01));
+  at({ kind: 'search', chatId: 'c1', agentId: 'research' }, call('zdr/search', 0.01, true));
+  at({ kind: 'chat', chatId: null, agentId: 'assistant' }, call('zdr/strong', 2));
+  // The consolidation: no chat, no agent.
+  at({ kind: 'task', chatId: null }, call('zdr/task-small', 0.5));
+  const state = usageMonth(db, 'u1', '2026-10', { get: () => undefined });
+  expect(state.searches).toBe(2);
+  expect(state.agents).toEqual([
+    { agentId: 'assistant', calls: 1, tokens: 15, costUsd: 2, estimated: false },
+    { agentId: 'research', calls: 3, tokens: 45, costUsd: 1.02, estimated: true },
+    { agentId: null, calls: 1, tokens: 15, costUsd: 0.5, estimated: false },
+  ]);
+  expect(usageMonth(db, 'u1', '2026-09', { get: () => undefined })).toMatchObject({
+    agents: [],
+    searches: 0,
+  });
+  close();
+});

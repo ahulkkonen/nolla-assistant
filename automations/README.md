@@ -9,6 +9,8 @@ run time.
 Fields:
 
 - `id`: must equal the file name without `.yaml`.
+- `name`: optional display name for Settings › Automaatiot, 1 to 80 characters. Without it the
+  settings page shows the id.
 - `cron`: cron expression (5 fields, or 6 with seconds first).
 - `timezone`: IANA zone, default `Europe/Helsinki`.
 - `agentId`: agent profile in `agents/`, default `assistant`.

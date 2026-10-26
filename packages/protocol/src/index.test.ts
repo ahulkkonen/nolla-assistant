@@ -1,13 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import {
+  AgentFile,
   Annotation,
   AuthLogin,
   type CatalogModel,
   ClientMessage,
+  cronToSchedule,
+  decryptCommand,
+  ExportStart,
   ModelId,
+  type Schedule,
   SEARCH_ENTITY_REASON,
   SEARCH_MAX_RESULTS,
   ServerMessage,
+  scheduleToCron,
   ToolRow,
   ToolSearch,
   TreeMove,
@@ -282,5 +288,64 @@ describe('web search (phase-14)', () => {
     expect(ToolSearch.safeParse({ ...search, results }).success).toBe(false);
     expect(WEB_SEARCH_TOOL).toBe('web_search');
     expect(SEARCH_ENTITY_REASON).toBe('Haku sisältää henkilötiedon');
+  });
+});
+
+describe('phase-15 admin', () => {
+  it('schedule presets map to cron and back', () => {
+    const cases: [Schedule, string][] = [
+      [{ kind: 'daily', hour: 7, minute: 30 }, '30 7 * * *'],
+      [{ kind: 'weekdays', hour: 18, minute: 0 }, '0 18 * * 1-5'],
+      [{ kind: 'weekly', day: 0, hour: 9, minute: 5 }, '5 9 * * 0'],
+      [{ kind: 'weekly', day: 6, hour: 23, minute: 59 }, '59 23 * * 6'],
+    ];
+    for (const [s, cron] of cases) {
+      expect(scheduleToCron(s)).toBe(cron);
+      expect(cronToSchedule(cron)).toEqual(s);
+    }
+    // 7 is Sunday too; anything else is the raw field.
+    expect(cronToSchedule('0 8 * * 7')).toEqual({ kind: 'weekly', day: 0, hour: 8, minute: 0 });
+    for (const raw of ['*/5 * * * *', '0 7 1 * *', '0 25 * * *', '0 7 * * 1-6', '0 0 7 * * *'])
+      expect(cronToSchedule(raw)).toEqual({ kind: 'custom', cron: raw });
+    expect(scheduleToCron({ kind: 'custom', cron: ' 0 7 1 * * ' })).toBe('0 7 1 * *');
+  });
+
+  it('AgentFile accepts an alias and a catalog model', () => {
+    const base = { id: 'a', name: 'A', prompt: 'prompts/a.md', tools: { allow: ['read'] } };
+    for (const model of ['zdr/strong', 'zdr/google/gemini-4-argon'])
+      expect(AgentFile.safeParse({ ...base, model }).success).toBe(true);
+    for (const model of ['open/google/gemini-4-argon', 'zdr/a/b/c', 'strong', 'zdr/'])
+      expect(AgentFile.safeParse({ ...base, model }).success).toBe(false);
+    expect(AgentFile.parse({ ...base, model: 'zdr/fast' })).toMatchObject({
+      skills: [],
+      approval: { always: [], never: [] },
+      subagents: false,
+    });
+    expect(AgentFile.safeParse({ ...base, model: 'zdr/fast', extra: 1 }).success).toBe(false);
+  });
+
+  it('export state, job and decrypt command', () => {
+    const job = {
+      id: 'j1',
+      status: 'ready',
+      masked: true,
+      done: 3,
+      total: 3,
+      error: null,
+      size: 1024,
+      fileName: 'pa-vienti-2026-10-26-masked.zip.enc',
+      createdAt: '2026-10-26T10:00:00.000Z',
+      expiresAt: '2026-10-26T11:00:00.000Z',
+    };
+    expect(ServerMessage.safeParse({ type: 'export.state', job }).success).toBe(true);
+    expect(ServerMessage.safeParse({ type: 'export.state', job: null }).success).toBe(true);
+    expect(ExportStart.safeParse({ passphrase: 'lyhyt' }).success).toBe(false);
+    expect(ExportStart.parse({ passphrase: 'riittävän pitkä' })).toEqual({
+      passphrase: 'riittävän pitkä',
+      unmask: false,
+    });
+    expect(decryptCommand(job.fileName)).toBe(
+      'openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -md sha256 -in pa-vienti-2026-10-26-masked.zip.enc -out pa-vienti-2026-10-26-masked.zip',
+    );
   });
 });

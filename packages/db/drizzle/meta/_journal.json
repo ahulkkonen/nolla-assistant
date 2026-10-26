@@ -50,6 +50,13 @@
       "when": 1793012471420,
       "tag": "0006_bent_madrox",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1793018190498,
+      "tag": "0007_perpetual_sasquatch",
+      "breakpoints": true
     }
   ]
 }

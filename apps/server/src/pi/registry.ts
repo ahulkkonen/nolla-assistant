@@ -20,7 +20,7 @@ import { sandboxExtension } from '@pa/pi-ext-sandbox';
 import { type Child, subagentsExtension } from '@pa/pi-ext-subagents';
 import { topicsExtension } from '@pa/pi-ext-topics';
 import { WEB_SEARCH_TOOL } from '@pa/protocol';
-import type { Agents } from '../agents.ts';
+import type { AgentProfile, Agents } from '../agents.ts';
 import { type Ask, approvalGate } from '../approval.ts';
 import {
   allowedToolNames,
@@ -96,12 +96,17 @@ type Entry = {
   unsubscribe?: () => void;
   /** The policy the session was built with. */
   chat: ChatModel;
+  /** The profile object the session was built with; a reload replaces only changed ones. */
+  profile: AgentProfile | undefined;
   /** The session, once the build resolved. */
   ready?: AgentSession;
 };
 
 const samePolicy = (a: ChatModel, b: ChatModel) =>
-  a.modelId === b.modelId && a.reasoning === b.reasoning && a.dataPolicy === b.dataPolicy;
+  a.agentId === b.agentId &&
+  a.modelId === b.modelId &&
+  a.reasoning === b.reasoning &&
+  a.dataPolicy === b.dataPolicy;
 
 async function stop(e: Entry) {
   e.unsubscribe?.();
@@ -164,10 +169,11 @@ export class SessionRegistry {
         await this.remove(chatId);
         throw new ChatNotFound();
       }
-      // A policy change during the build (or an eviction) means a stale session: rebuild it, so
-      // an `open` session never outlives "Palauta ZDR". A running one stays until it settles.
-      const built = this.entries.get(chatId)?.chat;
-      if (built && samePolicy(built, now)) return session;
+      // A policy or profile change during the build (or an eviction) means a stale session:
+      // rebuild it, so an `open` session never outlives "Palauta ZDR" and a saved profile reaches
+      // the chat (phase-15 decision 4). A running one stays until it settles.
+      const built = this.entries.get(chatId);
+      if (built && this.fresh(built, now)) return session;
       if (built && !(await this.evict(chatId))) return session;
     }
   }
@@ -234,13 +240,33 @@ export class SessionRegistry {
       // Replaced or removed while loading: look again.
       if (this.entries.get(chatId) !== e) continue;
       const now = this.opts.getChat(chatId);
-      if (now && samePolicy(e.chat, now)) return true;
+      if (now && this.fresh(e, now)) return true;
       if (this.running(chatId)) return false;
       this.entries.delete(chatId);
       e.unsubscribe?.();
       e.ready?.dispose();
       return true;
     }
+  }
+
+  /** Built with the stored policy and the current profile object of its agent. */
+  private fresh(e: Entry, now: ChatModel): boolean {
+    return samePolicy(e.chat, now) && e.profile === this.opts.agents().get(now.agentId);
+  }
+
+  /**
+   * The chat's session entries without building a session (the export, phase-15 decision 15): the
+   * open session's manager, else the JSONL file opened once, else an empty manager.
+   */
+  reader(chatId: string): Pick<AgentSession, 'sessionManager'> {
+    const ready = this.entries.get(chatId)?.ready;
+    if (ready) return ready;
+    const path = SessionManager.findById(this.cwd, chatId, this.sessionDir);
+    return {
+      sessionManager: path
+        ? SessionManager.open(path, this.sessionDir)
+        : SessionManager.inMemory(this.cwd),
+    };
   }
 
   /** After a catalog change: new sessions and children read the new `models.json`; open ones keep their model. */
@@ -288,8 +314,10 @@ export class SessionRegistry {
       existing.lastUsed = Date.now();
       return existing.session;
     }
+    // `build` reads the same profile before its first await.
+    const profile = this.opts.agents().get(chat.agentId);
     const session = this.build(chatId, chat, manager);
-    const entry: Entry = { session, lastUsed: Date.now(), chat };
+    const entry: Entry = { session, lastUsed: Date.now(), chat, profile };
     this.entries.set(chatId, entry);
     session.then(
       (s) => {

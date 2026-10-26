@@ -20,3 +20,4 @@ The build plan is `docs/plan.md`. Section numbers in records refer to it.
 - `phase-12-pseudo.md`: rare surrogate pairs, the surrogate collision check, email and street address surrogates, lone lower-case surnames, corpus gate.
 - `phase-13-thread.md`: fork into a new chat, thinking row, usage and cost in EUR, timestamps, find bar.
 - `phase-14-search.md`: the `web_search` tool through the `zdr/search` alias (OpenRouter web plugin, Exa), the entity approval card, guard rules, search rows and usage.
+- `phase-15-admin.md`: agent and automation editors, signed-in devices, the encrypted full export (OpenSSL `enc` AES-256 over a stdlib zip), usage per agent and search count.

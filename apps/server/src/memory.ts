@@ -1,4 +1,3 @@
-import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -18,6 +17,7 @@ import type { ServerMessage } from '@pa/protocol';
 import { and, desc, eq, inArray, isNotNull, ne } from 'drizzle-orm';
 import cron from 'node-cron';
 import { z } from 'zod';
+import { gitCommitter } from './git.ts';
 import { search } from './search.ts';
 import { taskSmall } from './topics.ts';
 import type { RecordUsage } from './usage.ts';
@@ -103,26 +103,7 @@ export function memoryStore(deps: {
       .update(`${read('user')}\0${read('memory')}`)
       .digest('hex');
 
-  let git = true;
-  const commit = (note: string) => {
-    if (!git) return;
-    const opts = { cwd: dir, stdio: 'ignore', timeout: 10_000 } as const;
-    const run = (...args: string[]) =>
-      execFileSync('git', ['-c', 'user.name=pa', '-c', 'user.email=pa@local', ...args], opts);
-    try {
-      if (!existsSync(join(dir, '.git'))) run('init', '-q');
-      run('add', '-A');
-      // Exit 0: nothing staged (e.g. an edit with the same text).
-      if (spawnSync('git', ['diff', '--cached', '--quiet'], opts).status === 0) return;
-      run('commit', '-qm', note);
-    } catch (err) {
-      const missing = (err as NodeJS.ErrnoException).code === 'ENOENT';
-      if (missing) git = false;
-      warn(missing ? 'git not on PATH: memory files are not versioned' : 'memory commit failed', {
-        error: err instanceof Error ? err.message : 'unknown',
-      });
-    }
-  };
+  const commit = gitCommitter(dir, warn, 'memory files');
 
   /**
    * The only file writer: cap check (a text over the cap fails only when it grows), then temp file

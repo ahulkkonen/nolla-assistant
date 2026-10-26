@@ -5,10 +5,12 @@ import fastifyStatic from '@fastify/static';
 import websocket from '@fastify/websocket';
 import type { ServerMessage } from '@pa/protocol';
 import Fastify from 'fastify';
-import { authRoutes, requireUser } from './auth/routes.ts';
+import { adminRoutes } from './admin.ts';
+import { authRoutes, requireUser, type SessionSockets } from './auth/routes.ts';
 import { attachBridge, type BridgeDeps } from './bridge.ts';
 import type { Config } from './config.ts';
 import { exportRoutes } from './export.ts';
+import { exportJobs } from './export-all.ts';
 import { fileRoutes, MAX_FILE_BYTES, MAX_FILES } from './files.ts';
 import type { Integrations } from './integrations.ts';
 import { pushRoutes } from './push.ts';
@@ -36,6 +38,9 @@ export async function buildServer({
   logStream,
   integrations,
   work,
+  sendAll,
+  reloadAgents,
+  mcpNames,
   ...bridge
 }: Pick<
   BridgeDeps,
@@ -58,6 +63,12 @@ export async function buildServer({
   integrations: Integrations;
   /** Work-dir sizes and file origins (phase-11). */
   work: WorkStore;
+  /** To every open socket. */
+  sendAll: (msg: ServerMessage) => void;
+  /** Reloads the agent profiles and sends `agents.state` (phase-15 decision 4). */
+  reloadAgents: () => void;
+  /** The servers of `infra/mcp.yaml`. */
+  mcpNames: string[];
   /** Test hook: receives the pino output instead of stdout. */
   logStream?: { write(line: string): void };
 }) {
@@ -87,7 +98,45 @@ export async function buildServer({
   });
   await app.register(websocket);
   app.get('/healthz', async () => ({ ok: true }));
-  authRoutes(app, db, config);
+  // Open sockets per session: a revoked session's sockets close (phase-15 decision 12).
+  const socketSessions = new Map<{ close(code: number, reason: string): void }, string>();
+  const sessionSockets: SessionSockets = {
+    revoke: (ids) => {
+      for (const [s, id] of socketSessions)
+        if (ids.includes(id)) {
+          socketSessions.delete(s);
+          s.close(4401, 'revoked');
+        }
+    },
+    rename: (from, to) => {
+      for (const [s, id] of socketSessions) if (id === from) socketSessions.set(s, to);
+    },
+  };
+  authRoutes(app, db, config, sessionSockets);
+  adminRoutes(app, auth, {
+    db,
+    dataDir: config.dataDir,
+    agentsDir: config.agentsDir,
+    automationsDir: config.automationsDir,
+    skillsDir: config.skillsDir,
+    mcpNames,
+    catalog: bridge.catalog,
+    registry: bridge.registry,
+    agents: bridge.agents,
+    reloadAgents,
+    automations: bridge.automations,
+    sendAll,
+    warn: (msg, data) => app.log.warn(data ?? {}, msg),
+  });
+  const exports = exportJobs({
+    ...bridge,
+    dataDir: config.dataDir,
+    work,
+    sendAll,
+    warn: (msg, data) => app.log.warn(data ?? {}, msg),
+  });
+  exports.routes(app, auth);
+  app.addHook('onClose', async () => exports.close());
   fileRoutes(app, db, config.dataDir, auth, (userId) => work.used(userId));
   treeRoutes(app, auth, {
     db,
@@ -112,6 +161,8 @@ export async function buildServer({
       },
     },
     (socket, req) => {
+      socketSessions.set(socket, req.sessionId);
+      socket.on('close', () => socketSessions.delete(socket));
       const hello: ServerMessage = { type: 'auth.state', authenticated: true, userId: req.userId };
       socket.send(JSON.stringify(hello));
       socket.send(JSON.stringify(integrations.state()));

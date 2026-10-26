@@ -1,3 +1,4 @@
+import { cpSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openDb, users } from '@pa/db';
@@ -22,7 +23,7 @@ import {
   vaultState,
 } from './bridge.ts';
 import { collisionWaits } from './collisions.ts';
-import { type Config, loadConfig } from './config.ts';
+import { BUNDLED_AGENTS, BUNDLED_AUTOMATIONS, type Config, loadConfig } from './config.ts';
 import { fxRates } from './fx.ts';
 import { buildServer } from './http.ts';
 import { integrations as integrationStore } from './integrations.ts';
@@ -72,23 +73,29 @@ export async function start(
       for (const n of a.tools.mcp ?? [])
         if (!mcp.has(n)) agentLog(a.id, `MCP server ${n} not in ${config.mcpConfig}`, 'warn');
   };
+  // Editable copies under DATA_DIR start as the image's folders (phase-15 decision 4).
+  for (const [dir, bundled] of [
+    [config.agentsDir, BUNDLED_AGENTS],
+    [config.automationsDir, BUNDLED_AUTOMATIONS],
+  ] as const)
+    if (!existsSync(dir) && existsSync(bundled)) cpSync(bundled, dir, { recursive: true });
   // Startup fails without `assistant`; a later bad edit keeps the previous profile versions.
   // `app` does not exist yet, so the first load logs to the console.
   let agentMap = loadAgents(config.agentsDir, (file, err, level) =>
     console[level]('agent profile', file, err instanceof Error ? err.message : err),
   );
-  const stopWatch = watchAgents(
-    config.agentsDir,
-    () => {
-      try {
-        agentMap = loadAgents(config.agentsDir, agentLog, agentMap);
-        checkBash();
-        sendAll(agentsState(agentMap));
-      } catch (err) {
-        agentLog(config.agentsDir, err);
-      }
-    },
-    (err) => agentLog(config.agentsDir, err),
+  /** The watcher's reload; the agent editor calls it after each write. */
+  const reloadAgents = () => {
+    try {
+      agentMap = loadAgents(config.agentsDir, agentLog, agentMap);
+      checkBash();
+      sendAll(agentsState(agentMap));
+    } catch (err) {
+      agentLog(config.agentsDir, err);
+    }
+  };
+  const stopWatch = watchAgents(config.agentsDir, reloadAgents, (err) =>
+    agentLog(config.agentsDir, err),
   );
   const agents = () => agentMap;
   const mcp = loadMcp(config.mcpConfig);
@@ -231,6 +238,9 @@ export async function start(
     refusals: new Map(),
     collisions,
     fx,
+    sendAll,
+    reloadAgents,
+    mcpNames: [...mcp.keys()],
     ...(logStream ? { logStream } : {}),
     ...(pseudo ? { pseudo } : {}),
   });

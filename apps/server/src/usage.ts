@@ -47,7 +47,7 @@ let aliases: Map<string, Alias> | undefined;
  * The fixed aliases of `infra/models.json` (names and EU prices). Without the file: no aliases, so
  * an estimate prices at zero and a name stays the id.
  */
-const alias = (id: string) => {
+const aliasMap = () => {
   if (!aliases)
     try {
       const file = new URL('../../../infra/models.json', import.meta.url);
@@ -57,8 +57,11 @@ const alias = (id: string) => {
     } catch {
       aliases = new Map();
     }
-  return aliases.get(id);
+  return aliases;
 };
+export const alias = (id: string) => aliasMap().get(id);
+/** Every alias of `infra/models.json` (the agent editor's model list, phase 15). */
+export const aliasList = () => [...aliasMap().values()];
 
 /**
  * Captures LiteLLM's cost and the thinking time of each assistant message (decisions 8 and 11).
@@ -245,29 +248,46 @@ export function usageMonth(
   catalog: Pick<Catalog, 'get'>,
   now: Date = new Date(),
 ): Extract<ServerMessage, { type: 'usage.state' }> {
+  const inMonth = and(
+    eq(usage.userId, userId),
+    gte(usage.createdAt, monthStart(month)),
+    lt(usage.createdAt, monthStart(nextMonth(month))),
+  );
+  const totals = {
+    calls: count(),
+    tokens:
+      sql<number>`sum(${usage.input} + ${usage.output} + ${usage.cacheRead} + ${usage.cacheWrite})`.mapWith(
+        Number,
+      ),
+    costUsd: sql<number>`sum(${usage.costUsd})`.mapWith(Number),
+    estimated: sql<number>`max(${usage.estimated})`.mapWith(Number),
+  };
+  const byCost = desc(sql`sum(${usage.costUsd})`);
   const rows = db
     .select({
       model: usage.model,
-      calls: count(),
-      tokens:
-        sql<number>`sum(${usage.input} + ${usage.output} + ${usage.cacheRead} + ${usage.cacheWrite})`.mapWith(
-          Number,
-        ),
+      ...totals,
       reasoning: sql<number>`sum(${usage.reasoning})`.mapWith(Number),
-      costUsd: sql<number>`sum(${usage.costUsd})`.mapWith(Number),
-      estimated: sql<number>`max(${usage.estimated})`.mapWith(Number),
     })
     .from(usage)
-    .where(
-      and(
-        eq(usage.userId, userId),
-        gte(usage.createdAt, monthStart(month)),
-        lt(usage.createdAt, monthStart(nextMonth(month))),
-      ),
-    )
+    .where(inMonth)
     .groupBy(usage.model)
-    .orderBy(desc(sql`sum(${usage.costUsd})`))
+    .orderBy(byCost)
     .all();
+  // Phase-15 decision 19: per agent, and the month's web searches.
+  const agents = db
+    .select({ agentId: usage.agentId, ...totals })
+    .from(usage)
+    .where(inMonth)
+    .groupBy(usage.agentId)
+    .orderBy(byCost)
+    .all();
+  const searches =
+    db
+      .select({ n: count() })
+      .from(usage)
+      .where(and(inMonth, eq(usage.kind, 'search')))
+      .get()?.n ?? 0;
   const first = db
     .select({ at: sql<string | null>`min(${usage.createdAt})` })
     .from(usage)
@@ -288,5 +308,7 @@ export function usageMonth(
       name: modelName(r.model, catalog),
       estimated: r.estimated > 0,
     })),
+    agents: agents.map((a) => ({ ...a, estimated: a.estimated > 0 })),
+    searches,
   };
 }

@@ -1,0 +1,1 @@
+ALTER TABLE `authSessions` ADD `deviceLabel` text;

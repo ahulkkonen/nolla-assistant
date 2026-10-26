@@ -169,7 +169,7 @@ test('export: real names need a sidecar (503); over the message cap answers 413'
     id: String(i),
     message,
   }));
-  vi.spyOn(srv.registry, 'get').mockResolvedValue({
+  vi.spyOn(srv.registry, 'reader').mockReturnValue({
     sessionManager: { getBranch: () => branch },
   } as never);
   const big = await get('format=json&unmask=0');

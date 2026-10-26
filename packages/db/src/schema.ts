@@ -191,6 +191,8 @@ export const authSessions = sqliteTable('authSessions', {
   createdAt: text().notNull(),
   expiresAt: text().notNull(),
   lastSeenAt: text().notNull(),
+  // Phase-15 device name from the User-Agent at login, e.g. "Safari · iPhone"; null for older rows.
+  deviceLabel: text(),
 });
 
 export const passkeys = sqliteTable('passkeys', {

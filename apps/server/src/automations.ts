@@ -24,9 +24,10 @@ const validZone = (tz: string) => {
   }
 };
 
-/** `automations/<id>.yaml`, decision 6 of docs/decisions/phase-5.md. */
-const AutomationFile = z.object({
+/** `automations/<id>.yaml`, decision 6 of docs/decisions/phase-5.md; `name` is phase 15. */
+export const AutomationFile = z.object({
   id: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/),
+  name: z.string().min(1).max(80).optional(),
   cron: z.string().refine((c) => cron.validate(c), 'invalid cron expression'),
   timezone: z.string().refine(validZone, 'invalid timezone').default('Europe/Helsinki'),
   agentId: z.string().min(1).max(64).default('assistant'),
@@ -37,6 +38,19 @@ const AutomationFile = z.object({
   autoApprove: z.array(z.string()).default([]),
 });
 export type Automation = z.infer<typeof AutomationFile>;
+
+/**
+ * The next `count` run times of `expression` (ISO 8601 UTC), from node-cron's own task, so the
+ * preview and the scheduler agree (phase-15 decision 9). Throws on a bad expression or zone.
+ */
+export function nextRuns(expression: string, timezone: string, count = 5): string[] {
+  const task = cron.createTask(expression, () => {}, { timezone });
+  try {
+    return task.getNextRuns(count).map((d) => d.toISOString());
+  } finally {
+    void task.destroy();
+  }
+}
 
 /** Reads every `*.yaml` in `dir`. A bad file goes to `onError` and is skipped. */
 export function loadAutomations(
@@ -88,7 +102,7 @@ export function startAutomations({
   log,
 }: AutomationsDeps) {
   let list: Automation[] = [];
-  let tasks: { stop(): void }[] = [];
+  let tasks = new Map<string, ReturnType<typeof cron.schedule>>();
   let closed = false;
   const running = new Set<string>();
   mkdirSync(dir, { recursive: true });
@@ -194,7 +208,7 @@ export function startAutomations({
   };
 
   const schedule = () => {
-    for (const t of tasks) t.stop();
+    for (const t of tasks.values()) void t.destroy();
     list = loadAutomations(dir, (file, err) =>
       log.warn({ file, error: err instanceof Error ? err.message : String(err) }, 'bad automation'),
     ).filter((a) => {
@@ -202,9 +216,14 @@ export function startAutomations({
       if (!known) log.warn({ id: a.id, agentId: a.agentId }, 'automation skipped: unknown agent');
       return known;
     });
-    tasks = list
-      .filter((a) => a.enabled)
-      .map((a) => cron.schedule(a.cron, () => fire(a), { timezone: a.timezone, noOverlap: true }));
+    tasks = new Map(
+      list
+        .filter((a) => a.enabled)
+        .map((a) => [
+          a.id,
+          cron.schedule(a.cron, () => fire(a), { timezone: a.timezone, noOverlap: true }),
+        ]),
+    );
   };
   schedule();
 
@@ -226,17 +245,29 @@ export function startAutomations({
       );
       return {
         type: 'automations.state',
-        automations: list.map(({ id, cron, agentId, enabled, deliver }) => ({
-          id,
-          cron,
-          agentId,
-          enabled,
-          deliver,
-          lastRunAt: runs.get(id)?.lastRunAt ?? null,
-          lastStatus: running.has(id) ? 'running' : (runs.get(id)?.lastStatus ?? null),
-          lastChatId: runs.get(id)?.lastChatId ?? null,
-        })),
+        automations: list.map(
+          ({ id, name, cron, timezone, agentId, prompt, enabled, deliver, autoApprove }) => ({
+            id,
+            ...(name ? { name } : {}),
+            cron,
+            timezone,
+            agentId,
+            prompt,
+            enabled,
+            deliver,
+            autoApprove,
+            nextRunAt: tasks.get(id)?.getNextRun()?.toISOString() ?? null,
+            lastRunAt: runs.get(id)?.lastRunAt ?? null,
+            lastStatus: running.has(id) ? 'running' : (runs.get(id)?.lastStatus ?? null),
+            lastChatId: runs.get(id)?.lastChatId ?? null,
+          }),
+        ),
       };
+    },
+    /** Reloads the files and schedules again now (after an editor save, phase-15 decision 10). */
+    reload: () => {
+      clearTimeout(timer);
+      if (!closed) schedule();
     },
     /** Starts one run in the background, even when disabled. Undefined for an unknown id. */
     runNow(id: string) {
@@ -250,7 +281,7 @@ export function startAutomations({
       closed = true;
       clearTimeout(timer);
       watcher.close();
-      for (const t of tasks) t.stop();
+      for (const t of tasks.values()) void t.destroy();
     },
   };
 }

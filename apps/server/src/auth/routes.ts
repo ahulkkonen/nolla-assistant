@@ -16,6 +16,9 @@ import {
   createSession,
   destroySession,
   getUser,
+  listSessions,
+  revokeAll,
+  revokeSession,
   SESSION_COOKIE,
   sessionCookie,
 } from './session.ts';
@@ -23,9 +26,17 @@ import {
 declare module 'fastify' {
   interface FastifyRequest {
     userId: string;
+    /** sha256 of the cookie token (`authSessions.id`). */
+    sessionId: string;
     sessionCreatedAt: string;
   }
 }
+
+/** Open WebSockets per session (phase-15 decision 12): revoked ones close, a rotated one moves. */
+export type SessionSockets = {
+  revoke(ids: string[]): void;
+  rename(from: string, to: string): void;
+};
 
 type AuthConfig = Pick<
   Config,
@@ -68,6 +79,7 @@ export const requireUser =
     if (!user) return reply.code(401).send({ error: 'unauthorized' });
     if (user.refreshed) reply.setCookie(SESSION_COOKIE, user.token, sessionCookie(secure));
     req.userId = user.userId;
+    req.sessionId = user.id;
     req.sessionCreatedAt = user.createdAt;
   };
 
@@ -85,18 +97,28 @@ const responseBody = {
   },
 } as const;
 
-export function authRoutes(app: FastifyInstance, db: Db, config: AuthConfig) {
+export function authRoutes(
+  app: FastifyInstance,
+  db: Db,
+  config: AuthConfig,
+  sockets: SessionSockets = { revoke: () => {}, rename: () => {} },
+) {
   const auth = requireUser(db, config.cookieSecure);
   const passwordLimit = limiter(app);
   // Shared by passkey login options and verify; only failed verifications count.
   const passkeyLimit = limiter(app);
   const challenges = new Map<string, { challenge: string; purpose: Purpose; expiresAt: number }>();
   app.decorateRequest('userId', '');
+  app.decorateRequest('sessionId', '');
   app.decorateRequest('sessionCreatedAt', '');
 
-  const login = (reply: FastifyReply, userId: string) =>
+  const login = (req: FastifyRequest, reply: FastifyReply, userId: string) =>
     reply
-      .setCookie(SESSION_COOKIE, createSession(db, userId), sessionCookie(config.cookieSecure))
+      .setCookie(
+        SESSION_COOKIE,
+        createSession(db, userId, req.headers['user-agent']),
+        sessionCookie(config.cookieSecure),
+      )
       .send({ userId });
 
   /** Stores the challenge server-side; the signed cookie carries only a random id. */
@@ -144,7 +166,7 @@ export function authRoutes(app: FastifyInstance, db: Db, config: AuthConfig) {
         passwordLimit.fail(req.ip);
         return reply.code(401).send({ error: 'invalid' });
       }
-      return login(reply, config.userId);
+      return login(req, reply, config.userId);
     },
   );
 
@@ -159,7 +181,35 @@ export function authRoutes(app: FastifyInstance, db: Db, config: AuthConfig) {
 
   app.post('/api/auth/logout', { preHandler: auth }, async (req, reply) => {
     destroySession(db, req.cookies[SESSION_COOKIE] ?? '');
+    sockets.revoke([req.sessionId]);
     return reply.clearCookie(SESSION_COOKIE, { path: '/' }).code(204).send();
+  });
+
+  // Laitteet (phase-15 decisions 11 and 12). No fresh login: revoking protects, so it is one step.
+  app.get('/api/auth/sessions', { preHandler: auth }, async (req) => ({
+    sessions: listSessions(db, req.userId, req.sessionId),
+  }));
+
+  app.delete<{ Params: { id: string } }>(
+    '/api/auth/sessions/:id',
+    { preHandler: auth },
+    async (req, reply) => {
+      if (!revokeSession(db, req.userId, req.params.id))
+        return reply.code(404).send({ error: 'not_found' });
+      sockets.revoke([req.params.id]);
+      if (req.params.id === req.sessionId) reply.clearCookie(SESSION_COOKIE, { path: '/' });
+      return reply.code(204).send();
+    },
+  );
+
+  app.post('/api/auth/sessions/revoke-all', { preHandler: auth }, async (req, reply) => {
+    const { token, id, revoked } = revokeAll(db, req.userId, req.sessionId);
+    sockets.revoke(revoked);
+    sockets.rename(req.sessionId, id);
+    return reply
+      .setCookie(SESSION_COOKIE, token, sessionCookie(config.cookieSecure))
+      .code(204)
+      .send();
   });
 
   app.delete<{ Params: { id: string } }>(
@@ -274,7 +324,7 @@ export function authRoutes(app: FastifyInstance, db: Db, config: AuthConfig) {
         })
         .where(and(eq(passkeys.id, row.id), eq(passkeys.userId, row.userId)))
         .run();
-      return login(reply, row.userId);
+      return login(req, reply, row.userId);
     },
   );
 }

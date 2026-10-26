@@ -52,13 +52,15 @@ export async function chatExport(
   userId: string,
   chatId: string,
   unmask: boolean,
+  maxMessages = MAX_EXPORT_MESSAGES,
 ): Promise<ChatExport | undefined> {
   const r = chatRow(db, userId, chatId);
   if (!r) return undefined;
   // Without a sidecar the file would say "avoin" over texts nobody restored.
   if (unmask && !pseudo) throw new PseudoDownError('no sidecar');
-  const session = await registry.get(chatId);
-  if (transcript(session).length > MAX_EXPORT_MESSAGES) throw new ExportTooLarge();
+  // The entries only: no agent session is built for an export (phase-15 decision 15).
+  const session = registry.reader(chatId);
+  if (transcript(session).length > maxMessages) throw new ExportTooLarge();
   let down = false;
   const restore = restorer(unmask ? pseudo : undefined, () => {
     down = true;
@@ -133,18 +135,23 @@ const quote = (s: string) =>
     .map((l) => (l ? `> ${l}` : '>'))
     .join('\n');
 
+/** Lower-case ASCII words joined by `-`, at most `max` characters; '' when nothing is left. */
+export const slug = (s: string, max = 60) =>
+  s
+    .normalize('NFKD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .slice(0, max)
+    .replace(/^-|-$/g, '');
+
+/** 'YYYY-MM-DD' of an instant in Helsinki. */
+export const dateOf = (iso: string) => new Date(iso).toLocaleDateString('sv-SE', { timeZone: TZ });
+
 /** `<title-slug>-<yyyy-mm-dd>-<masked|avoin>.<format>`; ASCII only, so no `filename*`. */
 export function fileName(e: ChatExport, format: ExportFormat) {
-  const slug =
-    titleOf(e)
-      .normalize('NFKD')
-      .replace(/\p{M}/gu, '')
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .slice(0, 60)
-      .replace(/^-|-$/g, '') || 'keskustelu';
-  const date = new Date(e.chat.createdAt).toLocaleDateString('sv-SE', { timeZone: TZ });
-  return `${slug}-${date}-${e.masked ? 'masked' : 'avoin'}.${format}`;
+  const name = slug(titleOf(e)) || 'keskustelu';
+  return `${name}-${dateOf(e.chat.createdAt)}-${e.masked ? 'masked' : 'avoin'}.${format}`;
 }
 
 export function toMarkdown(e: ChatExport): string {

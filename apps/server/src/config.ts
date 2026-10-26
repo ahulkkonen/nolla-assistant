@@ -22,6 +22,10 @@ function pushAnyHost(env: Env) {
 
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
 
+/** The profiles and automations in the repository (the image's copies, phase-15 decision 4). */
+export const BUNDLED_AGENTS = fileURLToPath(new URL('../../../agents', import.meta.url));
+export const BUNDLED_AUTOMATIONS = fileURLToPath(new URL('../../../automations', import.meta.url));
+
 /** Returns a frozen config; throws when a required value is missing or invalid. */
 export function loadConfig(env: Env = process.env) {
   const port = Number(env.PORT ?? 3000);
@@ -50,9 +54,9 @@ export function loadConfig(env: Env = process.env) {
     litellmUrl: required(env, 'LITELLM_URL'),
     litellmMasterKey: required(env, 'LITELLM_MASTER_KEY'),
     userId,
-    agentsDir: env.AGENTS_DIR || fileURLToPath(new URL('../../../agents', import.meta.url)),
-    automationsDir:
-      env.AUTOMATIONS_DIR || fileURLToPath(new URL('../../../automations', import.meta.url)),
+    // Production points both under DATA_DIR; a missing folder is seeded from the bundled one.
+    agentsDir: env.AGENTS_DIR || BUNDLED_AGENTS,
+    automationsDir: env.AUTOMATIONS_DIR || BUNDLED_AUTOMATIONS,
     skillsDir: env.SKILLS_DIR || fileURLToPath(new URL('../../../skills', import.meta.url)),
     // Tests shorten it; the plan fixes 10 minutes.
     approvalTimeoutMs: Number(env.APPROVAL_TIMEOUT_MS) || 10 * 60_000,

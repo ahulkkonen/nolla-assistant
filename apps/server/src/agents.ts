@@ -1,30 +1,19 @@
 import { readdirSync, readFileSync, realpathSync, watch } from 'node:fs';
 import { basename, join, resolve, sep } from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
+import { AgentFile } from '@pa/protocol';
 import { parse } from 'yaml';
-import { z } from 'zod';
+import type { z } from 'zod';
 
-const names = z.array(z.string().min(1).max(64));
-
-/** `agents/<id>.yaml`, decision 1 of docs/decisions/phase-5.md. */
-const ProfileFile = z
-  .object({
-    id: z.string().regex(/^[a-z0-9-]{1,64}$/),
-    name: z.string().min(1).max(80),
-    model: z.string().regex(/^zdr\/[A-Za-z0-9._-]+$/),
-    prompt: z.string().min(1),
-    skills: names.default([]),
-    tools: z.object({ allow: names, mcp: names.optional() }).strict(),
-    approval: z
-      .object({ always: names.default([]), never: names.default([]) })
-      .strict()
-      .default({ always: [], never: [] }),
-    subagents: z.boolean().default(false),
-  })
-  .strict();
 /** Tools that change state or spend money; each should have an explicit approval rule. */
 const RISKY = ['write', 'edit', 'bash', 'subagent'];
+/** The allowed risky tools that are in neither approval list (the loader warns, the editor refuses). */
+export const unruled = (p: z.infer<typeof AgentFile>) =>
+  (p.subagents ? [...p.tools.allow, 'subagent'] : p.tools.allow).filter(
+    (t) => RISKY.includes(t) && !p.approval.always.includes(t) && !p.approval.never.includes(t),
+  );
 /** `prompt` holds the prompt text, not its path. */
-export type AgentProfile = z.infer<typeof ProfileFile>;
+export type AgentProfile = z.infer<typeof AgentFile>;
 export type Agents = Map<string, AgentProfile>;
 
 /**
@@ -42,15 +31,15 @@ export function loadAgents(
     .filter((f) => f.endsWith('.yaml'))
     .sort()) {
     try {
-      const p = ProfileFile.parse(parse(readFileSync(join(dir, file), 'utf8')));
+      const p = AgentFile.parse(parse(readFileSync(join(dir, file), 'utf8')));
       if (p.id !== basename(file, '.yaml')) throw new Error(`id ${p.id} does not match file name`);
       const path = realpathSync(resolve(dir, p.prompt));
       if (!path.startsWith(prompts)) throw new Error('prompt must be under prompts/');
-      const allowed = p.subagents ? [...p.tools.allow, 'subagent'] : p.tools.allow;
-      for (const t of allowed.filter((t) => RISKY.includes(t)))
-        if (!p.approval.always.includes(t) && !p.approval.never.includes(t))
-          onError(file, `tool ${t} has no approval rule`, 'warn');
-      agents.set(p.id, { ...p, prompt: readFileSync(path, 'utf8') });
+      for (const t of unruled(p)) onError(file, `tool ${t} has no approval rule`, 'warn');
+      const next = { ...p, prompt: readFileSync(path, 'utf8') };
+      // An unchanged profile keeps its object: the registry rebuilds only sessions of changed ones.
+      const old = prev?.get(p.id);
+      agents.set(p.id, old && isDeepStrictEqual(old, next) ? old : next);
     } catch (err) {
       onError(file, err, 'error');
       const old = prev?.get(basename(file, '.yaml'));
