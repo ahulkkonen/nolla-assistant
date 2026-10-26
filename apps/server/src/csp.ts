@@ -22,7 +22,7 @@ function blockedOrigin(x: unknown): string | undefined {
   if (typeof x !== 'string' || !x) return undefined;
   try {
     const u = new URL(x);
-    return u.origin !== 'null' ? u.origin : u.protocol;
+    return (u.origin !== 'null' ? u.origin : u.protocol).slice(0, 100);
   } catch {
     return /^[a-z-]{1,32}$/.test(x) ? x : 'other';
   }
