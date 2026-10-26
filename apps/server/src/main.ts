@@ -196,6 +196,7 @@ export async function start(
       litellmUrl: config.litellmUrl,
       litellmKey: config.litellmMasterKey,
       onUsage: recordUsage,
+      warn: (msg, data) => app.log.warn(data ?? {}, msg),
     }),
     ...(pseudo
       ? { pseudo: { client: pseudo, log: pseudoLog, awaitCollision: collisions.wait } }

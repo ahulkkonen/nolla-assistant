@@ -14,10 +14,11 @@ Only the `zdr/search` alias may carry a plugin, and only OpenRouter's web plugin
 `extra_body` (phase-14); it serves chat completions only. Any other deployment with `plugins` is not
 allowlisted.
 
-Everything else gets HTTP 400, and so does any client-sent `extra_body`, routing field, `plugins`
-or `web_search_options`, and any tool that is not a `function` tool (an `openrouter:*` server tool
-or a `web_search` type would let OpenRouter search). A client `extra_body` replaces the configured
-one in LiteLLM 1.105.1 and would drop the provider block (decision 0004, finding 2).
+Everything else gets HTTP 400. So does a request with a top-level key outside ALLOWED_KEYS (for
+example `extra_body`, `provider`, `plugins` or `web_search_options`), and any tool that is not a
+`function` tool (an `openrouter:*` server tool or a `web_search` type would let OpenRouter search).
+A client `extra_body` replaces the configured one in LiteLLM 1.105.1 and would drop the provider
+block (decision 0004, finding 2).
 
 Decision records: docs/decisions/0004-litellm-openrouter-zdr.md, docs/decisions/phase-10-models.md,
 docs/decisions/phase-14-search.md.
@@ -29,15 +30,61 @@ import re
 from fastapi import HTTPException
 from litellm.integrations.custom_guardrail import CustomGuardrail
 
-CLIENT_ROUTING_FIELDS = (
-    "extra_body",
-    "provider",
-    "models",
-    "route",
-    "transforms",
-    "plugins",
-    "web_search_options",
+# Top-level request keys the guard lets through (phase-14 review). Anything else is refused, so a
+# new OpenRouter field (routing, plugins, server options) cannot pass by default.
+CLIENT_KEYS = frozenset(
+    {
+        # Chat completions: OpenAI fields and what Pi 1.3.0 sends (pi-ai openai-completions.js).
+        "model",
+        "messages",
+        "stream",
+        "stream_options",
+        "max_tokens",
+        "max_completion_tokens",
+        "temperature",
+        "top_p",
+        "tools",
+        "tool_choice",
+        "parallel_tool_calls",
+        "reasoning",
+        "reasoning_effort",
+        "response_format",
+        "stop",
+        "seed",
+        "user",
+        "metadata",
+        "n",
+        "store",
+        "prompt_cache_key",
+        "prompt_cache_retention",
+        # Embeddings.
+        "input",
+        "encoding_format",
+        "dimensions",
+        # Audio transcriptions (multipart form fields).
+        "file",
+        "language",
+        "prompt",
+        "timestamp_granularities",
+    }
 )
+# Keys the LiteLLM 1.105.1 proxy adds before the guard runs: the first four on every chat,
+# embedding and transcription call (measured); the rest on some paths (`litellm/proxy` source:
+# a stream without `include_usage`, trace and session headers, an alias). `metadata` and `user`
+# are also added and are in CLIENT_KEYS. None of them reaches OpenRouter as a routing field.
+PROXY_KEYS = frozenset(
+    {
+        "litellm_call_id",
+        "litellm_logging_obj",
+        "proxy_server_request",
+        "secret_fields",
+        "_litellm_strip_stream_usage",
+        "_litellm_client_requested_model",
+        "litellm_trace_id",
+        "litellm_session_id",
+    }
+)
+ALLOWED_KEYS = CLIENT_KEYS | PROXY_KEYS
 # The one alias with a plugin: OpenRouter's web plugin, fixed in its extra_body (phase-14).
 SEARCH_ALIAS = "zdr/search"
 ZDR_PREFIX = "zdr/"
@@ -108,9 +155,9 @@ class ZdrGuard(CustomGuardrail):
     async def async_pre_call_hook(self, user_api_key_dict, cache, data, call_type):
         from litellm.proxy.proxy_server import llm_router
 
-        sent = [f for f in CLIENT_ROUTING_FIELDS if f in data]
-        if sent:
-            refuse(f"client routing fields not allowed: {sent}")
+        unknown = sorted(k for k in data if k not in ALLOWED_KEYS)
+        if unknown:
+            refuse(f"request fields not allowed: {unknown}")
         tools = data.get("tools") or []
         if not isinstance(tools, list):
             tools = [tools]

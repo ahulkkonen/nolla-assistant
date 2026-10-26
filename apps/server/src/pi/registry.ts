@@ -338,6 +338,8 @@ export class SessionRegistry {
       never: profile.approval.never.filter((t) => !mcpWrites.includes(t)),
     };
     const { search } = this.opts;
+    // A search the guard approved skips the gate (a profile may list web_search in `always`).
+    const searchApproved = new Set<string>();
     const [searchTool, searchGuard] =
       search && tools.includes(WEB_SEARCH_TOOL)
         ? webSearchExtensions({
@@ -346,6 +348,7 @@ export class SessionRegistry {
             search,
             ask: this.opts.approval.ask,
             timeoutMs: this.opts.approval.timeoutMs,
+            approved: searchApproved,
           })
         : [];
     const resourceLoader = new DefaultResourceLoader({
@@ -393,6 +396,7 @@ export class SessionRegistry {
           policy,
           ask: this.opts.approval.ask,
           timeoutMs: this.opts.approval.timeoutMs,
+          approved: searchApproved,
         }),
         ...(broker && tools.includes('bash')
           ? [

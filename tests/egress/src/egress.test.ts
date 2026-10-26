@@ -169,16 +169,39 @@ describe.skipIf(!hasDocker)(
       );
       await expectRefused(
         chat('zdr/strong', 'x', { extra_body: { provider: { zdr: false } } }),
-        /client routing fields not allowed/,
+        /zdr_guard: request fields not allowed/,
       );
       await expectRefused(
         chat('zdr/strong', 'x', { provider: { data_collection: 'allow' } }),
-        /client routing fields not allowed/,
+        /zdr_guard: request fields not allowed/,
       );
       await expectRefused(
         post('/v1/embeddings', { model: 'openrouter/openai/text-embedding-3-small', input: 'x' }),
         /zdr_guard/,
       );
+    });
+
+    it('(c) refuses a top-level key outside the allowlist; listed keys pass', async () => {
+      await expectRefused(
+        chat('zdr/strong', 'x', { x_custom: true }),
+        /zdr_guard: request fields not allowed: \['x_custom'\]/,
+      );
+      await expectRefused(
+        post('/v1/embeddings', { model: 'zdr/embed', input: 'x', x_custom: 1 }),
+        /zdr_guard: request fields not allowed: \['x_custom'\]/,
+      );
+      const listed = {
+        temperature: 0.2,
+        top_p: 0.9,
+        stop: ['###'],
+        seed: 1,
+        n: 1,
+        user: 'u1',
+        metadata: { app: 'pa' },
+        prompt_cache_key: 'k1',
+      };
+      expect((await chat('zdr/strong', 'hei', listed)).status).toBe(200);
+      expect(last()?.body).toMatchObject({ temperature: 0.2, top_p: 0.9, seed: 1 });
     });
 
     it('(d) embeddings carry the ZDR provider block', async () => {
@@ -277,11 +300,11 @@ describe.skipIf(!hasDocker)(
         for (const model of ['zdr/strong', 'zdr/search', 'zdr/acme/model-1']) {
           await expectRefused(
             chat(model, 'x', { plugins: [{ id: 'web' }] }),
-            /client routing fields not allowed: \['plugins'\]/,
+            /zdr_guard: request fields not allowed: \['plugins'\]/,
           );
           await expectRefused(
             chat(model, 'x', { web_search_options: { search_context_size: 'high' } }),
-            /client routing fields not allowed: \['web_search_options'\]/,
+            /zdr_guard: request fields not allowed: \['web_search_options'\]/,
           );
         }
       });

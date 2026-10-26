@@ -28,8 +28,8 @@ export function parseEcbCsv(text: string): FxRate {
   return FxRate.parse({ usdPerEur, date });
 }
 
-/** The body as text, refused past `max` bytes. */
-async function capped(res: Response, max: number) {
+/** The body as text, refused past `max` bytes (also the web search response, phase-14). */
+export async function capped(res: Response, max: number) {
   const reader = res.body?.getReader();
   const chunks: Uint8Array[] = [];
   let size = 0;
@@ -39,7 +39,9 @@ async function capped(res: Response, max: number) {
     size += r.value.byteLength;
     if (size > max) {
       await reader?.cancel();
-      throw new Error('ECB response too large');
+      const err = new Error('response too large');
+      err.name = 'ResponseTooLarge';
+      throw err;
     }
     chunks.push(r.value);
   }

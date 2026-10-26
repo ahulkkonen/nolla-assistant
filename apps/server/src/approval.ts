@@ -27,17 +27,21 @@ export const approvalGate =
     policy,
     ask,
     timeoutMs,
+    approved,
   }: {
     chatId: string;
     policy: AgentProfile['approval'];
     /** `unattended` (see `approvals`): chats with no one to ask. */
     ask: Ask & { unattended?: Map<string, string[]> };
     timeoutMs?: number | undefined;
+    /** Calls the user already approved on an earlier card (the web search guard): no second card. */
+    approved?: Set<string> | undefined;
   }): ExtensionFactory =>
   (pi) => {
     pi.on('tool_call', async (event, ctx) => {
       const tool = event.toolName;
       if (policy.never.includes(tool) || !policy.always.includes(tool)) return;
+      if (approved?.has(event.toolCallId)) return;
       const auto = ask.unattended?.get(chatId);
       if (auto) return auto.includes(tool) ? undefined : { block: true, reason: UNATTENDED_REASON };
       return confirm(ask, {
