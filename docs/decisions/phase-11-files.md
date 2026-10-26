@@ -75,10 +75,21 @@ These facts come from reading the code on 2026-10-26.
    - The first path segment must not be `.trash`, compared in lowercase. A symlink into the trash
      is refused too.
    - The guard covers `read`, `write`, `edit`, `ls`, `find` and `grep`. The agent profiles allow
-     only the first three today.
+     only the first three today. `ls`, `find` and `grep` without a path, or on the root (also
+     through `.` or a link to it), are blocked, because the root holds `.trash` and `find` and
+     `grep` search below it.
    - Route paths are plain relative paths. `..`, an absolute path, NUL, `.trash` and every symlink
-     that leads out are refused with 400 `bad_path`. A route acts on the entry itself, not on the
-     target of a symlink. A double-encoded `..` is a literal folder name inside the root.
+     that leads out are refused with 400 `bad_path`. A double-encoded `..` is a literal folder name
+     inside the root.
+   - Routes act on the resolved path, never on the input. A route that reads a file (`raw`,
+     `attach`) opens it with `O_NOFOLLOW | O_NONBLOCK`, checks it with `fstat`, and streams from
+     that file handle. On Linux it also checks the path of the open file in `/proc/self/fd`, so a
+     folder swapped for a symlink after the check is refused.
+   - Delete and move resolve only the parent folder (`entryPath`) and act on the entry itself. A
+     symlink that leads out or nowhere can still be deleted or moved from the screen; its target
+     does not change.
+   - No new root-level entry can be named `.trash` in any case: upload, "Tallenna tiedostoksi" and
+     restore rename it to `_.trash`; mkdir and move refuse it.
    - The listing hides every symlink that leads out of the root or into the trash.
 5. **Trash.** Delete moves the entry to `<work>/.trash/<epoch ms>-<name>`. A `fileTrash` row keeps
    the original path. "Palauta" moves the entry back to that path. When the folder is gone,
@@ -86,10 +97,16 @@ These facts come from reading the code on 2026-10-26.
    When the name is taken, restore adds " (2)" and up. "Poista pysyvästi" deletes one entry, and
    "Tyhjennä roskakori" deletes all. A daily job, at start and every 24 hours, deletes entries
    older than 30 days by the time in the entry name. The job also deletes rows whose entry is gone.
-   The trash counts toward the quota until it is emptied.
+   The trash counts toward the quota until it is emptied. Every trash route and the job first check
+   that `.trash` is a real folder (`lstat`). A file or a symlink there gives 409 `bad_path`, and the
+   job touches nothing. A read error other than "missing" makes the job fail; it never drops rows on
+   an empty list that came from an error. Moves into and out of the trash, and every move of a file,
+   use `link` and `unlink`, so an existing target is never replaced. Folders and symlinks use a
+   check and `rename` (Node has no `RENAME_NOREPLACE`).
 6. **Origins.** A `fileOrigins` row records the chat and the assistant message (`Message.id`) that
    last wrote a work-dir file. The server guard records it on each successful `write` or `edit`
-   (`tool_result`), with the real path relative to the work dir. "Tallenna tiedostoksi" records it
+   (`tool_result`). The path is the entry as the routes list it: the parent folder resolved, the
+   last part kept, so a write through a symlink records the link. "Tallenna tiedostoksi" records it
    too. A move or a trash and restore moves the rows of the entry and of everything under it.
    Permanent deletion drops them. The foreign key to `chats` cascades, so a deleted chat leaves no
    origin. A Liitteet entry has the upload's chat as its origin. Files that `bash` writes and files
@@ -99,7 +116,11 @@ These facts come from reading the code on 2026-10-26.
    its trash, plus the sum of `files.size`. The server caches the work-dir size per user. The cache
    is cleared after each write, upload, permanent delete and purge, and it expires after 60 seconds,
    because `bash` writes through the broker past every hook. A miss walks the work dir with `lstat`
-   and does not follow symlinks. The upload sum comes from SQL. The upload limit of chat attachments
+   and does not follow symlinks. The upload sum comes from SQL. An upload counts its bytes in flight
+   per user while it streams. Each chunk checks the cached size, the upload sum and all bytes in
+   flight, and stops the stream past the quota, with no `await` between the check and the count.
+   So two parallel uploads cannot both take the rest, and an agent write sees the bytes in flight.
+   The upload limit of chat attachments
    stays 25 MB per file (the model reads them). The old 2 GiB upload quota is replaced by the
    shared 10 GB.
 8. **Limits on the agent.** The guard checks `write` and `edit` before they run. For `write`, the
@@ -143,7 +164,9 @@ These facts come from reading the code on 2026-10-26.
     masking path handle it. The copy is a snapshot: a later edit of the work file does not change
     the message. Types: the upload mimes (png, jpeg, webp, gif, pdf, docx, txt, csv, md), and any
     other text kind (code, HTML) as `text/plain`. The first 8 KB must pass the same sniff as an
-    upload. The size limit is the attachment limit of 25 MB. The copy counts toward the quota. The
+    upload. The size limit is the attachment limit of 25 MB, checked before the quota and counted
+    again while the copy runs (`bash` can grow the file); a copy past it is removed. A failed copy
+    leaves no partial file. The copy counts toward the quota. The
     client sends no `chatId` from the composer picker or the file row: the message binds the copy,
     so an attachment that the user removes before sending does not show on a later message.
 12. **"Tallenna tiedostoksi".** `POST /api/files/tree/artifact { chatId, artifactId, dir }` finds
@@ -158,8 +181,8 @@ These facts come from reading the code on 2026-10-26.
 14. **`bash` cannot see the trash.** The broker mounts an empty read-only tmpfs on `/work/.trash`
     in each runner. The broker creates and chowns `.trash` first, so Docker does not create the
     folder as root.
-15. **Names.** Upload names and new names lose control characters, `/` and `\`, are trimmed, and
-    are at most 200 UTF-8 bytes. `.` and `..` are refused. An upload with a taken name gets
+15. **Names.** Upload names and new names are NFC, lose control and format characters (bidi
+    overrides), `/` and `\`, are trimmed, and are at most 200 UTF-8 bytes. `.` and `..` are refused. An upload with a taken name gets
     " (2)" and up. A new folder or a move onto a taken name answers 409 `exists`. Move and rename are
     one route: `to` is the full new path.
 16. **Masking (plan decision 7, unchanged).** Files on disk, previews and downloads show real values.
@@ -375,9 +398,15 @@ and the iframe from `ArtifactPanel.tsx` into a shared component and does not cop
      30-day purge; quota on upload, attach, chat upload and the agent `write`; origin through
      move, folder move, trash and restore; the guard on `.trash`, a symlink out and `@../`; attach
      through `ingestAttachments` as a snapshot, with the Liitteet listing and its cursor; "Tallenna
-     tiedostoksi" with real values, the origin, " (2)" and `pseudo_down`.
+     tiedostoksi" with real values, the origin, " (2)" and `pseudo_down`; a FIFO, a link inside, and
+     delete of links that lead out or nowhere; a 30 MB upload past the 25 MB plugin default and a
+     root `.trash` name; the quota stopping one request mid-way and letting exactly one of two
+     parallel uploads through; a symlink or a file in place of `.trash` and a purge on an
+     unreadable trash; the guard after `pi-ext-pseudo` (path, size check and origin with real
+     values).
    - `packages/pi-ext-subagents/src/workspace.test.ts`: `piPath`, `realInside`, `checkFileTool`
-     (escapes, trash, size limits for `write` and `edit`), `dirBytes`.
+     (escapes, trash, size limits for `write` and `edit`, `ls`/`find`/`grep` on the root),
+     `entryPath`, `dirBytes`.
    - `tests/sandbox` (Docker): `bash` cannot see or write `/work/.trash`.
 3. E2e (task 2): upload two files with progress, open a folder, preview a Markdown file, rename,
    delete and restore from the trash, attach a work file from the composer picker and send it,
@@ -389,10 +418,11 @@ and the iframe from `ArtifactPanel.tsx` into a shared component and does not cop
    sandbox (decision 10), and the client iframe needs `sandbox="allow-scripts allow-same-origin"`
    at most. The UI implementer checks Chrome, Safari (iOS too) and Firefox, and falls back to
    "Lataa" when no viewer shows.
-2. **Symlink races.** The checks run before the tool or route acts. `bash` can swap a folder for a
-   symlink between the check and the act. The window is small, and the sandbox has no network
-   unless a skill asks for it. A complete fix needs `openat2` with `RESOLVE_BENEATH`, which Node does
-   not expose.
+2. **Symlink races.** The checks run before the tool or route acts. Reads are closed on Linux
+   (`O_NOFOLLOW` and the `/proc/self/fd` check). Writes create with `O_EXCL`, which never follows
+   a final symlink, but `bash` can still swap a parent folder for a symlink between the check and a
+   write, and Pi's own tools have the same window. The sandbox has no network unless a skill asks
+   for it. A complete fix needs `openat2` with `RESOLVE_BENEATH`, which Node does not expose.
 3. **Walk cost.** Each miss of the size cache walks the whole work dir. With tens of thousands of
    files, a write by the agent waits for the walk. A running total per write is the upgrade.
 4. **`bash` and the quota.** `bash` writes are not blocked; they count at the next walk (at most 60
@@ -410,5 +440,7 @@ and the iframe from `ArtifactPanel.tsx` into a shared component and does not cop
 
 ## Status (2026-10-26)
 
-Task card 1 is done and not committed. Server 100 tests, subagents 10, protocol 17, db 1, sandbox
-(Docker) 17 pass. Task cards 2 and 3 are open.
+Task card 1 is committed as `9055c37`. The review found no blocking item and 13 should-fix items;
+all 13 are fixed (not committed yet). Server 104 tests, subagents 12, protocol 17, db 1, sandbox
+(Docker) 17 pass. The per-request multipart `limits.fileSize` replaces the plugin's 25 MB default:
+a 30 MB work upload succeeds. Task cards 2 and 3 are open.

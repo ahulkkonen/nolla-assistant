@@ -5,6 +5,7 @@ import { afterAll, expect, test } from 'vitest';
 import {
   checkFileTool,
   dirBytes,
+  entryPath,
   GUARD_REASON,
   limitReason,
   MAX_WORK_FILE,
@@ -26,6 +27,7 @@ symlinkSync(join(base, 'secret.txt'), join(root, 'secret-link.txt'));
 symlinkSync(join(root, 'docs', 'a.txt'), join(root, 'a-link.txt'));
 symlinkSync(join(root, '.trash'), join(root, 'bin'));
 symlinkSync(join(base, 'missing'), join(root, 'dangling'));
+symlinkSync(root, join(root, 'self'));
 
 test('piPath resolves like Pi: @ prefix, ~, file:// URLs, Unicode spaces', () => {
   expect(piPath(root, '@docs/a.txt')).toBe(join(root, 'docs', 'a.txt'));
@@ -83,14 +85,43 @@ test('checkFileTool: the guard blocks every escape and the trash', async () => {
     ['edit', '.trash/1793000000000-old.txt'],
     ['ls', '.trash'],
     ['grep', '../'],
+    ['find', 'self/.trash'],
   ] as const)
     expect(await checkFileTool(root, tool, { path, content: 'x' }, none), `${tool} ${path}`).toBe(
       GUARD_REASON,
     );
   expect(await checkFileTool(root, 'read', {}, none)).toBe(GUARD_REASON);
   expect(await checkFileTool(root, 'read', { path: 'docs/a.txt' }, none)).toBeUndefined();
-  expect(await checkFileTool(root, 'ls', {}, none)).toBeUndefined();
   expect(await checkFileTool(root, 'memory', { path: '../x' }, none)).toBeUndefined();
+});
+
+test('checkFileTool: ls, find and grep never run on the root, which holds .trash', async () => {
+  for (const tool of ['ls', 'find', 'grep'])
+    for (const input of [{}, { path: '.' }, { path: '' }, { path: root }, { path: 'self' }]) {
+      const reason = await checkFileTool(root, tool, input, none);
+      expect(reason, `${tool} ${JSON.stringify(input)}`).toMatch(/^path outside workspace: /);
+    }
+  expect(await checkFileTool(root, 'ls', { path: 'docs' }, none)).toBeUndefined();
+  expect(await checkFileTool(root, 'grep', { path: 'docs/a.txt' }, none)).toBeUndefined();
+});
+
+test('entryPath keeps the last part and resolves the parent', async () => {
+  // A symlink is the entry itself, also when it leads out or nowhere (delete and move need it).
+  expect(await entryPath(root, join(root, 'secret-link.txt'))).toBe(join(root, 'secret-link.txt'));
+  expect(await entryPath(root, join(root, 'dangling'))).toBe(join(root, 'dangling'));
+  expect(await entryPath(root, join(root, 'self', 'docs', 'a.txt'))).toBe(
+    join(root, 'docs', 'a.txt'),
+  );
+  for (const p of [
+    root,
+    join(root, '.trash'),
+    join(root, '.Trash'),
+    join(root, 'self', '.trash'),
+    join(root, '.trash', '1793000000000-old.txt'),
+    join(root, 'out', 'secret.txt'),
+    join(root, '..', 'secret.txt'),
+  ])
+    expect(await entryPath(root, p), p).toBeUndefined();
 });
 
 test('checkFileTool: size limits for write and edit, in Finnish', async () => {

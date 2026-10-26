@@ -1,7 +1,7 @@
 import { realpath } from 'node:fs/promises';
 import { relative, sep } from 'node:path';
 import type { ExtensionFactory } from '@earendil-works/pi-coding-agent';
-import { checkFileTool, GUARD_REASON, piPath, realInside } from '@pa/pi-ext-subagents/workspace';
+import { checkFileTool, entryPath, GUARD_REASON, piPath } from '@pa/pi-ext-subagents/workspace';
 
 export { GUARD_REASON };
 
@@ -28,8 +28,10 @@ export const pathGuard =
     if (!work) return;
     pi.on('tool_result', async (event, ctx) => {
       if (event.isError || (event.toolName !== 'write' && event.toolName !== 'edit')) return;
+      // The entry as the file routes list it (parent resolved, last part kept), so a write
+      // through a symlink records the link the user sees, not its target.
       const { path } = event.input;
-      const abs = typeof path === 'string' ? await realInside(cwd, piPath(cwd, path)) : undefined;
+      const abs = typeof path === 'string' ? await entryPath(cwd, piPath(cwd, path)) : undefined;
       if (!abs) return;
       // A nested call (`<parent>/<n>`) belongs to its parent's tool call.
       const callId = event.parentToolCallId ?? event.toolCallId;

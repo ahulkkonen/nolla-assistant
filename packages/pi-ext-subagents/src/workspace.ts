@@ -15,6 +15,9 @@ export const USER_QUOTA = 10 * 1024 ** 3;
 
 const UNICODE_SPACES = /[\u00A0\u2000-\u200A\u202F\u205F\u3000]/g;
 const FILE_TOOLS = new Set(['read', 'write', 'edit', 'ls', 'find', 'grep']);
+/** Tools that list or search a folder tree: on the root they would show `.trash`. */
+const SEARCH_TOOLS = new Set(['ls', 'find', 'grep']);
+const ROOT_REASON = `${GUARD_REASON}: anna työkansion alikansio, ls, find ja grep eivät toimi juuressa`;
 
 /**
  * The absolute path a Pi 1.3.0 file tool acts on (`resolveToCwd` in `utils/paths.js`): Unicode
@@ -38,8 +41,15 @@ const readVariants = (abs: string) => {
 };
 
 const escapes = (rel: string) => rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel);
-// Lowercase: on a case-insensitive disk `.Trash` is the same folder.
-const inTrash = (rel: string) => rel.split(sep)[0]?.toLowerCase() === TRASH;
+/** A root-level name that is the trash folder. Lowercase: on a case-insensitive disk `.Trash` is it. */
+export const isTrashName = (name: string) => name.toLowerCase() === TRASH;
+const inTrash = (rel: string) => isTrashName(rel.split(sep)[0] ?? '');
+
+/** Lexical check only: `p` is in `root` and, unless `trash`, outside `root/.trash`. */
+export const within = (root: string, p: string, trash = false) => {
+  const rel = relative(root, p);
+  return !escapes(rel) && (trash || !inTrash(rel));
+};
 
 /**
  * The real path of `abs` when it stays inside `root` and outside `root/.trash` (unless `trash`),
@@ -51,17 +61,13 @@ export async function realInside(
   abs: string,
   trash = false,
 ): Promise<string | undefined> {
-  const ok = (base: string, p: string) => {
-    const rel = relative(base, p);
-    return !escapes(rel) && (trash || !inTrash(rel));
-  };
-  if (!ok(root, abs)) return undefined;
+  if (!within(root, abs, trash)) return undefined;
   const realRoot = await realpath(root);
   const tail: string[] = [];
   for (let probe = abs; ; probe = dirname(probe)) {
     try {
       const real = join(await realpath(probe), ...tail);
-      return ok(realRoot, real) ? real : undefined;
+      return within(realRoot, real, trash) ? real : undefined;
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'ENOENT') return undefined;
       if (
@@ -76,8 +82,21 @@ export async function realInside(
   }
 }
 
+/**
+ * The entry `abs` itself, as the file routes and the origins see it: its parent folder resolved,
+ * its last part kept (a symlink stays a symlink). Undefined when the parent leaves `root` or is in
+ * the trash, when `abs` is the root, or when `abs` would be the trash folder.
+ */
+export async function entryPath(root: string, abs: string): Promise<string | undefined> {
+  if (!within(root, abs) || relative(root, abs) === '') return undefined;
+  const parent = await realInside(root, dirname(abs));
+  const entry = parent && join(parent, basename(abs));
+  return entry && within(await realpath(root), entry) ? entry : undefined;
+}
+
 /** Bytes of the regular files under `dir`; symlinks are not followed. 0 when `dir` is missing. */
 // ponytail: a full walk per call; keep a running total per write if work dirs reach 100k files.
+// ponytail: apparent size (`st.size`), so a sparse file counts in full; `st.blocks * 512` counts disk use.
 export async function dirBytes(dir: string): Promise<number> {
   const entries = await readdir(dir, { recursive: true, withFileTypes: true }).catch(() => []);
   const files = entries.filter((e) => e.isFile());
@@ -120,8 +139,9 @@ export async function checkFileTool(
 ): Promise<string | undefined> {
   if (!FILE_TOOLS.has(tool)) return undefined;
   const writes = tool === 'write' || tool === 'edit';
-  // `ls`, `find` and `grep` default to the cwd.
-  if (input.path === undefined && !writes && tool !== 'read') return undefined;
+  const search = SEARCH_TOOLS.has(tool);
+  // Without a path, `ls`, `find` and `grep` run on the cwd: the root, which holds `.trash`.
+  if (input.path === undefined && search) return ROOT_REASON;
   if (typeof input.path !== 'string') return GUARD_REASON;
   let abs: string;
   try {
@@ -129,8 +149,12 @@ export async function checkFileTool(
   } catch {
     return GUARD_REASON;
   }
-  for (const p of tool === 'read' ? readVariants(abs) : [abs])
-    if (!(await realInside(root, p))) return GUARD_REASON;
+  for (const p of tool === 'read' ? readVariants(abs) : [abs]) {
+    const real = await realInside(root, p);
+    if (!real) return GUARD_REASON;
+    // `.`, the root, or a link to it: the only folder above `.trash`.
+    if (search && real === (await realpath(root))) return ROOT_REASON;
+  }
   if (!writes) return undefined;
   const old = await stat(abs).then(
     (s) => (s.isFile() ? s.size : 0),

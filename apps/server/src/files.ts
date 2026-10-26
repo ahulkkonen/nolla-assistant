@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { constants, createReadStream, createWriteStream, mkdirSync, rmSync } from 'node:fs';
-import { copyFile, mkdir, open, readFile, rm, stat } from 'node:fs/promises';
+import { createReadStream, createWriteStream, mkdirSync, rmSync } from 'node:fs';
+import { type FileHandle, mkdir, open, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import type { PromptOptions } from '@earendil-works/pi-coding-agent';
@@ -58,16 +58,22 @@ function sniff(mime: string, head: Buffer): boolean {
   }
 }
 
+async function headOf(fh: FileHandle): Promise<Buffer> {
+  const buf = Buffer.alloc(SNIFF_BYTES);
+  const { bytesRead } = await fh.read(buf, 0, SNIFF_BYTES, 0);
+  return buf.subarray(0, bytesRead);
+}
+
 async function readHead(path: string): Promise<Buffer> {
   const fh = await open(path);
   try {
-    const buf = Buffer.alloc(SNIFF_BYTES);
-    const { bytesRead } = await fh.read(buf, 0, SNIFF_BYTES, 0);
-    return buf.subarray(0, bytesRead);
+    return await headOf(fh);
   } finally {
     await fh.close();
   }
 }
+
+class TooLarge extends Error {}
 
 /** Strips control characters, brackets and line breaks; at most 120 characters. */
 const cleanName = (name: string) => name.replace(/[\p{Cc}\u2028\u2029[\]]/gu, '').slice(0, 120);
@@ -257,7 +263,8 @@ export class AttachmentNotFound extends Error {}
 
 /**
  * Copies a work-dir file into the uploads, so a message can carry it like an upload (phase-11
- * decision 10). The copy is a snapshot: later edits of the work file do not change the message.
+ * decision 11). The copy is a snapshot: later edits of the work file do not change the message.
+ * `handle` is the open work file (the caller opened it without following a symlink and closes it).
  * `mime` comes from the name; other text (`text`: code, HTML) goes as `text/plain`. A type that
  * `ingestAttachments` cannot read is `unsupported`.
  */
@@ -265,36 +272,48 @@ export async function attachFile(
   db: Db,
   dataDir: string,
   userId: string,
-  src: { path: string; name: string; mime: string; text: boolean },
+  src: { handle: FileHandle; name: string; mime: string; text: boolean },
   chatId: string | undefined,
 ): Promise<AttachmentRef | 'unsupported' | 'too_large'> {
   const known = IMAGE_MIMES.has(src.mime) || DOC_MIMES.has(src.mime);
   const mime = known ? src.mime : src.text ? 'text/plain' : undefined;
   if (!mime) return 'unsupported';
-  const { size } = await stat(src.path);
-  if (size > MAX_FILE_BYTES) return 'too_large';
-  if (!sniff(mime, await readHead(src.path))) return 'unsupported';
+  if ((await src.handle.stat()).size > MAX_FILE_BYTES) return 'too_large';
+  if (!sniff(mime, await headOf(src.handle))) return 'unsupported';
   const id = randomUUID();
   const path = join('files', userId, id);
   await mkdir(join(dataDir, 'files', userId), { recursive: true });
-  await copyFile(src.path, join(dataDir, path), constants.COPYFILE_EXCL);
-  const row: FileRow = {
-    id,
-    userId,
-    chatId: chatId !== undefined && ownsChat(db, userId, chatId) ? chatId : null,
-    name: cleanName(src.name) || id,
-    mime,
-    size,
-    path,
-    createdAt: new Date().toISOString(),
-  };
+  let size = 0;
   try {
+    // Counted while it copies: `bash` can grow the file after the size check.
+    await pipeline(
+      src.handle.createReadStream({ start: 0, autoClose: false }),
+      async function* (chunks: AsyncIterable<Buffer>) {
+        for await (const chunk of chunks) {
+          size += chunk.length;
+          if (size > MAX_FILE_BYTES) throw new TooLarge();
+          yield chunk;
+        }
+      },
+      createWriteStream(join(dataDir, path), { flags: 'wx' }),
+    );
+    const row: FileRow = {
+      id,
+      userId,
+      chatId: chatId !== undefined && ownsChat(db, userId, chatId) ? chatId : null,
+      name: cleanName(src.name) || id,
+      mime,
+      size,
+      path,
+      createdAt: new Date().toISOString(),
+    };
     db.insert(files).values(row).run();
+    return toRef(row);
   } catch (err) {
     await rm(join(dataDir, path), { force: true });
+    if (err instanceof TooLarge) return 'too_large';
     throw err;
   }
-  return toRef(row);
 }
 
 /**

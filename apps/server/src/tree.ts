@@ -1,16 +1,34 @@
-import { createReadStream, createWriteStream } from 'node:fs';
-import { lstat, mkdir, readdir, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { constants, createWriteStream } from 'node:fs';
+import {
+  type FileHandle,
+  link,
+  lstat,
+  mkdir,
+  open,
+  readdir,
+  readlink,
+  realpath,
+  rename,
+  rm,
+  stat,
+  unlink,
+  writeFile,
+} from 'node:fs/promises';
 import { basename, dirname, extname, join, relative, resolve, sep } from 'node:path';
+import type { Readable, Writable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type { AgentSession } from '@earendil-works/pi-coding-agent';
 import { chats, type Db, fileOrigins, files, fileTrash } from '@pa/db';
 import type { PseudoClient } from '@pa/pi-ext-pseudo';
 import {
   dirBytes,
+  entryPath,
+  isTrashName,
   MAX_WORK_FILE,
   realInside,
   TRASH,
   USER_QUOTA,
+  within,
 } from '@pa/pi-ext-subagents/workspace';
 import {
   type Artifact,
@@ -105,47 +123,109 @@ const exists = (p: string) =>
     () => false,
   );
 const errno = (err: unknown) => (err as NodeJS.ErrnoException).code;
+const eexist = () => Object.assign(new Error('exists'), { code: 'EEXIST' });
 
-/** A file or folder name: no separators or control characters, at most 200 UTF-8 bytes. */
+/**
+ * A file or folder name: NFC, no separators, no control or format characters (bidi overrides),
+ * at most 200 UTF-8 bytes.
+ */
 function cleanWorkName(name: string): string | undefined {
-  const n = Buffer.from(name.replace(/[\p{Cc}\u2028\u2029/\\]/gu, '').trim())
+  const n = Buffer.from(
+    name
+      .normalize('NFC')
+      .replace(/[\p{Cc}\p{Cf}\u2028\u2029/\\]/gu, '')
+      .trim(),
+  )
     .subarray(0, 200)
     .toString()
     .replace(/\uFFFD+$/, '');
   return n && n !== '.' && n !== '..' ? n : undefined;
 }
 const validName = (name: string) => cleanWorkName(name) === name;
+/** A new entry in the root must not be the trash folder (decision 4): `_.trash` instead. */
+const notTrash = (dir: string, realRoot: string, name: string) =>
+  dir === realRoot && isTrashName(name) ? `_${name}` : name;
 
 /**
- * `path` (route input) under the real root, when it and everything it points to stay inside and
- * out of the trash (decision 4). The entry itself: a symlink is not replaced by its target.
+ * The real path of `path` (route input) when it and everything it points to stay inside and out
+ * of the trash (decision 4). Routes act on this resolved path, never on the input.
  */
-async function at(realRoot: string, path: string): Promise<string | undefined> {
-  const abs = resolve(realRoot, path);
-  return (await realInside(realRoot, abs)) ? abs : undefined;
-}
+const at = (realRoot: string, path: string) => realInside(realRoot, resolve(realRoot, path));
 
-/** Creates `name` in `dir` with `create`, or "name (2).ext" and up while the name exists. */
-async function claim(dir: string, name: string, create: (path: string) => Promise<void>) {
+/** Runs `create` on `name` in `dir`, or on "name (2).ext" and up while the name exists. */
+async function claim<T>(
+  dir: string,
+  name: string,
+  create: (path: string) => Promise<T>,
+): Promise<[string, T]> {
   const ext = extname(name);
   const stem = name.slice(0, name.length - ext.length);
   for (let i = 1; ; i++) {
     const path = join(dir, i === 1 ? name : `${stem} (${i})${ext}`);
     try {
-      await create(path);
-      return path;
+      return [path, await create(path)];
     } catch (err) {
       if (errno(err) !== 'EEXIST' || i >= 1000) throw err;
     }
   }
 }
 
-/** `rename` that refuses an existing target (Node has no RENAME_NOREPLACE). */
-// ponytail: check then rename; a file created in between is replaced. Fine for one user.
+/**
+ * Moves `from` to `to` without replacing an existing `to`. A file goes by `link` + `unlink`, where
+ * EEXIST is atomic; a folder or a symlink by a check and `rename`.
+ */
+// ponytail: for folders and symlinks a `to` made between the check and the rename is replaced;
+// Node has no RENAME_NOREPLACE.
 const renameNew = (from: string) => async (to: string) => {
-  if (await exists(to)) throw Object.assign(new Error('exists'), { code: 'EEXIST' });
+  if ((await lstat(from)).isFile()) {
+    try {
+      await link(from, to);
+      await unlink(from);
+      return;
+    } catch (err) {
+      // A disk without hard links falls back to the check below.
+      if (errno(err) !== 'EPERM' && errno(err) !== 'ENOTSUP') throw err;
+    }
+  }
+  if (await exists(to)) throw eexist();
   await rename(from, to);
 };
+
+/**
+ * Opens a work-dir file for reading: not through a symlink at the end (`O_NOFOLLOW`), not
+ * blocking on a FIFO (`O_NONBLOCK`), a regular file by `fstat`. On Linux the path that the fd
+ * really has (`/proc/self/fd`) must still be inside: a folder swapped for a symlink after the
+ * check shows there. The caller streams from the handle.
+ */
+// ponytail: without /proc (macOS dev machines) a folder swap between check and open is not seen.
+async function openFile(realRoot: string, real: string) {
+  const flags = constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK;
+  const fh = await open(real, flags).catch(() => undefined);
+  if (!fh) return undefined;
+  const st = await fh.stat();
+  const opened = await readlink(`/proc/self/fd/${fh.fd}`).catch(() => real);
+  if (st.isFile() && within(realRoot, opened)) return { fh, size: st.size };
+  await fh.close();
+  return undefined;
+}
+
+/**
+ * `.trash` when it is a real folder (decision 5); null when it is missing and `create` is off;
+ * undefined when something else (a file, a symlink) is there.
+ */
+async function binOf(root: string, create: boolean): Promise<string | null | undefined> {
+  const bin = join(root, TRASH);
+  if (create)
+    await mkdir(bin).catch((err: unknown) => {
+      if (errno(err) !== 'EEXIST') throw err;
+    });
+  const st = await lstat(bin).catch((err: unknown) => {
+    if (errno(err) === 'ENOENT') return null;
+    throw err;
+  });
+  if (st === null) return null;
+  return st.isDirectory() ? bin : undefined;
+}
 
 const EXT: Record<string, string> = {
   mermaid: 'mmd',
@@ -162,7 +242,7 @@ const EXT: Record<string, string> = {
   csharp: 'cs',
 };
 
-/** "<title>.<ext>" for "Tallenna tiedostoksi" (decision 11). */
+/** "<title>.<ext>" for "Tallenna tiedostoksi" (decision 12). */
 function artifactName(a: Artifact): string {
   const lang =
     a.kind === 'html' || a.kind === 'mermaid'
@@ -188,11 +268,16 @@ function findArtifact(session: AgentSession, artifactId: string) {
   return undefined;
 }
 
+/** An upload passed the quota while it streamed. */
+export class QuotaExceeded extends Error {}
+
 export type WorkStore = ReturnType<typeof workStore>;
 
-/** Work dirs: the cached size (decision 7) and the file origins (decision 6). */
+/** Work dirs: the size cache and the bytes in flight (decision 7), the file origins (decision 6). */
 export function workStore(db: Db, dataDir: string) {
   const sizes = new Map<string, { bytes: Promise<number>; at: number }>();
+  /** userId → bytes that uploads are writing now; every quota check adds them. */
+  const inflight = new Map<string, number>();
   const root = (userId: string) => resolve(dataDir, 'work', userId);
   /** The work dir with its trash. */
   const workBytes = (userId: string) => {
@@ -212,7 +297,11 @@ export function workStore(db: Db, dataDir: string) {
     );
   /** After a change of the work dir: the next `used` walks it again. */
   const changed = (userId: string) => void sizes.delete(userId);
+  const flight = (userId: string, delta: number) =>
+    inflight.set(userId, (inflight.get(userId) ?? 0) + delta);
   /** `path` and everything under it. Lengths in SQL: SQLite counts characters, not UTF-16 units. */
+  // ponytail: the prefix match cannot use the primary key index; a range query
+  // (`path >= p || '/' AND path < p || '0'`) is the upgrade if origins reach many thousands.
   const under = (userId: string, path: string) =>
     and(
       eq(fileOrigins.userId, userId),
@@ -229,8 +318,39 @@ export function workStore(db: Db, dataDir: string) {
     uploadBytes,
     changed,
     dropOrigins,
-    /** Both roots, in bytes. */
-    used: async (userId: string) => (await workBytes(userId)) + uploadBytes(userId),
+    /** Both roots and the uploads in flight, in bytes. */
+    used: async (userId: string) =>
+      (await workBytes(userId)) + uploadBytes(userId) + (inflight.get(userId) ?? 0),
+    /**
+     * Pipes an upload into the work dir. Its bytes count as in flight, so a parallel upload or an
+     * agent write sees them; past the quota it stops mid-stream with `QuotaExceeded`. Each chunk
+     * reads the size again (a cached promise until something changed).
+     */
+    // ponytail: a walk during the stream also sees the partial file, so near the limit the check
+    // can refuse a little early. It never lets a file through late.
+    async stream(userId: string, src: Readable, dest: Writable) {
+      let n = 0;
+      try {
+        await pipeline(
+          src,
+          async function* (chunks: AsyncIterable<Buffer>) {
+            for await (const chunk of chunks) {
+              const settled = (await workBytes(userId)) + uploadBytes(userId);
+              // Check and count with no await in between: two streams cannot both take the rest.
+              if (settled + (inflight.get(userId) ?? 0) + chunk.length > USER_QUOTA)
+                throw new QuotaExceeded();
+              flight(userId, chunk.length);
+              n += chunk.length;
+              yield chunk;
+            }
+          },
+          dest,
+        );
+      } finally {
+        flight(userId, -n);
+        changed(userId);
+      }
+    },
     /** A tool call or a saved artifact wrote `path` (relative to the work dir). */
     written(userId: string, path: string, chatId: string, messageId: string | null) {
       changed(userId);
@@ -260,9 +380,8 @@ export function workStore(db: Db, dataDir: string) {
   };
 }
 
-/** Removes trash entries now, with their rows and origins. */
-async function dropTrash(db: Db, work: WorkStore, userId: string, ids: string[]) {
-  const bin = join(work.root(userId), TRASH);
+/** Removes trash entries of `bin` (a checked `.trash`) now, with their rows and origins. */
+async function dropTrash(db: Db, work: WorkStore, userId: string, bin: string, ids: string[]) {
   for (const id of ids) {
     await rm(join(bin, id), { recursive: true, force: true });
     db.delete(fileTrash)
@@ -278,19 +397,28 @@ const deletedMs = async (bin: string, id: string) =>
 
 /** The daily job: deletes trash entries older than 30 days (decision 5). Returns how many. */
 export async function purgeTrash(db: Db, work: WorkStore, userId: string, now = Date.now()) {
-  const bin = join(work.root(userId), TRASH);
-  const ids = await readdir(bin).catch(() => [] as string[]);
+  const bin = await binOf(work.root(userId), false);
+  // Something else than a folder is there: touch nothing.
+  if (bin === undefined) return 0;
+  // A read error other than "missing" throws: an empty list would drop every row below.
+  const ids = bin === null ? [] : await readdir(bin);
   const old: string[] = [];
-  for (const id of ids) if (now - (await deletedMs(bin, id)) > TRASH_MS) old.push(id);
-  await dropTrash(db, work, userId, old);
-  // Rows whose entry is gone.
+  for (const id of ids) {
+    const ms = await deletedMs(bin as string, id).catch(() => now);
+    if (now - ms > TRASH_MS) old.push(id);
+  }
+  if (bin) await dropTrash(db, work, userId, bin, old);
+  // Rows whose entry is gone. Explicit for no entries: drizzle's `notInArray([])` is `true`.
+  const own = eq(fileTrash.userId, userId);
   db.delete(fileTrash)
-    .where(and(eq(fileTrash.userId, userId), notInArray(fileTrash.id, ids)))
+    .where(ids.length ? and(own, notInArray(fileTrash.id, ids)) : own)
     .run();
   return old.length;
 }
 
 type Origin = NonNullable<TreeEntry['origin']>;
+type Failure = { error: [number, FileError] };
+const failure = (status: number, error: FileError): Failure => ({ error: [status, error] });
 
 export function treeRoutes(
   app: FastifyInstance,
@@ -312,16 +440,25 @@ export function treeRoutes(
     await mkdir(root, { recursive: true });
     return realpath(root);
   };
-  /** The work-dir entry at `path` (route input) of the wanted type, or the error to answer. */
-  const locate = async (userId: string, path: string, want: 'dir' | 'file' | 'any') => {
+  /** The work-dir folder at `path` (route input), resolved, or the error to answer. */
+  const folderAt = async (userId: string, path: string) => {
     const realRoot = await rootOf(userId);
-    const abs = await at(realRoot, path);
-    if (!abs) return { error: [400, 'bad_path'] as [number, FileError] };
-    const st = await (want === 'any' ? lstat : stat)(abs).catch(() => undefined);
-    if (!st || (want === 'dir' && !st.isDirectory()) || (want === 'file' && !st.isFile()))
-      return { error: [404, 'not_found'] as [number, FileError] };
-    return { realRoot, abs, st };
+    const dir = await at(realRoot, path);
+    if (!dir) return failure(400, 'bad_path');
+    if (!(await isDir(dir))) return failure(404, 'not_found');
+    return { realRoot, dir };
   };
+  /** The work-dir file at `path`, open for reading (`openFile`), or the error to answer. */
+  const fileAt = async (userId: string, path: string) => {
+    const realRoot = await rootOf(userId);
+    const real = await at(realRoot, path);
+    if (!real) return failure(400, 'bad_path');
+    const file = await openFile(realRoot, real);
+    return file ? { realRoot, real, ...file } : failure(404, 'not_found');
+  };
+  /** The entry at `path` itself (a symlink stays one), for delete and move (`entryPath`). */
+  const entryAtPath = async (realRoot: string, path: string) =>
+    entryPath(realRoot, resolve(realRoot, path));
 
   const originsOf = (userId: string, paths: string[]): Map<string, Origin> =>
     new Map(
@@ -431,11 +568,13 @@ export function treeRoutes(
     if (!q.success) return fail(reply, 400, 'bad_message');
     const { root, path, cursor, limit } = q.data;
     if (root === 'files') return listUploads(req.userId, cursor, limit);
-    const l = await locate(req.userId, path, 'dir');
+    const l = await folderAt(req.userId, path);
     if ('error' in l) return fail(reply, ...l.error);
-    const { realRoot, abs: dir } = l;
+    const { realRoot, dir } = l;
+    // ponytail: each page reads and sorts the whole folder (O(n log n)); keep the sorted names
+    // per folder if folders reach 100k entries.
     const names = (await readdir(dir, { withFileTypes: true }))
-      .filter((d) => dir !== realRoot || d.name.toLowerCase() !== TRASH)
+      .filter((d) => dir !== realRoot || !isTrashName(d.name))
       .map((d) => ({ name: d.name, dir: d.isDirectory() }))
       .sort(order);
     const after = cursor ? { dir: cursor.startsWith('d:'), name: cursor.slice(2) } : undefined;
@@ -462,27 +601,24 @@ export function treeRoutes(
     const q = TreeRawQuery.safeParse(req.query);
     if (!q.success) return fail(reply, 400, 'bad_message');
     const { root, path, download } = q.data;
-    let file: { abs: string; name: string; mime: string; kind: PreviewKind | null };
+    let file: { fh: FileHandle; name: string; mime: string; kind: PreviewKind | null };
     if (root === 'files') {
       const row = db
         .select()
         .from(files)
         .where(and(eq(files.id, path), eq(files.userId, req.userId)))
         .get();
-      if (!row) return fail(reply, 404, 'not_found');
-      file = {
-        abs: join(dataDir, row.path),
-        name: row.name,
-        mime: row.mime,
-        kind: kindOfMime(row.mime),
-      };
+      const fh = row && (await open(join(dataDir, row.path)).catch(() => undefined));
+      if (!row || !fh) return fail(reply, 404, 'not_found');
+      file = { fh, name: row.name, mime: row.mime, kind: kindOfMime(row.mime) };
     } else {
-      const l = await locate(req.userId, path, 'file');
+      const l = await fileAt(req.userId, path);
       if ('error' in l) return fail(reply, ...l.error);
-      file = { abs: l.abs, name: basename(l.abs), ...typeOf(basename(l.abs)) };
+      const name = basename(l.real);
+      file = { fh: l.fh, name, ...typeOf(name) };
     }
     // Text, Markdown, code and HTML go as text/plain: the client renders them (HTML in the
-    // artifact sandbox). Never text/html from this origin (decision 9).
+    // artifact sandbox). Never text/html from this origin (decision 10).
     const inline = download === '0' && file.kind !== null;
     const type = !inline
       ? 'application/octet-stream'
@@ -503,7 +639,7 @@ export function treeRoutes(
       )
       .header('X-Frame-Options', pdf ? 'SAMEORIGIN' : 'DENY')
       .header('Cache-Control', 'private, no-cache')
-      .send(createReadStream(file.abs));
+      .send(file.fh.createReadStream());
   });
 
   app.post(
@@ -513,38 +649,32 @@ export function treeRoutes(
       const q = TreeQuery.pick({ path: true }).safeParse(req.query);
       if (!q.success) return fail(reply, 400, 'bad_message');
       const { userId } = req;
-      const l = await locate(userId, q.data.path, 'dir');
+      const l = await folderAt(userId, q.data.path);
       if ('error' in l) return fail(reply, ...l.error);
-      const { realRoot, abs: dir } = l;
-      const before = await work.used(userId);
+      const { realRoot, dir } = l;
       const stored: string[] = [];
-      let added = 0;
       const undo = () => Promise.all(stored.map((p) => rm(p, { force: true })));
       const refuse = async (code: number, error: FileError) => {
         await undo();
         return fail(reply, code, error);
       };
       try {
+        // The route's limit replaces the plugin's 25 MB default (tree.test.ts proves it).
         for await (const part of req.parts({ limits: { fileSize: MAX_WORK_FILE } })) {
           if (part.type === 'field') continue;
-          if (before + added >= USER_QUOTA) {
-            part.file.resume();
-            return refuse(413, 'quota');
-          }
-          const name = cleanWorkName(part.filename) ?? 'tiedosto';
-          const target = await claim(dir, name, (p) => writeFile(p, '', { flag: 'wx' }));
+          const name = notTrash(dir, realRoot, cleanWorkName(part.filename) ?? 'tiedosto');
+          // `wx`: a name taken meanwhile, or a symlink put there, is never written through.
+          const [target, fh] = await claim(dir, name, (p) => open(p, 'wx'));
           stored.push(target);
-          await pipeline(part.file, createWriteStream(target));
+          await work.stream(userId, part.file, fh.createWriteStream());
           if (part.file.truncated) return refuse(413, 'too_large');
-          added += part.file.bytesRead;
-          if (before + added > USER_QUOTA) return refuse(413, 'quota');
         }
       } catch (err) {
+        if (err instanceof QuotaExceeded) return refuse(413, 'quota');
         await undo();
         throw err;
       }
       if (!stored.length) return fail(reply, 400, 'empty');
-      work.changed(userId);
       const entries = await Promise.all(stored.map((p) => entryOf(realRoot, p, new Map())));
       return reply.code(201).send({ entries: entries.filter((e) => e !== undefined) });
     },
@@ -567,16 +697,15 @@ export function treeRoutes(
     return reply.code(201).send({ entry: await entryOf(realRoot, target, new Map()) });
   });
 
-  /** Rename and move in one: `to` is the full new path. */
+  /** Rename and move in one: `to` is the full new path. A symlink moves as itself. */
   app.post('/api/files/tree/move', { preHandler: auth }, async (req, reply) => {
     const b = TreeMove.safeParse(req.body);
     if (!b.success) return fail(reply, 400, 'bad_message');
     const { userId } = req;
     const realRoot = await rootOf(userId);
-    const from = await at(realRoot, b.data.from);
-    const to = await at(realRoot, b.data.to);
-    if (!from || !to || from === realRoot || to === realRoot || to.startsWith(from + sep))
-      return fail(reply, 400, 'bad_path');
+    const from = await entryAtPath(realRoot, b.data.from);
+    const to = await entryAtPath(realRoot, b.data.to);
+    if (!from || !to || to.startsWith(from + sep)) return fail(reply, 400, 'bad_path');
     if (!validName(basename(to))) return fail(reply, 400, 'bad_name');
     if (!(await exists(from)) || !(await isDir(dirname(to)))) return fail(reply, 404, 'not_found');
     if (to !== from) {
@@ -584,6 +713,8 @@ export function treeRoutes(
         await renameNew(from)(to);
       } catch (err) {
         if (errno(err) === 'EEXIST') return fail(reply, 409, 'exists');
+        // A folder into itself through a symlink.
+        if (errno(err) === 'EINVAL') return fail(reply, 400, 'bad_path');
         throw err;
       }
       work.moveOrigins(userId, rel(realRoot, from), rel(realRoot, to));
@@ -591,24 +722,31 @@ export function treeRoutes(
     return { entry: await entryAt(userId, realRoot, to) };
   });
 
-  /** Delete: into `.trash/<epoch ms>-<name>` (decision 5). */
+  /** Delete: into `.trash/<epoch ms>-<name>` (decision 5). A symlink goes as itself. */
   app.delete('/api/files/tree', { preHandler: auth }, async (req, reply) => {
     const q = TreeQuery.pick({ path: true }).safeParse(req.query);
     if (!q.success) return fail(reply, 400, 'bad_message');
     const { userId } = req;
-    const l = await locate(userId, q.data.path, 'any');
-    if ('error' in l) return fail(reply, ...l.error);
-    const { realRoot, abs, st } = l;
-    if (abs === realRoot) return fail(reply, 400, 'bad_path');
-    const bin = join(realRoot, TRASH);
-    await mkdir(bin, { recursive: true });
+    const realRoot = await rootOf(userId);
+    const abs = await entryAtPath(realRoot, q.data.path);
+    if (!abs) return fail(reply, 400, 'bad_path');
+    const st = await lstat(abs).catch(() => undefined);
+    if (!st) return fail(reply, 404, 'not_found');
+    const bin = await binOf(realRoot, true);
+    if (!bin) return fail(reply, 409, 'bad_path');
     const name = basename(abs);
     const short = cleanWorkName(name) ?? 'nimetön';
-    let ts = Date.now();
-    while (await exists(join(bin, `${ts}-${short}`))) ts++;
-    const id = `${ts}-${short}`;
     const size = st.isDirectory() ? await dirBytes(abs) : st.size;
-    await rename(abs, join(bin, id));
+    let ts = Date.now();
+    for (; ; ts++) {
+      try {
+        await renameNew(abs)(join(bin, `${ts}-${short}`));
+        break;
+      } catch (err) {
+        if (errno(err) !== 'EEXIST') throw err;
+      }
+    }
+    const id = `${ts}-${short}`;
     const originalPath = rel(realRoot, abs);
     const deletedAt = new Date(ts).toISOString();
     db.insert(fileTrash).values({ userId, id, originalPath, deletedAt }).run();
@@ -630,11 +768,12 @@ export function treeRoutes(
     const q = TreeQuery.pick({ cursor: true, limit: true }).safeParse(req.query);
     if (!q.success) return fail(reply, 400, 'bad_message');
     const { cursor, limit } = q.data;
-    const bin = join(await rootOf(req.userId), TRASH);
+    const bin = await binOf(await rootOf(req.userId), false);
+    if (bin === undefined) return fail(reply, 409, 'bad_path');
     // Newest first: an id starts with its 13-digit deletion time.
-    const ids = (await readdir(bin).catch(() => [] as string[])).sort().reverse();
+    const ids = bin ? (await readdir(bin)).sort().reverse() : [];
     const start = cursor ? ids.findIndex((id) => id < cursor) : 0;
-    const page = start < 0 ? [] : ids.slice(start, start + limit);
+    const page = start < 0 || !bin ? [] : ids.slice(start, start + limit);
     const rows = new Map(
       (page.length
         ? db
@@ -646,22 +785,30 @@ export function treeRoutes(
       ).map((r) => [r.id, r]),
     );
     const entries = await Promise.all(
-      page.map(async (id): Promise<TrashEntry> => {
-        const st = await lstat(join(bin, id));
-        const row = rows.get(id);
-        const originalPath = row?.originalPath ?? id.replace(/^\d+-/, '');
-        return {
-          id,
-          name: basename(originalPath),
-          originalPath,
-          type: st.isDirectory() ? 'dir' : 'file',
-          size: st.isDirectory() ? await dirBytes(join(bin, id)) : st.size,
-          deletedAt: row?.deletedAt ?? new Date(await deletedMs(bin, id)).toISOString(),
-        };
+      page.map(async (id): Promise<TrashEntry | undefined> => {
+        try {
+          const st = await lstat(join(bin as string, id));
+          const row = rows.get(id);
+          const originalPath = row?.originalPath ?? id.replace(/^\d+-/, '');
+          return {
+            id,
+            name: basename(originalPath),
+            originalPath,
+            type: st.isDirectory() ? 'dir' : 'file',
+            size: st.isDirectory() ? await dirBytes(join(bin as string, id)) : st.size,
+            deletedAt: row?.deletedAt ?? new Date(await deletedMs(bin as string, id)).toISOString(),
+          };
+        } catch {
+          // Gone meanwhile (purge, another screen): skip it.
+          return undefined;
+        }
       }),
     );
     const last = page.at(-1);
-    return { entries, nextCursor: last && start + limit < ids.length ? last : null };
+    return {
+      entries: entries.filter((e) => e !== undefined),
+      nextCursor: last && start + limit < ids.length ? last : null,
+    };
   });
 
   app.post('/api/files/tree/restore', { preHandler: auth }, async (req, reply) => {
@@ -670,8 +817,10 @@ export function treeRoutes(
     const { userId } = req;
     const { id } = b.data;
     const realRoot = await rootOf(userId);
-    const src = join(realRoot, TRASH, id);
-    if (!(await exists(src))) return fail(reply, 404, 'not_found');
+    const bin = await binOf(realRoot, false);
+    if (bin === undefined) return fail(reply, 409, 'bad_path');
+    const src = bin && join(bin, id);
+    if (!src || !(await exists(src))) return fail(reply, 404, 'not_found');
     const row = db
       .select()
       .from(fileTrash)
@@ -687,8 +836,9 @@ export function treeRoutes(
         () => true,
         () => false,
       ));
-    if (!target || !made) target = join(realRoot, basename(original) || id);
-    const final = await claim(dirname(target), basename(target), renameNew(src));
+    if (!target || !made)
+      target = join(realRoot, notTrash(realRoot, realRoot, basename(original) || id));
+    const [final] = await claim(dirname(target), basename(target), renameNew(src));
     db.delete(fileTrash)
       .where(and(eq(fileTrash.userId, userId), eq(fileTrash.id, id)))
       .run();
@@ -701,16 +851,18 @@ export function treeRoutes(
     const q = TreeRestore.partial().safeParse(req.query);
     if (!q.success || (q.data.id !== undefined && !trashId(q.data.id)))
       return fail(reply, 400, 'bad_message');
-    const bin = join(await rootOf(req.userId), TRASH);
-    const ids = q.data.id ? [q.data.id] : await readdir(bin).catch(() => [] as string[]);
-    if (q.data.id && !(await exists(join(bin, q.data.id)))) return fail(reply, 404, 'not_found');
-    await dropTrash(db, work, req.userId, ids);
+    const bin = await binOf(await rootOf(req.userId), false);
+    if (bin === undefined) return fail(reply, 409, 'bad_path');
+    if (q.data.id && !(bin && (await exists(join(bin, q.data.id)))))
+      return fail(reply, 404, 'not_found');
+    if (bin)
+      await dropTrash(db, work, req.userId, bin, q.data.id ? [q.data.id] : await readdir(bin));
     return reply.code(204).send();
   });
 
   app.get('/api/files/tree/usage', { preHandler: auth }, async (req): Promise<FileUsage> => {
-    const bin = join(await rootOf(req.userId), TRASH);
-    const [total, trash] = await Promise.all([work.workBytes(req.userId), dirBytes(bin)]);
+    const bin = await binOf(await rootOf(req.userId), false);
+    const [total, trash] = await Promise.all([work.workBytes(req.userId), bin ? dirBytes(bin) : 0]);
     const uploads = work.uploadBytes(req.userId);
     return {
       used: total + uploads,
@@ -723,30 +875,34 @@ export function treeRoutes(
     };
   });
 
-  /** A work-dir file as a message attachment: a snapshot copy into the uploads (decision 10). */
+  /** A work-dir file as a message attachment: a snapshot copy into the uploads (decision 11). */
   app.post('/api/files/tree/attach', { preHandler: auth }, async (req, reply) => {
     const b = TreeAttach.safeParse(req.body);
     if (!b.success) return fail(reply, 400, 'bad_message');
     const { userId } = req;
-    const l = await locate(userId, b.data.path, 'file');
+    const l = await fileAt(userId, b.data.path);
     if ('error' in l) return fail(reply, ...l.error);
-    const { abs, st } = l;
-    if ((await work.used(userId)) + st.size > USER_QUOTA) return fail(reply, 413, 'quota');
-    const name = basename(abs);
-    const { mime, kind } = typeOf(name);
-    const r = await attachFile(
-      db,
-      dataDir,
-      userId,
-      { path: abs, name, mime, text: isText(kind) },
-      b.data.chatId,
-    );
-    if (r === 'unsupported') return fail(reply, 415, 'unsupported');
-    if (r === 'too_large') return fail(reply, 413, 'too_large');
-    return { file: r };
+    try {
+      if (l.size > MAX_FILE_BYTES) return fail(reply, 413, 'too_large');
+      if ((await work.used(userId)) + l.size > USER_QUOTA) return fail(reply, 413, 'quota');
+      const name = basename(l.real);
+      const { mime, kind } = typeOf(name);
+      const r = await attachFile(
+        db,
+        dataDir,
+        userId,
+        { handle: l.fh, name, mime, text: isText(kind) },
+        b.data.chatId,
+      );
+      if (r === 'unsupported') return fail(reply, 415, 'unsupported');
+      if (r === 'too_large') return fail(reply, 413, 'too_large');
+      return { file: r };
+    } finally {
+      await l.fh.close();
+    }
   });
 
-  /** "Tallenna tiedostoksi": the artifact with real values into the work dir (decision 11). */
+  /** "Tallenna tiedostoksi": the artifact with real values into the work dir (decision 12). */
   app.post('/api/files/tree/artifact', { preHandler: auth }, async (req, reply) => {
     const b = TreeSaveArtifact.safeParse(req.body);
     if (!b.success) return fail(reply, 400, 'bad_message');
@@ -763,19 +919,18 @@ export function treeRoutes(
     const { text } = await restorer(pseudo, () => {
       down = true;
     })(found.text);
-    // A masked copy on disk would break decision 12 (files hold real values).
+    // A masked copy on disk would break decision 16 (files hold real values).
     if (down) return fail(reply, 503, 'pseudo_down');
     const artifact = extractArtifacts(found.entryId, text).find((a) => a.id === artifactId);
     if (!artifact) return fail(reply, 404, 'not_found');
-    const l = await locate(userId, b.data.dir, 'dir');
+    const l = await folderAt(userId, b.data.dir);
     if ('error' in l) return fail(reply, ...l.error);
-    const { realRoot, abs: dir } = l;
+    const { realRoot, dir } = l;
     const content = Buffer.from(artifact.content);
     if (content.length > MAX_WORK_FILE) return fail(reply, 413, 'too_large');
     if ((await work.used(userId)) + content.length > USER_QUOTA) return fail(reply, 413, 'quota');
-    const target = await claim(dir, artifactName(artifact), (p) =>
-      writeFile(p, content, { flag: 'wx' }),
-    );
+    const name = notTrash(dir, realRoot, artifactName(artifact));
+    const [target] = await claim(dir, name, (p) => writeFile(p, content, { flag: 'wx' }));
     work.written(userId, rel(realRoot, target), chatId, found.entryId);
     return reply.code(201).send({ entry: await entryAt(userId, realRoot, target) });
   });

@@ -1,15 +1,19 @@
+import { execFileSync } from 'node:child_process';
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   readFileSync,
   renameSync,
   symlinkSync,
   truncateSync,
+  unlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
+import { fileTrash } from '@pa/db';
 import type { FakeTurn } from '@pa/fake-llm';
-import { USER_QUOTA } from '@pa/pi-ext-subagents/workspace';
+import { dirBytes, USER_QUOTA } from '@pa/pi-ext-subagents/workspace';
 import type {
   AttachmentRef,
   FileUsage,
@@ -216,6 +220,18 @@ test('path safety: .., encoded .., absolute, trash and symlinks out are refused'
   expect(names(await list())).toEqual(['ok.txt']);
   expect(readFileSync(secret, 'utf8')).toBe('salainen');
   expect(existsSync(join(config.dataDir, 'ok.txt'))).toBe(false);
+  // A FIFO is not a file: refused at once, without blocking on open (O_NONBLOCK).
+  execFileSync('mkfifo', [join(root, 'putki')]);
+  expect((await raw('putki')).status).toBe(404);
+  // A link inside is read at its resolved target.
+  symlinkSync(join(root, 'ok.txt'), join(root, 'ok-link.txt'));
+  expect(await (await raw('ok-link.txt')).text()).toBe('ok');
+  // Delete moves a link itself, also one that leads out or nowhere; its target stays.
+  for (const path of ['secret-link.txt', 'dangling'])
+    expect((await call(`/api/files/tree?path=${path}`, { method: 'DELETE' })).status, path).toBe(
+      200,
+    );
+  expect(readFileSync(secret, 'utf8')).toBe('salainen');
 });
 
 test('trash: delete, list, restore (also into a removed folder), delete for good, purge', {
@@ -295,6 +311,11 @@ test('quota: 10 GB total on upload, attach, chat upload and the agent write', {
   const usage = (await (await call('/api/files/tree/usage')).json()) as FileUsage;
   expect(usage).toMatchObject({ used: USER_QUOTA + 10, quota: USER_QUOTA, trash: 0, files: 0 });
   expect(usage.maxFileSize).toBe(200 * 1024 ** 2);
+  // Over the 25 MB attachment cap is `too_large`, checked before the quota.
+  writeFileSync(join(root, 'suuri.txt'), '');
+  truncateSync(join(root, 'suuri.txt'), 26 * 1024 ** 2);
+  const big = await send('POST', '/api/files/tree/attach', { path: 'suuri.txt' });
+  expect(await big.json()).toEqual({ error: 'too_large' });
 
   const up = await upload('', [['a.txt', 'x'.repeat(100)]]);
   expect(up.status).toBe(413);
@@ -448,4 +469,138 @@ test('artifact: Tallenna tiedostoksi writes real values with the origin', {
   expect(await (await save({ chatId: chat.id, artifactId: artifact.id })).json()).toEqual({
     error: 'pseudo_down',
   });
+});
+
+test('upload: the route limit beats the 25 MB plugin default; a root .trash name is renamed', {
+  timeout: 60_000,
+}, async () => {
+  const { upload, call } = await setup();
+  const big = await upload('', [['iso.txt', 'x'.repeat(30 * 1024 ** 2)]]);
+  expect(big.status).toBe(201);
+  expect(((await big.json()) as { entries: TreeEntry[] }).entries[0]?.size).toBe(30 * 1024 ** 2);
+  // A root-level `.trash` (any case) would stand in for the trash folder.
+  const dot = await upload('', [['.TRASH', 'a']]);
+  expect(((await dot.json()) as { entries: TreeEntry[] }).entries.map((e) => e.name)).toEqual([
+    '_.TRASH',
+  ]);
+  expect((await call('/api/files/tree?path=_.TRASH', { method: 'DELETE' })).status).toBe(200);
+  const again = await upload('', [['.trash', 'b']]);
+  expect(((await again.json()) as { entries: TreeEntry[] }).entries[0]?.name).toBe('_.trash');
+});
+
+test('quota: an upload stops mid-request; of two parallel uploads near the limit one passes', {
+  timeout: 30_000,
+}, async () => {
+  const { root, upload } = await setup();
+  writeFileSync(join(root, 'harva.bin'), '');
+  truncateSync(join(root, 'harva.bin'), USER_QUOTA - 150);
+  const two = await upload('', [
+    ['a.txt', 'x'.repeat(100)],
+    ['b.txt', 'x'.repeat(100)],
+  ]);
+  expect(two.status).toBe(413);
+  expect(await two.json()).toEqual({ error: 'quota' });
+  expect(existsSync(join(root, 'a.txt')) || existsSync(join(root, 'b.txt'))).toBe(false);
+  const both = await Promise.all([
+    upload('', [['c.txt', 'x'.repeat(100)]]),
+    upload('', [['d.txt', 'x'.repeat(100)]]),
+  ]);
+  expect(both.map((r) => r.status).sort()).toEqual([201, 413]);
+});
+
+test('trash folder: a symlink or a file in its place is refused; purge never wipes on errors', {
+  timeout: 30_000,
+}, async () => {
+  const { root, config, srv, call, send } = await setup();
+  const work = workStore(srv.db, config.dataDir);
+  const later = Date.now() + 365 * 86_400_000;
+  const row = (id: string) => ({
+    userId: 'aleksi',
+    id,
+    originalPath: 'x.txt',
+    deletedAt: new Date().toISOString(),
+  });
+  const rows = () => srv.db.select().from(fileTrash).all().length;
+  const elsewhere = join(config.dataDir, 'muu');
+  mkdirSync(elsewhere);
+  writeFileSync(join(elsewhere, '1793000000000-x.txt'), 'x');
+  symlinkSync(elsewhere, join(root, '.trash'));
+  writeFileSync(join(root, 'a.txt'), 'a');
+  srv.db.insert(fileTrash).values(row('1793000000000-x.txt')).run();
+  expect((await call('/api/files/tree?path=a.txt', { method: 'DELETE' })).status).toBe(409);
+  expect((await call('/api/files/tree/trash')).status).toBe(409);
+  expect((await call('/api/files/tree/trash', { method: 'DELETE' })).status).toBe(409);
+  const restore = await send('POST', '/api/files/tree/restore', { id: '1793000000000-x.txt' });
+  expect(restore.status).toBe(409);
+  expect(await purgeTrash(srv.db, work, 'aleksi', later)).toBe(0);
+  expect(existsSync(join(elsewhere, '1793000000000-x.txt'))).toBe(true);
+  expect(existsSync(join(root, 'a.txt'))).toBe(true);
+  expect(rows()).toBe(1);
+
+  unlinkSync(join(root, '.trash'));
+  writeFileSync(join(root, '.trash'), 'ei kansio');
+  expect((await call('/api/files/tree?path=a.txt', { method: 'DELETE' })).status).toBe(409);
+  unlinkSync(join(root, '.trash'));
+
+  // An unreadable trash makes the job fail, not drop the rows.
+  mkdirSync(join(root, '.trash'));
+  if (process.getuid?.() !== 0) {
+    chmodSync(join(root, '.trash'), 0);
+    await expect(purgeTrash(srv.db, work, 'aleksi', later)).rejects.toThrow();
+    chmodSync(join(root, '.trash'), 0o755);
+    expect(rows()).toBe(1);
+  }
+  // An empty trash: rows without entries go.
+  expect(await purgeTrash(srv.db, work, 'aleksi', later)).toBe(0);
+  expect(rows()).toBe(0);
+});
+
+test('guard after pseudo: the path, the size check and the origin use real values', {
+  timeout: 30_000,
+}, async () => {
+  const b = await bootPseudo({ 'Matti Virtanen': 'Pekka' }, [
+    { toolCalls: [{ name: 'write', args: { path: 'Pekka.txt', content: 'Pekka' } }] },
+    { text: 'Kirjoitettu.' },
+    { toolCalls: [{ name: 'write', args: { path: 'linkki.txt', content: 'uusi' } }] },
+    { text: 'Kirjoitettu.' },
+    { toolCalls: [{ name: 'write', args: { path: 'iso.txt', content: 'Pekka Pekka' } }] },
+    { text: 'Ei mahtunut.' },
+  ]);
+  const { c, chat, srv } = b;
+  const { list } = await client(b);
+  const root = srv.registry.cwd;
+  const turn = async (text: string) => {
+    c.send({ type: 'user.message', chatId: chat.id, text });
+    const req = await c.next('approval.request');
+    c.send({ type: 'approval.respond', requestId: req.requestId, approve: true });
+    const end = await c.next('tool.end');
+    await c.idle();
+    return end;
+  };
+  /** Ids of the assistant messages with a tool call, as `chat.state` has them. */
+  const toolMessages = async () => {
+    c.send({ type: 'chat.open', chatId: chat.id });
+    const { messages } = await c.next('chat.state');
+    return messages.filter((m) => m.tools.length).map((m) => m.id);
+  };
+  expect((await turn('Kirjoita Matti Virtanen')).status).toBe('ok');
+  expect(readFileSync(join(root, 'Matti Virtanen.txt'), 'utf8')).toBe('Matti Virtanen');
+  mkdirSync(join(root, 'docs'));
+  writeFileSync(join(root, 'docs', 'a.txt'), 'vanha');
+  symlinkSync(join(root, 'docs', 'a.txt'), join(root, 'linkki.txt'));
+  expect((await turn('Kirjoita linkkiin')).status).toBe('ok');
+  const [first, second] = await toolMessages();
+  const byName = new Map((await list()).entries.map((e) => [e.name, e]));
+  // The origin sits on the names the user sees: the real file name and the link itself.
+  expect(byName.get('Matti Virtanen.txt')?.origin?.messageId).toBe(first);
+  expect(byName.get('linkki.txt')?.origin?.messageId).toBe(second);
+  // 'Pekka Pekka' (11 bytes) would fit in 20; the real text (29 bytes) does not. The size cache
+  // is empty since the last write, so the guard walks the dir again and sees the sparse file.
+  const used = await dirBytes(root);
+  writeFileSync(join(root, 'harva.bin'), '');
+  truncateSync(join(root, 'harva.bin'), USER_QUOTA - used - 20);
+  const third = await turn('Kirjoita iso');
+  expect(third.status).toBe('error');
+  expect(third.summary).toContain('tallennustila on täynnä');
+  expect(existsSync(join(root, 'iso.txt'))).toBe(false);
 });
