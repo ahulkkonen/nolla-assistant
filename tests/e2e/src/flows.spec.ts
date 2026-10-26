@@ -171,6 +171,34 @@ test('long stream: render cost, then the jump-to-latest pill', async ({ app, pag
   const cost = `${(await commits()) - c0} commits, ${Math.round(((await script()) - s0) * 1000)} ms script`;
   console.log(`long stream: ${cost}`);
   test.info().annotations.push({ type: 'long stream', description: cost });
+
+  // A second long reply: scrolled up while it streams, the follow stops and the pill shows.
+  app.llm.push({ text: LONG_MD });
+  const region = thread(page);
+  const gap = () => region.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight);
+  const pill = page.getByRole('button', { name: 'Uusimpaan' });
+  await send(page, 'Vielä toinen');
+  await expect(page.getByRole('button', { name: 'Pysäytä' })).toBeVisible();
+  await region.hover();
+  await page.mouse.wheel(0, -3000);
+  await expect(pill).toBeVisible();
+  const top = await region.evaluate((el) => el.scrollTop);
+  await page.waitForTimeout(300);
+  expect(await region.evaluate((el) => el.scrollTop)).toBe(top);
+  await pill.click();
+  await expect(pill).toHaveCount(0);
+  await expect.poll(gap).toBeLessThan(48);
+  // The follow resumed: the thread is still at the bottom when the reply ends.
+  await expect(page.getByRole('button', { name: 'Pysäytä' })).toHaveCount(0, { timeout: 30_000 });
+  await expect.poll(gap).toBeLessThan(48);
+
+  // End inside the thread jumps too.
+  await page.mouse.wheel(0, -3000);
+  await expect(pill).toBeVisible();
+  await region.getByRole('region', { name: 'Koodi: ts' }).first().focus();
+  await page.keyboard.press('End');
+  await expect(pill).toHaveCount(0);
+  await expect.poll(gap).toBeLessThan(48);
 });
 
 test('attach image reaches the LLM as image_url', async ({ app, page }) => {

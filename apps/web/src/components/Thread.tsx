@@ -10,7 +10,6 @@ import { useModel } from '../useModel.ts';
 import { forkChat, openChat, retryTurn, send, sendUserMessage, setDataPolicy } from '../ws.ts';
 import { ApprovalCard } from './ApprovalCard.tsx';
 import { FindBar } from './FindBar.tsx';
-import { IconButton } from './IconButton.tsx';
 import { MemoryChipRow } from './MemoryChipRow.tsx';
 import { MessageView } from './MessageView.tsx';
 import { UNTITLED } from './Sidebar.tsx';
@@ -101,8 +100,22 @@ export function Thread() {
   const approvals = allApprovals.filter((a) => a.chatId === chatId && !a.expired && !a.denied);
   const scroller = useRef<HTMLElement>(null);
   const pinned = useRef(true);
+  // The pill's smooth scroll is on its way: its scroll events must not stop the follow.
+  const jumping = useRef(false);
   const [away, setAway] = useState(false);
+  // Messages the reader has seen at the bottom; the rest count as new on the pill.
+  const seen = useRef(messages.length);
   useAnnouncements(chatId);
+  const lastUserId = messages.findLast((m) => m.role === 'user')?.id;
+
+  useEffect(() => {
+    if (!away) seen.current = messages.length;
+  }, [away, messages.length]);
+
+  // A sent message, or another chat, follows the bottom again.
+  useEffect(() => {
+    pinned.current = true;
+  }, [lastUserId, chatId]);
 
   // Follow the bottom while the user has not scrolled up (a jump, not a smooth scroll).
   useEffect(() => {
@@ -211,6 +224,18 @@ export function Thread() {
     if (refused) announce('Malli ei tue ZDR:ää', true);
   }, [refused]);
 
+  /** "Uusimpaan" and End: to the bottom (smooth unless reduced motion), and the follow resumes. */
+  const jump = () => {
+    const el = scroller.current;
+    if (!el) return;
+    pinned.current = jumping.current = true;
+    setAway(false);
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    el.scrollTo({ top: el.scrollHeight, behavior: reduce ? 'auto' : 'smooth' });
+  };
+  const unread = away ? messages.length - seen.current : 0;
+  const inner = (t: EventTarget) => !!(t as HTMLElement).closest('[role="region"]');
+
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
       <section
@@ -219,8 +244,27 @@ export function Thread() {
         onScroll={(e) => {
           const el = e.currentTarget;
           const gap = el.scrollHeight - el.scrollTop - el.clientHeight;
+          if (jumping.current && gap >= 48) return;
+          jumping.current = false;
           pinned.current = gap < 48;
           setAway(gap > 80);
+        }}
+        // The reader scrolls up: the follow stops at once, before a delta can pull the thread
+        // back down; `onScroll` then sets it from the real position. It also ends a smooth jump.
+        // Not inside a scrolling region of its own (tool output, code): that scroll is not ours.
+        onWheel={(e) => {
+          jumping.current = false;
+          if (e.deltaY < 0 && !inner(e.target)) pinned.current = false;
+        }}
+        onTouchMove={() => (jumping.current = false)}
+        onKeyDown={(e) => {
+          const t = e.target as HTMLElement;
+          if (t.closest('input, textarea, [contenteditable="true"]')) return;
+          if (['ArrowUp', 'PageUp', 'Home'].includes(e.key) && !inner(t))
+            pinned.current = jumping.current = false;
+          if (e.key !== 'End') return;
+          e.preventDefault();
+          jump();
         }}
         className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-4"
       >
@@ -376,16 +420,19 @@ export function Thread() {
         </div>
       </section>
       {away && (
-        <IconButton
-          label="Siirry loppuun"
-          className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full border border-border bg-card shadow-md"
-          onClick={() => {
-            const el = scroller.current;
-            if (el) el.scrollTop = el.scrollHeight;
-          }}
+        // Brief 7.5: 12 px above the composer, centred on the thread column. Dark has no
+        // shadow-sm; floating elements take the dark floating shadow there (7.4).
+        <Button
+          variant="outline"
+          onClick={jump}
+          className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-card px-4 text-foreground shadow-sm hover:bg-accent dark:shadow-md"
         >
-          <ArrowDown size={16} />
-        </IconButton>
+          <ArrowDown />
+          Uusimpaan
+          {unread > 1 && (
+            <span className="font-normal text-muted-foreground">· {unread} uutta</span>
+          )}
+        </Button>
       )}
     </div>
   );

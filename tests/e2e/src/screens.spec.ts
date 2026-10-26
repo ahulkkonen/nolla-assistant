@@ -1401,6 +1401,32 @@ for (const scheme of ['light', 'dark'] as const) {
         });
       }
 
+      test('jump-pill', async ({ app, page }) => {
+        test.skip(vp.width === 1440, 'The pill is shot at 390 and 1024.');
+        writeFileSync(join(app.dataDir, 'work/aleksi/note.txt'), 'Muistiinpano.\n');
+        app.llm.push({ text: LONG });
+        // Matched turns: the title job cannot take them.
+        const match = 'Lue note.txt';
+        app.llm.push({ match, toolCalls: [{ name: 'read', args: { path: 'note.txt' } }] });
+        app.llm.push({ match, text: LONG });
+        const hold = await holdAfter(page, 'tool.start');
+        await app.login(page);
+        await send(page, 'Kirjoita pitkä vastaus');
+        await expect(page.locator('.md').last()).toContainText('Kappale 61');
+        await expect(page.getByRole('button', { name: 'Pysäytä' })).toHaveCount(0);
+        await send(page, 'Lue note.txt ja jatka');
+        await hold.reached;
+        // Scrolled up while the turn runs: its tool round and its reply arrive as 2 new messages.
+        await page
+          .getByRole('region', { name: 'Keskustelu' })
+          .evaluate((el) => el.scrollTo({ top: 0 }));
+        hold.release();
+        await expect(page.getByRole('button', { name: 'Uusimpaan · 2 uutta' })).toBeVisible();
+        await expect(page.getByRole('button', { name: 'Pysäytä' })).toHaveCount(0);
+        if (vp.width !== 390) await page.mouse.move(8, 8);
+        await shot(page, 'jump-pill', vp.width, scheme);
+      });
+
       test.describe('admin', () => {
         // Phase 15: the editors, devices and the full export; run times in Helsinki time.
         test.use({ timezoneId: 'Europe/Helsinki' });
