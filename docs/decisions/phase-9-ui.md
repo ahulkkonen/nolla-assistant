@@ -184,8 +184,9 @@ Neutral base: warm gray. One accent: blue, for focus ring and links only. The pr
 | `--success` / `--success-subtle` | #26702b / #e6f2e3 | #86c98a / #24392a | done, diff added |
 | `--warning` / `--warning-subtle` | #8a5300 / #fbefd9 | #e6b45e / #3d3220 | waiting, near cap, search match |
 | `--warning-line` | #b7791f | #e6b45e | approval card outline |
-| `--find` | #f6dc9a | #6a5322 | find bar: the current hit (with the 2 px `--warning` underline) |
-| `--find-hit` | `--warning` at 30 % | `--warning` at 30 % | find bar: the other hits (readable on the canvas and on a user bubble) |
+| `--find` | #b37a19 | #b37a19 | find bar: the current hit, with a 2 px underline in `--find-ink` |
+| `--find-hit` | #a87c24 | #a87c24 | find bar: the other hits; ≥ 3:1 against the canvas and a user bubble in both schemes |
+| `--find-ink` | #141413 | #141413 | find bar: the text on a hit (≥ 4.5:1 on both fills) |
 | `--info` / `--info-subtle` | #1d5bbf / #e5eefb | #8fb6f5 / #22314a | running, notices, "Näytetään mitä malli näki" bar |
 | `--destructive-subtle` | #fbe7e4 | #45282a | diff removed, inline error |
 | `--mask` / `--mask-line` | #ece4fb / #7151c4 | #3e3557 / #b8a3f0 | masked-text highlight / dotted underline |

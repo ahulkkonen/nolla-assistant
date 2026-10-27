@@ -237,8 +237,11 @@
   --warning: #8a5300;
   --warning-subtle: #fbefd9;
   /* Find bar hits: readable on the canvas, a card and a user bubble (phase 13). */
-  --find: #f6dc9a;
-  --find-hit: color-mix(in srgb, var(--warning) 30%, transparent);
+  /* Find hits, the same in both schemes: ≥ 3:1 against the canvas and a user bubble, the ink on
+     them ≥ 4.5:1 (phase-9 brief 7.3). */
+  --find: #b37a19;
+  --find-hit: #a87c24;
+  --find-ink: #141413;
   --warning-line: #b7791f;
   --info: #1d5bbf;
   --info-subtle: #e5eefb;
@@ -302,7 +305,6 @@
     --success-subtle: #24392a;
     --warning: #e6b45e;
     --warning-subtle: #3d3220;
-    --find: #6a5322;
     --warning-line: #e6b45e;
     --info: #8fb6f5;
     --info-subtle: #22314a;
@@ -495,12 +497,14 @@
 }
 
 /* Phase 13: the find bar's hits (CSS Custom Highlight API); the DOM does not change. */
-/* Hits: --warning at 30 %, readable on the canvas and on a user bubble in both schemes. */
+/* Hits: a solid amber with dark ink, readable on the canvas and on a user bubble in both schemes
+   (a highlight takes no outline). The current hit: the more saturated --find and an underline. */
 ::highlight(find) {
   background-color: var(--find-hit);
+  color: var(--find-ink);
 }
-/* The current hit: the stronger --find fill and the underline. */
 ::highlight(find-current) {
   background-color: var(--find);
-  text-decoration: underline 2px var(--warning);
+  color: var(--find-ink);
+  text-decoration: underline 2px var(--find-ink);
 }
