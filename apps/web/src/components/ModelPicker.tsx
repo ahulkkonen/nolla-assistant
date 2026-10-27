@@ -182,6 +182,8 @@ export function ModelPicker() {
           className={cn(chip, 'text-muted-foreground hover:text-foreground')}
         >
           {label}
+          {/* As on desktop and as the agent chip: the chip opens a choice. */}
+          <ChevronDown size={16} className="shrink-0" />
         </Button>
         <Sheet open={open} onOpenChange={setOpen}>
           <SheetContent

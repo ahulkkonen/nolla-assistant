@@ -476,7 +476,7 @@ export function ArtifactPanel() {
     >
       <aside aria-label="Artefaktit" className="flex h-full min-h-0 flex-col bg-card">
         {/* The tabs take a second row, so the title keeps the header's width. */}
-        <div className="flex min-h-12 shrink-0 flex-wrap items-center gap-x-2 border-b px-3">
+        <div className="flex min-h-12 shrink-0 flex-wrap items-center gap-x-2 border-b px-4">
           <h2 className="flex h-12 min-w-0 flex-1 items-center text-ui font-semibold">
             {artifacts.length > 1 ? (
               // More than one artifact in the chat: the title picks between them.
@@ -516,7 +516,8 @@ export function ArtifactPanel() {
             </TabsList>
           )}
           {/* Phones: Kopioi is in the Lataa menu and the 44 px targets keep 8 px apart. */}
-          <div className="flex max-md:gap-2">
+          {/* 32 px buttons 4 apart (44 px and 8 apart on phones): one pitch for all. */}
+          <div className="flex gap-1 max-md:gap-2">
             {!mobile && (
               <IconButton label={copied ? 'Kopioitu' : 'Kopioi'} className="size-8" onClick={copy}>
                 {copied ? <Check size={16} /> : <Copy size={16} />}
@@ -525,6 +526,7 @@ export function ArtifactPanel() {
             {/* One "Lataa" menu for every kind; four icons in the header (phase-19 UI review). */}
             <ActionMenu
               label="Lataa"
+              className="size-8"
               Icon={Download}
               actions={[
                 ...(exportable

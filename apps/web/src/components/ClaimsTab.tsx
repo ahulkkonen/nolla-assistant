@@ -276,6 +276,17 @@ function ClaimCard({ claim }: { claim: Claim }) {
 
   /** "Hyväksy: Käyttäjä juo…": every action names its claim. */
   const named = (action: string) => `${action}: ${claim.text}`;
+  const expiryButton = (
+    <Button
+      variant="outline"
+      disabled={busy}
+      onClick={() => setMode('expiry')}
+      aria-label={named('Voimassa asti')}
+      className={cn(!proposed && 'max-md:col-span-2')}
+    >
+      Voimassa asti
+    </Button>
+  );
   const saveOff =
     busy ||
     (mode === 'edit'
@@ -318,16 +329,9 @@ function ClaimCard({ claim }: { claim: Claim }) {
             <Button variant="outline" disabled={busy} onClick={reject} aria-label={named('Hylkää')}>
               Hylkää
             </Button>
-            <Button
-              variant="outline"
-              disabled={busy}
-              onClick={() => setMode('expiry')}
-              aria-label={named('Voimassa asti')}
-              // Active on a phone: "Hylkää | Muokkaa", then this one across the card.
-              className={cn(!proposed && 'max-md:order-last max-md:col-span-2')}
-            >
-              Voimassa asti
-            </Button>
+            {/* Active: Hylkää, Muokkaa, Voimassa asti at every width (on a phone the last
+                one spans the card); proposed: Hylkää, Voimassa asti, Muokkaa, Hyväksy. */}
+            {proposed && expiryButton}
             <Button
               variant="outline"
               disabled={busy}
@@ -336,6 +340,7 @@ function ClaimCard({ claim }: { claim: Claim }) {
             >
               Muokkaa
             </Button>
+            {!proposed && expiryButton}
             {proposed && (
               <Button disabled={busy} onClick={accept} aria-label={named('Hyväksy')}>
                 Hyväksy
@@ -489,16 +494,16 @@ export function ClaimsTab() {
         </Section>
       )}
       {superseded.length > 0 && (
-        // The disclosure button's own padding stands in for most of the 16 px gap.
-        <section aria-labelledby="claims-superseded" className="flex flex-col gap-1">
+        <section aria-labelledby="claims-superseded" className="flex flex-col gap-4">
           <h2 id="claims-superseded" className="text-heading">
             <Button
               variant="ghost"
               aria-expanded={history}
               aria-controls="claims-superseded-list"
               onClick={() => setHistory(!history)}
-              // A disclosure, not a toggle: no fill while open.
-              className="-ml-2 gap-1 px-2 text-heading aria-expanded:bg-transparent"
+              // A disclosure, not a toggle: no fill while open. The height of a heading line, so
+              // the gaps around it match the other sections; ::after keeps a 44 px phone target.
+              className="relative -ml-2 h-auto gap-1 px-2 py-0 text-heading after:absolute after:inset-x-0 after:-inset-y-2.5 aria-expanded:bg-transparent max-md:h-auto"
             >
               <ChevronRight
                 size={16}

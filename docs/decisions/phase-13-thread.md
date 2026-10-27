@@ -585,8 +585,9 @@ screen.
     "Sulje haku" (`X`). They are 32 px, and 44 px on a phone.
 - Enter goes to the next hit and Shift+Enter to the previous one. The current hit scrolls to the
   center of the thread without smooth scrolling.
-- Highlights: `::highlight(find)` with bg `--warning-subtle`. The current hit also gets
-  `::highlight(find-current)` with `text-decoration: underline 2px var(--warning)`.
+- Highlights: `::highlight(find)` with bg `--warning-subtle`. The current hit gets
+  `::highlight(find-current)` with the stronger fill `--find` and
+  `text-decoration: underline 2px var(--warning)`.
 - The polite live region says "Osuma 3/12" after each move.
 - Without `CSS.highlights`, the bar still counts and scrolls.
 - The shortcuts dialog lists "Etsi keskustelusta" with Ctrl F.

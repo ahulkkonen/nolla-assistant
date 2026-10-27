@@ -23,9 +23,23 @@ const axis = (a: Options | undefined) => ({ ...a, tickSize: 0, line: false, labe
  */
 function plot(options: Options = {}) {
   const width = contentWidth();
+  // With a y grid, a rule at zero would double the grid line there (Vega draws none).
+  const grid = !!options.y?.grid || !!options.grid;
+  const marks = grid
+    ? ((options.marks ?? []) as Options[]).filter(
+        (m) =>
+          !(
+            m?.ariaLabel === 'rule' &&
+            Array.isArray(m.data) &&
+            m.data.length === 1 &&
+            m.data[0] === 0
+          ),
+      )
+    : options.marks;
   const render = (marginLeft: number) =>
     ObservablePlot.plot({
       ...options,
+      ...(marks ? { marks } : {}),
       // 0 before layout (a hidden frame): Plot's own minimum.
       width: width > 0 ? width : 320,
       marginLeft,
@@ -33,21 +47,34 @@ function plot(options: Options = {}) {
       marginRight: options.marginRight ?? 15,
       // Band gaps as Vega's `bandPaddingInner` 0.25 (Plot ignores it on other scales).
       x: { padding: 0.25, ...axis(options.x) },
-      // The unit at the left edge above the top tick; labels 8 px from the plot, as Vega's.
+      // The unit above the top tick; labels 8 px from the plot, as Vega's.
       y: { nice: true, ...axis(options.y), tickPadding: 8, labelAnchor: 'top' },
     } as ObservablePlot.PlotOptions);
-  // A first render off the page: the widest y tick label sets the left margin, so the labels
-  // start on the text edge. A frame not laid out yet measures 0 and keeps 56.
-  const probe = render(56);
-  probe.style.position = 'absolute';
-  probe.style.visibility = 'hidden';
-  document.body.append(probe);
-  const labels = probe.querySelector<SVGGraphicsElement>('g[aria-label="y-axis tick label"]');
-  const w = labels ? Math.ceil(labels.getBBox().width) : 0;
-  probe.remove();
-  if (w) return render(w + 8);
-  probe.style.position = probe.style.visibility = '';
-  return probe;
+  /** Measured on the page, unseen: the widest y tick label and the unit label's offset. */
+  const measure = (el: HTMLElement | SVGElement) => {
+    el.style.position = 'absolute';
+    el.style.visibility = 'hidden';
+    document.body.append(el);
+    const labels = el.querySelector<SVGGraphicsElement>('g[aria-label="y-axis tick label"]');
+    const unit = el.querySelector<SVGGraphicsElement>('g[aria-label="y-axis label"]');
+    const left = el.getBoundingClientRect().left;
+    const out = {
+      w: labels ? Math.ceil(labels.getBBox().width) : 0,
+      dx: unit ? unit.getBoundingClientRect().left - left : 0,
+    };
+    el.remove();
+    el.style.position = el.style.visibility = '';
+    return out;
+  };
+  // The widest y tick label sets the left margin, so the labels start on the text edge; then
+  // the unit label moves onto that edge too. A frame not laid out yet measures 0 and keeps 56.
+  const { w } = measure(render(56));
+  const out = render(w ? w + 8 : 56);
+  const { dx } = measure(out);
+  const unit = out.querySelector('g[aria-label="y-axis label"]');
+  if (unit && dx)
+    unit.setAttribute('transform', `translate(${-dx},0) ${unit.getAttribute('transform') ?? ''}`);
+  return out;
 }
 
 // Bars round their end only, radius 4 (Vega `cornerRadiusEnd`). Measured: the corner names work

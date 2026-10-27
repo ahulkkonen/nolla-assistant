@@ -48,6 +48,7 @@ export function ActionMenu({
   onOpenChange,
   note,
   Icon = MoreHorizontal,
+  className,
 }: {
   label: string;
   actions: Action[];
@@ -58,6 +59,8 @@ export function ActionMenu({
   note?: string | undefined;
   /** The trigger's icon; ⋯ by default. */
   Icon?: LucideIcon;
+  /** The trigger's size class, when it sits in a row of other icon buttons. */
+  className?: string;
 }) {
   return (
     <DropdownMenu
@@ -66,7 +69,7 @@ export function ActionMenu({
       {...(onOpenChange ? { onOpenChange } : {})}
     >
       <DropdownMenuTrigger asChild>
-        <IconButton label={label} {...(small ? { className: 'size-7' } : {})}>
+        <IconButton label={label} className={className ?? (small ? 'size-7' : undefined)}>
           <Icon size={16} />
         </IconButton>
       </DropdownMenuTrigger>
