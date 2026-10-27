@@ -193,29 +193,47 @@ const blockFor = async (q: string) => {
   };
 };
 
-/** Share of extracted claims that the masked judge matches to a gold claim. */
-async function precision(texts: string[]) {
+/** Masked judge over numbered batches of ten (one call with 60 booleans came back misaligned). */
+async function judgeEach(items: string[], task: string) {
+  let hits = 0;
+  for (let i = 0; i < items.length; i += 10) {
+    const batch = items.slice(i, i + 10);
+    const r = await judgeAsk(z.object({ matches: z.array(z.boolean()).length(batch.length) }), [
+      {
+        role: 'system',
+        content: `${task} Vastaa pelkällä JSON-objektilla: {"matches": [boolean, ...]}, täsmälleen ${batch.length} arvoa numerojärjestyksessä.`,
+      },
+      {
+        role: 'user',
+        content: await mask('eval:judge', batch.map((t, j) => `${j + 1}. ${t}`).join('\n')),
+      },
+    ]);
+    hits += r?.matches.filter(Boolean).length ?? 0;
+  }
+  return Math.round((1000 * hits) / items.length) / 1000;
+}
+
+/** Precision: the share of extracted claims that their own evidence quote supports. */
+const precision = (rows: { text: string; quote: string }[]) =>
+  llmError || !rows.length
+    ? null
+    : judgeEach(
+        rows.map((r) => `Havainto: ${r.text}\n   Lainaus: ${r.quote}`),
+        'Saat numeroituja havaintoja, kullakin lainaus keskustelusta. Kerro jokaisesta, tukeeko lainaus havaintoa (havainto seuraa lainauksesta, ei vain liity siihen).',
+      );
+
+/** Gold match: the share of extracted claims that repeat a gold claim (coverage of the gold set, not precision). */
+async function goldMatch(texts: string[]) {
   if (llmError || !texts.length) return null;
-  const goldTexts = readFileSync(join(root, 'fixtures/gold-claims.jsonl'), 'utf8')
+  const gold = readFileSync(join(root, 'fixtures/gold-claims.jsonl'), 'utf8')
     .trim()
     .split('\n')
-    .map((l) => (JSON.parse(l) as { text: string }).text);
-  const r = await judgeAsk(z.object({ matches: z.array(z.boolean()) }), [
-    {
-      role: 'system',
-      content:
-        'Saat kultaiset havainnot ja poimitut havainnot. Kerro jokaisesta poimitusta, vastaako se sisällöltään jotakin kultaista havaintoa. Vastaa pelkällä JSON-objektilla: {"matches": [boolean, ...]} poimittujen järjestyksessä.',
-    },
-    {
-      role: 'user',
-      content: await mask(
-        'eval:precision',
-        `Kultaiset:\n${goldTexts.join('\n')}\n\nPoimitut:\n${texts.join('\n')}`,
-      ),
-    },
-  ]);
-  const m = r?.matches.slice(0, texts.length) ?? [];
-  return m.length ? Math.round((1000 * m.filter(Boolean).length) / texts.length) / 1000 : null;
+    .map((l) => (JSON.parse(l) as { text: string }).text)
+    .join('\n');
+  return judgeEach(
+    texts,
+    `Kultaiset havainnot:\n${gold}\n\nSaat numeroituja poimittuja havaintoja. Kerro jokaisesta, vastaako se sisällöltään jotakin kultaista havaintoa (sama asia, sanamuoto saa erota).`,
+  );
 }
 
 const ANSWER = `Olet käyttäjän avustaja. Vastaa käyttäjän kysymykseen vain alla olevan muistin perusteella. Jos muisti ei kerro vastausta, sano "En tiedä". Vastaa pelkällä JSON-objektilla: {"answer": string}`;
@@ -230,6 +248,11 @@ type Row = {
   profileHit: boolean | null;
   correct: boolean | null;
   blockChars: number;
+  /** The model's masked answer next to the gold answer (synthetic data), so a wrong row can be read. */
+  answer?: string | undefined;
+  expected?: string | undefined;
+  /** The masked context of a wrong answer, to tell a retrieval miss from an answer-model miss. */
+  context?: string | undefined;
 };
 const rows: Row[] = [];
 const timeline = [...chatList].sort((a, b) => b.daysAgo - a.daysAgo);
@@ -242,7 +265,7 @@ for (const q of [...questions].sort((a, b) => b.askedDaysAgo - a.askedDaysAgo)) 
   }
   if (fresh && store) await memory.consolidate();
   const block = await blockFor(q.question);
-  const hits = await search(db, USER, q.question, 5, pseudo);
+  const hits = await search(db, USER, q.question, 5, pseudo, { mark: false });
   const snippets = await memory.recall(q.question, {});
   const recalled = store ? evidenceOf((await store.recallRanked(q.question)).map((c) => c.id)) : [];
   // Recall@5: the top 5 of the union, in the order the model reads it (block, then recall).
@@ -269,9 +292,11 @@ for (const q of [...questions].sort((a, b) => b.askedDaysAgo - a.askedDaysAgo)) 
     ? recallHit || q.evidence.some((e) => inProfile.has(e))
     : null;
   let correct: boolean | null = null;
+  let answer: string | undefined;
+  let context: string | undefined;
   if (!llmError) {
     const profile = `## Käyttäjä\n${memory.read('user')}\n\n## Muisti\n${memory.read('memory')}`;
-    const context = await mask(
+    context = await mask(
       `eval:${q.id}`,
       `${profile}\n\n${block.block}\n\nHaku:\n${snippets.map((s) => `- ${s.snippet}`).join('\n')}`,
     );
@@ -293,6 +318,7 @@ for (const q of [...questions].sort((a, b) => b.askedDaysAgo - a.askedDaysAgo)) 
       },
     ]);
     correct = j?.correct ?? false;
+    answer = a?.answer;
   }
   rows.push({
     id: q.id,
@@ -302,18 +328,29 @@ for (const q of [...questions].sort((a, b) => b.askedDaysAgo - a.askedDaysAgo)) 
     profileHit,
     correct,
     blockChars: block.block.length,
+    answer,
+    expected: q.answer,
+    context: correct === false ? context : undefined,
   });
 }
-const claimPrecision =
+const extracted =
   store && claimsFrom !== 'gold'
-    ? await precision(
-        db
-          .select()
-          .from(claims)
-          .all()
-          .map((c) => c.text),
-      )
-    : null;
+    ? db
+        .select({ id: claims.id, status: claims.status, kind: claims.kind, text: claims.text })
+        .from(claims)
+        .all()
+        .map((c) => ({
+          ...c,
+          quote:
+            db
+              .select({ quote: evidence.quote })
+              .from(evidence)
+              .where(and(eq(evidence.claimId, c.id), eq(evidence.stance, 'supports')))
+              .get()?.quote ?? '',
+        }))
+    : [];
+const claimPrecision = await precision(extracted);
+const claimGoldMatch = await goldMatch(extracted.map((c) => c.text));
 memory.close();
 
 // 4. Metrics.
@@ -361,7 +398,10 @@ const result = {
   },
   claimsFrom: noClaims ? null : claimsFrom,
   claimPrecision,
+  claimGoldMatch,
   extraction,
+  /** Masked claims with their evidence quote, so a human can check the judge. */
+  extracted: extracted.map(({ status, kind, text, quote }) => ({ status, kind, text, quote })),
   rows,
 };
 const out =

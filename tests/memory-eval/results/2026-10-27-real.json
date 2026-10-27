@@ -1,0 +1,1533 @@
+{
+  "date": "2026-10-27",
+  "commit": "0b9a49c",
+  "mode": "claims",
+  "models": {
+    "answer": "zdr/fast",
+    "judge": "zdr/task-small",
+    "extract": "zdr/task-small"
+  },
+  "llmError": null,
+  "recallAt5": {
+    "total": 0.753,
+    "temporal": 0.8,
+    "knowledge_update": 0.667,
+    "single_session_user": 0.9,
+    "multi_session": 0.6,
+    "preference": 0.8,
+    "abstention": null
+  },
+  "recallOrProfile": {
+    "total": 0.988,
+    "temporal": 1,
+    "knowledge_update": 1,
+    "single_session_user": 1,
+    "multi_session": 1,
+    "preference": 0.933,
+    "abstention": null
+  },
+  "qaAccuracy": {
+    "total": 0.8,
+    "temporal": 0.8,
+    "knowledge_update": 0.733,
+    "single_session_user": 0.9,
+    "multi_session": 0.5,
+    "preference": 0.933,
+    "abstention": 1
+  },
+  "blockTokens": {
+    "mean": 62,
+    "p95": 277
+  },
+  "claimsFrom": "extract",
+  "claimPrecision": 0.817,
+  "claimGoldMatch": 0.4,
+  "extraction": {
+    "calls": 30,
+    "costUsd": 0.016050870000000002
+  },
+  "extracted": [
+    {
+      "status": "superseded",
+      "kind": "rhythm",
+      "text": "Käyttäjä juoksee kolme kertaa viikossa aamuisin ennen töitä, yleensä noin kahdeksan kilometriä.",
+      "quote": "Juoksen kolme kertaa viikossa aamuisin ennen töitä, yleensä noin kahdeksan kilometriä."
+    },
+    {
+      "status": "superseded",
+      "kind": "fact",
+      "text": "Käyttäjä asuu Espoossa ja lenkkeilee Keskuspuistossa.",
+      "quote": "Asun Espoossa ja lenkkeilen Keskuspuistossa, joten mäkiä löytyy."
+    },
+    {
+      "status": "superseded",
+      "kind": "fact",
+      "text": "Käyttäjä on projektipäällikkö Rahtiväylä Oy:ssä ja vastaa varastojärjestelmän uudistuksesta.",
+      "quote": "Olen projektipäällikkö Rahtiväylä Oy:ssä ja vastaan varastojärjestelmän uudistuksesta."
+    },
+    {
+      "status": "superseded",
+      "kind": "relationship",
+      "text": "Mikko Virtanen on käyttäjän tiiminvetäjä.",
+      "quote": "Tiiminvetäjäni on Mikko Virtanen."
+    },
+    {
+      "status": "active",
+      "kind": "preference",
+      "text": "Mikko Virtanen haluaa käyttäjän viikkoraportin perjantaisin klo 14 mennessä.",
+      "quote": "Hän haluaa viikkoraportin perjantaisin klo 14 mennessä."
+    },
+    {
+      "status": "active",
+      "kind": "relationship",
+      "text": "Sanna Hyvönen on käyttäjän sisko.",
+      "quote": "Siskoni Sanna Hyvönen täyttää pian 40."
+    },
+    {
+      "status": "active",
+      "kind": "preference",
+      "text": "Sanna Hyvönen rakastaa keramiikkaa.",
+      "quote": "Sanna rakastaa keramiikkaa ja käy dreijauskurssilla Vantaalla."
+    },
+    {
+      "status": "active",
+      "kind": "preference",
+      "text": "Käyttäjä haluaa, että avustaja vastaa lyhyesti ja ilman otsikoita, koska pitkät listat väsyttävät.",
+      "quote": "vastaa minulle jatkossa lyhyesti ja ilman otsikoita. Pitkät listat väsyttävät."
+    },
+    {
+      "status": "active",
+      "kind": "preference",
+      "text": "Käyttäjä haluaa, että avustaja kirjoittaa aina suomeksi, vaikka kysymys olisi englanninkielisestä aiheesta.",
+      "quote": "kirjoita aina suomeksi, vaikka kysyisin englanninkielisestä aiheesta."
+    },
+    {
+      "status": "active",
+      "kind": "relationship",
+      "text": "Pekka Lahti on käyttäjän naapuri.",
+      "quote": "Naapurini Pekka Lahti lupasi lainata peräkärryään lauantaina."
+    },
+    {
+      "status": "active",
+      "kind": "preference",
+      "text": "Pekka Lahti juo vain tummapaahtoista kahvia.",
+      "quote": "Pekka juo vain tummapaahtoista kahvia."
+    },
+    {
+      "status": "active",
+      "kind": "rhythm",
+      "text": "Käyttäjä tekee syvätyötä aamupäivisin kello 8–11 eikä halua palavereja siihen aikaan.",
+      "quote": "Teen syvätyötä aamupäivisin kello 8–11 enkä halua palavereja siihen aikaan."
+    },
+    {
+      "status": "active",
+      "kind": "rhythm",
+      "text": "Käyttäjä lopettaa työt perjantaisin kello 15.",
+      "quote": "Perjantaisin lopetan työt jo kolmelta."
+    },
+    {
+      "status": "superseded",
+      "kind": "preference",
+      "text": "Käyttäjä syö kalaa ja kanaa, mutta ei punaista lihaa.",
+      "quote": "Syön kalaa ja kanaa, mutta en punaista lihaa."
+    },
+    {
+      "status": "active",
+      "kind": "fact",
+      "text": "Käyttäjän ruokabudjetti on noin 600 euroa kuussa kahdelle aikuiselle ja lapselle.",
+      "quote": "Ruokabudjettimme on noin 600 euroa kuussa kahdelle aikuiselle ja lapselle."
+    },
+    {
+      "status": "superseded",
+      "kind": "goal",
+      "text": "Käyttäjän tavoitteena on juosta puolimaraton Helsinki City Runissa toukokuussa.",
+      "quote": "Tavoitteeni on juosta puolimaraton Helsinki City Runissa toukokuussa."
+    },
+    {
+      "status": "superseded",
+      "kind": "goal",
+      "text": "Käyttäjän tavoiteaika puolimaratonilla on alle kaksi tuntia.",
+      "quote": "Tavoiteaika olisi alle kaksi tuntia."
+    },
+    {
+      "status": "active",
+      "kind": "preference",
+      "text": "Käyttäjä haluaa, että koodiesimerkit kirjoitetaan TypeScriptillä eikä Pythonilla.",
+      "quote": "Kun näytät koodia, käytä TypeScriptiä. En halua Python-esimerkkejä."
+    },
+    {
+      "status": "active",
+      "kind": "quirk",
+      "text": "Käyttäjä käyttää editorina VS Codea ja paketinhallintana pnpm:ää.",
+      "quote": "Käytän editorina VS Codea ja paketinhallintana pnpm:ää."
+    },
+    {
+      "status": "active",
+      "kind": "rhythm",
+      "text": "Käyttäjä tekee viikon isot ruokaostokset sunnuntaisin Prismassa.",
+      "quote": "Teen viikon isot ruokaostokset aina sunnuntaisin Prismassa."
+    },
+    {
+      "status": "active",
+      "kind": "preference",
+      "text": "Käyttäjä haluaa ostoslistan valmiiksi lauantai-iltana.",
+      "quote": "Se sopii, lista lauantaina."
+    },
+    {
+      "status": "active",
+      "kind": "goal",
+      "text": "Käyttäjän tavoitteena on saavuttaa ruotsin kielen B1-taso ensi vuoden loppuun mennessä.",
+      "quote": "Opettelen ruotsia. Tavoitteena on B1-taso ensi vuoden loppuun mennessä."
+    },
+    {
+      "status": "active",
+      "kind": "rhythm",
+      "text": "Käyttäjällä on ruotsin keskustelutunti tiistai-iltaisin.",
+      "quote": "Minulla on keskustelutunti tiistai-iltaisin Katja Lindqvistin kanssa."
+    },
+    {
+      "status": "active",
+      "kind": "relationship",
+      "text": "Katja Lindqvist on käyttäjän ruotsin keskustelutunnin opettaja.",
+      "quote": "Minulla on keskustelutunti tiistai-iltaisin Katja Lindqvistin kanssa."
+    },
+    {
+      "status": "active",
+      "kind": "preference",
+      "text": "Käyttäjä haluaa, että avustaja ei käytä vastauksissa emojeja, koska ne näyttävät hänestä lapselliselta.",
+      "quote": "Älä käytä vastauksissa emojeja, ne näyttävät minusta lapsellisilta."
+    },
+    {
+      "status": "active",
+      "kind": "preference",
+      "text": "Käyttäjä haluaa, että ehdotuksissa suositus esitetään ensin ja perustelut vasta sen jälkeen.",
+      "quote": "Ja kun ehdotat jotain, kerro ensin suositus ja vasta sitten perustelut."
+    },
+    {
+      "status": "active",
+      "kind": "relationship",
+      "text": "Anna-Liisa Mäkelä on käyttäjän mentori.",
+      "quote": "Mentorini Anna-Liisa Mäkelä ehdotti, että hakisin johtamiskoulutukseen."
+    },
+    {
+      "status": "active",
+      "kind": "rhythm",
+      "text": "Käyttäjä tapaa mentorinsa Anna-Liisa Mäkelän kerran kuussa, yleensä kuun ensimmäisenä maanantaina.",
+      "quote": "Tapaan Anna-Liisan kerran kuussa, yleensä kuun ensimmäisenä maanantaina."
+    },
+    {
+      "status": "active",
+      "kind": "relationship",
+      "text": "Juhani Korhonen on käyttäjän tärkein asiakas Satamarahdissa.",
+      "quote": "Tärkein asiakkaani on Juhani Korhonen Satamarahdista."
+    },
+    {
+      "status": "active",
+      "kind": "preference",
+      "text": "Juhani Korhonen haluaa käyttäjältä lyhyitä viestejä, koska hän vihaa pitkiä sähköposteja.",
+      "quote": "Hän vihaa pitkiä sähköposteja."
+    },
+    {
+      "status": "active",
+      "kind": "fact",
+      "text": "Käyttäjän Satamarahti-sopimus uusitaan joka vuosi maaliskuussa.",
+      "quote": "Satamarahdin sopimus uusitaan joka vuosi maaliskuussa."
+    },
+    {
+      "status": "active",
+      "kind": "preference",
+      "text": "Käyttäjä pitää enemmän tietokirjoista kuin romaaneista.",
+      "quote": "Pidän enemmän tietokirjoista kuin romaaneista."
+    },
+    {
+      "status": "active",
+      "kind": "preference",
+      "text": "Käyttäjä kuuntelee kirjat mieluiten äänikirjoina työmatkalla.",
+      "quote": "Kuuntelen kirjat mieluiten äänikirjoina työmatkalla."
+    },
+    {
+      "status": "active",
+      "kind": "relationship",
+      "text": "Tiina Kokko on käyttäjän tyttären opettaja.",
+      "quote": "Tyttäreni aloitti koulun elokuussa. Hänen opettajansa on Tiina Kokko."
+    },
+    {
+      "status": "active",
+      "kind": "fact",
+      "text": "Käyttäjän tytär aloitti koulun elokuussa 2026.",
+      "quote": "Tyttäreni aloitti koulun elokuussa."
+    },
+    {
+      "status": "active",
+      "kind": "relationship",
+      "text": "Matti Laine on käyttäjän lanko ja Sanna Hyvösen puoliso.",
+      "quote": "Lankoni Matti Laine on Sannan mies."
+    },
+    {
+      "status": "active",
+      "kind": "fact",
+      "text": "Matti Lainen syntymäpäivä on 12. maaliskuuta.",
+      "quote": "Hänen syntymäpäivänsä on 12. maaliskuuta."
+    },
+    {
+      "status": "active",
+      "kind": "preference",
+      "text": "Matti Laine on intohimoinen kalastaja.",
+      "quote": "Matti on intohimoinen kalastaja."
+    },
+    {
+      "status": "active",
+      "kind": "fact",
+      "text": "Käyttäjän polvi kipeytyi ja lääkäri kielsi juoksun, joten hän on lopettanut juoksemisen ja aloittanut uinnin.",
+      "quote": "Polveni kipeytyi ja lääkäri kielsi juoksun. Lopetin juoksemisen ja aloitin uinnin."
+    },
+    {
+      "status": "active",
+      "kind": "rhythm",
+      "text": "Käyttäjä uii kaksi kertaa viikossa Tesoman uimahallissa.",
+      "quote": "Uin nyt kaksi kertaa viikossa Tesoman uimahallissa."
+    },
+    {
+      "status": "active",
+      "kind": "goal",
+      "text": "Käyttäjän uusi tavoite on uida kaksi kilometriä yhtäjaksoisesti.",
+      "quote": "uusi tavoite on uida kaksi kilometriä yhtäjaksoisesti."
+    },
+    {
+      "status": "active",
+      "kind": "fact",
+      "text": "Käyttäjän auto on vuoden 2019 Toyota Corolla hybridi.",
+      "quote": "Autoni on vuoden 2019 Toyota Corolla hybridi."
+    },
+    {
+      "status": "active",
+      "kind": "fact",
+      "text": "Käyttäjän Toyota Corollan mittarissa on noin 85 000 kilometriä.",
+      "quote": "Mittarissa on noin 85 000 kilometriä."
+    },
+    {
+      "status": "active",
+      "kind": "fact",
+      "text": "Käyttäjä aloitti tuoteomistajana Rahtiväylä Oy:ssä lokakuun alussa 2026 ja projektipäällikön työt siirtyivät kollegalle.",
+      "quote": "Sain uuden roolin: aloitin tuoteomistajana Rahtiväylällä lokakuun alussa. Projektipäällikön työt siirtyivät kollegalle."
+    },
+    {
+      "status": "active",
+      "kind": "relationship",
+      "text": "Heikki Nieminen on käyttäjän esihenkilö.",
+      "quote": "Esihenkilöni on nyt Heikki Nieminen, ei enää Mikko."
+    },
+    {
+      "status": "active",
+      "kind": "fact",
+      "text": "Käyttäjä muutti syyskuussa 2026 Espoosta Tampereelle, Hervantaan.",
+      "quote": "Muutimme syyskuussa Espoosta Tampereelle, Hervantaan."
+    },
+    {
+      "status": "active",
+      "kind": "rhythm",
+      "text": "Käyttäjä käy Helsingin toimistolla junalla kaksi päivää viikossa ja tekee muut päivät etätyötä.",
+      "quote": "Käyn Helsingin toimistolla junalla kaksi päivää viikossa, muut päivät teen etänä."
+    },
+    {
+      "status": "active",
+      "kind": "preference",
+      "text": "Käyttäjä on ryhtynyt kasvissyöjäksi eikä syö enää kalaa eikä kanaa.",
+      "quote": "Olen nyt ryhtynyt täysin kasvissyöjäksi, en syö enää kalaakaan tai kanaa."
+    },
+    {
+      "status": "active",
+      "kind": "preference",
+      "text": "Käyttäjä saa proteiininsa pavuista ja tofusta.",
+      "quote": "Proteiinia saan pavuista ja tofusta."
+    },
+    {
+      "status": "active",
+      "kind": "decision_pattern",
+      "text": "Käyttäjä tekee isot ostopäätökset vasta yön yli nukuttuaan.",
+      "quote": "Teen isot ostopäätökset aina vasta yön yli nukuttuani."
+    },
+    {
+      "status": "active",
+      "kind": "decision_pattern",
+      "text": "Käyttäjä vertailee ennen päätöstä vähintään kolmea vaihtoehtoa.",
+      "quote": "Vertaan aina vähintään kolmea vaihtoehtoa ennen kuin päätän."
+    },
+    {
+      "status": "active",
+      "kind": "preference",
+      "text": "Käyttäjä kirjoittaa muistiinpanot ensin käsin vihkoon ja siirtää ne illalla koneelle.",
+      "quote": "Kirjoitan muistiinpanot aina ensin käsin vihkoon ja siirrän ne vasta illalla koneelle."
+    },
+    {
+      "status": "active",
+      "kind": "quirk",
+      "text": "Käyttäjä käyttää muistiinpanoihin ruutuvihkoa ja lyijykynää.",
+      "quote": "Käytän ruutuvihkoa ja lyijykynää."
+    },
+    {
+      "status": "active",
+      "kind": "fact",
+      "text": "Käyttäjän koira Roope on kolmevuotias labradorinnoutaja.",
+      "quote": "Koiramme Roope on kolmevuotias labradorinnoutaja."
+    },
+    {
+      "status": "active",
+      "kind": "rhythm",
+      "text": "Käyttäjän koira Roope tarvitsee kaksi pitkää lenkkiä päivässä.",
+      "quote": "Se tarvitsee kaksi pitkää lenkkiä päivässä."
+    },
+    {
+      "status": "active",
+      "kind": "relationship",
+      "text": "Hervannan eläinklinikka on käyttäjän koiran Roopen eläinlääkäri.",
+      "quote": "Roopen eläinlääkäri on Hervannan eläinklinikalla."
+    },
+    {
+      "status": "active",
+      "kind": "fact",
+      "text": "Käyttäjällä on vaikea pähkinäallergia, eikä hän siedä manteleita eikä pistaasia.",
+      "quote": "Minulla on vaikea pähkinäallergia, joten tarkista reseptit sen varalta."
+    },
+    {
+      "status": "active",
+      "kind": "goal",
+      "text": "Käyttäjä suunnittelee Sannan kanssa viiden päivän matkaa Lissaboniin helmikuussa.",
+      "quote": "Suunnittelemme Sannan kanssa matkaa Lissaboniin helmikuussa."
+    },
+    {
+      "status": "active",
+      "kind": "preference",
+      "text": "Käyttäjä haluaa asua Lissabonissa matkallaan Alfaman alueella.",
+      "quote": "haluamme asua Alfaman alueella."
+    },
+    {
+      "status": "active",
+      "kind": "preference",
+      "text": "Käyttäjän viikkoraporttiin lisätään tuotteen mittarit.",
+      "quote": "Raporttiin lisätään nyt myös tuotteen mittarit."
+    }
+  ],
+  "rows": [
+    {
+      "id": "q063",
+      "category": "temporal",
+      "askedDaysAgo": 60,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 0,
+      "answer": "Teet syvätyötä aamupäivisin kello 8–11.",
+      "expected": "Aamupäivisin klo 8–11"
+    },
+    {
+      "id": "q067",
+      "category": "temporal",
+      "askedDaysAgo": 55,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 0,
+      "answer": "Sunnuntaisin Prismassa.",
+      "expected": "Sunnuntaisin"
+    },
+    {
+      "id": "q041",
+      "category": "knowledge_update",
+      "askedDaysAgo": 50,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 0,
+      "answer": "Juokset kolme kertaa viikossa aamuisin ennen töitä, yleensä noin kahdeksan kilometriä.",
+      "expected": "Kolme kertaa viikossa aamuisin"
+    },
+    {
+      "id": "q051",
+      "category": "knowledge_update",
+      "askedDaysAgo": 40,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 0,
+      "answer": "Viikkoraportti lähetetään tiiminvetäjällesi Otto Kataiselle perjantaisin klo 14 mennessä.",
+      "expected": "Mikko Virtaselle"
+    },
+    {
+      "id": "q060",
+      "category": "temporal",
+      "askedDaysAgo": 40,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 0,
+      "answer": "Vanhempainilta on lokakuun puolivälissä.",
+      "expected": "Lokakuun puolivälissä"
+    },
+    {
+      "id": "q048",
+      "category": "knowledge_update",
+      "askedDaysAgo": 30,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 0,
+      "answer": "Perjantaisin klo 14 mennessä.",
+      "expected": "Perjantaisin klo 14"
+    },
+    {
+      "id": "q052",
+      "category": "knowledge_update",
+      "askedDaysAgo": 30,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 0,
+      "answer": "Kyllä, syöt kanaa. Muistin mukaan syöt kalaa ja kanaa, mutta et punaista lihaa.",
+      "expected": "Kyllä, kalaa ja kanaa mutta ei punaista lihaa"
+    },
+    {
+      "id": "q043",
+      "category": "knowledge_update",
+      "askedDaysAgo": 28,
+      "recallHit": false,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 0,
+      "answer": "Olet projektipäällikkö Rahtiväylä Oy:ssä, ja vastaat varastojärjestelmän uudistuksesta.",
+      "expected": "Projektipäällikkö"
+    },
+    {
+      "id": "q047",
+      "category": "knowledge_update",
+      "askedDaysAgo": 10,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 325,
+      "answer": "Ruotsin keskustelutuntisi on tiistai-iltaisin.",
+      "expected": "Tiistai-iltaisin"
+    },
+    {
+      "id": "q046",
+      "category": "knowledge_update",
+      "askedDaysAgo": 8,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 0,
+      "answer": "Lissaboniin.",
+      "expected": "Lissaboniin"
+    },
+    {
+      "id": "q061",
+      "category": "temporal",
+      "askedDaysAgo": 4,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": false,
+      "blockChars": 192,
+      "answer": "En tiedä",
+      "expected": "Noin kuukausi sitten",
+      "context": "## Käyttäjä\n\n\n## Muisti\n## Mieltymykset\n- Otto Katainen haluaa käyttäjän viikkoraportin perjantaisin klo 14 mennessä.\n- Linnea Hännikäinen rakastaa keramiikkaa.\n- Oskari Kakkonen haluaa käyttäjältä lyhyitä viestejä, koska hän vihaa pitkiä sähköposteja.\n- Käyttäjä pitää enemmän tietokirjoista kuin romaaneista.\n- Käyttäjä kuuntelee kirjat mieluiten äänikirjoina työmatkalla.\n- Taavetti Taipale on intohimoinen kalastaja.\n- Käyttäjä on ryhtynyt kasvissyöjäksi eikä syö enää kalaa eikä kanaa.\n- Käyttäjä kirjoittaa muistiinpanot ensin käsin vihkoon ja siirtää ne illalla koneelle.\n- Käyttäjä haluaa asua Lissabonissa matkallaan Alfaman alueella.\n## Rytmi\n- Käyttäjä tekee viikon isot ruokaostokset sunnuntaisin Prismassa.\n- Käyttäjällä on ruotsin keskustelutunti tiistai-iltaisin.\n- Käyttäjä tapaa mentorinsa Aleksandra Mykrän kerran kuussa, yleensä kuun ensimmäisenä maanantaina.\n- Käyttäjä uii kaksi kertaa viikossa Tesoman uimahallissa.\n- Käyttäjä käy Helsingin toimistolla junalla kaksi päivää viikossa ja tekee muut päivät etätyötä.\n- Käyttäjän koira Sune tarvitsee kaksi pitkää lenkkiä päivässä.\n## Tavoitteet\n- Käyttäjän uusi tavoite on uida kaksi kilometriä yhtäjaksoisesti.\n- Käyttäjä suunnittelee Linnean kanssa viiden päivän matkaa Lissaboniin helmikuussa.\n## Faktat\n- Käyttäjän Satamarahti-sopimus uusitaan joka vuosi maaliskuussa.\n- Käyttäjän tytär aloitti koulun elokuussa 2026.\n- Taavetti Taipaleen syntymäpäivä on 12. maaliskuuta.\n- Käyttäjän polvi kipeytyi ja lääkäri kielsi juoksun, joten hän on lopettanut juoksemisen ja aloittanut uinnin.\n- Käyttäjän auto on vuoden 2019 Toyota Corolla hybridi.\n- Käyttäjän Toyota Corollan mittarissa on noin 85 000 kilometriä.\n- Käyttäjä aloitti tuoteomistajana Rahtiväylä Oy:ssä lokakuun alussa 2026 ja projektipäällikön työt siirtyivät kollegalle.\n- Käyttäjä muutti syyskuussa 2026 Espoosta Tampereelle, Hervantaan.\n- Käyttäjän koira Sune on kolmevuotias labradorinnoutaja.\n- Käyttäjällä on vaikea pähkinäallergia, eikä hän siedä manteleita eikä pistaasia.\n## Ihmiset\n- Linnea Hännikäinen on käyttäjän sisko.\n- Kaarina Engberg on käyttäjän ruotsin keskustelutunnin opettaja.\n- Aleksandra Mykrä on käyttäjän mentori.\n- Oskari Kakkonen on käyttäjän tärkein asiakas Aunola.\n- Paula Parkko on käyttäjän tyttären opettaja.\n- Taavetti Taipale on käyttäjän lanko ja Linnea Hännikäisen puoliso.\n- Pentti Kytönen on käyttäjän esihenkilö.\n- Hervannan eläinklinikka on käyttäjän koiran Sunen eläinlääkäri.\n## Tavat\n- Käyttäjä käyttää muistiinpanoihin ruutuvihkoa ja lyijykynää.\n\n## Muistista tähän viestiin\nTaustatietoa käyttäjästä. Käytä vain, jos se liittyy viestiin. Suluissa laji, varmuus ja aika.\n- (rytmi, 0.9, 2026-10) Käyttäjä lopettaa työt perjantaisin kello 15.\n\nHaku:\n- Polveni kipeytyi ja lääkäri kielsi juoksun. Lopetin juoksemisen ja aloitin uinnin.\n- Suositus ensin, perustelut sitten.\n- Helmikuu on Lissabonissa leuto. Kuinka pitkä matka?\n- Suosittele luettavaa. Pidän enemmän tietokirjoista kuin romaaneista.\n- Perjantaisin lopetan työt jo kolmelta."
+    },
+    {
+      "id": "q001",
+      "category": "single_session_user",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 0,
+      "answer": "Oskari Kakkonen on käyttäjän tärkein asiakas Aunola.",
+      "expected": "Juhani Korhonen Satamarahdista"
+    },
+    {
+      "id": "q002",
+      "category": "single_session_user",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 0,
+      "answer": "Oskari Kakkonen ei pidä pitkistä sähköposteista.",
+      "expected": "Pitkistä sähköposteista"
+    },
+    {
+      "id": "q003",
+      "category": "single_session_user",
+      "askedDaysAgo": 0,
+      "recallHit": false,
+      "profileHit": true,
+      "correct": false,
+      "blockChars": 0,
+      "answer": "En tiedä",
+      "expected": "Keramiikkaa, dreijauskurssi Vantaalla",
+      "context": "## Käyttäjä\n\n\n## Muisti\n## Mieltymykset\n- Otto Katainen haluaa käyttäjän viikkoraportin perjantaisin klo 14 mennessä.\n- Linnea Hännikäinen rakastaa keramiikkaa.\n- Oskari Kakkonen haluaa käyttäjältä lyhyitä viestejä, koska hän vihaa pitkiä sähköposteja.\n- Käyttäjä pitää enemmän tietokirjoista kuin romaaneista.\n- Käyttäjä kuuntelee kirjat mieluiten äänikirjoina työmatkalla.\n- Taavetti Taipale on intohimoinen kalastaja.\n- Käyttäjä on ryhtynyt kasvissyöjäksi eikä syö enää kalaa eikä kanaa.\n- Käyttäjä kirjoittaa muistiinpanot ensin käsin vihkoon ja siirtää ne illalla koneelle.\n- Käyttäjä haluaa asua Lissabonissa matkallaan Alfaman alueella.\n- Käyttäjän viikkoraporttiin lisätään tuotteen mittarit.\n## Rytmi\n- Käyttäjällä on ruotsin keskustelutunti tiistai-iltaisin.\n- Käyttäjä tapaa mentorinsa Aleksandra Mykrän kerran kuussa, yleensä kuun ensimmäisenä maanantaina.\n- Käyttäjä uii kaksi kertaa viikossa Tesoman uimahallissa.\n- Käyttäjä käy Helsingin toimistolla junalla kaksi päivää viikossa ja tekee muut päivät etätyötä.\n- Käyttäjän koira Sune tarvitsee kaksi pitkää lenkkiä päivässä.\n## Tavoitteet\n- Käyttäjän uusi tavoite on uida kaksi kilometriä yhtäjaksoisesti.\n- Käyttäjä suunnittelee Linnean kanssa viiden päivän matkaa Lissaboniin helmikuussa.\n## Faktat\n- Käyttäjän Satamarahti-sopimus uusitaan joka vuosi maaliskuussa.\n- Käyttäjän tytär aloitti koulun elokuussa 2026.\n- Taavetti Taipaleen syntymäpäivä on 12. maaliskuuta.\n- Käyttäjän polvi kipeytyi ja lääkäri kielsi juoksun, joten hän on lopettanut juoksemisen ja aloittanut uinnin.\n- Käyttäjän auto on vuoden 2019 Toyota Corolla hybridi.\n- Käyttäjän Toyota Corollan mittarissa on noin 85 000 kilometriä.\n- Käyttäjä aloitti tuoteomistajana Rahtiväylä Oy:ssä lokakuun alussa 2026 ja projektipäällikön työt siirtyivät kollegalle.\n- Käyttäjä muutti syyskuussa 2026 Espoosta Tampereelle, Hervantaan.\n- Käyttäjän koira Sune on kolmevuotias labradorinnoutaja.\n- Käyttäjällä on vaikea pähkinäallergia, eikä hän siedä manteleita eikä pistaasia.\n## Ihmiset\n- Linnea Hännikäinen on käyttäjän sisko.\n- Kaarina Engberg on käyttäjän ruotsin keskustelutunnin opettaja.\n- Aleksandra Mykrä on käyttäjän mentori.\n- Oskari Kakkonen on käyttäjän tärkein asiakas Aunola.\n- Paula Parkko on käyttäjän tyttären opettaja.\n- Taavetti Taipale on käyttäjän lanko ja Linnea Hännikäisen puoliso.\n- Pentti Kytönen on käyttäjän esihenkilö.\n- Hervannan eläinklinikka on käyttäjän koiran Sunen eläinlääkäri.\n## Tavat\n- Käyttäjä käyttää muistiinpanoihin ruutuvihkoa ja lyijykynää.\n\n\n\nHaku:\n- Anastaciani Linnea Hännikäinen täyttää pian 40. Mitä hänelle voisi ostaa?\n- Suosittelen päivittäistä 20 minuutin harjoitusta ja viikoittaista keskustelutuntia.\n- Mitä koulutuksia hän suositteli?\n- Tarvitsen treeniohjelman. Juoksen kolme kertaa viikossa aamuisin ennen töitä, yleensä noin kahdeksan kilometriä.\n- Uin nyt kaksi kertaa viikossa Tesoman uimahallissa. Puolimaraton jää tältä vuodelta väliin, uusi tavoite on uida kaksi kilometriä yhtäjaksoisesti."
+    },
+    {
+      "id": "q004",
+      "category": "single_session_user",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 258,
+      "answer": "Jukka Hotti juo vain tummapaahtoista kahvia.",
+      "expected": "Vain tummapaahtoista"
+    },
+    {
+      "id": "q005",
+      "category": "single_session_user",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": false,
+      "blockChars": 258,
+      "answer": "En tiedä",
+      "expected": "Peräkärryn",
+      "context": "## Käyttäjä\n\n\n## Muisti\n## Mieltymykset\n- Otto Katainen haluaa käyttäjän viikkoraportin perjantaisin klo 14 mennessä.\n- Linnea Hännikäinen rakastaa keramiikkaa.\n- Oskari Kakkonen haluaa käyttäjältä lyhyitä viestejä, koska hän vihaa pitkiä sähköposteja.\n- Käyttäjä pitää enemmän tietokirjoista kuin romaaneista.\n- Käyttäjä kuuntelee kirjat mieluiten äänikirjoina työmatkalla.\n- Taavetti Taipale on intohimoinen kalastaja.\n- Käyttäjä on ryhtynyt kasvissyöjäksi eikä syö enää kalaa eikä kanaa.\n- Käyttäjä kirjoittaa muistiinpanot ensin käsin vihkoon ja siirtää ne illalla koneelle.\n- Käyttäjä haluaa asua Lissabonissa matkallaan Alfaman alueella.\n- Käyttäjän viikkoraporttiin lisätään tuotteen mittarit.\n## Rytmi\n- Käyttäjällä on ruotsin keskustelutunti tiistai-iltaisin.\n- Käyttäjä tapaa mentorinsa Aleksandra Mykrän kerran kuussa, yleensä kuun ensimmäisenä maanantaina.\n- Käyttäjä uii kaksi kertaa viikossa Tesoman uimahallissa.\n- Käyttäjä käy Helsingin toimistolla junalla kaksi päivää viikossa ja tekee muut päivät etätyötä.\n- Käyttäjän koira Sune tarvitsee kaksi pitkää lenkkiä päivässä.\n## Tavoitteet\n- Käyttäjän uusi tavoite on uida kaksi kilometriä yhtäjaksoisesti.\n- Käyttäjä suunnittelee Linnean kanssa viiden päivän matkaa Lissaboniin helmikuussa.\n## Faktat\n- Käyttäjän Satamarahti-sopimus uusitaan joka vuosi maaliskuussa.\n- Käyttäjän tytär aloitti koulun elokuussa 2026.\n- Taavetti Taipaleen syntymäpäivä on 12. maaliskuuta.\n- Käyttäjän polvi kipeytyi ja lääkäri kielsi juoksun, joten hän on lopettanut juoksemisen ja aloittanut uinnin.\n- Käyttäjän auto on vuoden 2019 Toyota Corolla hybridi.\n- Käyttäjän Toyota Corollan mittarissa on noin 85 000 kilometriä.\n- Käyttäjä aloitti tuoteomistajana Rahtiväylä Oy:ssä lokakuun alussa 2026 ja projektipäällikön työt siirtyivät kollegalle.\n- Käyttäjä muutti syyskuussa 2026 Espoosta Tampereelle, Hervantaan.\n- Käyttäjän koira Sune on kolmevuotias labradorinnoutaja.\n- Käyttäjällä on vaikea pähkinäallergia, eikä hän siedä manteleita eikä pistaasia.\n## Ihmiset\n- Linnea Hännikäinen on käyttäjän sisko.\n- Kaarina Engberg on käyttäjän ruotsin keskustelutunnin opettaja.\n- Aleksandra Mykrä on käyttäjän mentori.\n- Oskari Kakkonen on käyttäjän tärkein asiakas Aunola.\n- Paula Parkko on käyttäjän tyttären opettaja.\n- Taavetti Taipale on käyttäjän lanko ja Linnea Hännikäisen puoliso.\n- Pentti Kytönen on käyttäjän esihenkilö.\n- Hervannan eläinklinikka on käyttäjän koiran Sunen eläinlääkäri.\n## Tavat\n- Käyttäjä käyttää muistiinpanoihin ruutuvihkoa ja lyijykynää.\n\n## Muistista tähän viestiin\nTaustatietoa käyttäjästä. Käytä vain, jos se liittyy viestiin. Suluissa laji, varmuus ja aika.\n- (ihmissuhde, 0.9, 2026-10) Jukka Hotti on käyttäjän naapuri.\n- (mieltymys, 0.9, 2026-10) Jukka Hotti juo vain tummapaahtoista kahvia.\n\nHaku:\n- Naapurini Jukka Hotti lupasi lainata peräkärryään lauantaina. Muistuta, että vien hänelle kahvipaketin kiitokseksi.\n- Yksi pyyntö: vastaa minulle jatkossa lyhyesti ja ilman otsikoita. Pitkät listat väsyttävät.\n- Mitä koulutuksia hän suositteli?\n- Anastaciani Linnea Hännikäinen täyttää pian 40. Mitä hänelle voisi ostaa?\n- Vanhempainilta on lokakuun puolivälissä, muistuta minua."
+    },
+    {
+      "id": "q006",
+      "category": "single_session_user",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 192,
+      "answer": "Tyttäresi opettaja on Paula Parkko.",
+      "expected": "Tiina Kokko"
+    },
+    {
+      "id": "q007",
+      "category": "single_session_user",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 0,
+      "answer": "Taavetti Taipaleen syntymäpäivä on 12. maaliskuuta.",
+      "expected": "12. maaliskuuta"
+    },
+    {
+      "id": "q008",
+      "category": "single_session_user",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 0,
+      "answer": "Taavetti Taipale on intohimoinen kalastaja.",
+      "expected": "Kalastus"
+    },
+    {
+      "id": "q009",
+      "category": "single_session_user",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 0,
+      "answer": "Sinulla on vuoden 2019 Toyota Corolla hybridi.",
+      "expected": "Toyota Corolla hybridi vuodelta 2019"
+    },
+    {
+      "id": "q010",
+      "category": "single_session_user",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 0,
+      "answer": "Noin 85 000 kilometriä.",
+      "expected": "Noin 85 000 km"
+    },
+    {
+      "id": "q011",
+      "category": "single_session_user",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 0,
+      "answer": "Koiranne nimi on Sune.",
+      "expected": "Roope"
+    },
+    {
+      "id": "q012",
+      "category": "single_session_user",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 0,
+      "answer": "Labradorinnoutaja",
+      "expected": "Labradorinnoutaja"
+    },
+    {
+      "id": "q013",
+      "category": "single_session_user",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 0,
+      "answer": "Sunen eläinlääkäri on Hervannan eläinklinikalla.",
+      "expected": "Hervannan eläinklinikalla"
+    },
+    {
+      "id": "q014",
+      "category": "single_session_user",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 0,
+      "answer": "Käyttäjällä on vaikea pähkinäallergia, eikä hän siedä manteleita eikä pistaasia.",
+      "expected": "Pähkinöille, myös manteleille ja pistaaseille"
+    },
+    {
+      "id": "q015",
+      "category": "single_session_user",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 634,
+      "answer": "VS Codea.",
+      "expected": "VS Codea"
+    },
+    {
+      "id": "q016",
+      "category": "single_session_user",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 634,
+      "answer": "Käytät paketinhallintana pnpm:ää.",
+      "expected": "pnpm:ää"
+    },
+    {
+      "id": "q017",
+      "category": "single_session_user",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 0,
+      "answer": "Mentorisi on Aleksandra Mykrä.",
+      "expected": "Anna-Liisa Mäkelä"
+    },
+    {
+      "id": "q018",
+      "category": "single_session_user",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 243,
+      "answer": "Mentorisi Aleksandra Mykrä ehdotti, että hakisit johtamiskoulutukseen.",
+      "expected": "Johtamiskoulutukseen"
+    },
+    {
+      "id": "q019",
+      "category": "single_session_user",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 0,
+      "answer": "Satamarahdin sopimus uusitaan joka vuosi maaliskuussa.",
+      "expected": "Joka vuosi maaliskuussa"
+    },
+    {
+      "id": "q020",
+      "category": "single_session_user",
+      "askedDaysAgo": 0,
+      "recallHit": false,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 368,
+      "answer": "Käytät ruutuvihkoa ja lyijykynää.",
+      "expected": "Lyijykynällä ruutuvihkoon"
+    },
+    {
+      "id": "q021",
+      "category": "multi_session",
+      "askedDaysAgo": 0,
+      "recallHit": false,
+      "profileHit": true,
+      "correct": false,
+      "blockChars": 0,
+      "answer": "Muistin perusteella käyttäjän lähisukulaisia ovat sisko Linnea Hännikäinen ja tämän puoliso Taavetti Taipale, joka on käyttäjän lanko.",
+      "expected": "Sisko Sanna Hyvönen, lanko Matti Laine ja tytär",
+      "context": "## Käyttäjä\n\n\n## Muisti\n## Mieltymykset\n- Otto Katainen haluaa käyttäjän viikkoraportin perjantaisin klo 14 mennessä.\n- Linnea Hännikäinen rakastaa keramiikkaa.\n- Oskari Kakkonen haluaa käyttäjältä lyhyitä viestejä, koska hän vihaa pitkiä sähköposteja.\n- Käyttäjä pitää enemmän tietokirjoista kuin romaaneista.\n- Käyttäjä kuuntelee kirjat mieluiten äänikirjoina työmatkalla.\n- Taavetti Taipale on intohimoinen kalastaja.\n- Käyttäjä on ryhtynyt kasvissyöjäksi eikä syö enää kalaa eikä kanaa.\n- Käyttäjä kirjoittaa muistiinpanot ensin käsin vihkoon ja siirtää ne illalla koneelle.\n- Käyttäjä haluaa asua Lissabonissa matkallaan Alfaman alueella.\n- Käyttäjän viikkoraporttiin lisätään tuotteen mittarit.\n## Rytmi\n- Käyttäjällä on ruotsin keskustelutunti tiistai-iltaisin.\n- Käyttäjä tapaa mentorinsa Aleksandra Mykrän kerran kuussa, yleensä kuun ensimmäisenä maanantaina.\n- Käyttäjä uii kaksi kertaa viikossa Tesoman uimahallissa.\n- Käyttäjä käy Helsingin toimistolla junalla kaksi päivää viikossa ja tekee muut päivät etätyötä.\n- Käyttäjän koira Sune tarvitsee kaksi pitkää lenkkiä päivässä.\n## Tavoitteet\n- Käyttäjän uusi tavoite on uida kaksi kilometriä yhtäjaksoisesti.\n- Käyttäjä suunnittelee Linnean kanssa viiden päivän matkaa Lissaboniin helmikuussa.\n## Faktat\n- Käyttäjän Satamarahti-sopimus uusitaan joka vuosi maaliskuussa.\n- Käyttäjän tytär aloitti koulun elokuussa 2026.\n- Taavetti Taipaleen syntymäpäivä on 12. maaliskuuta.\n- Käyttäjän polvi kipeytyi ja lääkäri kielsi juoksun, joten hän on lopettanut juoksemisen ja aloittanut uinnin.\n- Käyttäjän auto on vuoden 2019 Toyota Corolla hybridi.\n- Käyttäjän Toyota Corollan mittarissa on noin 85 000 kilometriä.\n- Käyttäjä aloitti tuoteomistajana Rahtiväylä Oy:ssä lokakuun alussa 2026 ja projektipäällikön työt siirtyivät kollegalle.\n- Käyttäjä muutti syyskuussa 2026 Espoosta Tampereelle, Hervantaan.\n- Käyttäjän koira Sune on kolmevuotias labradorinnoutaja.\n- Käyttäjällä on vaikea pähkinäallergia, eikä hän siedä manteleita eikä pistaasia.\n## Ihmiset\n- Linnea Hännikäinen on käyttäjän sisko.\n- Kaarina Engberg on käyttäjän ruotsin keskustelutunnin opettaja.\n- Aleksandra Mykrä on käyttäjän mentori.\n- Oskari Kakkonen on käyttäjän tärkein asiakas Aunola.\n- Paula Parkko on käyttäjän tyttären opettaja.\n- Taavetti Taipale on käyttäjän lanko ja Linnea Hännikäisen puoliso.\n- Pentti Kytönen on käyttäjän esihenkilö.\n- Hervannan eläinklinikka on käyttäjän koiran Sunen eläinlääkäri.\n## Tavat\n- Käyttäjä käyttää muistiinpanoihin ruutuvihkoa ja lyijykynää.\n\n\n\nHaku:\n- Valitsen teoksia, joista on äänikirjaversio.\n- Kalastusvälineet ovat siis hyvä lahjaidea.\n- Myös mantelit ja pistaasit ovat kiellettyjä.\n- Olen nyt ryhtynyt täysin kasvissyöjäksi, en syö enää kalaakaan tai kanaa.\n- Olen projektipäällikkö Rahtiväylä Oy:ssä ja vastaan varastojärjestelmän uudistuksesta."
+    },
+    {
+      "id": "q022",
+      "category": "multi_session",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": false,
+      "blockChars": 0,
+      "answer": "Matkustat sisaresi Linnea Hännikäisen kanssa Portoon. Muistissa on myös vanhempi maininta Lissabonista, mutta uusimman tiedon mukaan matkasuunnitelma muuttui: lennot Poroon ovat halvemmat.",
+      "expected": "Sanna Hyvösen kanssa Portoon",
+      "context": "## Käyttäjä\n\n\n## Muisti\n## Mieltymykset\n- Otto Katainen haluaa käyttäjän viikkoraportin perjantaisin klo 14 mennessä.\n- Linnea Hännikäinen rakastaa keramiikkaa.\n- Oskari Kakkonen haluaa käyttäjältä lyhyitä viestejä, koska hän vihaa pitkiä sähköposteja.\n- Käyttäjä pitää enemmän tietokirjoista kuin romaaneista.\n- Käyttäjä kuuntelee kirjat mieluiten äänikirjoina työmatkalla.\n- Taavetti Taipale on intohimoinen kalastaja.\n- Käyttäjä on ryhtynyt kasvissyöjäksi eikä syö enää kalaa eikä kanaa.\n- Käyttäjä kirjoittaa muistiinpanot ensin käsin vihkoon ja siirtää ne illalla koneelle.\n- Käyttäjä haluaa asua Lissabonissa matkallaan Alfaman alueella.\n- Käyttäjän viikkoraporttiin lisätään tuotteen mittarit.\n## Rytmi\n- Käyttäjällä on ruotsin keskustelutunti tiistai-iltaisin.\n- Käyttäjä tapaa mentorinsa Aleksandra Mykrän kerran kuussa, yleensä kuun ensimmäisenä maanantaina.\n- Käyttäjä uii kaksi kertaa viikossa Tesoman uimahallissa.\n- Käyttäjä käy Helsingin toimistolla junalla kaksi päivää viikossa ja tekee muut päivät etätyötä.\n- Käyttäjän koira Sune tarvitsee kaksi pitkää lenkkiä päivässä.\n## Tavoitteet\n- Käyttäjän uusi tavoite on uida kaksi kilometriä yhtäjaksoisesti.\n- Käyttäjä suunnittelee Linnean kanssa viiden päivän matkaa Lissaboniin helmikuussa.\n## Faktat\n- Käyttäjän Satamarahti-sopimus uusitaan joka vuosi maaliskuussa.\n- Käyttäjän tytär aloitti koulun elokuussa 2026.\n- Taavetti Taipaleen syntymäpäivä on 12. maaliskuuta.\n- Käyttäjän polvi kipeytyi ja lääkäri kielsi juoksun, joten hän on lopettanut juoksemisen ja aloittanut uinnin.\n- Käyttäjän auto on vuoden 2019 Toyota Corolla hybridi.\n- Käyttäjän Toyota Corollan mittarissa on noin 85 000 kilometriä.\n- Käyttäjä aloitti tuoteomistajana Rahtiväylä Oy:ssä lokakuun alussa 2026 ja projektipäällikön työt siirtyivät kollegalle.\n- Käyttäjä muutti syyskuussa 2026 Espoosta Tampereelle, Hervantaan.\n- Käyttäjän koira Sune on kolmevuotias labradorinnoutaja.\n- Käyttäjällä on vaikea pähkinäallergia, eikä hän siedä manteleita eikä pistaasia.\n## Ihmiset\n- Linnea Hännikäinen on käyttäjän sisko.\n- Kaarina Engberg on käyttäjän ruotsin keskustelutunnin opettaja.\n- Aleksandra Mykrä on käyttäjän mentori.\n- Oskari Kakkonen on käyttäjän tärkein asiakas Aunola.\n- Paula Parkko on käyttäjän tyttären opettaja.\n- Taavetti Taipale on käyttäjän lanko ja Linnea Hännikäisen puoliso.\n- Pentti Kytönen on käyttäjän esihenkilö.\n- Hervannan eläinklinikka on käyttäjän koiran Sunen eläinlääkäri.\n## Tavat\n- Käyttäjä käyttää muistiinpanoihin ruutuvihkoa ja lyijykynää.\n\n\n\nHaku:\n- Suunnittelemme Linnean kanssa matkaa Lissaboniin helmikuussa.\n- Minulla on keskustelutunti tiistai-iltaisin Kaarina Engbergin kanssa.\n- Matkasuunnitelma muuttui: menemmekin Linnean kanssa Portoon emmekä Lissaboniin. Lennot ovat sinne halvemmat.\n- Olen nyt ryhtynyt täysin kasvissyöjäksi, en syö enää kalaakaan tai kanaa.\n- Olen projektipäällikkö Rahtiväylä Oy:ssä ja vastaan varastojärjestelmän uudistuksesta."
+    },
+    {
+      "id": "q023",
+      "category": "multi_session",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": false,
+      "blockChars": 0,
+      "answer": "En tiedä",
+      "expected": "Sannalle keramiikka, Matille kalastusvälineet",
+      "context": "## Käyttäjä\n\n\n## Muisti\n## Mieltymykset\n- Otto Katainen haluaa käyttäjän viikkoraportin perjantaisin klo 14 mennessä.\n- Linnea Hännikäinen rakastaa keramiikkaa.\n- Oskari Kakkonen haluaa käyttäjältä lyhyitä viestejä, koska hän vihaa pitkiä sähköposteja.\n- Käyttäjä pitää enemmän tietokirjoista kuin romaaneista.\n- Käyttäjä kuuntelee kirjat mieluiten äänikirjoina työmatkalla.\n- Taavetti Taipale on intohimoinen kalastaja.\n- Käyttäjä on ryhtynyt kasvissyöjäksi eikä syö enää kalaa eikä kanaa.\n- Käyttäjä kirjoittaa muistiinpanot ensin käsin vihkoon ja siirtää ne illalla koneelle.\n- Käyttäjä haluaa asua Lissabonissa matkallaan Alfaman alueella.\n- Käyttäjän viikkoraporttiin lisätään tuotteen mittarit.\n## Rytmi\n- Käyttäjällä on ruotsin keskustelutunti tiistai-iltaisin.\n- Käyttäjä tapaa mentorinsa Aleksandra Mykrän kerran kuussa, yleensä kuun ensimmäisenä maanantaina.\n- Käyttäjä uii kaksi kertaa viikossa Tesoman uimahallissa.\n- Käyttäjä käy Helsingin toimistolla junalla kaksi päivää viikossa ja tekee muut päivät etätyötä.\n- Käyttäjän koira Sune tarvitsee kaksi pitkää lenkkiä päivässä.\n## Tavoitteet\n- Käyttäjän uusi tavoite on uida kaksi kilometriä yhtäjaksoisesti.\n- Käyttäjä suunnittelee Linnean kanssa viiden päivän matkaa Lissaboniin helmikuussa.\n## Faktat\n- Käyttäjän Satamarahti-sopimus uusitaan joka vuosi maaliskuussa.\n- Käyttäjän tytär aloitti koulun elokuussa 2026.\n- Taavetti Taipaleen syntymäpäivä on 12. maaliskuuta.\n- Käyttäjän polvi kipeytyi ja lääkäri kielsi juoksun, joten hän on lopettanut juoksemisen ja aloittanut uinnin.\n- Käyttäjän auto on vuoden 2019 Toyota Corolla hybridi.\n- Käyttäjän Toyota Corollan mittarissa on noin 85 000 kilometriä.\n- Käyttäjä aloitti tuoteomistajana Rahtiväylä Oy:ssä lokakuun alussa 2026 ja projektipäällikön työt siirtyivät kollegalle.\n- Käyttäjä muutti syyskuussa 2026 Espoosta Tampereelle, Hervantaan.\n- Käyttäjän koira Sune on kolmevuotias labradorinnoutaja.\n- Käyttäjällä on vaikea pähkinäallergia, eikä hän siedä manteleita eikä pistaasia.\n## Ihmiset\n- Linnea Hännikäinen on käyttäjän sisko.\n- Kaarina Engberg on käyttäjän ruotsin keskustelutunnin opettaja.\n- Aleksandra Mykrä on käyttäjän mentori.\n- Oskari Kakkonen on käyttäjän tärkein asiakas Aunola.\n- Paula Parkko on käyttäjän tyttären opettaja.\n- Taavetti Taipale on käyttäjän lanko ja Linnea Hännikäisen puoliso.\n- Pentti Kytönen on käyttäjän esihenkilö.\n- Hervannan eläinklinikka on käyttäjän koiran Sunen eläinlääkäri.\n## Tavat\n- Käyttäjä käyttää muistiinpanoihin ruutuvihkoa ja lyijykynää.\n\n\n\nHaku:\n- Lankoni Taavetti Taipale on Linnean mies. Hänen syntymäpäivänsä on 12. maaliskuuta.\n- Suunnittelemme Linnean kanssa matkaa Lissaboniin helmikuussa.\n- Linnea rakastaa keramiikkaa ja käy dreijauskurssilla Vantaalla.\n- Matkasuunnitelma muuttui: menemmekin Linnean kanssa Portoon emmekä Lissaboniin. Lennot ovat sinne halvemmat.\n- Voin koota ostoslistan lauantai-iltana valmiiksi."
+    },
+    {
+      "id": "q024",
+      "category": "multi_session",
+      "askedDaysAgo": 0,
+      "recallHit": false,
+      "profileHit": true,
+      "correct": false,
+      "blockChars": 317,
+      "answer": "Käyttäjällä on vaikea pähkinäallergia, eikä hän siedä manteleita eikä pistaasia. Lisäksi hän on kasvissyöjä eikä syö kalaa eikä kanaa.",
+      "expected": "Lihaa, kalaa, kanaa ja pähkinöitä",
+      "context": "## Käyttäjä\n\n\n## Muisti\n## Mieltymykset\n- Otto Katainen haluaa käyttäjän viikkoraportin perjantaisin klo 14 mennessä.\n- Linnea Hännikäinen rakastaa keramiikkaa.\n- Oskari Kakkonen haluaa käyttäjältä lyhyitä viestejä, koska hän vihaa pitkiä sähköposteja.\n- Käyttäjä pitää enemmän tietokirjoista kuin romaaneista.\n- Käyttäjä kuuntelee kirjat mieluiten äänikirjoina työmatkalla.\n- Taavetti Taipale on intohimoinen kalastaja.\n- Käyttäjä on ryhtynyt kasvissyöjäksi eikä syö enää kalaa eikä kanaa.\n- Käyttäjä kirjoittaa muistiinpanot ensin käsin vihkoon ja siirtää ne illalla koneelle.\n- Käyttäjä haluaa asua Lissabonissa matkallaan Alfaman alueella.\n- Käyttäjän viikkoraporttiin lisätään tuotteen mittarit.\n## Rytmi\n- Käyttäjällä on ruotsin keskustelutunti tiistai-iltaisin.\n- Käyttäjä tapaa mentorinsa Aleksandra Mykrän kerran kuussa, yleensä kuun ensimmäisenä maanantaina.\n- Käyttäjä uii kaksi kertaa viikossa Tesoman uimahallissa.\n- Käyttäjä käy Helsingin toimistolla junalla kaksi päivää viikossa ja tekee muut päivät etätyötä.\n- Käyttäjän koira Sune tarvitsee kaksi pitkää lenkkiä päivässä.\n## Tavoitteet\n- Käyttäjän uusi tavoite on uida kaksi kilometriä yhtäjaksoisesti.\n- Käyttäjä suunnittelee Linnean kanssa viiden päivän matkaa Lissaboniin helmikuussa.\n## Faktat\n- Käyttäjän Satamarahti-sopimus uusitaan joka vuosi maaliskuussa.\n- Käyttäjän tytär aloitti koulun elokuussa 2026.\n- Taavetti Taipaleen syntymäpäivä on 12. maaliskuuta.\n- Käyttäjän polvi kipeytyi ja lääkäri kielsi juoksun, joten hän on lopettanut juoksemisen ja aloittanut uinnin.\n- Käyttäjän auto on vuoden 2019 Toyota Corolla hybridi.\n- Käyttäjän Toyota Corollan mittarissa on noin 85 000 kilometriä.\n- Käyttäjä aloitti tuoteomistajana Rahtiväylä Oy:ssä lokakuun alussa 2026 ja projektipäällikön työt siirtyivät kollegalle.\n- Käyttäjä muutti syyskuussa 2026 Espoosta Tampereelle, Hervantaan.\n- Käyttäjän koira Sune on kolmevuotias labradorinnoutaja.\n- Käyttäjällä on vaikea pähkinäallergia, eikä hän siedä manteleita eikä pistaasia.\n## Ihmiset\n- Linnea Hännikäinen on käyttäjän sisko.\n- Kaarina Engberg on käyttäjän ruotsin keskustelutunnin opettaja.\n- Aleksandra Mykrä on käyttäjän mentori.\n- Oskari Kakkonen on käyttäjän tärkein asiakas Aunola.\n- Paula Parkko on käyttäjän tyttären opettaja.\n- Taavetti Taipale on käyttäjän lanko ja Linnea Hännikäisen puoliso.\n- Pentti Kytönen on käyttäjän esihenkilö.\n- Hervannan eläinklinikka on käyttäjän koiran Sunen eläinlääkäri.\n## Tavat\n- Käyttäjä käyttää muistiinpanoihin ruutuvihkoa ja lyijykynää.\n\n## Muistista tähän viestiin\nTaustatietoa käyttäjästä. Käytä vain, jos se liittyy viestiin. Suluissa laji, varmuus ja aika.\n- (rytmi, 0.9, 2026-10) Käyttäjä tekee viikon isot ruokaostokset sunnuntaisin Prismassa.\n- (fakta, 0.9, 2026-10) Käyttäjän ruokabudjetti on noin 600 euroa kuussa kahdelle aikuiselle ja lapselle.\n\nHaku:\n- Päivitän ruokalistat kasvisruoiksi.\n- Teen viikon isot ruokaostokset aina sunnuntaisin Prismassa.\n- Stiina viikon ruokalista. Syön kalaa ja kanaa, mutta en punaista lihaa.\n- Mitä koulutuksia hän suositteli?\n- Suosittele luettavaa. Pidän enemmän tietokirjoista kuin romaaneista."
+    },
+    {
+      "id": "q025",
+      "category": "multi_session",
+      "askedDaysAgo": 0,
+      "recallHit": false,
+      "profileHit": true,
+      "correct": false,
+      "blockChars": 0,
+      "answer": "Pentti Kytönen (esihenkilösi), Oskari Kakkonen (tärkein asiakkaasi Aunola) ja Aleksandra Mykrä (mentorisi).",
+      "expected": "Mikko Virtanen, Heikki Nieminen, Juhani Korhonen, Anna-Liisa Mäkelä",
+      "context": "## Käyttäjä\n\n\n## Muisti\n## Mieltymykset\n- Otto Katainen haluaa käyttäjän viikkoraportin perjantaisin klo 14 mennessä.\n- Linnea Hännikäinen rakastaa keramiikkaa.\n- Oskari Kakkonen haluaa käyttäjältä lyhyitä viestejä, koska hän vihaa pitkiä sähköposteja.\n- Käyttäjä pitää enemmän tietokirjoista kuin romaaneista.\n- Käyttäjä kuuntelee kirjat mieluiten äänikirjoina työmatkalla.\n- Taavetti Taipale on intohimoinen kalastaja.\n- Käyttäjä on ryhtynyt kasvissyöjäksi eikä syö enää kalaa eikä kanaa.\n- Käyttäjä kirjoittaa muistiinpanot ensin käsin vihkoon ja siirtää ne illalla koneelle.\n- Käyttäjä haluaa asua Lissabonissa matkallaan Alfaman alueella.\n- Käyttäjän viikkoraporttiin lisätään tuotteen mittarit.\n## Rytmi\n- Käyttäjällä on ruotsin keskustelutunti tiistai-iltaisin.\n- Käyttäjä tapaa mentorinsa Aleksandra Mykrän kerran kuussa, yleensä kuun ensimmäisenä maanantaina.\n- Käyttäjä uii kaksi kertaa viikossa Tesoman uimahallissa.\n- Käyttäjä käy Helsingin toimistolla junalla kaksi päivää viikossa ja tekee muut päivät etätyötä.\n- Käyttäjän koira Sune tarvitsee kaksi pitkää lenkkiä päivässä.\n## Tavoitteet\n- Käyttäjän uusi tavoite on uida kaksi kilometriä yhtäjaksoisesti.\n- Käyttäjä suunnittelee Linnean kanssa viiden päivän matkaa Lissaboniin helmikuussa.\n## Faktat\n- Käyttäjän Satamarahti-sopimus uusitaan joka vuosi maaliskuussa.\n- Käyttäjän tytär aloitti koulun elokuussa 2026.\n- Taavetti Taipaleen syntymäpäivä on 12. maaliskuuta.\n- Käyttäjän polvi kipeytyi ja lääkäri kielsi juoksun, joten hän on lopettanut juoksemisen ja aloittanut uinnin.\n- Käyttäjän auto on vuoden 2019 Toyota Corolla hybridi.\n- Käyttäjän Toyota Corollan mittarissa on noin 85 000 kilometriä.\n- Käyttäjä aloitti tuoteomistajana Rahtiväylä Oy:ssä lokakuun alussa 2026 ja projektipäällikön työt siirtyivät kollegalle.\n- Käyttäjä muutti syyskuussa 2026 Espoosta Tampereelle, Hervantaan.\n- Käyttäjän koira Sune on kolmevuotias labradorinnoutaja.\n- Käyttäjällä on vaikea pähkinäallergia, eikä hän siedä manteleita eikä pistaasia.\n## Ihmiset\n- Linnea Hännikäinen on käyttäjän sisko.\n- Kaarina Engberg on käyttäjän ruotsin keskustelutunnin opettaja.\n- Aleksandra Mykrä on käyttäjän mentori.\n- Oskari Kakkonen on käyttäjän tärkein asiakas Aunola.\n- Paula Parkko on käyttäjän tyttären opettaja.\n- Taavetti Taipale on käyttäjän lanko ja Linnea Hännikäisen puoliso.\n- Pentti Kytönen on käyttäjän esihenkilö.\n- Hervannan eläinklinikka on käyttäjän koiran Sunen eläinlääkäri.\n## Tavat\n- Käyttäjä käyttää muistiinpanoihin ruutuvihkoa ja lyijykynää.\n\n\n\nHaku:\n- Olen projektipäällikkö Rahtiväylä Oy:ssä ja vastaan varastojärjestelmän uudistuksesta.\n- Olen nyt ryhtynyt täysin kasvissyöjäksi, en syö enää kalaakaan tai kanaa.\n- Kuuntelen kirjat mieluiten äänikirjoina työmatkalla.\n- Mietin kalenterin rakennetta. Teen syvätyötä aamupäivisin kello 8–11 enkä halua palavereja siihen aikaan.\n- Sain uuden roolin: aloitin tuoteomistajana Rahtiväylällä lokakuun alussa. Projektipäällikön työt siirtyivät kollegalle."
+    },
+    {
+      "id": "q026",
+      "category": "multi_session",
+      "askedDaysAgo": 0,
+      "recallHit": false,
+      "profileHit": true,
+      "correct": false,
+      "blockChars": 205,
+      "answer": "Tiistai-iltaisin on ruotsin keskustelutunti Kaarina Engbergin kanssa.",
+      "expected": "Ruotsin keskustelutunti torstai-iltaisin",
+      "context": "## Käyttäjä\n\n\n## Muisti\n## Mieltymykset\n- Otto Katainen haluaa käyttäjän viikkoraportin perjantaisin klo 14 mennessä.\n- Linnea Hännikäinen rakastaa keramiikkaa.\n- Oskari Kakkonen haluaa käyttäjältä lyhyitä viestejä, koska hän vihaa pitkiä sähköposteja.\n- Käyttäjä pitää enemmän tietokirjoista kuin romaaneista.\n- Käyttäjä kuuntelee kirjat mieluiten äänikirjoina työmatkalla.\n- Taavetti Taipale on intohimoinen kalastaja.\n- Käyttäjä on ryhtynyt kasvissyöjäksi eikä syö enää kalaa eikä kanaa.\n- Käyttäjä kirjoittaa muistiinpanot ensin käsin vihkoon ja siirtää ne illalla koneelle.\n- Käyttäjä haluaa asua Lissabonissa matkallaan Alfaman alueella.\n- Käyttäjän viikkoraporttiin lisätään tuotteen mittarit.\n## Rytmi\n- Käyttäjällä on ruotsin keskustelutunti tiistai-iltaisin.\n- Käyttäjä tapaa mentorinsa Aleksandra Mykrän kerran kuussa, yleensä kuun ensimmäisenä maanantaina.\n- Käyttäjä uii kaksi kertaa viikossa Tesoman uimahallissa.\n- Käyttäjä käy Helsingin toimistolla junalla kaksi päivää viikossa ja tekee muut päivät etätyötä.\n- Käyttäjän koira Sune tarvitsee kaksi pitkää lenkkiä päivässä.\n## Tavoitteet\n- Käyttäjän uusi tavoite on uida kaksi kilometriä yhtäjaksoisesti.\n- Käyttäjä suunnittelee Linnean kanssa viiden päivän matkaa Lissaboniin helmikuussa.\n## Faktat\n- Käyttäjän Satamarahti-sopimus uusitaan joka vuosi maaliskuussa.\n- Käyttäjän tytär aloitti koulun elokuussa 2026.\n- Taavetti Taipaleen syntymäpäivä on 12. maaliskuuta.\n- Käyttäjän polvi kipeytyi ja lääkäri kielsi juoksun, joten hän on lopettanut juoksemisen ja aloittanut uinnin.\n- Käyttäjän auto on vuoden 2019 Toyota Corolla hybridi.\n- Käyttäjän Toyota Corollan mittarissa on noin 85 000 kilometriä.\n- Käyttäjä aloitti tuoteomistajana Rahtiväylä Oy:ssä lokakuun alussa 2026 ja projektipäällikön työt siirtyivät kollegalle.\n- Käyttäjä muutti syyskuussa 2026 Espoosta Tampereelle, Hervantaan.\n- Käyttäjän koira Sune on kolmevuotias labradorinnoutaja.\n- Käyttäjällä on vaikea pähkinäallergia, eikä hän siedä manteleita eikä pistaasia.\n## Ihmiset\n- Linnea Hännikäinen on käyttäjän sisko.\n- Kaarina Engberg on käyttäjän ruotsin keskustelutunnin opettaja.\n- Aleksandra Mykrä on käyttäjän mentori.\n- Oskari Kakkonen on käyttäjän tärkein asiakas Aunola.\n- Paula Parkko on käyttäjän tyttären opettaja.\n- Taavetti Taipale on käyttäjän lanko ja Linnea Hännikäisen puoliso.\n- Pentti Kytönen on käyttäjän esihenkilö.\n- Hervannan eläinklinikka on käyttäjän koiran Sunen eläinlääkäri.\n## Tavat\n- Käyttäjä käyttää muistiinpanoihin ruutuvihkoa ja lyijykynää.\n\n## Muistista tähän viestiin\nTaustatietoa käyttäjästä. Käytä vain, jos se liittyy viestiin. Suluissa laji, varmuus ja aika.\n- (mieltymys, 0.8, 2026-10) Käyttäjä haluaa ostoslistan valmiiksi lauantai-iltana.\n\nHaku:\n- Minulla on keskustelutunti tiistai-iltaisin Kaarina Engbergin kanssa.\n- Minulla on vaikea pähkinäallergia, joten tarkista reseptit sen varalta.\n- Vanhempainilta on lokakuun puolivälissä, muistuta minua.\n- Älä käytä vastauksissa emojeja, ne näyttävät minusta lapsellisilta.\n- Selvä. Millaista apua tarvitset projektiin?"
+    },
+    {
+      "id": "q027",
+      "category": "multi_session",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 0,
+      "answer": "Olet lopettanut juoksemisen, koska polvesi kipeytyi ja lääkäri kielsi juoksun. Sen sijaan olet aloittanut uinnin, ja uit kaksi kertaa viikossa Tesoman uimahallissa. Uusi tavoitteesi on uida kaksi kilometriä yhtäjaksoisesti.",
+      "expected": "Juoksua, nyt uintia"
+    },
+    {
+      "id": "q028",
+      "category": "multi_session",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 0,
+      "answer": "Espoossa ja Tampereella (Hervannassa). Käyttäjä asui Espoossa ja muutti syyskuussa 2026 Tampereelle, Hervantaan.",
+      "expected": "Espoossa ja nyt Tampereella"
+    },
+    {
+      "id": "q029",
+      "category": "multi_session",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 427,
+      "answer": "Naapuri Jukka Hotti on auttanut arjessa: hän lupasi lainata peräkärryään lauantaina. Muistissa ei ole muita naapureita tai tuttuja, jotka auttaisivat arjessa.",
+      "expected": "Naapuri Pekka Lahti"
+    },
+    {
+      "id": "q030",
+      "category": "multi_session",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 372,
+      "answer": "Opiskelet ruotsia, ja keskustelutuntisi opettaja on Kaarina Engberg. Ruotsin keskustelutunti on tiistai-iltaisin.",
+      "expected": "Ruotsia Katja Lindqvistin kanssa"
+    },
+    {
+      "id": "q031",
+      "category": "multi_session",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 0,
+      "answer": "Perheenne lemmikki on Sune, kolmevuotias labradorinnoutaja, joka tarvitsee kaksi pitkää lenkkiä päivässä. Sunen eläinlääkäri on Hervannan eläinklinikka. Sinulla on vaikea pähkinäallergia, etkä siedä manteleita eikä pistaasia.",
+      "expected": "Koira Roope, minulla pähkinäallergia"
+    },
+    {
+      "id": "q032",
+      "category": "multi_session",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": false,
+      "blockChars": 236,
+      "answer": "Teet isot ostopäätökset aina vasta yön yli nukuttuasi.",
+      "expected": "Vertaan kolmea vaihtoehtoa ja nukun yön yli",
+      "context": "## Käyttäjä\n\n\n## Muisti\n## Mieltymykset\n- Otto Katainen haluaa käyttäjän viikkoraportin perjantaisin klo 14 mennessä.\n- Linnea Hännikäinen rakastaa keramiikkaa.\n- Oskari Kakkonen haluaa käyttäjältä lyhyitä viestejä, koska hän vihaa pitkiä sähköposteja.\n- Käyttäjä pitää enemmän tietokirjoista kuin romaaneista.\n- Käyttäjä kuuntelee kirjat mieluiten äänikirjoina työmatkalla.\n- Taavetti Taipale on intohimoinen kalastaja.\n- Käyttäjä on ryhtynyt kasvissyöjäksi eikä syö enää kalaa eikä kanaa.\n- Käyttäjä kirjoittaa muistiinpanot ensin käsin vihkoon ja siirtää ne illalla koneelle.\n- Käyttäjä haluaa asua Lissabonissa matkallaan Alfaman alueella.\n- Käyttäjän viikkoraporttiin lisätään tuotteen mittarit.\n## Rytmi\n- Käyttäjällä on ruotsin keskustelutunti tiistai-iltaisin.\n- Käyttäjä tapaa mentorinsa Aleksandra Mykrän kerran kuussa, yleensä kuun ensimmäisenä maanantaina.\n- Käyttäjä uii kaksi kertaa viikossa Tesoman uimahallissa.\n- Käyttäjä käy Helsingin toimistolla junalla kaksi päivää viikossa ja tekee muut päivät etätyötä.\n- Käyttäjän koira Sune tarvitsee kaksi pitkää lenkkiä päivässä.\n## Tavoitteet\n- Käyttäjän uusi tavoite on uida kaksi kilometriä yhtäjaksoisesti.\n- Käyttäjä suunnittelee Linnean kanssa viiden päivän matkaa Lissaboniin helmikuussa.\n## Faktat\n- Käyttäjän Satamarahti-sopimus uusitaan joka vuosi maaliskuussa.\n- Käyttäjän tytär aloitti koulun elokuussa 2026.\n- Taavetti Taipaleen syntymäpäivä on 12. maaliskuuta.\n- Käyttäjän polvi kipeytyi ja lääkäri kielsi juoksun, joten hän on lopettanut juoksemisen ja aloittanut uinnin.\n- Käyttäjän auto on vuoden 2019 Toyota Corolla hybridi.\n- Käyttäjän Toyota Corollan mittarissa on noin 85 000 kilometriä.\n- Käyttäjä aloitti tuoteomistajana Rahtiväylä Oy:ssä lokakuun alussa 2026 ja projektipäällikön työt siirtyivät kollegalle.\n- Käyttäjä muutti syyskuussa 2026 Espoosta Tampereelle, Hervantaan.\n- Käyttäjän koira Sune on kolmevuotias labradorinnoutaja.\n- Käyttäjällä on vaikea pähkinäallergia, eikä hän siedä manteleita eikä pistaasia.\n## Ihmiset\n- Linnea Hännikäinen on käyttäjän sisko.\n- Kaarina Engberg on käyttäjän ruotsin keskustelutunnin opettaja.\n- Aleksandra Mykrä on käyttäjän mentori.\n- Oskari Kakkonen on käyttäjän tärkein asiakas Aunola.\n- Paula Parkko on käyttäjän tyttären opettaja.\n- Taavetti Taipale on käyttäjän lanko ja Linnea Hännikäisen puoliso.\n- Pentti Kytönen on käyttäjän esihenkilö.\n- Hervannan eläinklinikka on käyttäjän koiran Sunen eläinlääkäri.\n## Tavat\n- Käyttäjä käyttää muistiinpanoihin ruutuvihkoa ja lyijykynää.\n\n## Muistista tähän viestiin\nTaustatietoa käyttäjästä. Käytä vain, jos se liittyy viestiin. Suluissa laji, varmuus ja aika.\n- (tavoite, 0.9, 2026-08) Käyttäjän tavoitteena on saavuttaa ruotsin kielen B1-taso ensi vuoden loppuun mennessä.\n\nHaku:\n- Mietin uuden sohvan ostoa. Teen isot ostopäätökset aina vasta yön yli nukuttuani.\n- Tavoitteeni on juosta puolimaraton Helsinki City Aminoissa toukokuussa.\n- Opettelen ruotsia. Tavoitteena on B1-taso ensi vuoden loppuun mennessä.\n- Selvä. Millaista apua tarvitset projektiin?\n- Kirjoitetaan hänelle tiiviit viestit, joissa päätös on ensimmäisellä rivillä."
+    },
+    {
+      "id": "q033",
+      "category": "multi_session",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": false,
+      "blockChars": 211,
+      "answer": "Viikkorutiinit ostoksiin ja raportointiin: Teet viikon isot ruokaostokset sunnuntaisin Prismassa. Viikkoraportti lähetetään Otto Kataiselle perjantaisin klo 14 mennessä, ja siihen lisätään tuotteen mittarit.",
+      "expected": "Ostokset sunnuntaisin, raportti torstaisin",
+      "context": "## Käyttäjä\n\n\n## Muisti\n## Mieltymykset\n- Otto Katainen haluaa käyttäjän viikkoraportin perjantaisin klo 14 mennessä.\n- Linnea Hännikäinen rakastaa keramiikkaa.\n- Oskari Kakkonen haluaa käyttäjältä lyhyitä viestejä, koska hän vihaa pitkiä sähköposteja.\n- Käyttäjä pitää enemmän tietokirjoista kuin romaaneista.\n- Käyttäjä kuuntelee kirjat mieluiten äänikirjoina työmatkalla.\n- Taavetti Taipale on intohimoinen kalastaja.\n- Käyttäjä on ryhtynyt kasvissyöjäksi eikä syö enää kalaa eikä kanaa.\n- Käyttäjä kirjoittaa muistiinpanot ensin käsin vihkoon ja siirtää ne illalla koneelle.\n- Käyttäjä haluaa asua Lissabonissa matkallaan Alfaman alueella.\n- Käyttäjän viikkoraporttiin lisätään tuotteen mittarit.\n## Rytmi\n- Käyttäjällä on ruotsin keskustelutunti tiistai-iltaisin.\n- Käyttäjä tapaa mentorinsa Aleksandra Mykrän kerran kuussa, yleensä kuun ensimmäisenä maanantaina.\n- Käyttäjä uii kaksi kertaa viikossa Tesoman uimahallissa.\n- Käyttäjä käy Helsingin toimistolla junalla kaksi päivää viikossa ja tekee muut päivät etätyötä.\n- Käyttäjän koira Sune tarvitsee kaksi pitkää lenkkiä päivässä.\n## Tavoitteet\n- Käyttäjän uusi tavoite on uida kaksi kilometriä yhtäjaksoisesti.\n- Käyttäjä suunnittelee Linnean kanssa viiden päivän matkaa Lissaboniin helmikuussa.\n## Faktat\n- Käyttäjän Satamarahti-sopimus uusitaan joka vuosi maaliskuussa.\n- Käyttäjän tytär aloitti koulun elokuussa 2026.\n- Taavetti Taipaleen syntymäpäivä on 12. maaliskuuta.\n- Käyttäjän polvi kipeytyi ja lääkäri kielsi juoksun, joten hän on lopettanut juoksemisen ja aloittanut uinnin.\n- Käyttäjän auto on vuoden 2019 Toyota Corolla hybridi.\n- Käyttäjän Toyota Corollan mittarissa on noin 85 000 kilometriä.\n- Käyttäjä aloitti tuoteomistajana Rahtiväylä Oy:ssä lokakuun alussa 2026 ja projektipäällikön työt siirtyivät kollegalle.\n- Käyttäjä muutti syyskuussa 2026 Espoosta Tampereelle, Hervantaan.\n- Käyttäjän koira Sune on kolmevuotias labradorinnoutaja.\n- Käyttäjällä on vaikea pähkinäallergia, eikä hän siedä manteleita eikä pistaasia.\n## Ihmiset\n- Linnea Hännikäinen on käyttäjän sisko.\n- Kaarina Engberg on käyttäjän ruotsin keskustelutunnin opettaja.\n- Aleksandra Mykrä on käyttäjän mentori.\n- Oskari Kakkonen on käyttäjän tärkein asiakas Aunola.\n- Paula Parkko on käyttäjän tyttären opettaja.\n- Taavetti Taipale on käyttäjän lanko ja Linnea Hännikäisen puoliso.\n- Pentti Kytönen on käyttäjän esihenkilö.\n- Hervannan eläinklinikka on käyttäjän koiran Sunen eläinlääkäri.\n## Tavat\n- Käyttäjä käyttää muistiinpanoihin ruutuvihkoa ja lyijykynää.\n\n## Muistista tähän viestiin\nTaustatietoa käyttäjästä. Käytä vain, jos se liittyy viestiin. Suluissa laji, varmuus ja aika.\n- (rytmi, 0.9, 2026-10) Käyttäjä tekee viikon isot ruokaostokset sunnuntaisin Prismassa.\n\nHaku:\n- Minulla on keskustelutunti tiistai-iltaisin Kaarina Engbergin kanssa.\n- Minulla on vaikea pähkinäallergia, joten tarkista reseptit sen varalta.\n- Mitä koulutuksia hän suositteli?\n- Teen viikon isot ruokaostokset aina sunnuntaisin Prismassa.\n- Anastaciani Linnea Hännikäinen täyttää pian 40. Mitä hänelle voisi ostaa?"
+    },
+    {
+      "id": "q034",
+      "category": "multi_session",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 236,
+      "answer": "Käyttäjän tavoitteet muistin mukaan: (1) uida kaksi kilometriä yhtäjaksoisesti (uusi tavoite), (2) suunnitella viiden päivän matka Lissaboniin helmikuussa Linnea Hännikäisen kanssa, sekä (3) saavuttaa ruotsin kielen B1-taso ensi vuoden loppuun mennessä (varmuus 0.9, päivätty 2026-08).",
+      "expected": "Uida 2 km yhtäjaksoisesti ja ruotsin B1-taso"
+    },
+    {
+      "id": "q035",
+      "category": "multi_session",
+      "askedDaysAgo": 0,
+      "recallHit": false,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 0,
+      "answer": "Uin Tesoman uimahallissa. Asut Tampereella, Hervannassa. Espoossa asuit aiemmin, mutta muutit sieltä syyskuussa 2026.",
+      "expected": "Tesoman uimahallissa, asun Hervannassa Tampereella"
+    },
+    {
+      "id": "q036",
+      "category": "multi_session",
+      "askedDaysAgo": 0,
+      "recallHit": false,
+      "profileHit": true,
+      "correct": false,
+      "blockChars": 0,
+      "answer": "En tiedä",
+      "expected": "600 euron kuukausibudjetti, kasvisruoka, ostokset sunnuntaisin",
+      "context": "## Käyttäjä\n\n\n## Muisti\n## Mieltymykset\n- Otto Katainen haluaa käyttäjän viikkoraportin perjantaisin klo 14 mennessä.\n- Linnea Hännikäinen rakastaa keramiikkaa.\n- Oskari Kakkonen haluaa käyttäjältä lyhyitä viestejä, koska hän vihaa pitkiä sähköposteja.\n- Käyttäjä pitää enemmän tietokirjoista kuin romaaneista.\n- Käyttäjä kuuntelee kirjat mieluiten äänikirjoina työmatkalla.\n- Taavetti Taipale on intohimoinen kalastaja.\n- Käyttäjä on ryhtynyt kasvissyöjäksi eikä syö enää kalaa eikä kanaa.\n- Käyttäjä kirjoittaa muistiinpanot ensin käsin vihkoon ja siirtää ne illalla koneelle.\n- Käyttäjä haluaa asua Lissabonissa matkallaan Alfaman alueella.\n- Käyttäjän viikkoraporttiin lisätään tuotteen mittarit.\n## Rytmi\n- Käyttäjällä on ruotsin keskustelutunti tiistai-iltaisin.\n- Käyttäjä tapaa mentorinsa Aleksandra Mykrän kerran kuussa, yleensä kuun ensimmäisenä maanantaina.\n- Käyttäjä uii kaksi kertaa viikossa Tesoman uimahallissa.\n- Käyttäjä käy Helsingin toimistolla junalla kaksi päivää viikossa ja tekee muut päivät etätyötä.\n- Käyttäjän koira Sune tarvitsee kaksi pitkää lenkkiä päivässä.\n## Tavoitteet\n- Käyttäjän uusi tavoite on uida kaksi kilometriä yhtäjaksoisesti.\n- Käyttäjä suunnittelee Linnean kanssa viiden päivän matkaa Lissaboniin helmikuussa.\n## Faktat\n- Käyttäjän Satamarahti-sopimus uusitaan joka vuosi maaliskuussa.\n- Käyttäjän tytär aloitti koulun elokuussa 2026.\n- Taavetti Taipaleen syntymäpäivä on 12. maaliskuuta.\n- Käyttäjän polvi kipeytyi ja lääkäri kielsi juoksun, joten hän on lopettanut juoksemisen ja aloittanut uinnin.\n- Käyttäjän auto on vuoden 2019 Toyota Corolla hybridi.\n- Käyttäjän Toyota Corollan mittarissa on noin 85 000 kilometriä.\n- Käyttäjä aloitti tuoteomistajana Rahtiväylä Oy:ssä lokakuun alussa 2026 ja projektipäällikön työt siirtyivät kollegalle.\n- Käyttäjä muutti syyskuussa 2026 Espoosta Tampereelle, Hervantaan.\n- Käyttäjän koira Sune on kolmevuotias labradorinnoutaja.\n- Käyttäjällä on vaikea pähkinäallergia, eikä hän siedä manteleita eikä pistaasia.\n## Ihmiset\n- Linnea Hännikäinen on käyttäjän sisko.\n- Kaarina Engberg on käyttäjän ruotsin keskustelutunnin opettaja.\n- Aleksandra Mykrä on käyttäjän mentori.\n- Oskari Kakkonen on käyttäjän tärkein asiakas Aunola.\n- Paula Parkko on käyttäjän tyttären opettaja.\n- Taavetti Taipale on käyttäjän lanko ja Linnea Hännikäisen puoliso.\n- Pentti Kytönen on käyttäjän esihenkilö.\n- Hervannan eläinklinikka on käyttäjän koiran Sunen eläinlääkäri.\n## Tavat\n- Käyttäjä käyttää muistiinpanoihin ruutuvihkoa ja lyijykynää.\n\n\n\nHaku:\n- Ehdotan historiaa ja populaaritiedettä.\n- Stiina viikon ruokalista. Syön kalaa ja kanaa, mutta en punaista lihaa.\n- Mitä koulutuksia hän suositteli?\n- Päivitän ruokalistat kasvisruoiksi.\n- Anastaciani Linnea Hännikäinen täyttää pian 40. Mitä hänelle voisi ostaa?"
+    },
+    {
+      "id": "q037",
+      "category": "multi_session",
+      "askedDaysAgo": 0,
+      "recallHit": false,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 0,
+      "answer": "Työskentelet Rahtiväylä Oy:ssä tuoteomistajana. Aloitit roolissa lokakuun alussa 2026.",
+      "expected": "Rahtiväylä Oy, tuoteomistaja"
+    },
+    {
+      "id": "q038",
+      "category": "multi_session",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 0,
+      "answer": "Käyt Helsingin toimistolla junalla kaksi päivää viikossa, ja muina päivinä teet etätyötä.",
+      "expected": "Junalla Helsinkiin kaksi päivää viikossa"
+    },
+    {
+      "id": "q039",
+      "category": "multi_session",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": false,
+      "blockChars": 0,
+      "answer": "Linnea Hännikäisen perhettä ovat hänen puolisonsa Taavetti Taipale. Muisti ei kuitenkaan kerro muista hänen perheenjäsenistään. Linnea on käyttäjän sisko, ja Taavetti Taipale on käyttäjän lanko.",
+      "expected": "Mies Matti Laine",
+      "context": "## Käyttäjä\n\n\n## Muisti\n## Mieltymykset\n- Otto Katainen haluaa käyttäjän viikkoraportin perjantaisin klo 14 mennessä.\n- Linnea Hännikäinen rakastaa keramiikkaa.\n- Oskari Kakkonen haluaa käyttäjältä lyhyitä viestejä, koska hän vihaa pitkiä sähköposteja.\n- Käyttäjä pitää enemmän tietokirjoista kuin romaaneista.\n- Käyttäjä kuuntelee kirjat mieluiten äänikirjoina työmatkalla.\n- Taavetti Taipale on intohimoinen kalastaja.\n- Käyttäjä on ryhtynyt kasvissyöjäksi eikä syö enää kalaa eikä kanaa.\n- Käyttäjä kirjoittaa muistiinpanot ensin käsin vihkoon ja siirtää ne illalla koneelle.\n- Käyttäjä haluaa asua Lissabonissa matkallaan Alfaman alueella.\n- Käyttäjän viikkoraporttiin lisätään tuotteen mittarit.\n## Rytmi\n- Käyttäjällä on ruotsin keskustelutunti tiistai-iltaisin.\n- Käyttäjä tapaa mentorinsa Aleksandra Mykrän kerran kuussa, yleensä kuun ensimmäisenä maanantaina.\n- Käyttäjä uii kaksi kertaa viikossa Tesoman uimahallissa.\n- Käyttäjä käy Helsingin toimistolla junalla kaksi päivää viikossa ja tekee muut päivät etätyötä.\n- Käyttäjän koira Sune tarvitsee kaksi pitkää lenkkiä päivässä.\n## Tavoitteet\n- Käyttäjän uusi tavoite on uida kaksi kilometriä yhtäjaksoisesti.\n- Käyttäjä suunnittelee Linnean kanssa viiden päivän matkaa Lissaboniin helmikuussa.\n## Faktat\n- Käyttäjän Satamarahti-sopimus uusitaan joka vuosi maaliskuussa.\n- Käyttäjän tytär aloitti koulun elokuussa 2026.\n- Taavetti Taipaleen syntymäpäivä on 12. maaliskuuta.\n- Käyttäjän polvi kipeytyi ja lääkäri kielsi juoksun, joten hän on lopettanut juoksemisen ja aloittanut uinnin.\n- Käyttäjän auto on vuoden 2019 Toyota Corolla hybridi.\n- Käyttäjän Toyota Corollan mittarissa on noin 85 000 kilometriä.\n- Käyttäjä aloitti tuoteomistajana Rahtiväylä Oy:ssä lokakuun alussa 2026 ja projektipäällikön työt siirtyivät kollegalle.\n- Käyttäjä muutti syyskuussa 2026 Espoosta Tampereelle, Hervantaan.\n- Käyttäjän koira Sune on kolmevuotias labradorinnoutaja.\n- Käyttäjällä on vaikea pähkinäallergia, eikä hän siedä manteleita eikä pistaasia.\n## Ihmiset\n- Linnea Hännikäinen on käyttäjän sisko.\n- Kaarina Engberg on käyttäjän ruotsin keskustelutunnin opettaja.\n- Aleksandra Mykrä on käyttäjän mentori.\n- Oskari Kakkonen on käyttäjän tärkein asiakas Aunola.\n- Paula Parkko on käyttäjän tyttären opettaja.\n- Taavetti Taipale on käyttäjän lanko ja Linnea Hännikäisen puoliso.\n- Pentti Kytönen on käyttäjän esihenkilö.\n- Hervannan eläinklinikka on käyttäjän koiran Sunen eläinlääkäri.\n## Tavat\n- Käyttäjä käyttää muistiinpanoihin ruutuvihkoa ja lyijykynää.\n\n\n\nHaku:\n- Matkasuunnitelma muuttui: menemmekin Linnean kanssa Portoon emmekä Lissaboniin. Lennot ovat sinne halvemmat.\n- Suunnittelemme Linnean kanssa matkaa Lissaboniin helmikuussa.\n- Lankoni Taavetti Taipale on Linnean mies. Hänen syntymäpäivänsä on 12. maaliskuuta.\n- Myös mantelit ja pistaasit ovat kiellettyjä.\n- Linnea rakastaa keramiikkaa ja käy dreijauskurssilla Vantaalla."
+    },
+    {
+      "id": "q040",
+      "category": "multi_session",
+      "askedDaysAgo": 0,
+      "recallHit": false,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 368,
+      "answer": "Käyttäjä pitää enemmän tietokirjoista kuin romaaneista, ja hän kuuntelee kirjat mieluiten äänikirjoina työmatkalla.",
+      "expected": "Tietokirjoja äänikirjoina työmatkalla"
+    },
+    {
+      "id": "q042",
+      "category": "knowledge_update",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 0,
+      "answer": "Tampereella, Hervannassa. Muutit sinne syyskuussa 2026 Espoosta.",
+      "expected": "Tampereella, Hervannassa"
+    },
+    {
+      "id": "q044",
+      "category": "knowledge_update",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 0,
+      "answer": "Pentti Kytönen",
+      "expected": "Heikki Nieminen"
+    },
+    {
+      "id": "q045",
+      "category": "knowledge_update",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 0,
+      "answer": "Et syö kalaa. Muistissa on mainittu, että olet ryhtynyt kasvissyöjäksi etkä syö enää kalaa tai kanaa.",
+      "expected": "En, olen täysin kasvissyöjä"
+    },
+    {
+      "id": "q049",
+      "category": "knowledge_update",
+      "askedDaysAgo": 0,
+      "recallHit": false,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 0,
+      "answer": "Käyttäjän uusi tavoite on uida kaksi kilometriä yhtäjaksoisesti.",
+      "expected": "Uida kaksi kilometriä yhtäjaksoisesti"
+    },
+    {
+      "id": "q050",
+      "category": "knowledge_update",
+      "askedDaysAgo": 0,
+      "recallHit": false,
+      "profileHit": true,
+      "correct": false,
+      "blockChars": 0,
+      "answer": "En tiedä",
+      "expected": "En, se jäi väliin polven takia",
+      "context": "## Käyttäjä\n\n\n## Muisti\n## Mieltymykset\n- Otto Katainen haluaa käyttäjän viikkoraportin perjantaisin klo 14 mennessä.\n- Linnea Hännikäinen rakastaa keramiikkaa.\n- Oskari Kakkonen haluaa käyttäjältä lyhyitä viestejä, koska hän vihaa pitkiä sähköposteja.\n- Käyttäjä pitää enemmän tietokirjoista kuin romaaneista.\n- Käyttäjä kuuntelee kirjat mieluiten äänikirjoina työmatkalla.\n- Taavetti Taipale on intohimoinen kalastaja.\n- Käyttäjä on ryhtynyt kasvissyöjäksi eikä syö enää kalaa eikä kanaa.\n- Käyttäjä kirjoittaa muistiinpanot ensin käsin vihkoon ja siirtää ne illalla koneelle.\n- Käyttäjä haluaa asua Lissabonissa matkallaan Alfaman alueella.\n- Käyttäjän viikkoraporttiin lisätään tuotteen mittarit.\n## Rytmi\n- Käyttäjällä on ruotsin keskustelutunti tiistai-iltaisin.\n- Käyttäjä tapaa mentorinsa Aleksandra Mykrän kerran kuussa, yleensä kuun ensimmäisenä maanantaina.\n- Käyttäjä uii kaksi kertaa viikossa Tesoman uimahallissa.\n- Käyttäjä käy Helsingin toimistolla junalla kaksi päivää viikossa ja tekee muut päivät etätyötä.\n- Käyttäjän koira Sune tarvitsee kaksi pitkää lenkkiä päivässä.\n## Tavoitteet\n- Käyttäjän uusi tavoite on uida kaksi kilometriä yhtäjaksoisesti.\n- Käyttäjä suunnittelee Linnean kanssa viiden päivän matkaa Lissaboniin helmikuussa.\n## Faktat\n- Käyttäjän Satamarahti-sopimus uusitaan joka vuosi maaliskuussa.\n- Käyttäjän tytär aloitti koulun elokuussa 2026.\n- Taavetti Taipaleen syntymäpäivä on 12. maaliskuuta.\n- Käyttäjän polvi kipeytyi ja lääkäri kielsi juoksun, joten hän on lopettanut juoksemisen ja aloittanut uinnin.\n- Käyttäjän auto on vuoden 2019 Toyota Corolla hybridi.\n- Käyttäjän Toyota Corollan mittarissa on noin 85 000 kilometriä.\n- Käyttäjä aloitti tuoteomistajana Rahtiväylä Oy:ssä lokakuun alussa 2026 ja projektipäällikön työt siirtyivät kollegalle.\n- Käyttäjä muutti syyskuussa 2026 Espoosta Tampereelle, Hervantaan.\n- Käyttäjän koira Sune on kolmevuotias labradorinnoutaja.\n- Käyttäjällä on vaikea pähkinäallergia, eikä hän siedä manteleita eikä pistaasia.\n## Ihmiset\n- Linnea Hännikäinen on käyttäjän sisko.\n- Kaarina Engberg on käyttäjän ruotsin keskustelutunnin opettaja.\n- Aleksandra Mykrä on käyttäjän mentori.\n- Oskari Kakkonen on käyttäjän tärkein asiakas Aunola.\n- Paula Parkko on käyttäjän tyttären opettaja.\n- Taavetti Taipale on käyttäjän lanko ja Linnea Hännikäisen puoliso.\n- Pentti Kytönen on käyttäjän esihenkilö.\n- Hervannan eläinklinikka on käyttäjän koiran Sunen eläinlääkäri.\n## Tavat\n- Käyttäjä käyttää muistiinpanoihin ruutuvihkoa ja lyijykynää.\n\n\n\nHaku:\n- Tavoitteeni on juosta puolimaraton Helsinki City Aminoissa toukokuussa.\n- Polveni kipeytyi ja lääkäri kielsi juoksun. Lopetin juoksemisen ja aloitin uinnin.\n- Tarvitsen treeniohjelman. Juoksen kolme kertaa viikossa aamuisin ennen töitä, yleensä noin kahdeksan kilometriä.\n- Junamatka kestää noin puolitoista tuntia suuntaansa.\n- Voin koota ostoslistan lauantai-iltana valmiiksi."
+    },
+    {
+      "id": "q053",
+      "category": "knowledge_update",
+      "askedDaysAgo": 0,
+      "recallHit": false,
+      "profileHit": true,
+      "correct": false,
+      "blockChars": 0,
+      "answer": "Lenkkeilet Keskuspuistossa.",
+      "expected": "En lenkkeile enää juosten, uin Tesoman uimahallissa",
+      "context": "## Käyttäjä\n\n\n## Muisti\n## Mieltymykset\n- Otto Katainen haluaa käyttäjän viikkoraportin perjantaisin klo 14 mennessä.\n- Linnea Hännikäinen rakastaa keramiikkaa.\n- Oskari Kakkonen haluaa käyttäjältä lyhyitä viestejä, koska hän vihaa pitkiä sähköposteja.\n- Käyttäjä pitää enemmän tietokirjoista kuin romaaneista.\n- Käyttäjä kuuntelee kirjat mieluiten äänikirjoina työmatkalla.\n- Taavetti Taipale on intohimoinen kalastaja.\n- Käyttäjä on ryhtynyt kasvissyöjäksi eikä syö enää kalaa eikä kanaa.\n- Käyttäjä kirjoittaa muistiinpanot ensin käsin vihkoon ja siirtää ne illalla koneelle.\n- Käyttäjä haluaa asua Lissabonissa matkallaan Alfaman alueella.\n- Käyttäjän viikkoraporttiin lisätään tuotteen mittarit.\n## Rytmi\n- Käyttäjällä on ruotsin keskustelutunti tiistai-iltaisin.\n- Käyttäjä tapaa mentorinsa Aleksandra Mykrän kerran kuussa, yleensä kuun ensimmäisenä maanantaina.\n- Käyttäjä uii kaksi kertaa viikossa Tesoman uimahallissa.\n- Käyttäjä käy Helsingin toimistolla junalla kaksi päivää viikossa ja tekee muut päivät etätyötä.\n- Käyttäjän koira Sune tarvitsee kaksi pitkää lenkkiä päivässä.\n## Tavoitteet\n- Käyttäjän uusi tavoite on uida kaksi kilometriä yhtäjaksoisesti.\n- Käyttäjä suunnittelee Linnean kanssa viiden päivän matkaa Lissaboniin helmikuussa.\n## Faktat\n- Käyttäjän Satamarahti-sopimus uusitaan joka vuosi maaliskuussa.\n- Käyttäjän tytär aloitti koulun elokuussa 2026.\n- Taavetti Taipaleen syntymäpäivä on 12. maaliskuuta.\n- Käyttäjän polvi kipeytyi ja lääkäri kielsi juoksun, joten hän on lopettanut juoksemisen ja aloittanut uinnin.\n- Käyttäjän auto on vuoden 2019 Toyota Corolla hybridi.\n- Käyttäjän Toyota Corollan mittarissa on noin 85 000 kilometriä.\n- Käyttäjä aloitti tuoteomistajana Rahtiväylä Oy:ssä lokakuun alussa 2026 ja projektipäällikön työt siirtyivät kollegalle.\n- Käyttäjä muutti syyskuussa 2026 Espoosta Tampereelle, Hervantaan.\n- Käyttäjän koira Sune on kolmevuotias labradorinnoutaja.\n- Käyttäjällä on vaikea pähkinäallergia, eikä hän siedä manteleita eikä pistaasia.\n## Ihmiset\n- Linnea Hännikäinen on käyttäjän sisko.\n- Kaarina Engberg on käyttäjän ruotsin keskustelutunnin opettaja.\n- Aleksandra Mykrä on käyttäjän mentori.\n- Oskari Kakkonen on käyttäjän tärkein asiakas Aunola.\n- Paula Parkko on käyttäjän tyttären opettaja.\n- Taavetti Taipale on käyttäjän lanko ja Linnea Hännikäisen puoliso.\n- Pentti Kytönen on käyttäjän esihenkilö.\n- Hervannan eläinklinikka on käyttäjän koiran Sunen eläinlääkäri.\n## Tavat\n- Käyttäjä käyttää muistiinpanoihin ruutuvihkoa ja lyijykynää.\n\n\n\nHaku:\n- Asun Espoossa ja lenkkeilen Keskuspuistossa, joten mäkiä löytyy.\n- Matkasuunnitelma muuttui: menemmekin Linnean kanssa Portoon emmekä Lissaboniin. Lennot ovat sinne halvemmat.\n- Rakennetaan ohjelma niin, että pisin lenkki on 18 km kolme viikkoa ennen kisaa.\n- Merkitään perjantain iltapäivä vapaaksi kello 15 jälkeen.\n- Tarkistan jokaisen reseptin pähkinöiden varalta."
+    },
+    {
+      "id": "q054",
+      "category": "knowledge_update",
+      "askedDaysAgo": 0,
+      "recallHit": false,
+      "profileHit": true,
+      "correct": false,
+      "blockChars": 502,
+      "answer": "En tiedä",
+      "expected": "En, työt siirtyivät kollegalle",
+      "context": "## Käyttäjä\n\n\n## Muisti\n## Mieltymykset\n- Otto Katainen haluaa käyttäjän viikkoraportin perjantaisin klo 14 mennessä.\n- Linnea Hännikäinen rakastaa keramiikkaa.\n- Oskari Kakkonen haluaa käyttäjältä lyhyitä viestejä, koska hän vihaa pitkiä sähköposteja.\n- Käyttäjä pitää enemmän tietokirjoista kuin romaaneista.\n- Käyttäjä kuuntelee kirjat mieluiten äänikirjoina työmatkalla.\n- Taavetti Taipale on intohimoinen kalastaja.\n- Käyttäjä on ryhtynyt kasvissyöjäksi eikä syö enää kalaa eikä kanaa.\n- Käyttäjä kirjoittaa muistiinpanot ensin käsin vihkoon ja siirtää ne illalla koneelle.\n- Käyttäjä haluaa asua Lissabonissa matkallaan Alfaman alueella.\n- Käyttäjän viikkoraporttiin lisätään tuotteen mittarit.\n## Rytmi\n- Käyttäjällä on ruotsin keskustelutunti tiistai-iltaisin.\n- Käyttäjä tapaa mentorinsa Aleksandra Mykrän kerran kuussa, yleensä kuun ensimmäisenä maanantaina.\n- Käyttäjä uii kaksi kertaa viikossa Tesoman uimahallissa.\n- Käyttäjä käy Helsingin toimistolla junalla kaksi päivää viikossa ja tekee muut päivät etätyötä.\n- Käyttäjän koira Sune tarvitsee kaksi pitkää lenkkiä päivässä.\n## Tavoitteet\n- Käyttäjän uusi tavoite on uida kaksi kilometriä yhtäjaksoisesti.\n- Käyttäjä suunnittelee Linnean kanssa viiden päivän matkaa Lissaboniin helmikuussa.\n## Faktat\n- Käyttäjän Satamarahti-sopimus uusitaan joka vuosi maaliskuussa.\n- Käyttäjän tytär aloitti koulun elokuussa 2026.\n- Taavetti Taipaleen syntymäpäivä on 12. maaliskuuta.\n- Käyttäjän polvi kipeytyi ja lääkäri kielsi juoksun, joten hän on lopettanut juoksemisen ja aloittanut uinnin.\n- Käyttäjän auto on vuoden 2019 Toyota Corolla hybridi.\n- Käyttäjän Toyota Corollan mittarissa on noin 85 000 kilometriä.\n- Käyttäjä aloitti tuoteomistajana Rahtiväylä Oy:ssä lokakuun alussa 2026 ja projektipäällikön työt siirtyivät kollegalle.\n- Käyttäjä muutti syyskuussa 2026 Espoosta Tampereelle, Hervantaan.\n- Käyttäjän koira Sune on kolmevuotias labradorinnoutaja.\n- Käyttäjällä on vaikea pähkinäallergia, eikä hän siedä manteleita eikä pistaasia.\n## Ihmiset\n- Linnea Hännikäinen on käyttäjän sisko.\n- Kaarina Engberg on käyttäjän ruotsin keskustelutunnin opettaja.\n- Aleksandra Mykrä on käyttäjän mentori.\n- Oskari Kakkonen on käyttäjän tärkein asiakas Aunola.\n- Paula Parkko on käyttäjän tyttären opettaja.\n- Taavetti Taipale on käyttäjän lanko ja Linnea Hännikäisen puoliso.\n- Pentti Kytönen on käyttäjän esihenkilö.\n- Hervannan eläinklinikka on käyttäjän koiran Sunen eläinlääkäri.\n## Tavat\n- Käyttäjä käyttää muistiinpanoihin ruutuvihkoa ja lyijykynää.\n\n## Muistista tähän viestiin\nTaustatietoa käyttäjästä. Käytä vain, jos se liittyy viestiin. Suluissa laji, varmuus ja aika.\n- (mieltymys, 0.9, 2026-08) Käyttäjä haluaa, että ehdotuksissa suositus esitetään ensin ja perustelut vasta sen jälkeen.\n- (mieltymys, 0.9, 2026-08) Käyttäjä haluaa, että avustaja vastaa lyhyesti ja ilman otsikoita, koska pitkät listat väsyttävät.\n- (mieltymys, 0.9, 2026-08) Käyttäjä haluaa, että avustaja ei käytä vastauksissa emojeja, koska ne näyttävät hänestä lapselliselta.\n\nHaku:\n- Olen projektipäällikkö Rahtiväylä Oy:ssä ja vastaan varastojärjestelmän uudistuksesta.\n- Älä käytä vastauksissa emojeja, ne näyttävät minusta lapsellisilta.\n- Mietin uuden sohvan ostoa. Teen isot ostopäätökset aina vasta yön yli nukuttuani.\n- Kirjoitan muistiinpanot aina ensin käsin vihkoon ja siirrän ne vasta illalla koneelle.\n- Yksi pyyntö: vastaa minulle jatkossa lyhyesti ja ilman otsikoita. Pitkät listat väsyttävät."
+    },
+    {
+      "id": "q055",
+      "category": "knowledge_update",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": false,
+      "blockChars": 0,
+      "answer": "Viikkoraporttiin lisätään tuotteen mittarit.",
+      "expected": "Tila, riskit, tavoitteet ja tuotteen mittarit",
+      "context": "## Käyttäjä\n\n\n## Muisti\n## Mieltymykset\n- Otto Katainen haluaa käyttäjän viikkoraportin perjantaisin klo 14 mennessä.\n- Linnea Hännikäinen rakastaa keramiikkaa.\n- Oskari Kakkonen haluaa käyttäjältä lyhyitä viestejä, koska hän vihaa pitkiä sähköposteja.\n- Käyttäjä pitää enemmän tietokirjoista kuin romaaneista.\n- Käyttäjä kuuntelee kirjat mieluiten äänikirjoina työmatkalla.\n- Taavetti Taipale on intohimoinen kalastaja.\n- Käyttäjä on ryhtynyt kasvissyöjäksi eikä syö enää kalaa eikä kanaa.\n- Käyttäjä kirjoittaa muistiinpanot ensin käsin vihkoon ja siirtää ne illalla koneelle.\n- Käyttäjä haluaa asua Lissabonissa matkallaan Alfaman alueella.\n- Käyttäjän viikkoraporttiin lisätään tuotteen mittarit.\n## Rytmi\n- Käyttäjällä on ruotsin keskustelutunti tiistai-iltaisin.\n- Käyttäjä tapaa mentorinsa Aleksandra Mykrän kerran kuussa, yleensä kuun ensimmäisenä maanantaina.\n- Käyttäjä uii kaksi kertaa viikossa Tesoman uimahallissa.\n- Käyttäjä käy Helsingin toimistolla junalla kaksi päivää viikossa ja tekee muut päivät etätyötä.\n- Käyttäjän koira Sune tarvitsee kaksi pitkää lenkkiä päivässä.\n## Tavoitteet\n- Käyttäjän uusi tavoite on uida kaksi kilometriä yhtäjaksoisesti.\n- Käyttäjä suunnittelee Linnean kanssa viiden päivän matkaa Lissaboniin helmikuussa.\n## Faktat\n- Käyttäjän Satamarahti-sopimus uusitaan joka vuosi maaliskuussa.\n- Käyttäjän tytär aloitti koulun elokuussa 2026.\n- Taavetti Taipaleen syntymäpäivä on 12. maaliskuuta.\n- Käyttäjän polvi kipeytyi ja lääkäri kielsi juoksun, joten hän on lopettanut juoksemisen ja aloittanut uinnin.\n- Käyttäjän auto on vuoden 2019 Toyota Corolla hybridi.\n- Käyttäjän Toyota Corollan mittarissa on noin 85 000 kilometriä.\n- Käyttäjä aloitti tuoteomistajana Rahtiväylä Oy:ssä lokakuun alussa 2026 ja projektipäällikön työt siirtyivät kollegalle.\n- Käyttäjä muutti syyskuussa 2026 Espoosta Tampereelle, Hervantaan.\n- Käyttäjän koira Sune on kolmevuotias labradorinnoutaja.\n- Käyttäjällä on vaikea pähkinäallergia, eikä hän siedä manteleita eikä pistaasia.\n## Ihmiset\n- Linnea Hännikäinen on käyttäjän sisko.\n- Kaarina Engberg on käyttäjän ruotsin keskustelutunnin opettaja.\n- Aleksandra Mykrä on käyttäjän mentori.\n- Oskari Kakkonen on käyttäjän tärkein asiakas Aunola.\n- Paula Parkko on käyttäjän tyttären opettaja.\n- Taavetti Taipale on käyttäjän lanko ja Linnea Hännikäisen puoliso.\n- Pentti Kytönen on käyttäjän esihenkilö.\n- Hervannan eläinklinikka on käyttäjän koiran Sunen eläinlääkäri.\n## Tavat\n- Käyttäjä käyttää muistiinpanoihin ruutuvihkoa ja lyijykynää.\n\n\n\nHaku:\n- Mitä koulutuksia hän suositteli?\n- Ikävä kuulla. Uinti on polvelle hyvä vaihtoehto.\n- Olen nyt ryhtynyt täysin kasvissyöjäksi, en syö enää kalaakaan tai kanaa.\n- Anastaciani Linnea Hännikäinen täyttää pian 40. Mitä hänelle voisi ostaa?\n- Raporttiin lisätään nyt myös tuotteen mittarit."
+    },
+    {
+      "id": "q056",
+      "category": "temporal",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 566,
+      "answer": "Muutto Tampereelle tuli ensin. Käyttäjä muutti syyskuussa 2026 Espoosta Tampereelle, Hervantaan, ja aloitti tuoteomistajana Rahtiväylä Oy:ssä lokakuun alussa 2026.",
+      "expected": "Muutto Tampereelle syyskuussa, rooli lokakuussa"
+    },
+    {
+      "id": "q057",
+      "category": "temporal",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 0,
+      "answer": "Aloitit tuoteomistajana Rahtiväylä Oy:ssä lokakuun alussa 2026.",
+      "expected": "Lokakuun alussa"
+    },
+    {
+      "id": "q058",
+      "category": "temporal",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 0,
+      "answer": "Muutitte syyskuussa 2026.",
+      "expected": "Syyskuussa"
+    },
+    {
+      "id": "q059",
+      "category": "temporal",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 0,
+      "answer": "Elokuussa 2026.",
+      "expected": "Elokuussa"
+    },
+    {
+      "id": "q062",
+      "category": "temporal",
+      "askedDaysAgo": 0,
+      "recallHit": false,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 0,
+      "answer": "Tapaat mentorisi Aleksandra Mykrän kerran kuussa, yleensä kuun ensimmäisenä maanantaina.",
+      "expected": "Kerran kuussa, kuun ensimmäisenä maanantaina"
+    },
+    {
+      "id": "q064",
+      "category": "temporal",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 302,
+      "answer": "Kello 15.",
+      "expected": "Kello 15"
+    },
+    {
+      "id": "q065",
+      "category": "temporal",
+      "askedDaysAgo": 0,
+      "recallHit": false,
+      "profileHit": true,
+      "correct": false,
+      "blockChars": 566,
+      "answer": "En tiedä",
+      "expected": "Lissabon ensin, sitten vaihto Portoon",
+      "context": "## Käyttäjä\n\n\n## Muisti\n## Mieltymykset\n- Otto Katainen haluaa käyttäjän viikkoraportin perjantaisin klo 14 mennessä.\n- Linnea Hännikäinen rakastaa keramiikkaa.\n- Oskari Kakkonen haluaa käyttäjältä lyhyitä viestejä, koska hän vihaa pitkiä sähköposteja.\n- Käyttäjä pitää enemmän tietokirjoista kuin romaaneista.\n- Käyttäjä kuuntelee kirjat mieluiten äänikirjoina työmatkalla.\n- Taavetti Taipale on intohimoinen kalastaja.\n- Käyttäjä on ryhtynyt kasvissyöjäksi eikä syö enää kalaa eikä kanaa.\n- Käyttäjä kirjoittaa muistiinpanot ensin käsin vihkoon ja siirtää ne illalla koneelle.\n- Käyttäjä haluaa asua Lissabonissa matkallaan Alfaman alueella.\n- Käyttäjän viikkoraporttiin lisätään tuotteen mittarit.\n## Rytmi\n- Käyttäjällä on ruotsin keskustelutunti tiistai-iltaisin.\n- Käyttäjä tapaa mentorinsa Aleksandra Mykrän kerran kuussa, yleensä kuun ensimmäisenä maanantaina.\n- Käyttäjä uii kaksi kertaa viikossa Tesoman uimahallissa.\n- Käyttäjä käy Helsingin toimistolla junalla kaksi päivää viikossa ja tekee muut päivät etätyötä.\n- Käyttäjän koira Sune tarvitsee kaksi pitkää lenkkiä päivässä.\n## Tavoitteet\n- Käyttäjän uusi tavoite on uida kaksi kilometriä yhtäjaksoisesti.\n- Käyttäjä suunnittelee Linnean kanssa viiden päivän matkaa Lissaboniin helmikuussa.\n## Faktat\n- Käyttäjän Satamarahti-sopimus uusitaan joka vuosi maaliskuussa.\n- Käyttäjän tytär aloitti koulun elokuussa 2026.\n- Taavetti Taipaleen syntymäpäivä on 12. maaliskuuta.\n- Käyttäjän polvi kipeytyi ja lääkäri kielsi juoksun, joten hän on lopettanut juoksemisen ja aloittanut uinnin.\n- Käyttäjän auto on vuoden 2019 Toyota Corolla hybridi.\n- Käyttäjän Toyota Corollan mittarissa on noin 85 000 kilometriä.\n- Käyttäjä aloitti tuoteomistajana Rahtiväylä Oy:ssä lokakuun alussa 2026 ja projektipäällikön työt siirtyivät kollegalle.\n- Käyttäjä muutti syyskuussa 2026 Espoosta Tampereelle, Hervantaan.\n- Käyttäjän koira Sune on kolmevuotias labradorinnoutaja.\n- Käyttäjällä on vaikea pähkinäallergia, eikä hän siedä manteleita eikä pistaasia.\n## Ihmiset\n- Linnea Hännikäinen on käyttäjän sisko.\n- Kaarina Engberg on käyttäjän ruotsin keskustelutunnin opettaja.\n- Aleksandra Mykrä on käyttäjän mentori.\n- Oskari Kakkonen on käyttäjän tärkein asiakas Aunola.\n- Paula Parkko on käyttäjän tyttären opettaja.\n- Taavetti Taipale on käyttäjän lanko ja Linnea Hännikäisen puoliso.\n- Pentti Kytönen on käyttäjän esihenkilö.\n- Hervannan eläinklinikka on käyttäjän koiran Sunen eläinlääkäri.\n## Tavat\n- Käyttäjä käyttää muistiinpanoihin ruutuvihkoa ja lyijykynää.\n\n## Muistista tähän viestiin\nTaustatietoa käyttäjästä. Käytä vain, jos se liittyy viestiin. Suluissa laji, varmuus ja aika.\n- (mieltymys, 0.9, 2026-08) Käyttäjä haluaa, että ehdotuksissa suositus esitetään ensin ja perustelut vasta sen jälkeen.\n- (tavoite, 0.9, 2026-08) Käyttäjän tavoitteena on saavuttaa ruotsin kielen B1-taso ensi vuoden loppuun mennessä.\n- (mieltymys, 0.9, 2026-10) Jukka Hotti juo vain tummapaahtoista kahvia.\n- (mieltymys, 0.9, 2026-08) Käyttäjä haluaa, että avustaja kirjoittaa aina suomeksi, vaikka kysymys olisi englanninkielisestä aiheesta.\n\nHaku:\n- Porto on hyvä valinta. Päivitän suunnitelman.\n- Suunnittelemme Linnean kanssa matkaa Lissaboniin helmikuussa.\n- Kirjoitetaan hänelle tiiviit viestit, joissa päätös on ensimmäisellä rivillä.\n- Suositus ensin, perustelut sitten.\n- Kokoan vaihtoehdot tänään, ja voit päättää huomenna."
+    },
+    {
+      "id": "q066",
+      "category": "temporal",
+      "askedDaysAgo": 0,
+      "recallHit": false,
+      "profileHit": true,
+      "correct": false,
+      "blockChars": 0,
+      "answer": "En tiedä",
+      "expected": "Noin viisi päivää",
+      "context": "## Käyttäjä\n\n\n## Muisti\n## Mieltymykset\n- Otto Katainen haluaa käyttäjän viikkoraportin perjantaisin klo 14 mennessä.\n- Linnea Hännikäinen rakastaa keramiikkaa.\n- Oskari Kakkonen haluaa käyttäjältä lyhyitä viestejä, koska hän vihaa pitkiä sähköposteja.\n- Käyttäjä pitää enemmän tietokirjoista kuin romaaneista.\n- Käyttäjä kuuntelee kirjat mieluiten äänikirjoina työmatkalla.\n- Taavetti Taipale on intohimoinen kalastaja.\n- Käyttäjä on ryhtynyt kasvissyöjäksi eikä syö enää kalaa eikä kanaa.\n- Käyttäjä kirjoittaa muistiinpanot ensin käsin vihkoon ja siirtää ne illalla koneelle.\n- Käyttäjä haluaa asua Lissabonissa matkallaan Alfaman alueella.\n- Käyttäjän viikkoraporttiin lisätään tuotteen mittarit.\n## Rytmi\n- Käyttäjällä on ruotsin keskustelutunti tiistai-iltaisin.\n- Käyttäjä tapaa mentorinsa Aleksandra Mykrän kerran kuussa, yleensä kuun ensimmäisenä maanantaina.\n- Käyttäjä uii kaksi kertaa viikossa Tesoman uimahallissa.\n- Käyttäjä käy Helsingin toimistolla junalla kaksi päivää viikossa ja tekee muut päivät etätyötä.\n- Käyttäjän koira Sune tarvitsee kaksi pitkää lenkkiä päivässä.\n## Tavoitteet\n- Käyttäjän uusi tavoite on uida kaksi kilometriä yhtäjaksoisesti.\n- Käyttäjä suunnittelee Linnean kanssa viiden päivän matkaa Lissaboniin helmikuussa.\n## Faktat\n- Käyttäjän Satamarahti-sopimus uusitaan joka vuosi maaliskuussa.\n- Käyttäjän tytär aloitti koulun elokuussa 2026.\n- Taavetti Taipaleen syntymäpäivä on 12. maaliskuuta.\n- Käyttäjän polvi kipeytyi ja lääkäri kielsi juoksun, joten hän on lopettanut juoksemisen ja aloittanut uinnin.\n- Käyttäjän auto on vuoden 2019 Toyota Corolla hybridi.\n- Käyttäjän Toyota Corollan mittarissa on noin 85 000 kilometriä.\n- Käyttäjä aloitti tuoteomistajana Rahtiväylä Oy:ssä lokakuun alussa 2026 ja projektipäällikön työt siirtyivät kollegalle.\n- Käyttäjä muutti syyskuussa 2026 Espoosta Tampereelle, Hervantaan.\n- Käyttäjän koira Sune on kolmevuotias labradorinnoutaja.\n- Käyttäjällä on vaikea pähkinäallergia, eikä hän siedä manteleita eikä pistaasia.\n## Ihmiset\n- Linnea Hännikäinen on käyttäjän sisko.\n- Kaarina Engberg on käyttäjän ruotsin keskustelutunnin opettaja.\n- Aleksandra Mykrä on käyttäjän mentori.\n- Oskari Kakkonen on käyttäjän tärkein asiakas Aunola.\n- Paula Parkko on käyttäjän tyttären opettaja.\n- Taavetti Taipale on käyttäjän lanko ja Linnea Hännikäisen puoliso.\n- Pentti Kytönen on käyttäjän esihenkilö.\n- Hervannan eläinklinikka on käyttäjän koiran Sunen eläinlääkäri.\n## Tavat\n- Käyttäjä käyttää muistiinpanoihin ruutuvihkoa ja lyijykynää.\n\n\n\nHaku:\n- Helmikuu on Lissabonissa leuto. Kuinka pitkä matka?\n- Junamatka kestää noin puolitoista tuntia suuntaansa.\n- Kuuntelen kirjat mieluiten äänikirjoina työmatkalla.\n- Matkasuunnitelma muuttui: menemmekin Linnean kanssa Portoon emmekä Lissaboniin. Lennot ovat sinne halvemmat.\n- Riipit sopivat vauhtikestävyyspäivään."
+    },
+    {
+      "id": "q068",
+      "category": "temporal",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 566,
+      "answer": "Kalan ja kanan syönti tuli ensin. Stiinan viikon ruokalistan haussa käyttäjä kirjoitti syövänsä kalaa ja kanaa mutta ei punaista lihaa, ja myöhemmin hän ilmoitti ryhtyneensä täysin kasvissyöjäksi eikä enää syö kalaa eikä kanaa.",
+      "expected": "Ensin kala ja kana, nyt kasvissyönti"
+    },
+    {
+      "id": "q069",
+      "category": "temporal",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 787,
+      "answer": "Haluat saavuttaa ruotsin B1-tason ensi vuoden loppuun mennessä.",
+      "expected": "Ensi vuoden loppuun"
+    },
+    {
+      "id": "q070",
+      "category": "temporal",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 359,
+      "answer": "Sune tarvitsee kaksi pitkää lenkkiä päivässä.",
+      "expected": "Kaksi pitkää lenkkiä päivässä"
+    },
+    {
+      "id": "q071",
+      "category": "preference",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 831,
+      "answer": "Haluat lyhyitä vastauksia ilman otsikoita, koska pitkät listat väsyttävät sinua.",
+      "expected": "Lyhyitä, ilman otsikoita"
+    },
+    {
+      "id": "q072",
+      "category": "preference",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 862,
+      "answer": "Haluat vastaukset suomeksi, vaikka kysymys olisi englanninkielisestä aiheesta.",
+      "expected": "Suomeksi"
+    },
+    {
+      "id": "q073",
+      "category": "preference",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 831,
+      "answer": "TypeScriptillä. Et halua Python-esimerkkejä.",
+      "expected": "TypeScriptillä, ei Pythonia"
+    },
+    {
+      "id": "q074",
+      "category": "preference",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 634,
+      "answer": "Ei. Käyttäjä on pyytänyt, ettei vastauksissa käytetä emojeja, koska ne näyttävät hänestä lapsellisilta.",
+      "expected": "Ei"
+    },
+    {
+      "id": "q075",
+      "category": "preference",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 831,
+      "answer": "Haluat suosituksen ensin ja perustelut vasta sen jälkeen.",
+      "expected": "Suositus ensin, perustelut sitten"
+    },
+    {
+      "id": "q076",
+      "category": "preference",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 489,
+      "answer": "Pidät enemmän tietokirjoista kuin romaaneista. Kuuntelet kirjat mieluiten äänikirjoina työmatkalla.",
+      "expected": "Tietokirjoja"
+    },
+    {
+      "id": "q077",
+      "category": "preference",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 368,
+      "answer": "Kuuntelet kirjat mieluiten äänikirjoina työmatkalla.",
+      "expected": "Äänikirjoina"
+    },
+    {
+      "id": "q078",
+      "category": "preference",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 232,
+      "answer": "Palaverit sopivat iltapäivään, koska käyttäjä tekee syvätyötä aamupäivisin kello 8–11 eikä halua palavereja siihen aikaan.",
+      "expected": "Iltapäivisin, ei aamupäivisin"
+    },
+    {
+      "id": "q079",
+      "category": "preference",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": false,
+      "blockChars": 243,
+      "answer": "Suosittelen tarkistamaan reseptit vaikean pähkinäallergiasi varalta, eikä niissä saa olla manteleita tai pistaasia. Muistissa ei ole tarkempaa tietoa suosikkiruoistasi, joten en voi ehdottaa tiettyjä reseptejä.",
+      "expected": "Kasvisruokaa ilman pähkinöitä",
+      "context": "## Käyttäjä\n\n\n## Muisti\n## Mieltymykset\n- Otto Katainen haluaa käyttäjän viikkoraportin perjantaisin klo 14 mennessä.\n- Linnea Hännikäinen rakastaa keramiikkaa.\n- Oskari Kakkonen haluaa käyttäjältä lyhyitä viestejä, koska hän vihaa pitkiä sähköposteja.\n- Käyttäjä pitää enemmän tietokirjoista kuin romaaneista.\n- Käyttäjä kuuntelee kirjat mieluiten äänikirjoina työmatkalla.\n- Taavetti Taipale on intohimoinen kalastaja.\n- Käyttäjä on ryhtynyt kasvissyöjäksi eikä syö enää kalaa eikä kanaa.\n- Käyttäjä kirjoittaa muistiinpanot ensin käsin vihkoon ja siirtää ne illalla koneelle.\n- Käyttäjä haluaa asua Lissabonissa matkallaan Alfaman alueella.\n- Käyttäjän viikkoraporttiin lisätään tuotteen mittarit.\n## Rytmi\n- Käyttäjällä on ruotsin keskustelutunti tiistai-iltaisin.\n- Käyttäjä tapaa mentorinsa Aleksandra Mykrän kerran kuussa, yleensä kuun ensimmäisenä maanantaina.\n- Käyttäjä uii kaksi kertaa viikossa Tesoman uimahallissa.\n- Käyttäjä käy Helsingin toimistolla junalla kaksi päivää viikossa ja tekee muut päivät etätyötä.\n- Käyttäjän koira Sune tarvitsee kaksi pitkää lenkkiä päivässä.\n## Tavoitteet\n- Käyttäjän uusi tavoite on uida kaksi kilometriä yhtäjaksoisesti.\n- Käyttäjä suunnittelee Linnean kanssa viiden päivän matkaa Lissaboniin helmikuussa.\n## Faktat\n- Käyttäjän Satamarahti-sopimus uusitaan joka vuosi maaliskuussa.\n- Käyttäjän tytär aloitti koulun elokuussa 2026.\n- Taavetti Taipaleen syntymäpäivä on 12. maaliskuuta.\n- Käyttäjän polvi kipeytyi ja lääkäri kielsi juoksun, joten hän on lopettanut juoksemisen ja aloittanut uinnin.\n- Käyttäjän auto on vuoden 2019 Toyota Corolla hybridi.\n- Käyttäjän Toyota Corollan mittarissa on noin 85 000 kilometriä.\n- Käyttäjä aloitti tuoteomistajana Rahtiväylä Oy:ssä lokakuun alussa 2026 ja projektipäällikön työt siirtyivät kollegalle.\n- Käyttäjä muutti syyskuussa 2026 Espoosta Tampereelle, Hervantaan.\n- Käyttäjän koira Sune on kolmevuotias labradorinnoutaja.\n- Käyttäjällä on vaikea pähkinäallergia, eikä hän siedä manteleita eikä pistaasia.\n## Ihmiset\n- Linnea Hännikäinen on käyttäjän sisko.\n- Kaarina Engberg on käyttäjän ruotsin keskustelutunnin opettaja.\n- Aleksandra Mykrä on käyttäjän mentori.\n- Oskari Kakkonen on käyttäjän tärkein asiakas Aunola.\n- Paula Parkko on käyttäjän tyttären opettaja.\n- Taavetti Taipale on käyttäjän lanko ja Linnea Hännikäisen puoliso.\n- Pentti Kytönen on käyttäjän esihenkilö.\n- Hervannan eläinklinikka on käyttäjän koiran Sunen eläinlääkäri.\n## Tavat\n- Käyttäjä käyttää muistiinpanoihin ruutuvihkoa ja lyijykynää.\n\n## Muistista tähän viestiin\nTaustatietoa käyttäjästä. Käytä vain, jos se liittyy viestiin. Suluissa laji, varmuus ja aika.\n- (mieltymys, 0.9, 2026-08) Käyttäjä haluaa, että ehdotuksissa suositus esitetään ensin ja perustelut vasta sen jälkeen.\n\nHaku:\n- Hybridin määräaikaishuolto kannattaa tehdä merkkikorjaamolla takuun vuoksi.\n- Minulla on vaikea pähkinäallergia, joten tarkista reseptit sen varalta.\n- Yksi pyyntö: vastaa minulle jatkossa lyhyesti ja ilman otsikoita. Pitkät listat väsyttävät.\n- Selvä. Millaista apua tarvitset projektiin?\n- Ehdotan historiaa ja populaaritiedettä."
+    },
+    {
+      "id": "q080",
+      "category": "preference",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 805,
+      "answer": "Lauantai-iltana.",
+      "expected": "Lauantaina"
+    },
+    {
+      "id": "q081",
+      "category": "preference",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 368,
+      "answer": "Lyhyesti. Oskari Kakkonen on käyttäjän tärkein asiakas Aunolasta, ja hän haluaa lyhyitä viestejä, koska vihaa pitkiä sähköposteja.",
+      "expected": "Tiiviisti, päätös ensimmäisellä rivillä"
+    },
+    {
+      "id": "q082",
+      "category": "preference",
+      "askedDaysAgo": 0,
+      "recallHit": false,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 809,
+      "answer": "Alfaman alueella Lissabonissa.",
+      "expected": "Alfamassa (Lissabonin suunnitelma)"
+    },
+    {
+      "id": "q083",
+      "category": "preference",
+      "askedDaysAgo": 0,
+      "recallHit": false,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 805,
+      "answer": "Kirjoitat muistiinpanot ensin käsin ruutuvihkoon lyijykynällä ja siirrät ne illalla koneelle.",
+      "expected": "Ensin käsin, illalla koneelle"
+    },
+    {
+      "id": "q084",
+      "category": "preference",
+      "askedDaysAgo": 0,
+      "recallHit": true,
+      "profileHit": true,
+      "correct": true,
+      "blockChars": 197,
+      "answer": "Käyttäjä saa proteiininsa pavuista ja tofusta.",
+      "expected": "Pavuista ja tofusta"
+    },
+    {
+      "id": "q085",
+      "category": "preference",
+      "askedDaysAgo": 0,
+      "recallHit": false,
+      "profileHit": false,
+      "correct": true,
+      "blockChars": 835,
+      "answer": "Haluat vertailla aina vähintään kolmea vaihtoehtoa ennen päätöstä.",
+      "expected": "Vähintään kolme"
+    },
+    {
+      "id": "q086",
+      "category": "abstention",
+      "askedDaysAgo": 0,
+      "recallHit": null,
+      "profileHit": null,
+      "correct": true,
+      "blockChars": 0,
+      "answer": "En tiedä",
+      "expected": "Ei tiedossa"
+    },
+    {
+      "id": "q087",
+      "category": "abstention",
+      "askedDaysAgo": 0,
+      "recallHit": null,
+      "profileHit": null,
+      "correct": true,
+      "blockChars": 0,
+      "answer": "En tiedä",
+      "expected": "Ei tiedossa"
+    },
+    {
+      "id": "q088",
+      "category": "abstention",
+      "askedDaysAgo": 0,
+      "recallHit": null,
+      "profileHit": null,
+      "correct": true,
+      "blockChars": 0,
+      "answer": "En tiedä",
+      "expected": "Ei tiedossa"
+    },
+    {
+      "id": "q089",
+      "category": "abstention",
+      "askedDaysAgo": 0,
+      "recallHit": null,
+      "profileHit": null,
+      "correct": true,
+      "blockChars": 0,
+      "answer": "En tiedä",
+      "expected": "Ei tiedossa"
+    },
+    {
+      "id": "q090",
+      "category": "abstention",
+      "askedDaysAgo": 0,
+      "recallHit": null,
+      "profileHit": null,
+      "correct": true,
+      "blockChars": 0,
+      "answer": "En tiedä",
+      "expected": "Ei tiedossa"
+    },
+    {
+      "id": "q091",
+      "category": "abstention",
+      "askedDaysAgo": 0,
+      "recallHit": null,
+      "profileHit": null,
+      "correct": true,
+      "blockChars": 0,
+      "answer": "En tiedä",
+      "expected": "Ei tiedossa"
+    },
+    {
+      "id": "q092",
+      "category": "abstention",
+      "askedDaysAgo": 0,
+      "recallHit": null,
+      "profileHit": null,
+      "correct": true,
+      "blockChars": 0,
+      "answer": "En tiedä",
+      "expected": "Ei tiedossa"
+    },
+    {
+      "id": "q093",
+      "category": "abstention",
+      "askedDaysAgo": 0,
+      "recallHit": null,
+      "profileHit": null,
+      "correct": true,
+      "blockChars": 0,
+      "answer": "En tiedä",
+      "expected": "Ei tiedossa"
+    },
+    {
+      "id": "q094",
+      "category": "abstention",
+      "askedDaysAgo": 0,
+      "recallHit": null,
+      "profileHit": null,
+      "correct": true,
+      "blockChars": 0,
+      "answer": "En tiedä",
+      "expected": "Ei tiedossa"
+    },
+    {
+      "id": "q095",
+      "category": "abstention",
+      "askedDaysAgo": 0,
+      "recallHit": null,
+      "profileHit": null,
+      "correct": true,
+      "blockChars": 0,
+      "answer": "En tiedä",
+      "expected": "Ei tiedossa"
+    },
+    {
+      "id": "q096",
+      "category": "abstention",
+      "askedDaysAgo": 0,
+      "recallHit": null,
+      "profileHit": null,
+      "correct": true,
+      "blockChars": 0,
+      "answer": "En tiedä",
+      "expected": "Ei tiedossa"
+    },
+    {
+      "id": "q097",
+      "category": "abstention",
+      "askedDaysAgo": 0,
+      "recallHit": null,
+      "profileHit": null,
+      "correct": true,
+      "blockChars": 0,
+      "answer": "En tiedä",
+      "expected": "Ei tiedossa"
+    },
+    {
+      "id": "q098",
+      "category": "abstention",
+      "askedDaysAgo": 0,
+      "recallHit": null,
+      "profileHit": null,
+      "correct": true,
+      "blockChars": 0,
+      "answer": "En tiedä",
+      "expected": "Ei tiedossa"
+    },
+    {
+      "id": "q099",
+      "category": "abstention",
+      "askedDaysAgo": 0,
+      "recallHit": null,
+      "profileHit": null,
+      "correct": true,
+      "blockChars": 249,
+      "answer": "En tiedä",
+      "expected": "Ei tiedossa"
+    },
+    {
+      "id": "q100",
+      "category": "abstention",
+      "askedDaysAgo": 0,
+      "recallHit": null,
+      "profileHit": null,
+      "correct": true,
+      "blockChars": 0,
+      "answer": "En tiedä",
+      "expected": "Ei tiedossa"
+    }
+  ]
+}

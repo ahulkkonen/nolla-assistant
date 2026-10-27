@@ -593,25 +593,38 @@ state of that day). Recall@5 counts the top 5 of the union in the order the mode
 per-turn block, then the `recall` chunks, then the `recall` claims. "Recall@5 or profile" also
 counts a gold message that is the evidence of a claim in MEMORY.md, which is always injected.
 
-| Metric | Baseline (`--no-claims`) | Gold claims (`--claims-from gold`) |
-| --- | --- | --- |
-| Evidence Recall@5, total | 0.741 | 0.741 |
-| Recall@5 or profile, total | 0.741 | 0.965 |
-| single-session user (R@5 / or profile) | 0.900 / 0.900 | 0.900 / 0.900 |
-| multi-session | 0.650 / 0.650 | 0.650 / 1.000 |
-| knowledge update | 0.600 / 0.600 | 0.600 / 1.000 |
-| temporal | 0.867 / 0.867 | 0.867 / 0.933 |
-| preference | 0.667 / 0.667 | 0.667 / 1.000 |
-| Block tokens, mean and p95 (3 chars per token) | 0 / 0 | 0 / 0 |
-| QA accuracy, claim precision, extraction cost | not measured | not measured |
+| Metric | Baseline (`--no-claims`) | Gold claims (`--claims-from gold`) | Real extraction (2026-10-27) |
+| --- | --- | --- | --- |
+| Evidence Recall@5, total | 0.741 | 0.741 | 0.753 |
+| Recall@5 or profile, total | 0.741 | 0.965 | 0.988 |
+| single-session user (R@5 / or profile) | 0.900 / 0.900 | 0.900 / 0.900 | 0.900 / 1.000 |
+| multi-session | 0.650 / 0.650 | 0.650 / 1.000 | 0.600 / 1.000 |
+| knowledge update | 0.600 / 0.600 | 0.600 / 1.000 | 0.667 / 1.000 |
+| temporal | 0.867 / 0.867 | 0.867 / 0.933 | 0.800 / 1.000 |
+| preference | 0.667 / 0.667 | 0.667 / 1.000 | 0.800 / 0.933 |
+| Block tokens, mean and p95 (3 chars per token) | 0 / 0 | 0 / 0 | 62 / 277 |
+| QA accuracy, claim precision, extraction cost | not measured | not measured | 0.80, 0.82, 0.016 USD |
 
 All 50 gold claims fit in the 2,500-char MEMORY.md, so the per-turn block stays empty and the
 claims reach the model through the profile. The knowledge-update figure with the profile is an
 upper bound: gold mode has no supersession, so the old and the new claim are both in the profile.
 
-The LiteLLM key for OpenRouter has expired (`401 API key expired` from the local stack), so no
-model call ran. The real-extraction run (`node src/run.ts` without flags) and the QA accuracy stay
-open until the key is renewed. Gate item 3 is open.
+Real extraction (2026-10-27, `node src/run.ts`, result `results/2026-10-27-real.json`): 30 chats mined
+with `zdr/task-small` (Haiku 5.5) gave 60 claims (54 active, 6 superseded) for 0.016 USD. Claim
+precision is the share of claims that their own evidence quote supports, by the masked judge in
+numbered batches of ten: 0.82. Gold match (the share of claims that repeat one of the 50 gold claims)
+is 0.40: the extractor also keeps true facts the gold set does not list (birthday, car, dog's vet).
+QA accuracy is 0.80 in this run and ranged 0.72 to 0.82 over six runs of the same code: the answer
+model (`zdr/fast`) says "En tiedä" on some facts that stand in its context, and the judge marks a
+partial list or a hedged "Ei" as wrong. The retrieval side is stable: with the profile, 0.988 of the
+gold evidence reaches the model. Gate item 3 is closed.
+
+The run found five masking bugs, all fixed in `0b9a49c` and the commit after it (phase-12 decision 20):
+`Vantaalla`, `Ensi vuoden`, `Mentorini` and `Milloin Satamarahdin` masked as persons, and the
+`recall` snippet `**Pekka** Lahti`: the bold hit marker split the name, so the vault matched only
+`Pekka` and the lone `Lahti` was dropped as a place. The surname reached the model in the tool
+result. Snippets for the model are no longer marked (`search(…, { mark: false })`); the search UI
+keeps the marks.
 
 Review fixes (2026-10-26, after S4):
 
@@ -682,5 +695,5 @@ Run on a clean worktree of `3e20730`: `pnpm typecheck` and `pnpm lint` pass; `pn
 unit suite (server 189, web 80, protocol 42, contract 23, pseudo extension 18, subagents 14, memory 12,
 sandbox extension 5, masked-only 2, mcp 14, fake-llm 6, db 2) and e2e 516 of 516; `pnpm test:egress` 25.
 The server and sidecar images build; the local Docker stack runs them. The blind scored UI review passed
-on the sixth pass (every cell 4 or 5, no blocking finding). Open: the real extraction run, QA accuracy
-and claim precision of phase 17 need a fresh OpenRouter key (the key in `.env` expired on 2026-10-26).
+on the sixth pass (every cell 4 or 5, no blocking finding). The real extraction run of 2026-10-27 closed
+gate item 3 (QA accuracy 0.80, claim precision 0.82, 0.016 USD for 30 chats); see "Real extraction" above.

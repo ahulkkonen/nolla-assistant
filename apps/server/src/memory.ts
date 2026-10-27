@@ -210,7 +210,7 @@ export function memoryStore(deps: {
         .all()
         .map((r) => r.title ?? ''),
     async recall(q: string, filter: { since?: string; topic?: string }): Promise<Snippet[]> {
-      const hits = await search(db, userId, q, 5, pseudo, filter);
+      const hits = await search(db, userId, q, 5, pseudo, { ...filter, mark: false });
       if (!hits.length) return [];
       const dates = new Map(
         db

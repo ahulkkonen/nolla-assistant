@@ -169,6 +169,6 @@ Status on 2026-10-25. The plan, section 13, defines each gate.
 | 14 | Web search tool with entity guard (`docs/decisions/phase-14-search.md`) | done, plugin defaults are a user step |
 | 15 | Admin: agent and automation editors, devices, encrypted full export (`docs/decisions/phase-15-admin.md`) | done |
 | 16 | Polish: one deep agent, CSP reports, prompt cache counts, OCR for scanned PDFs, streaming Markdown, jump pill, chat cost header (`docs/decisions/phase-16-polish.md`) | done |
-| 17 | Memory 2: claims and evidence, one masked extraction per chat, per-turn claims block, Havainnot review tab, memory eval (`docs/decisions/phase-17-memory.md`) | done, real-extraction run needs a fresh OpenRouter key |
+| 17 | Memory 2: claims and evidence, one masked extraction per chat, per-turn claims block, Havainnot review tab, memory eval (`docs/decisions/phase-17-memory.md`) | done |
 | 18 | Search backend (Brave direct, Exa deep): researched in `docs/decisions/0007-memory-and-search-research.md`, deferred by the user; OpenRouter Exa stays | deferred |
 | 19 | Viz: `vega-lite` block with the injected theme, Mermaid retheme, design kit for HTML artifacts with Plot and D3, SVG/PNG export, sandbox page (`docs/decisions/phase-19-viz.md`) | done |

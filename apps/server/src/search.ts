@@ -159,8 +159,9 @@ export function terms(q: string) {
 
 type Hit = { id: string; chatId: string; messageId: string | null; text: string };
 
-/** ≤ 200 chars around the first term hit, the hit (to the end of its word) in `**…**`. */
-function snippet(text: string, words: string[]) {
+/** ≤ 200 chars around the first term hit, the hit (to the end of its word) in `**…**` when `mark`. */
+function snippet(text: string, words: string[], mark: boolean) {
+  const b = mark ? '**' : '';
   const lower = text.toLowerCase();
   for (const w of words) {
     const at = lower.indexOf(w);
@@ -169,7 +170,7 @@ function snippet(text: string, words: string[]) {
     while (end < text.length && /[\p{L}\p{N}]/u.test(text[end] as string)) end++;
     const start = Math.max(0, Math.min(at - 60, end - SNIPPET_CHARS));
     const stop = Math.min(text.length, start + SNIPPET_CHARS);
-    return `${text.slice(start, at)}**${text.slice(at, Math.min(end, stop))}**${text.slice(Math.min(end, stop), stop)}`;
+    return `${text.slice(start, at)}${b}${text.slice(at, Math.min(end, stop))}${b}${text.slice(Math.min(end, stop), stop)}`;
   }
   return text.slice(0, SNIPPET_CHARS);
 }
@@ -192,8 +193,12 @@ export async function search(
   q: string,
   limit: number,
   pseudo?: PseudoClient,
-  /** `since` (ISO datetime) on the chat's `createdAt`, `topic` on its `topicId`. */
-  filter: { since?: string | undefined; topic?: string | undefined } = {},
+  /**
+   * `since` (ISO datetime) on the chat's `createdAt`, `topic` on its `topicId`. `mark: false` leaves
+   * the hit unmarked: `**Pekka** Lahti` splits a name for the masker, and the surname leaks to the
+   * model (a lone `Lahti` is a place). Text for the model is never marked.
+   */
+  filter: { since?: string | undefined; topic?: string | undefined; mark?: boolean } = {},
 ): Promise<SearchResult[]> {
   const masked = pseudo ? (await pseudo.mask(`search:${userId}`, q)).masked : q;
   const sqlite = db.$client;
@@ -257,7 +262,7 @@ export async function search(
       chatId: hit.chatId,
       messageId: hit.messageId,
       title: title?.title ?? '',
-      snippet: snippet(text, words),
+      snippet: snippet(text, words, filter.mark ?? true),
       score,
     });
   }

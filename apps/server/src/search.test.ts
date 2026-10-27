@@ -271,6 +271,9 @@ test.skipIf(!modelOk)('20 scripted queries find the right chat', async () => {
   expect(hit).toMatchObject({ chatId: 'c01', title: 'Veroilmoituksen korjaus' });
   expect(hit?.snippet).toContain('**Kotitalousvähennys**');
   expect(hit?.snippet.length).toBeLessThanOrEqual(200);
+  const [plain] = await search(db, USER, 'kotitalousvähennys', 5, undefined, { mark: false });
+  expect(plain?.snippet).toContain('Kotitalousvähennys');
+  expect(plain?.snippet).not.toContain('**');
 });
 
 test.skipIf(!modelOk)(

@@ -15,7 +15,8 @@
       "!**/test-results",
       "!tests/pii/last-run.json",
       "!services/pseudo-svc/data",
-      "!**/.claude/worktrees"
+      "!**/.claude/worktrees",
+      "!**/models/Xenova"
     ]
   },
   "formatter": {
