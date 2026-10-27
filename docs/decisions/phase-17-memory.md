@@ -418,7 +418,9 @@ Rules:
 
 - Accepting a supersede proposal sets the old claim to `superseded` with
   `validTo = new.validFrom ?? today` in the same transaction.
-- `reject` is allowed on an `auto` active claim. That is the chip's undo.
+- `reject` is allowed on every active claim: the chip's undo, and a claim the user accepted and
+  no longer agrees with (amended 2026-10-27). The claim becomes `rejected`, MEMORY.md is
+  regenerated, and its FTS and vector rows stay for dedupe.
 - `keep` sets `lastConfirmedAt` and `checkedAt` to now. `lower` sets
   `confidence = max(0.1, confidence − 0.2)` and `checkedAt` to now.
 - Stale list: active claims where `lastConfirmedAt ?? recordedAt` is older than 90 days and
@@ -639,7 +641,7 @@ Review fixes (2026-10-26, after S4):
 10. Migration 0010 sets `claimsAt = updatedAt` on every existing chat: chats from before phase 17
     are not mined (no historical backlog). It sets `fromAutomation` on the chats it can tell
     apart: the last chat of each automation and the chats in the "Automaatiot" topic.
-11. MEMORY.md is regenerated after every accept, reject of an auto claim, update, expiry, tool write
+11. MEMORY.md is regenerated after every accept, reject of an active claim, update, expiry, tool write
     and import, not only on Monday. `inProfile` is set only after the file write.
 12. `chats.tainted` never resets. A chat that once had untrusted input never auto-activates a claim
     again (conservative, by design).

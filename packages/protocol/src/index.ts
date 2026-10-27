@@ -739,7 +739,7 @@ export const ClientMessage = z.discriminatedUnion('type', [
   z.object({ type: z.literal('memory.approve'), pendingId: z.int(), approve: z.boolean() }),
   z.object({ type: z.literal('memory.consolidate') }),
   z.object({ type: z.literal('claims.list') }),
-  /** A proposed claim (or an `auto` active one: the chip's undo). `text` edits, `validTo` sets an expiry. */
+  /** A proposed claim; `reject` also takes any active claim (the chip's undo, a changed mind). `text` edits, `validTo` sets an expiry. */
   z.object({
     type: z.literal('claims.review'),
     id: z.int(),

@@ -955,7 +955,8 @@ export function claimStore(deps: {
 
   /**
    * `claims.review`: accept (with an edit or expiry) or reject. `not_found` when the claim is not
-   * proposed (or, for reject, an `auto` active claim); `invalid` for an expiry in the past.
+   * proposed (or, for reject, active: the user may change their mind); `invalid` for an expiry in
+   * the past.
    */
   const review = async (
     id: number,
@@ -963,7 +964,7 @@ export function claimStore(deps: {
     edit: { text?: string | undefined; validTo?: string | undefined } = {},
   ): Promise<Result> => {
     const c = row(id);
-    const undo = c?.status === 'active' && c.activatedBy === 'auto' && action === 'reject';
+    const undo = c?.status === 'active' && action === 'reject';
     if (!c || (c.status !== 'proposed' && !undo)) return 'not_found';
     if (action === 'reject') {
       db.update(claims)

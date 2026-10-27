@@ -488,13 +488,19 @@ test('review: a supersede accept closes the old claim; edit, expiry, reject, chi
   expect(await s.review(auto as number, 'reject')).toBe('ok');
   expect(rows().get(auto as number)?.status).toBe('rejected');
   expect(await s.review(old as number, 'reject')).toBe('not_found');
+  // A claim the user accepted can be rejected later; its index rows stay for dedupe.
+  const indexed = () => db.$client.prepare('SELECT count(*) AS n FROM claims_fts').get();
+  const before = indexed();
+  expect(await s.review(plain as number, 'reject')).toBe('ok');
+  expect(rows().get(plain as number)?.status).toBe('rejected');
+  expect(indexed()).toEqual(before);
 
   expect(s.stale(staleId as number, 'lower')).toBe('ok');
   expect(rows().get(staleId as number)?.confidence).toBe(0.7);
   st = s.state();
   if (st.type !== 'claims.state') throw new Error('claims.state expected');
   expect(st.stale).toEqual([]);
-  expect(st.precision).toEqual({ accepted: 2, rejected: 1 });
+  expect(st.precision).toEqual({ accepted: 1, rejected: 2 });
   expect(db.select().from(claims).all()).toHaveLength(5);
 });
 
