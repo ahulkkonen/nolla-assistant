@@ -105,9 +105,9 @@ export function ChatCost() {
   const rate = cacheRate(usage);
   return (
     <Tip
-      // Left of the cost, top-aligned: it stays out of the thread column's first lines.
-      side="left"
-      align="start"
+      // Below the header, aligned to its right edge: the first bubble sits further down.
+      side="bottom"
+      align="end"
       label={
         // One labelled item per line, as text and <br> only (see MessageMeta's tooltip: axe).
         <>
@@ -137,7 +137,7 @@ export function ChatCost() {
         tabIndex={0}
         className="ml-auto shrink-0 rounded-xs text-meta whitespace-nowrap text-muted-foreground tabular-nums"
       >
-        {withRate(chatTotal(usage, fx), usage)}
+        {chatTotal(usage, fx)}
       </span>
     </Tip>
   );
