@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { deflateSync } from 'node:zlib';
 import { type FakeTurn, startFakeLlm } from '@pa/fake-llm';
 import { startFakeSidecar } from '@pa/pi-ext-pseudo/fake-sidecar';
@@ -538,3 +539,195 @@ export function memoryTurns(app: App, text: string, tainted = false) {
 }
 
 export { expect };
+
+const DAY_MS = 86_400_000;
+const ago = (days: number) => new Date(Date.now() - days * DAY_MS).toISOString();
+
+/**
+ * Phase-17 claims written straight into `app.db` (extraction needs a 20-minute idle chat). Each
+ * quote points at `chatId`. Returns the ids by name. `claims.list` reads them on the next open.
+ */
+export function seedClaims(app: App, chatId: string) {
+  const db = new DatabaseSync(join(app.dataDir, 'app.db'));
+  const claim = db.prepare(
+    `INSERT INTO claims (userId, kind, text, confidence, status, activatedBy, validFrom, validTo,
+      recordedAt, supersedesId, sourceChatId, lastConfirmedAt, timesSeen, reviewedAt)
+     VALUES ('aleksi', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+  );
+  const quote = db.prepare(
+    `INSERT INTO evidence (userId, claimId, chatId, quote, stance, createdAt)
+     VALUES ('aleksi', ?, ?, ?, 'supports', ?)`,
+  );
+  type Row = [
+    kind: string,
+    text: string,
+    confidence: number,
+    status: string,
+    activatedBy: string | null,
+    validFrom: string | null,
+    validTo: string | null,
+    recordedAt: string,
+    supersedesId: number | null,
+    sourceChatId: string | null,
+    lastConfirmedAt: string | null,
+    timesSeen: number,
+    reviewedAt: string | null,
+  ];
+  const add = (row: Row, quotes: string[] = []) => {
+    const { id } = claim.get(...row) as { id: number };
+    for (const q of quotes) quote.run(id, chatId, q, row[7]);
+    return id;
+  };
+  const coffee = add([
+    'rhythm',
+    'Käyttäjä juo aamuisin kahvia.',
+    0.9,
+    'active',
+    'user',
+    null,
+    null,
+    ago(40),
+    null,
+    null,
+    ago(10),
+    4,
+    ago(40),
+  ]);
+  const ids = {
+    coffee,
+    tea: add(
+      [
+        'rhythm',
+        'Käyttäjä juo aamuisin teetä.',
+        0.7,
+        'proposed',
+        null,
+        '2026-10',
+        null,
+        ago(1),
+        coffee,
+        chatId,
+        null,
+        1,
+        null,
+      ],
+      ['Vaihdoin aamukahvin vihreään teehen.'],
+    ),
+    short: add(
+      [
+        'preference',
+        'Käyttäjä haluaa vastaukset lyhyinä.',
+        0.85,
+        'proposed',
+        null,
+        null,
+        null,
+        ago(1),
+        null,
+        chatId,
+        null,
+        2,
+        null,
+      ],
+      ['Vastaa lyhyesti, kiitos.', 'Pidä vastaukset tiiviinä.'],
+    ),
+    run: add(
+      [
+        'goal',
+        'Käyttäjä harjoittelee puolimaratonille.',
+        0.6,
+        'proposed',
+        null,
+        null,
+        null,
+        ago(2),
+        null,
+        chatId,
+        null,
+        1,
+        null,
+      ],
+      ['Juoksin taas kymmenen kilometriä, puolimaraton on toukokuussa.'],
+    ),
+    city: add(
+      [
+        'fact',
+        'Käyttäjä asuu Tampereella.',
+        0.9,
+        'active',
+        'auto',
+        null,
+        null,
+        ago(0),
+        null,
+        chatId,
+        ago(0),
+        1,
+        null,
+      ],
+      ['Asun Tampereella.'],
+    ),
+    cat: add([
+      'relationship',
+      'Käyttäjän kissa on nimeltään Miuku.',
+      0.95,
+      'active',
+      'user',
+      null,
+      null,
+      ago(20),
+      null,
+      chatId,
+      ago(3),
+      3,
+      ago(20),
+    ]),
+    gym: add([
+      'rhythm',
+      'Käyttäjä käy salilla tiistaisin.',
+      0.8,
+      'active',
+      'user',
+      null,
+      null,
+      ago(120),
+      null,
+      null,
+      null,
+      2,
+      null,
+    ]),
+    turku: add([
+      'fact',
+      'Käyttäjä asui Turussa.',
+      0.9,
+      'superseded',
+      'user',
+      null,
+      '2025-08',
+      ago(400),
+      null,
+      null,
+      null,
+      1,
+      ago(400),
+    ]),
+    rejected: add([
+      'quirk',
+      'Käyttäjä kirjoittaa aina isoilla kirjaimilla.',
+      0.4,
+      'rejected',
+      null,
+      null,
+      null,
+      ago(5),
+      null,
+      chatId,
+      null,
+      1,
+      ago(4),
+    ]),
+  };
+  db.close();
+  return ids;
+}

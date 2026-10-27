@@ -1238,9 +1238,6 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
       case 'memory.consolidate':
         await memory.consolidate();
         return memoryToAll();
-      // Phase 17 decision 29: no proposals any more; the message goes when W1 drops it.
-      case 'memory.consolidation.resolve':
-        return send(socket, errorMsg('not_implemented'));
       case 'vault.list':
       case 'vault.merge':
       case 'vault.split':

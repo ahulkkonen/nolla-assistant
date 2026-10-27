@@ -1,0 +1,422 @@
+import { CLAIM_TEXT_MAX, type Claim, type ClaimKind } from '@pa/protocol';
+import { ChevronRight, Lightbulb } from 'lucide-react';
+import { type ReactNode, useEffect, useId, useState } from 'react';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { cn } from '@/lib/utils';
+import { firstUserLine, useStore } from '../store.ts';
+import { openChat, send } from '../ws.ts';
+import { EmptyState, ListSkeleton } from './Page.tsx';
+import { UNTITLED } from './Sidebar.tsx';
+
+/** Claim kinds in Finnish (the MEMORY.md section names of phase-17 decision 28, singular). */
+export const KIND_LABEL: Record<ClaimKind, string> = {
+  preference: 'Mieltymys',
+  rhythm: 'Rytmi',
+  goal: 'Tavoite',
+  fact: 'Fakta',
+  relationship: 'Ihminen',
+  decision_pattern: 'Päätöstapa',
+  quirk: 'Tapa',
+};
+
+const TEXT_MIN = 3;
+const percent = new Intl.NumberFormat('fi', { style: 'percent', maximumFractionDigits: 0 });
+const dayFormat = new Intl.DateTimeFormat('fi', {
+  day: 'numeric',
+  month: 'numeric',
+  year: 'numeric',
+});
+
+/** "12.10.2026" from an ISO time or a `VVVV-KK-PP` day; "10/2026" from a `VVVV-KK` month. */
+export function claimDate(s: string) {
+  const month = /^(\d{4})-(\d{2})$/.exec(s);
+  if (month) return `${Number(month[2])}/${month[1]}`;
+  const day = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  const d = day ? new Date(Number(day[1]), Number(day[2]) - 1, Number(day[3])) : new Date(s);
+  return dayFormat.format(d);
+}
+
+/** Tomorrow as `VVVV-KK-PP` in local time: the earliest expiry the server takes. */
+const tomorrow = () => {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+/** "Avaa keskustelu: <title>" for a quote's chat, or "Keskustelu poistettu". */
+function ChatLink({ chatId }: { chatId: string | null }) {
+  const known = useStore((s) => !!chatId && s.chats.some((c) => c.id === chatId));
+  const title = useStore((s) =>
+    chatId
+      ? (s.chats.find((c) => c.id === chatId)?.title ?? firstUserLine(s.messages[chatId]))
+      : undefined,
+  );
+  if (!chatId || !known)
+    return <span className="text-meta text-muted-foreground">Keskustelu poistettu</span>;
+  return (
+    <Button
+      variant="link"
+      className="min-w-0 justify-start text-meta max-md:min-h-11"
+      aria-label={`Avaa keskustelu: ${title ?? UNTITLED}`}
+      onClick={() => openChat(chatId)}
+    >
+      <span className="truncate">Avaa keskustelu</span>
+    </Button>
+  );
+}
+
+/** Up to 3 quotes, each with its chat. */
+function Evidence({ claim }: { claim: Claim }) {
+  if (!claim.evidence.length) return null;
+  return (
+    <ul className="flex flex-col gap-2" aria-label="Lähteet">
+      {claim.evidence.map((e, i) => (
+        <li
+          // Quotes have no id; their order is the server's (newest first).
+          key={i}
+          className="flex flex-col gap-0.5 border-l-2 border-border pl-3"
+        >
+          <q className="text-meta text-pretty text-foreground">{e.quote}</q>
+          <span className="flex flex-wrap items-center gap-x-2">
+            {e.stance === 'contradicts' && <span className="text-meta text-warning">Vastaan</span>}
+            <ChatLink chatId={e.chatId} />
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** Kind badge, confidence and validity: the meta line of a claim. */
+function Meta({ claim, children }: { claim: Claim; children?: ReactNode }) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-meta text-muted-foreground tabular-nums">
+      <Badge variant="outline">{KIND_LABEL[claim.kind]}</Badge>
+      <span>Varmuus {percent.format(claim.confidence)}</span>
+      {claim.validFrom && <span>· alkaen {claimDate(claim.validFrom)}</span>}
+      {claim.validTo && <span>· voimassa {claimDate(claim.validTo)} asti</span>}
+      {children}
+    </div>
+  );
+}
+
+/** The inline editor: 3–240 characters, a live counter, Enter with Ctrl/Cmd saves. */
+function TextEdit({
+  value,
+  onChange,
+  onSave,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onSave: () => void;
+}) {
+  const id = useId();
+  const n = value.trim().length;
+  const bad = n < TEXT_MIN || n > CLAIM_TEXT_MAX;
+  return (
+    <div className="flex flex-col gap-1">
+      <Textarea
+        autoFocus
+        aria-label="Havainto"
+        aria-invalid={bad || undefined}
+        aria-describedby={id}
+        value={value}
+        rows={2}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !bad) {
+            e.preventDefault();
+            onSave();
+          }
+        }}
+        className="field-sizing-content resize-none"
+      />
+      <span
+        id={id}
+        className={cn(
+          'self-end text-meta text-muted-foreground tabular-nums',
+          n > CLAIM_TEXT_MAX && 'font-medium text-destructive',
+        )}
+      >
+        {n} / {CLAIM_TEXT_MAX}
+      </span>
+    </div>
+  );
+}
+
+/** The expiry field: a date from tomorrow on. */
+function ExpiryField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <label className="flex flex-col gap-2 text-ui">
+      Voimassa asti
+      <Input
+        type="date"
+        min={tomorrow()}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-44 max-md:w-full"
+      />
+    </label>
+  );
+}
+
+type Mode = 'idle' | 'edit' | 'expiry';
+
+/**
+ * One claim card. Proposed: Hyväksy (with an edited text or an expiry when set), Muokkaa, Hylkää,
+ * Voimassa asti. Active: Muokkaa and Voimassa asti save at once (`claims.update`); Hylkää only
+ * for a claim that extraction activated by itself (the server's undo rule).
+ */
+function ClaimCard({ claim }: { claim: Claim }) {
+  const proposed = claim.status === 'proposed';
+  const [mode, setMode] = useState<Mode>('idle');
+  const [text, setText] = useState(claim.text);
+  const [expiry, setExpiry] = useState(claim.validTo?.length === 10 ? claim.validTo : '');
+  const n = text.trim().length;
+  const textOk = n >= TEXT_MIN && n <= CLAIM_TEXT_MAX;
+  const edited = text.trim() !== claim.text;
+  const reset = () => {
+    setMode('idle');
+    setText(claim.text);
+  };
+  const accept = () =>
+    send({
+      type: 'claims.review',
+      id: claim.id,
+      action: 'accept',
+      ...(mode === 'edit' && edited ? { text: text.trim() } : {}),
+      ...(mode === 'expiry' && expiry ? { validTo: expiry } : {}),
+    });
+  const reject = () => send({ type: 'claims.review', id: claim.id, action: 'reject' });
+  const save = () => {
+    send({
+      type: 'claims.update',
+      id: claim.id,
+      ...(mode === 'edit' ? { text: text.trim() } : { validTo: expiry || null }),
+    });
+    setMode('idle');
+  };
+  const canReject = proposed || claim.activatedBy === 'auto';
+  const meta = !proposed && (
+    <>
+      {!claim.validFrom && <span>· alkaen {claimDate(claim.recordedAt)}</span>}
+      {claim.lastConfirmedAt && <span>· vahvistettu {claimDate(claim.lastConfirmedAt)}</span>}
+      <span>· nähty {claim.timesSeen} kertaa</span>
+    </>
+  );
+
+  return (
+    <li className="flex flex-col gap-3 rounded-lg border bg-card p-4">
+      <Meta claim={claim}>{meta}</Meta>
+      {proposed && claim.supersedes && (
+        // A contradiction: the old claim first, tinted, no strike-through (brief 7.1).
+        <p className="rounded-sm bg-destructive-subtle px-2 py-1 text-body text-pretty">
+          <span className="text-meta text-muted-foreground">Korvaa: </span>
+          {claim.supersedes.text}
+        </p>
+      )}
+      {mode === 'edit' ? (
+        <TextEdit value={text} onChange={setText} onSave={proposed ? accept : save} />
+      ) : (
+        <p className="text-body text-pretty hyphens-auto">{claim.text}</p>
+      )}
+      {proposed && <Evidence claim={claim} />}
+      {mode === 'expiry' && <ExpiryField value={expiry} onChange={setExpiry} />}
+      <div className="flex flex-wrap justify-end gap-2 max-md:grid max-md:grid-cols-2">
+        {mode === 'idle' ? (
+          <>
+            {canReject && (
+              <Button variant="ghost" onClick={reject}>
+                Hylkää
+              </Button>
+            )}
+            <Button variant="outline" onClick={() => setMode('expiry')}>
+              Voimassa asti
+            </Button>
+            <Button variant="outline" onClick={() => setMode('edit')}>
+              Muokkaa
+            </Button>
+            {proposed && <Button onClick={accept}>Hyväksy</Button>}
+          </>
+        ) : (
+          <>
+            <Button variant="ghost" onClick={reset}>
+              Peruuta
+            </Button>
+            {proposed ? (
+              <Button disabled={mode === 'edit' ? !textOk : !expiry} onClick={accept}>
+                Hyväksy
+              </Button>
+            ) : (
+              <Button
+                disabled={mode === 'edit' ? !textOk || !edited : expiry === (claim.validTo ?? '')}
+                onClick={save}
+              >
+                Tallenna
+              </Button>
+            )}
+          </>
+        )}
+      </div>
+    </li>
+  );
+}
+
+/** A stale claim: keep (confirms it now) or lower the confidence by 0.2. */
+function StaleRow({ claim }: { claim: Claim }) {
+  return (
+    <li className="flex flex-col gap-3 rounded-lg border bg-card p-4">
+      <Meta claim={claim}>
+        <span>· vahvistettu {claimDate(claim.lastConfirmedAt ?? claim.recordedAt)}</span>
+      </Meta>
+      <p className="text-body text-pretty hyphens-auto">{claim.text}</p>
+      <div className="flex flex-wrap justify-end gap-2 max-md:grid max-md:grid-cols-2">
+        <Button
+          variant="outline"
+          onClick={() => send({ type: 'claims.stale', id: claim.id, action: 'lower' })}
+        >
+          Laske luottamusta
+        </Button>
+        <Button onClick={() => send({ type: 'claims.stale', id: claim.id, action: 'keep' })}>
+          Pidä
+        </Button>
+      </div>
+    </li>
+  );
+}
+
+/** One section: heading with a count, a helper line, the list or its empty line. */
+function Section({
+  id,
+  title,
+  count,
+  line,
+  empty,
+  children,
+}: {
+  id: string;
+  title: string;
+  count: number;
+  line?: string;
+  empty?: string;
+  children: ReactNode;
+}) {
+  return (
+    <section aria-labelledby={id} className="flex flex-col gap-3">
+      <div className="flex flex-col gap-1">
+        <h2 id={id} className="flex items-baseline gap-2 text-heading">
+          {title}
+          <span className="text-meta font-normal text-muted-foreground tabular-nums">{count}</span>
+        </h2>
+        {line && <p className="text-meta text-muted-foreground">{line}</p>}
+      </div>
+      {count ? (
+        <ul className="flex flex-col gap-2">{children}</ul>
+      ) : (
+        empty && <p className="text-meta text-muted-foreground">{empty}</p>
+      )}
+    </section>
+  );
+}
+
+/**
+ * "Havainnot" (phase-17 W1): claims the assistant learned, to review. Proposed first (supersede
+ * proposals on top, as the server sends them), then active, stale and the superseded history.
+ */
+export function ClaimsTab() {
+  const claims = useStore((s) => s.claims);
+  const [history, setHistory] = useState(false);
+  useEffect(() => send({ type: 'claims.list' }), []);
+
+  if (!claims) return <ListSkeleton loading />;
+  const { proposed, active, stale, superseded, precision } = claims;
+  if (!proposed.length && !active.length && !superseded.length)
+    return (
+      <EmptyState
+        Icon={Lightbulb}
+        title="Ei vielä havaintoja"
+        line="Avustaja kerää havaintoja keskusteluista. Ne näkyvät tässä tarkistettavina."
+      />
+    );
+  // Stale claims show in their own section, not twice.
+  const staleIds = new Set(stale.map((c) => c.id));
+  return (
+    <div className="flex flex-col gap-8">
+      <Section
+        id="claims-proposed"
+        title="Ehdotetut"
+        count={proposed.length}
+        empty="Ei tarkistettavia ehdotuksia."
+      >
+        {proposed.map((c) => (
+          <ClaimCard key={`${c.id}:${c.text}`} claim={c} />
+        ))}
+      </Section>
+      <Section
+        id="claims-active"
+        title="Aktiiviset"
+        count={active.length - staleIds.size}
+        empty="Ei aktiivisia havaintoja."
+      >
+        {active
+          .filter((c) => !staleIds.has(c.id))
+          .map((c) => (
+            <ClaimCard key={`${c.id}:${c.text}:${c.validTo}`} claim={c} />
+          ))}
+      </Section>
+      {stale.length > 0 && (
+        <Section
+          id="claims-stale"
+          title="Vanhentuvat"
+          count={stale.length}
+          line="Näitä ei ole vahvistettu 90 päivään."
+        >
+          {stale.map((c) => (
+            <StaleRow key={c.id} claim={c} />
+          ))}
+        </Section>
+      )}
+      {superseded.length > 0 && (
+        <section aria-labelledby="claims-superseded" className="flex flex-col gap-3">
+          <h2 id="claims-superseded" className="text-heading">
+            <Button
+              variant="ghost"
+              aria-expanded={history}
+              aria-controls="claims-superseded-list"
+              onClick={() => setHistory(!history)}
+              className="-ml-2 gap-1 px-2 text-heading"
+            >
+              <ChevronRight
+                size={16}
+                className={cn('transition-transform duration-150', history && 'rotate-90')}
+              />
+              Korvatut
+              <span className="text-meta font-normal text-muted-foreground tabular-nums">
+                {superseded.length}
+              </span>
+            </Button>
+          </h2>
+          {history && (
+            <ul id="claims-superseded-list" className="flex flex-col divide-y">
+              {superseded.map((c) => (
+                <li key={c.id} className="flex flex-col gap-0.5 py-3">
+                  <span className="text-body text-pretty text-muted-foreground">{c.text}</span>
+                  <span className="text-meta text-muted-foreground tabular-nums">
+                    {KIND_LABEL[c.kind]}
+                    {c.validTo && ` · päättyi ${claimDate(c.validTo)}`}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
+      <p className="text-meta text-muted-foreground tabular-nums">
+        Hyväksytty {precision.accepted} · hylätty {precision.rejected}
+      </p>
+    </div>
+  );
+}

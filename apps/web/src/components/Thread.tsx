@@ -10,7 +10,7 @@ import { useModel } from '../useModel.ts';
 import { forkChat, openChat, retryTurn, send, sendUserMessage, setDataPolicy } from '../ws.ts';
 import { ApprovalCard } from './ApprovalCard.tsx';
 import { FindBar } from './FindBar.tsx';
-import { MemoryChipRow } from './MemoryChipRow.tsx';
+import { ClaimChipRow, MemoryChipRow } from './MemoryChipRow.tsx';
 import { MessageView } from './MessageView.tsx';
 import { UNTITLED } from './Sidebar.tsx';
 import { SubagentRow } from './SubagentRow.tsx';
@@ -84,6 +84,7 @@ export function Thread() {
   const related = useStore((s) => (chatId ? s.related[chatId] : undefined)) ?? EMPTY;
   const scrollTo = useStore((s) => s.scrollTo);
   const memoryChip = useStore((s) => (chatId ? s.memoryChip[chatId] : undefined));
+  const claimChips = useStore((s) => (chatId ? s.claimChips[chatId] : undefined)) ?? EMPTY;
   const subagents = useStore((s) => (chatId ? s.subagents[chatId] : undefined)) ?? EMPTY;
   const failed = useStore((s) => (chatId ? s.failed[chatId] : undefined));
   const held = useStore((s) => (chatId ? s.held[chatId] !== undefined : false));
@@ -159,7 +160,12 @@ export function Thread() {
     </p>
   );
   // The memory chip belongs to the turn that wrote memory: the live one, else the last reply.
-  const chip = memoryChip && <MemoryChipRow chip={memoryChip} />;
+  const chip = (memoryChip || claimChips.length > 0) && chatId && (
+    <>
+      {memoryChip && <MemoryChipRow chip={memoryChip} />}
+      {claimChips.length > 0 && <ClaimChipRow chatId={chatId} claims={claimChips} />}
+    </>
+  );
   const chipAt = stream || running ? -1 : messages.findLastIndex((m) => m.role === 'assistant');
   const lastAssistant =
     stream || running ? -1 : messages.findLastIndex((m) => m.role === 'assistant');

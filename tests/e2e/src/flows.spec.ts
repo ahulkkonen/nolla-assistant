@@ -27,6 +27,7 @@ import {
   search,
   searchTurns,
   secondDevice,
+  seedClaims,
   TAX,
   THINKING_TURN,
   taxChat,
@@ -1087,6 +1088,129 @@ test.describe('admin', () => {
     await expect(dialog).toHaveCount(0);
     // Once: the file is gone after the download.
     await expect.poll(async () => (await page.request.get(href ?? '')).status()).not.toBe(200);
+  });
+});
+
+test.describe('claims', () => {
+  // Phase-17 W1: the Havainnot tab and the chat chip, on claims seeded into app.db.
+  test.use({ pseudo: 'full', memoryUser: USER_MD });
+
+  /** A chat with one reply, then the seeded claims; returns the chat id. */
+  const claimChat = async (app: App, page: Page) => {
+    app.llm.push({ text: 'Hei.' });
+    await app.login(page);
+    await send(page, 'Moi');
+    await expect(page.locator('.md').last()).toHaveText('Hei.');
+    const db = new DatabaseSync(join(app.dataDir, 'app.db'));
+    const { id } = db.prepare('SELECT id FROM chats LIMIT 1').get() as { id: string };
+    db.close();
+    seedClaims(app, id);
+    return id;
+  };
+  const openClaims = async (page: Page) => {
+    await openSettings(page, 'Muisti');
+    await page.getByRole('tab', { name: 'Havainnot' }).click();
+  };
+  const card = (page: Page, text: string) => page.getByRole('listitem').filter({ hasText: text });
+  const section = (page: Page, name: string) =>
+    page.getByRole('region', { name: new RegExp(`^${name}`) });
+
+  test('accept: a proposal and a supersede become active; the old claim is superseded', async ({
+    app,
+    page,
+  }) => {
+    await claimChat(app, page);
+    await openClaims(page);
+    await expect(page.getByText('Hyväksytty 1 · hylätty 1')).toBeVisible();
+    await card(page, 'Käyttäjä haluaa vastaukset lyhyinä.')
+      .getByRole('button', { name: 'Hyväksy' })
+      .click();
+    await expect(section(page, 'Aktiiviset')).toContainText('Käyttäjä haluaa vastaukset lyhyinä.');
+    await expect(page.getByText('Hyväksytty 2 · hylätty 1')).toBeVisible();
+    const tea = card(page, 'Käyttäjä juo aamuisin teetä.');
+    await expect(tea).toContainText('Korvaa: Käyttäjä juo aamuisin kahvia.');
+    await tea.getByRole('button', { name: 'Hyväksy' }).click();
+    await expect(section(page, 'Aktiiviset')).toContainText('Käyttäjä juo aamuisin teetä.');
+    await expect(section(page, 'Aktiiviset')).not.toContainText('Käyttäjä juo aamuisin kahvia.');
+    await page.getByRole('button', { name: /^Korvatut/ }).click();
+    await expect(section(page, 'Korvatut')).toContainText('Käyttäjä juo aamuisin kahvia.');
+  });
+
+  test('edit: an edited proposal is accepted with the new text', async ({ app, page }) => {
+    await claimChat(app, page);
+    await openClaims(page);
+    await card(page, 'Käyttäjä harjoittelee puolimaratonille.')
+      .getByRole('button', { name: 'Muokkaa' })
+      .click();
+    const field = page.getByLabel('Havainto');
+    // The card by its editor: the claim text is in the field now, not in the card's text.
+    const run = page.getByRole('listitem').filter({ has: field });
+    await field.fill('ab');
+    await expect(run.getByRole('button', { name: 'Hyväksy' })).toBeDisabled();
+    await field.fill('Käyttäjä juoksee puolimaratonin toukokuussa.');
+    await run.getByRole('button', { name: 'Hyväksy' }).click();
+    await expect(section(page, 'Aktiiviset')).toContainText(
+      'Käyttäjä juoksee puolimaratonin toukokuussa.',
+    );
+    await expect(section(page, 'Ehdotetut')).not.toContainText('puolimaraton');
+  });
+
+  test('reject: a rejected proposal leaves the list and counts', async ({ app, page }) => {
+    await claimChat(app, page);
+    await openClaims(page);
+    await card(page, 'Käyttäjä haluaa vastaukset lyhyinä.')
+      .getByRole('button', { name: 'Hylkää' })
+      .click();
+    await expect(page.getByText('Hyväksytty 1 · hylätty 2')).toBeVisible();
+    await expect(page.getByText('Käyttäjä haluaa vastaukset lyhyinä.')).toHaveCount(0);
+  });
+
+  test('expiry: an active claim gets an end date', async ({ app, page }) => {
+    await claimChat(app, page);
+    await openClaims(page);
+    const cat = card(page, 'Käyttäjän kissa on nimeltään Miuku.');
+    await cat.getByRole('button', { name: 'Voimassa asti' }).click();
+    await cat.getByLabel('Voimassa asti').fill('2030-12-31');
+    await cat.getByRole('button', { name: 'Tallenna' }).click();
+    await expect(card(page, 'Käyttäjän kissa on nimeltään Miuku.')).toContainText(
+      'voimassa 31.12.2030 asti',
+    );
+  });
+
+  test('keep: a stale claim is confirmed and leaves the stale list', async ({ app, page }) => {
+    await claimChat(app, page);
+    await openClaims(page);
+    const stale = section(page, 'Vanhentuvat');
+    await expect(stale).toContainText('Näitä ei ole vahvistettu 90 päivään.');
+    await stale.getByRole('button', { name: 'Pidä' }).click();
+    await expect(stale).toHaveCount(0);
+    await expect(section(page, 'Aktiiviset')).toContainText('Käyttäjä käy salilla tiistaisin.');
+  });
+
+  test('lower: a stale claim loses 20 points of confidence', async ({ app, page }) => {
+    await claimChat(app, page);
+    await openClaims(page);
+    await section(page, 'Vanhentuvat').getByRole('button', { name: 'Laske luottamusta' }).click();
+    await expect(section(page, 'Vanhentuvat')).toHaveCount(0);
+    await expect(card(page, 'Käyttäjä käy salilla tiistaisin.')).toContainText('Varmuus 60 %');
+  });
+
+  test('chip: an auto claim shows under the reply and Kumoa rejects it', async ({ app, page }) => {
+    await claimChat(app, page);
+    await page.reload();
+    await page.locator('nav li > button').first().click();
+    const chip = page.getByRole('list', { name: 'Uudet havainnot' });
+    await expect(chip).toContainText('Muisti: Käyttäjä asuu Tampereella.');
+    await chip.getByRole('button', { name: 'Kumoa: Käyttäjä asuu Tampereella.' }).click();
+    await expect(chip).toHaveCount(0);
+    // Gone for good: the claim counts as rejected, and the reopened chat has no chip. (The
+    // server holds app.db exclusively, so the test reads its state through the UI.)
+    await openClaims(page);
+    await expect(page.getByText('Hyväksytty 1 · hylätty 2')).toBeVisible();
+    await page.reload();
+    await page.locator('nav li > button').first().click();
+    await expect(page.locator('.md').last()).toHaveText('Hei.');
+    await expect(page.getByRole('list', { name: 'Uudet havainnot' })).toHaveCount(0);
   });
 });
 

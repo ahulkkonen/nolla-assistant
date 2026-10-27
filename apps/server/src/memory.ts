@@ -107,8 +107,6 @@ export function memoryStore(deps: {
         const old = p.action === 'remove' ? p.text : replace;
         return old == null ? p : { ...p, replace: old };
       }),
-    // Phase 17: no consolidation proposals (MEMORY.md is generated from claims).
-    consolidation: null,
   });
 
   /**

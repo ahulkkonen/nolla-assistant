@@ -51,6 +51,9 @@ export type Agent = Of<'agents.state'>['agents'][number];
 export type SubagentChild = Of<'subagent.state'>['children'][number];
 export type Automation = Of<'automations.state'>['automations'][number];
 export type MemoryState = Omit<Of<'memory.state'>, 'type'>;
+/** The last `claims.state` (phase 17): proposed, active, superseded and stale claims. */
+export type ClaimsState = Omit<Of<'claims.state'>, 'type'>;
+export type ClaimChip = Of<'claims.activated'>['claims'][number];
 /** The last `models.state` (phase-10): Auto's model, favourites and the catalog. */
 export type ModelsState = Omit<Of<'models.state'>, 'type'>;
 /** A new chat's model until `chat.create` (phase-10). */
@@ -190,6 +193,10 @@ type State = {
   memory: MemoryState | null;
   /** Chip under a chat's last message after an agent memory write, until the next message. */
   memoryChip: Record<string, MemoryChip>;
+  /** Last `claims.state`; null until the first one arrives. */
+  claims: ClaimsState | null;
+  /** Claims a chat activated at once (`claims.activated`, `chat.state.claims`): its chip. */
+  claimChips: Record<string, ClaimChip[]>;
   /** Artifacts per chat (from `chat.state` and `artifact.upsert`, plus code blocks opened locally). */
   artifacts: Record<string, Artifact[]>;
   /** The artifact shown in the panel; the panel is closed when null. */
@@ -327,6 +334,7 @@ const ERROR_TEXT: Record<string, string> = {
   held: 'Edellinen viesti odottaa Nimisuojaa.',
   memory_full: 'Muisti on täynnä.',
   memory_conflict: 'Teksti on muuttunut, lataa uudelleen.',
+  invalid: 'Päivä on mennyt tai virheellinen.',
   zdr_unavailable: 'Mallilla ei ole ZDR-reittiä. Avaa keskustelu ja valitse toinen malli.',
 };
 
@@ -387,6 +395,8 @@ export const useStore = create<State>()((set, get) => {
     automations: null,
     memory: null,
     memoryChip: {},
+    claims: null,
+    claimChips: {},
     artifacts: {},
     openArtifact: null,
     paletteOpen: false,
@@ -519,6 +529,7 @@ export const useStore = create<State>()((set, get) => {
             return {
               messages: { ...st.messages, [msg.chat.id]: [...kept, ...local] },
               summaries: { ...st.summaries, [msg.chat.id]: msg.chat },
+              claimChips: { ...st.claimChips, [msg.chat.id]: msg.claims ?? [] },
               policies: { ...st.policies, [msg.chat.id]: msg.chat.modelPolicy },
               forkedFrom: { ...st.forkedFrom, [msg.chat.id]: msg.forkedFrom ?? null },
               ...(mine ? { pendingFork: null, activeChatId: msg.chat.id, screen: 'chat' } : {}),
@@ -725,6 +736,22 @@ export const useStore = create<State>()((set, get) => {
                 : {}),
             };
           });
+        case 'claims.state': {
+          const { type: _, ...claims } = msg;
+          return set({ claims });
+        }
+        case 'claims.activated':
+          return set((st) => ({
+            claimChips: {
+              ...st.claimChips,
+              [msg.chatId]: [
+                ...(st.claimChips[msg.chatId] ?? []).filter(
+                  (c) => !msg.claims.some((n) => n.id === c.id),
+                ),
+                ...msg.claims,
+              ],
+            },
+          }));
         case 'automations.state':
           return set({ automations: msg.automations });
         case 'topic.state':

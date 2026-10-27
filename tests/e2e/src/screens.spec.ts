@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import AxeBuilder from '@axe-core/playwright';
 import type { Page } from '@playwright/test';
 import {
@@ -25,6 +26,7 @@ import {
   search,
   searchTurns,
   secondDevice,
+  seedClaims,
   sendMessage,
   showSidebar,
   TAX,
@@ -1328,57 +1330,6 @@ for (const scheme of ['light', 'dark'] as const) {
             await blur(page);
             await shot(page, 'memory-overcap', vp.width, scheme);
           });
-
-          // Phase 17 decision 29: no consolidation proposal any more; W1 replaces this screen.
-          test.skip('memory-consolidating', async ({ app, page }) => {
-            app.llm.push({
-              text: JSON.stringify({ user: 'Asun Tampereella.\nVastaa lyhyesti.', memory: '' }),
-            });
-            const g = await gate(page, 'memory.state');
-            await app.login(page);
-            await openSettings(page, 'Muisti');
-            await expect(page.getByLabel('Käyttäjä (USER.md)')).toHaveValue(USER_MD);
-            g.close();
-            await page.getByRole('button', { name: 'Tiivistä nyt' }).click();
-            await expect(page.getByRole('button', { name: 'Tiivistetään…' })).toBeDisabled();
-            await blur(page);
-            await shot(page, 'memory-consolidating', vp.width, scheme);
-            g.open();
-            await expect(page.getByRole('region', { name: 'Tiivistysehdotus' })).toBeVisible();
-          });
-
-          // Phase 17 decision 29: no consolidation proposal any more; W1 replaces this screen.
-          test.skip('memory-consolidation-edit', async ({ app, page }) => {
-            app.llm.push({
-              text: JSON.stringify({ user: 'Asun Tampereella.\nVastaa lyhyesti.', memory: '' }),
-            });
-            await app.login(page);
-            await openSettings(page, 'Muisti');
-            await page.getByRole('button', { name: 'Tiivistä nyt' }).click();
-            await page.getByRole('button', { name: 'Muokkaa' }).click();
-            await expect(page.getByLabel('Käyttäjä (USER.md)')).toHaveValue(
-              'Asun Tampereella.\nVastaa lyhyesti.',
-            );
-            await blur(page);
-            await shot(page, 'memory-consolidation-edit', vp.width, scheme);
-          });
-
-          // Phase 17 decision 29: no consolidation proposal any more; W1 replaces this screen.
-          test.skip('memory-consolidation', async ({ app, page }) => {
-            app.llm.push({
-              text: JSON.stringify({
-                user: 'Asun Tampereella.\nVastaa lyhyesti ja suomeksi.',
-                memory: '',
-              }),
-            });
-            await app.login(page);
-            await openSettings(page, 'Muisti');
-            await page.getByRole('button', { name: 'Tiivistä nyt' }).click();
-            const section = page.getByRole('region', { name: 'Tiivistysehdotus' });
-            await expect(section).toContainText('Vastaa lyhyesti ja suomeksi.');
-            await blur(page);
-            await shot(page, 'memory-consolidation', vp.width, scheme);
-          });
         });
 
         test.describe('pseudo empty', () => {
@@ -1456,6 +1407,26 @@ for (const scheme of ['light', 'dark'] as const) {
           await shot(page, 'composer-attachments', vp.width, scheme);
         });
       }
+
+      test.describe('memory claims', () => {
+        test.use({ pseudo: 'full', memoryUser: USER_MD });
+        // Phase 17 W1: the Havainnot tab with seeded claims (proposals, a supersede, stale).
+        test('memory-claims', async ({ app, page }) => {
+          app.llm.push({ text: 'Hei.' });
+          await app.login(page);
+          await sendMessage(page, 'Moi');
+          await expect(page.locator('.md').last()).toHaveText('Hei.');
+          const db = new DatabaseSync(join(app.dataDir, 'app.db'));
+          const chat = db.prepare('SELECT id FROM chats LIMIT 1').get() as { id: string };
+          db.close();
+          seedClaims(app, chat.id);
+          await openSettings(page, 'Muisti');
+          await page.getByRole('tab', { name: 'Havainnot' }).click();
+          await expect(page.getByText('Korvaa: Käyttäjä juo aamuisin kahvia.')).toBeVisible();
+          await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+          await shot(page, 'memory-claims', vp.width, scheme);
+        });
+      });
 
       test('jump-pill', async ({ app, page }) => {
         test.skip(vp.width === 1440, 'The pill is shot at 390 and 1024.');
