@@ -238,6 +238,7 @@
   --warning-subtle: #fbefd9;
   /* Find bar hits: readable on the canvas, a card and a user bubble (phase 13). */
   --find: #f6dc9a;
+  --find-hit: color-mix(in srgb, var(--warning) 30%, transparent);
   --warning-line: #b7791f;
   --info: #1d5bbf;
   --info-subtle: #e5eefb;
@@ -494,8 +495,9 @@
 }
 
 /* Phase 13: the find bar's hits (CSS Custom Highlight API); the DOM does not change. */
+/* Hits: --warning at 30 %, readable on the canvas and on a user bubble in both schemes. */
 ::highlight(find) {
-  background-color: var(--warning-subtle);
+  background-color: var(--find-hit);
 }
 /* The current hit: the stronger --find fill and the underline. */
 ::highlight(find-current) {

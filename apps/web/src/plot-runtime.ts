@@ -43,8 +43,8 @@ function plot(options: Options = {}) {
       // 0 before layout (a hidden frame): Plot's own minimum.
       width: width > 0 ? width : 320,
       marginLeft,
-      // The Vega charts' right gutter.
-      marginRight: options.marginRight ?? 15,
+      // Vega's `padding.right` (8): the grid ends at the same inset.
+      marginRight: options.marginRight ?? 8,
       // Band gaps as Vega's `bandPaddingInner` 0.25 (Plot ignores it on other scales).
       x: { padding: 0.25, ...axis(options.x) },
       // The unit above the top tick; labels 8 px from the plot, as Vega's.

@@ -329,9 +329,8 @@ function ClaimCard({ claim }: { claim: Claim }) {
             <Button variant="outline" disabled={busy} onClick={reject} aria-label={named('Hylkää')}>
               Hylkää
             </Button>
-            {/* Active: Hylkää, Muokkaa, Voimassa asti at every width (on a phone the last
-                one spans the card); proposed: Hylkää, Voimassa asti, Muokkaa, Hyväksy. */}
-            {proposed && expiryButton}
+            {/* One order everywhere: Hylkää, Muokkaa, Voimassa asti, then Hyväksy (an active
+                card has none, so on a phone Voimassa asti spans the card). */}
             <Button
               variant="outline"
               disabled={busy}
@@ -340,7 +339,7 @@ function ClaimCard({ claim }: { claim: Claim }) {
             >
               Muokkaa
             </Button>
-            {!proposed && expiryButton}
+            {expiryButton}
             {proposed && (
               <Button disabled={busy} onClick={accept} aria-label={named('Hyväksy')}>
                 Hyväksy
@@ -510,7 +509,8 @@ export function ClaimsTab() {
                 className={cn('transition-transform duration-150', history && 'rotate-90')}
               />
               Korvatut
-              <span className="text-meta font-normal text-muted-foreground tabular-nums">
+              {/* 8 px to the count, as in the other headings. */}
+              <span className="ml-1 text-meta font-normal text-muted-foreground tabular-nums">
                 {superseded.length}
               </span>
             </Button>
