@@ -306,6 +306,7 @@ describe('fonts and Mermaid config (phase 20)', () => {
         'sequence',
         'class',
         'dompurifyConfig',
+        'layout',
       ]),
     );
     expect(c.fontFamily).toBe(T['font-sans']);
@@ -314,7 +315,9 @@ describe('fonts and Mermaid config (phase 20)', () => {
       messageFontFamily: T['font-sans'],
       noteFontFamily: T['font-sans'],
     });
-    expect(c.flowchart?.subGraphTitleMargin).toEqual({ top: 4, bottom: 0 });
+    expect(c.flowchart?.subGraphTitleMargin).toEqual({ top: 12, bottom: 12 });
+    // Mermaid 12 lays out with ELK by default, which ignores the flowchart spacing.
+    expect(c.layout).toBe('dagre');
     expect(c.themeVariables).toMatchObject({ clusterBkg: T['chart-band'] });
     // The halo is the cluster fill; the edge colour is a literal token value.
     expect(c.themeCSS).toContain(
@@ -382,10 +385,10 @@ describe('colour (phase 20)', () => {
 });
 
 describe('UI review (phase 20)', () => {
-  it('thins x labels closer than 6 px', () => {
+  it('thins x labels closer than 12 px', () => {
     expect((vegaConfig(T) as { axisX: object }).axisX).toMatchObject({
       labelOverlap: 'parity',
-      labelSeparation: 6,
+      labelSeparation: 12,
     });
   });
 
@@ -407,6 +410,39 @@ describe('UI review (phase 20)', () => {
       nimi: '2026-01-01',
       klo: '2026-01-01T12:00',
     });
+  });
+
+  it('strokes the @accent series 2.5 px and the @faint context 1.5 px', () => {
+    const { spec } = prepareChart(
+      JSON.stringify({
+        data: { values: [{ k: 1, v: 1, s: 'a' }] },
+        mark: 'line',
+        encoding: {
+          x: { field: 'k', type: 'quantitative' },
+          y: { field: 'v', type: 'quantitative' },
+          color: {
+            field: 's',
+            type: 'nominal',
+            scale: { domain: ['a', 'b'], range: ['@accent', '@faint'] },
+          },
+        },
+      }),
+      T,
+    ) as Chart;
+    expect((spec.encoding as { strokeWidth: object }).strokeWidth).toEqual({
+      field: 's',
+      type: 'ordinal',
+      scale: { type: 'ordinal', domain: ['a', 'b'], range: [2.5, 1.5] },
+      legend: null,
+    });
+    const faint = prepareChart(bar({ mark: 'rule', encoding: { color: { value: '@faint' } } }), T);
+    expect(((faint as Chart).spec.encoding as { strokeWidth: object }).strokeWidth).toEqual({
+      value: 1.5,
+    });
+    // A style, so the encoding wins over the theme's 2 px.
+    expect(vegaConfig(T)).toMatchObject({ style: { line: { strokeWidth: 2 } } });
+    expect(mermaidConfig(T, false, 14).themeCSS).toContain('.node rect, .node polygon');
+    expect(mermaidConfig(T, false, 14).themeCSS).toContain('{ stroke-width: 1.5px !important; }');
   });
 
   it('fills nodes with --card, edge and subgraph labels on opaque backgrounds', () => {

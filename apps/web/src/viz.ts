@@ -120,8 +120,8 @@ export function vegaConfig(t: Tokens): Obj {
       labelLimit: 140,
       titlePadding: 8,
     },
-    // Labels closer than 6 px drop every second one (phase-20 UI review: "toukokesä").
-    axisX: { grid: false, labelOverlap: 'parity', labelSeparation: 6 },
+    // Labels closer than 12 px drop every second one (phase-20 UI review: "toukokesä").
+    axisX: { grid: false, labelOverlap: 'parity', labelSeparation: 12 },
     // The unit as horizontal text above the top tick, not a rotated title (as Plot's).
     axisY: {
       titleAngle: 0,
@@ -137,7 +137,8 @@ export function vegaConfig(t: Tokens): Obj {
     mark: { color: t['chart-1'] },
     bar: { cornerRadiusEnd: 4 },
     scale: { bandPaddingInner: 0.25 },
-    line: { strokeWidth: 2 },
+    // As a style, not mark config: Vega-Lite bakes mark config over an encoded strokeWidth.
+    style: { line: { strokeWidth: 2 } },
     point: { filled: true },
     rule: { color: t['chart-faint'] },
     // Phase-20 decision 23: no new hue. A quantitative colour field gets the sequential band to
@@ -212,6 +213,7 @@ const SECURE = [
   'sequence',
   'class',
   'dompurifyConfig',
+  'layout',
 ];
 
 /**
@@ -222,6 +224,10 @@ const nodeClass = (name: string, fill: string, stroke: string) =>
   ['rect', 'polygon', 'path', 'circle', 'ellipse']
     .map((shape) => `.node.${name} ${shape}`)
     .join(', ') + ` { fill: ${fill} !important; stroke: ${stroke} !important; }`;
+/** Node shapes; their 1.5 px border covers a whole pixel at 1x (a 1 px one blurs over two). */
+const NODE_SHAPES = ['rect', 'polygon', 'path', 'circle', 'ellipse']
+  .map((s) => `.node ${s}`)
+  .join(', ');
 
 /**
  * The diagram rules of the view and the export alike (decision 21), as literal token values;
@@ -235,6 +241,7 @@ const diagramCss = (t: Tokens) => {
   return `.flowchart-link, .transition, .relation, [class^="messageLine"], .edge-pattern-solid, .edge-pattern-dashed { stroke: ${line} !important; stroke-width: 1.5px !important; vector-effect: non-scaling-stroke; }
 marker path { fill: ${line} !important; stroke: ${line} !important; }
 .node rect, .statediagram-state rect, .actor rect { rx: 8px; ry: 8px; }
+${NODE_SHAPES} { stroke-width: 1.5px !important; }
 .cluster-label text { paint-order: stroke; stroke: ${t['chart-band']}; stroke-width: 4px; stroke-linejoin: round; }
 .cluster-label .background { fill: ${t['chart-band']} !important; opacity: 1 !important; }
 .edgeLabel .background { fill: ${t.card} !important; opacity: 1 !important; }
@@ -256,6 +263,9 @@ export const mermaidConfig = (t: Tokens, dark: boolean, fontSize: number): Merma
     theme: 'base',
     // Flat shapes: Mermaid 12's `neo` look adds tinted drop shadows.
     look: 'classic',
+    // Mermaid 12 lays out with ELK by default, which ignores the flowchart spacing below and
+    // leaves a wide band under a subgraph (phase-20 UI review).
+    layout: 'dagre',
     themeVariables: mermaidTheme(t, dark, fontSize),
     themeCSS: diagramCss(t),
     // Mermaid measures text with these: the faces the CSS paints (T4).
@@ -270,8 +280,8 @@ export const mermaidConfig = (t: Tokens, dark: boolean, fontSize: number): Merma
       padding: 8,
       nodeSpacing: 40,
       rankSpacing: 40,
-      // The title leaves the border; the space to the first node stays.
-      subGraphTitleMargin: { top: 4, bottom: 0 },
+      // The title 12 px from the border and from the first node.
+      subGraphTitleMargin: { top: 12, bottom: 12 },
     },
     class: { htmlLabels: false },
     // A parse error throws (the caller shows it) instead of drawing Mermaid's error SVG.
@@ -416,6 +426,44 @@ function liftYUnit(spec: Obj, t: Tokens) {
   }
 }
 
+const WIDTH: Record<string, number> = { '@accent': 2.5, '@c1': 2.5, '@faint': 1.5 };
+/**
+ * The highlighted series is wider than the context (phase-20 UI review): a colour of `@accent`
+ * strokes 2.5 px, `@faint` 1.5 px, by value or through the colour scale's range. Before R7, while
+ * the roles are still names.
+ */
+function emphasis(raw: unknown) {
+  visit(raw, (o) => {
+    const enc = o.encoding as Obj | undefined;
+    const color = enc?.color as Obj | undefined;
+    if (!enc || !color || typeof color !== 'object' || 'strokeWidth' in enc) return;
+    const range = (color.scale as Obj | undefined)?.range;
+    if (typeof color.value === 'string' && color.value in WIDTH)
+      enc.strokeWidth = { value: WIDTH[color.value] };
+    else if (
+      typeof color.field === 'string' &&
+      Array.isArray(range) &&
+      range.some((r) => r === '@faint') &&
+      range.every((r) => typeof r === 'string' && r in WIDTH)
+    ) {
+      const sort = color.sort;
+      const domain = (color.scale as Obj).domain;
+      enc.strokeWidth = {
+        field: color.field,
+        type: 'ordinal',
+        ...(sort === undefined ? {} : { sort }),
+        // An ordinal scale maps each name to its width; the default would interpolate between them.
+        scale: {
+          type: 'ordinal',
+          ...(domain === undefined ? {} : { domain }),
+          range: range.map((r) => WIDTH[r]),
+        },
+        legend: null,
+      };
+    }
+  });
+}
+
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 /**
  * A date without a time ("2026-01-01") in a temporal field means local midnight: JavaScript reads
@@ -472,6 +520,7 @@ export function prepareChart(source: string, t: Tokens): Chart | Refused {
           ? `Kaaviossa on ${Math.ceil(total)} riviä; enintään ${MAX_ROWS}.`
           : undefined;
   if (error) return { error, rows };
+  emphasis(raw);
   const spec = clean(raw, roles(t)) as Obj;
   localDates(spec, tables);
   // Colour ramps blend in Lab: Vega-Lite's default HCL bends the band-to-blue ramp through pink.

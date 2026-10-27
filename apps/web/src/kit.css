@@ -234,7 +234,24 @@ html:has(.chart.fill) body {
   margin-inline: auto;
   height: auto;
 }
-/* On phones a wide diagram keeps its width and scrolls sideways (render.ts). */
+/* A diagram under 0.85 of its size keeps it and scrolls sideways (render.ts), with a fade at each
+   edge that has more. */
 .diagram .scroll {
+  container-type: inline-size;
   overflow-x: auto;
+}
+.diagram .scroll.l {
+  mask-image: linear-gradient(to right, transparent, #000 32px);
+}
+.diagram .scroll.r {
+  mask-image: linear-gradient(to left, transparent, #000 32px);
+}
+.diagram .scroll.l.r {
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 32px,
+    #000 calc(100% - 32px),
+    transparent
+  );
 }

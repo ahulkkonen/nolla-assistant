@@ -125,8 +125,7 @@ async function kitHead(a: Artifact, scheme: Scheme) {
  * Decision 26: subgraph titles paint over the edges. Each `g.cluster-label` moves to the end of
  * its `g.root` (its translate is in the root's coordinates, so it stays in place), and its empty
  * background rect gets the text's box plus 4 px, filled with the cluster colour by `themeCSS`: no
- * edge shows between the words. Measured in this page, where Mermaid measured too. Under 768 px
- * the diagram keeps its own width (labels stay 13 px) and its page scrolls sideways.
+ * edge shows between the words. Measured in this page, where Mermaid measured too.
  */
 function finishDiagram(svg: string) {
   const box = document.createElement('div');
@@ -148,15 +147,22 @@ function finishDiagram(svg: string) {
       }
       label.closest('g.root')?.append(label);
     }
-    const width = root.viewBox.baseVal?.width;
-    if (phone?.matches && width) {
-      root.setAttribute('width', String(width));
-      root.style.maxWidth = 'none';
-    }
     return new XMLSerializer().serializeToString(root);
   } finally {
     box.remove();
   }
+}
+
+/**
+ * Phase-20 UI review: a diagram scales to the page's width while it keeps at least 0.85 of its
+ * size; narrower, it keeps its size and scrolls sideways from the centre, with a fade at each edge
+ * that has more (no node is cut without a sign). A scrollable region is focusable.
+ */
+function fitted(svg: string) {
+  const width = Number(/viewBox="[-\d.]+ [-\d.]+ ([\d.]+)/.exec(svg)?.[1]) || 0;
+  const style = `<style>.scroll svg{width:${width}px}@container (min-width:${Math.ceil(width * 0.85)}px){.scroll svg{width:100%}}</style>`;
+  const fade = `<script>(function(){var s=document.querySelector('.scroll');function f(){var m=s.scrollWidth-s.clientWidth;s.classList.toggle('l',s.scrollLeft>1);s.classList.toggle('r',s.scrollLeft<m-1)}s.scrollLeft=(s.scrollWidth-s.clientWidth)/2;s.addEventListener('scroll',f);new ResizeObserver(f).observe(s);f()})()</script>`;
+  return `${style}<div class="scroll" tabindex="0">${svg}</div>${fade}`;
 }
 
 let diagrams: Promise<unknown> = Promise.resolve();
@@ -194,6 +200,9 @@ export async function documentFor(a: Artifact, scheme: Scheme, fill = false): Pr
     if (fill && single) {
       chart.spec.height = 'container';
       chart.spec.autosize = { type: 'fit', contains: 'padding' };
+      // About one y tick per 60 px of the panel's plot (UI review: 26 ticks at 1440).
+      const config = chart.spec.config as { axisY?: object };
+      config.axisY = { ...config.axisY, tickCount: { expr: 'ceil(height / 60)' } };
     }
     return { html: page(chartBody(chart, rt, fill && single), head), rows: chart.rows };
   }
@@ -214,9 +223,7 @@ export async function documentFor(a: Artifact, scheme: Scheme, fill = false): Pr
   }
   const { t, head } = await themeHead(scheme);
   const svg = await diagram(a, t, scheme === 'dark');
-  // A wide diagram scrolls sideways on phones; a scrollable region is focusable.
-  const body = `<div class="scroll" tabindex="0">${svg}</div>`;
-  return { html: page(`${figure('diagram', diagramText(a), body)}${SIZE}`, head) };
+  return { html: page(`${figure('diagram', diagramText(a), fitted(svg))}${SIZE}`, head) };
 }
 
 /** A file name from the artifact's title. */

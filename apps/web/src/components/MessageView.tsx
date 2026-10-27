@@ -124,16 +124,19 @@ function WritingCard({ kind, source }: { kind: ArtifactKind; source: string }) {
         size={16}
         className="shrink-0 animate-spin text-muted-foreground motion-reduce:animate-none"
       />
-      {title && <span className="min-w-0 flex-1 truncate text-ui">{title}</span>}
-      {/* The finished card's right padding ("Avattu"); the title truncates first. */}
-      <span
-        className={cn(
-          'pr-2.5 text-meta text-muted-foreground',
-          title ? 'shrink-0' : 'min-w-0 flex-1 truncate',
-        )}
-      >
-        {CARD_NAME[kind]} · kirjoittaa… {lines} {lines === 1 ? 'rivi' : 'riviä'}
-      </span>
+      {/* One row on desktop (the title truncates first); on phones the meta is a second line. */}
+      <div className="flex min-w-0 flex-1 items-center gap-3 max-md:flex-col max-md:items-stretch max-md:gap-0">
+        {title && <span className="min-w-0 truncate text-ui md:flex-1">{title}</span>}
+        {/* The finished card's right padding ("Avattu"). */}
+        <span
+          className={cn(
+            'truncate pr-2.5 text-meta text-muted-foreground',
+            title ? 'md:shrink-0' : 'min-w-0 flex-1',
+          )}
+        >
+          {CARD_NAME[kind]} · kirjoittaa… {lines} {lines === 1 ? 'rivi' : 'riviä'}
+        </span>
+      </div>
     </div>
   );
 }
