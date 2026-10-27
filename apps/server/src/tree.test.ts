@@ -15,6 +15,7 @@ import { fileTrash } from '@pa/db';
 import type { FakeTurn } from '@pa/fake-llm';
 import { dirBytes, USER_QUOTA } from '@pa/pi-ext-subagents/workspace';
 import type {
+  Artifact,
   AttachmentRef,
   FileUsage,
   TrashEntry,
@@ -24,7 +25,7 @@ import type {
 } from '@pa/protocol';
 import { afterEach, expect, test } from 'vitest';
 import { api, boot, bootChat, bootPseudo, login, runCleanups } from './test-utils.ts';
-import { purgeTrash, workStore } from './tree.ts';
+import { artifactName, purgeTrash, workStore } from './tree.ts';
 
 afterEach(runCleanups);
 
@@ -432,6 +433,18 @@ test('attach: a work-dir file reaches the model through ingestAttachments as a s
   expect(((await next.json()) as TreeListing).entries.map((e) => e.name)).toEqual(['muistio.md']);
   const raw = await call(`/api/files/tree/raw?root=files&path=${file.id}`);
   expect(await raw.text()).toBe('# Muistio\nversio 1');
+});
+
+test('artifactName: the extension is artifactExt; a title that ends in it keeps one', () => {
+  const name = (kind: Artifact['kind'], language: string, title: string) =>
+    artifactName({ id: 'a', kind, language, title, content: '' });
+  expect([
+    name('react', 'tsx', 'Kortti'),
+    name('react', 'jsx', 'Kortti'),
+    name('mermaid', 'mermaid', 'Prosessi'),
+    name('vega-lite', 'vega-lite', 'Myynti.JSON'),
+    name('html', 'html', '/'),
+  ]).toEqual(['Kortti.tsx', 'Kortti.jsx', 'Prosessi.mmd', 'Myynti.JSON', 'artefakti.html']);
 });
 
 test('artifact: Tallenna tiedostoksi writes real values with the origin', {

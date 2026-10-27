@@ -32,6 +32,7 @@ import {
 } from '@pa/pi-ext-subagents/workspace';
 import {
   type Artifact,
+  artifactExt,
   type FileError,
   type FileUsage,
   PREVIEW_MAX,
@@ -228,33 +229,9 @@ async function binOf(root: string, create: boolean): Promise<string | null | und
   return st.isDirectory() ? bin : undefined;
 }
 
-const EXT: Record<string, string> = {
-  mermaid: 'mmd',
-  'vega-lite': 'json',
-  python: 'py',
-  javascript: 'js',
-  typescript: 'ts',
-  shell: 'sh',
-  bash: 'sh',
-  yaml: 'yml',
-  markdown: 'md',
-  rust: 'rs',
-  ruby: 'rb',
-  kotlin: 'kt',
-  csharp: 'cs',
-};
-
 /** "<title>.<ext>" for "Tallenna tiedostoksi" (decision 12). */
-function artifactName(a: Artifact): string {
-  const lang =
-    a.kind === 'html' || a.kind === 'mermaid' || a.kind === 'vega-lite'
-      ? a.kind
-      : a.kind === 'react'
-        ? a.language === 'tsx'
-          ? 'tsx'
-          : 'jsx'
-        : (a.language ?? '');
-  const ext = EXT[lang] ?? (/^[a-z0-9]{1,8}$/.test(lang) ? lang : 'txt');
+export function artifactName(a: Artifact): string {
+  const ext = artifactExt(a);
   const stem = cleanWorkName(a.title) ?? 'artefakti';
   return stem.toLowerCase().endsWith(`.${ext}`) ? stem : `${stem}.${ext}`;
 }

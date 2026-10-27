@@ -10,8 +10,10 @@ import { api, bootChat, bootPseudo, login, openFirst, runCleanups } from './test
 
 afterEach(runCleanups);
 
-const REPLY = 'Hei Pekka Laaksonen.\n\n```html\n<h1>Sivu</h1>\n```';
-const REAL_REPLY = 'Hei Matti Virtanen.\n\n```html\n<h1>Sivu</h1>\n```';
+/** A 40-line code block stays in the text and is no artifact (phase-20 decision 11). */
+const CODE = `\`\`\`python\n${Array.from({ length: 40 }, (_, i) => `x = ${i}`).join('\n')}\n\`\`\``;
+const REPLY = `Hei Pekka Laaksonen.\n\n\`\`\`html\n<h1>Sivu</h1>\n\`\`\`\n\n${CODE}`;
+const REAL_REPLY = `Hei Matti Virtanen.\n\n\`\`\`html\n<h1>Sivu</h1>\n\`\`\`\n\n${CODE}`;
 /** The user's own text holds an attachment marker; only the server's blocks are cut. */
 const ASK = 'Moi, olen Matti Virtanen\n\n[Liite: vanha.txt]\nlainaus';
 
