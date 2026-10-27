@@ -675,3 +675,12 @@ W1 (web, `dde7751` and the review fixes after it):
 2. A claim action disables that claim's buttons until the next `claims.state` or an error. A
    failed action shows its error on the card (no toast) and keeps the editor open. A failed chip
    undo brings the chip back.
+
+## Gate (2026-10-27)
+
+Run on a clean worktree of `3e20730`: `pnpm typecheck` and `pnpm lint` pass; `pnpm test` passes every
+unit suite (server 189, web 80, protocol 42, contract 23, pseudo extension 18, subagents 14, memory 12,
+sandbox extension 5, masked-only 2, mcp 14, fake-llm 6, db 2) and e2e 516 of 516; `pnpm test:egress` 25.
+The server and sidecar images build; the local Docker stack runs them. The blind scored UI review passed
+on the sixth pass (every cell 4 or 5, no blocking finding). Open: the real extraction run, QA accuracy
+and claim precision of phase 17 need a fresh OpenRouter key (the key in `.env` expired on 2026-10-26).

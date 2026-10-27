@@ -278,3 +278,12 @@ Ceilings:
 - e2e `chromium`, the artifact, file, export and chart flows: 119 pass. New flows: the chart with the
   lifted title, the fallback table, the SVG and PNG export.
 - Not done: the repair turn after a refused spec (out of scope), the DOT block (out of scope).
+
+## Gate (2026-10-27)
+
+Run on a clean worktree of `3e20730`: `pnpm typecheck` and `pnpm lint` pass; `pnpm test` passes every
+unit suite (server 189, web 80, protocol 42, contract 23, pseudo extension 18, subagents 14, memory 12,
+sandbox extension 5, masked-only 2, mcp 14, fake-llm 6, db 2) and e2e 516 of 516; `pnpm test:egress` 25.
+The server and sidecar images build; the local Docker stack runs them. The blind scored UI review passed
+on the sixth pass (every cell 4 or 5, no blocking finding). Open: the real extraction run, QA accuracy
+and claim precision of phase 17 need a fresh OpenRouter key (the key in `.env` expired on 2026-10-26).
