@@ -25,10 +25,10 @@ function useScheme(): Scheme {
 
 /**
  * One artifact's sandbox document, its frame, the chart fallback and the export (phase-20
- * decision 4), for the thread's inline figures and the panel. `doc` is null until the document of
- * this artifact is ready.
+ * decision 4), for the thread's inline figures and the panel (`fill`). `doc` is null until the
+ * document of this artifact is ready.
  */
-export function useFigure(a: Artifact | undefined) {
+export function useFigure(a: Artifact | undefined, fill = false) {
   const [doc, setDoc] = useState<(Doc & { id: string; error?: string }) | null>(null);
   const scheme = useScheme();
   const frame = useRef<HTMLIFrameElement>(null);
@@ -38,7 +38,7 @@ export function useFigure(a: Artifact | undefined) {
   useEffect(() => {
     if (!a) return;
     let live = true;
-    documentFor(a, scheme).then(
+    documentFor(a, scheme, fill).then(
       (d) => live && setDoc({ id: a.id, ...d }),
       (err: unknown) =>
         live &&
@@ -47,7 +47,7 @@ export function useFigure(a: Artifact | undefined) {
     return () => {
       live = false;
     };
-  }, [a?.id, a?.content, a?.kind, scheme]);
+  }, [a?.id, a?.content, a?.kind, scheme, fill]);
 
   // A chart that fails inside the sandbox (Vega's own errors), or is not drawn in time, falls back
   // like a refused spec. A layout effect: the frame cannot load before `loaded` is set.

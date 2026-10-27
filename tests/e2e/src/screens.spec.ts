@@ -331,6 +331,11 @@ for (const scheme of ['light', 'dark'] as const) {
             page.getByRole('figure').locator('iframe').contentFrame().locator(ready).first(),
           ).toBeVisible({ timeout: 15_000 });
           await expect(page.getByRole('button', { name: 'Pysäytä' })).toHaveCount(0);
+          // The whole figure in the shot: the viewport grows by what the thread scrolls.
+          const extra = await page
+            .getByRole('region', { name: 'Keskustelu' })
+            .evaluate((el) => el.scrollHeight - el.clientHeight);
+          if (extra > 0) await page.setViewportSize({ width: vp.width, height: vp.height + extra });
           await shot(page, screen, vp.width, scheme);
         });
 

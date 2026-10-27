@@ -249,7 +249,8 @@ export function Composer() {
       )}
       <div className="mx-auto w-full max-w-(--thread-max) rounded-2xl border border-border bg-card shadow-sm transition-colors duration-100 focus-within:border-input">
         {queued && chatId && (
-          <div className="flex items-center gap-2 px-3 pt-3 text-meta">
+          // The icon on the textarea's text column (16 px).
+          <div className="flex items-center gap-2 pt-3 pr-3 pl-4 text-meta">
             <Clock size={16} className="shrink-0 text-muted-foreground" />
             <span className="shrink-0 text-muted-foreground">Jonossa</span>
             <span className="min-w-0 flex-1 truncate">{queued.text}</span>

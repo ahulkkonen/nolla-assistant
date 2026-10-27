@@ -381,6 +381,44 @@ describe('colour (phase 20)', () => {
   });
 });
 
+describe('UI review (phase 20)', () => {
+  it('thins x labels closer than 6 px', () => {
+    expect((vegaConfig(T) as { axisX: object }).axisX).toMatchObject({
+      labelOverlap: 'parity',
+      labelSeparation: 6,
+    });
+  });
+
+  it('reads a date without a time in a temporal field as local midnight', () => {
+    const { spec } = prepareChart(
+      JSON.stringify({
+        data: { values: [{ kk: '2026-01-01', nimi: '2026-01-01', klo: '2026-01-01T12:00' }] },
+        mark: 'line',
+        encoding: {
+          x: { field: 'kk', type: 'temporal' },
+          y: { field: 'klo', type: 'temporal' },
+          color: { field: 'nimi', type: 'nominal' },
+        },
+      }),
+      T,
+    ) as Chart;
+    expect((spec.data as { values: object[] }).values[0]).toEqual({
+      kk: '2026-01-01T00:00',
+      nimi: '2026-01-01',
+      klo: '2026-01-01T12:00',
+    });
+  });
+
+  it('fills nodes with --card, edge and subgraph labels on opaque backgrounds', () => {
+    const c = mermaidConfig(T, false, 14);
+    expect(c.themeVariables).toMatchObject({ mainBkg: T.card, primaryBorderColor: T.input });
+    expect(c.themeCSS).toContain(`.edgeLabel .background { fill: ${T.card} !important; opacity: 1`);
+    expect(c.themeCSS).toContain(
+      `.cluster-label .background { fill: ${T['chart-band']} !important; opacity: 1`,
+    );
+  });
+});
+
 describe('roundDecisions', () => {
   it('draws a flowchart decision as a rounded box, nothing else changes', () => {
     expect(roundDecisions('flowchart TD\nA --> B{Mökki vai matka?}\nB -->|x| C{{Hex}}')).toBe(

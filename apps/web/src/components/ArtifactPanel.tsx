@@ -70,7 +70,7 @@ export function ArtifactPanel() {
   const list = useStore((s) => (open ? s.artifacts[open.chatId] : undefined));
   const artifacts = list ?? EMPTY;
   const a = artifacts.find((x) => x.id === open?.id);
-  const { doc: ready, frame, onLoad, canExport, exportAs } = useFigure(a);
+  const { doc: ready, frame, onLoad, canExport, exportAs } = useFigure(a, true);
   const [copied, setCopied] = useState(false);
   const [tab, setTab] = useState<'preview' | 'code'>('preview');
   const mobile = useMobile();

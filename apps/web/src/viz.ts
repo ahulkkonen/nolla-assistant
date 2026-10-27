@@ -120,7 +120,8 @@ export function vegaConfig(t: Tokens): Obj {
       labelLimit: 140,
       titlePadding: 8,
     },
-    axisX: { grid: false },
+    // Labels closer than 6 px drop every second one (phase-20 UI review: "toukokesä").
+    axisX: { grid: false, labelOverlap: 'parity', labelSeparation: 6 },
     // The unit as horizontal text above the top tick, not a rotated title (as Plot's).
     axisY: {
       titleAngle: 0,
@@ -158,8 +159,9 @@ export const mermaidTheme = (t: Tokens, dark: boolean, fontSize = 14) => ({
   fontFamily: t['font-sans'],
   fontSize: `${fontSize}px`,
   background: t.card,
-  mainBkg: t.secondary,
-  primaryColor: t.secondary,
+  // Nodes on --card with the --input border (3.5:1), inside a subgraph's band and outside it.
+  mainBkg: t.card,
+  primaryColor: t.card,
   primaryTextColor: t.foreground,
   primaryBorderColor: t.input,
   secondaryColor: t['chart-accent-soft'],
@@ -234,6 +236,8 @@ const diagramCss = (t: Tokens) => {
 marker path { fill: ${line} !important; stroke: ${line} !important; }
 .node rect, .statediagram-state rect, .actor rect { rx: 8px; ry: 8px; }
 .cluster-label text { paint-order: stroke; stroke: ${t['chart-band']}; stroke-width: 4px; stroke-linejoin: round; }
+.cluster-label .background { fill: ${t['chart-band']} !important; opacity: 1 !important; }
+.edgeLabel .background { fill: ${t.card} !important; opacity: 1 !important; }
 ${nodeClass('warm', t['chart-accent-soft'], t['chart-1'])}
 ${nodeClass('cool', t['info-subtle'], t['chart-3'])}
 ${nodeClass('alert', t['destructive-subtle'], t.destructive)}
@@ -412,6 +416,22 @@ function liftYUnit(spec: Obj, t: Tokens) {
   }
 }
 
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+/**
+ * A date without a time ("2026-01-01") in a temporal field means local midnight: JavaScript reads
+ * it as UTC, so the first month's tick fell before the domain and lost its label (phase 20).
+ */
+function localDates(spec: Obj, tables: Row[][]) {
+  const fields = new Set<string>();
+  visit(spec, (o) => {
+    if (o.type === 'temporal' && typeof o.field === 'string') fields.add(o.field);
+  });
+  for (const rows of tables)
+    for (const r of rows)
+      for (const f of fields)
+        if (typeof r[f] === 'string' && DAY.test(r[f])) r[f] = `${r[f]}T00:00`;
+}
+
 export type Chart = { spec: Obj; lifted: Lifted; rows: Row[] };
 export type Refused = { error: string; rows: Row[] };
 
@@ -453,6 +473,7 @@ export function prepareChart(source: string, t: Tokens): Chart | Refused {
           : undefined;
   if (error) return { error, rows };
   const spec = clean(raw, roles(t)) as Obj;
+  localDates(spec, tables);
   // Colour ramps blend in Lab: Vega-Lite's default HCL bends the band-to-blue ramp through pink.
   visit(spec, (o) => {
     for (const ch of ['color', 'fill', 'stroke']) {

@@ -109,8 +109,8 @@ function transpile(source: string): Promise<string> {
 /** The R1 chart page: the lifted title as HTML, the spec as JSON, then the chart runtime. */
 const figure = (kind: string, { title, subtitle, caption }: Lifted, body: string) =>
   `<figure class="${kind}">${title ? `<h2>${inlineHtml(title)}</h2>` : ''}${subtitle ? `<p>${inlineHtml(subtitle)}</p>` : ''}${body}${caption ? `<figcaption>${inlineHtml(caption)}</figcaption>` : ''}</figure>`;
-const chartBody = ({ spec, lifted }: Chart, rt: string) =>
-  `${figure('chart', lifted, '<div id="vis"></div>')}<script type="application/json" id="spec">${JSON.stringify(spec).replace(/</g, '\\u003c')}</script><script>${inline(rt)}</script>${SIZE}`;
+const chartBody = ({ spec, lifted }: Chart, rt: string, fill: boolean) =>
+  `${figure(fill ? 'chart fill' : 'chart', lifted, '<div id="vis"></div>')}<script type="application/json" id="spec">${JSON.stringify(spec).replace(/</g, '\\u003c')}</script><script>${inline(rt)}</script>${SIZE}`;
 
 /** The sandboxed document of an artifact; a chart also keeps the rows of its fallback table. */
 export type Doc = { html: string | null; rows?: Row[]; refused?: Refused };
@@ -123,15 +123,40 @@ async function kitHead(a: Artifact, scheme: Scheme) {
 
 /**
  * Decision 26: subgraph titles paint over the edges. Each `g.cluster-label` moves to the end of
- * its `g.root`; its translate is in the root's coordinates, so it stays in place.
+ * its `g.root` (its translate is in the root's coordinates, so it stays in place), and its empty
+ * background rect gets the text's box plus 4 px, filled with the cluster colour by `themeCSS`: no
+ * edge shows between the words. Measured in this page, where Mermaid measured too. Under 768 px
+ * the diagram keeps its own width (labels stay 13 px) and its page scrolls sideways.
  */
-function liftClusterLabels(svg: string) {
-  if (!svg.includes('cluster-label')) return svg;
-  const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
-  if (doc.querySelector('parsererror')) return svg;
-  for (const label of doc.querySelectorAll('g.cluster-label'))
-    label.closest('g.root')?.append(label);
-  return new XMLSerializer().serializeToString(doc.documentElement);
+function finishDiagram(svg: string) {
+  const box = document.createElement('div');
+  box.style.cssText = 'position:absolute;top:0;left:-99999px;visibility:hidden';
+  box.innerHTML = svg;
+  document.body.append(box);
+  try {
+    const root = box.querySelector('svg');
+    if (!root) return svg;
+    for (const label of root.querySelectorAll('g.cluster-label')) {
+      const text = label.querySelector('text');
+      const bg = label.querySelector('rect.background');
+      if (text && bg) {
+        const b = text.getBBox();
+        bg.setAttribute('x', String(b.x - 4));
+        bg.setAttribute('y', String(b.y - 4));
+        bg.setAttribute('width', String(b.width + 8));
+        bg.setAttribute('height', String(b.height + 8));
+      }
+      label.closest('g.root')?.append(label);
+    }
+    const width = root.viewBox.baseVal?.width;
+    if (phone?.matches && width) {
+      root.setAttribute('width', String(width));
+      root.style.maxWidth = 'none';
+    }
+    return new XMLSerializer().serializeToString(root);
+  } finally {
+    box.remove();
+  }
 }
 
 let diagrams: Promise<unknown> = Promise.resolve();
@@ -146,7 +171,7 @@ function diagram(a: Artifact, t: Tokens, dark: boolean): Promise<string> {
     // Labels 14 px, 13 on phones.
     mermaid.initialize(mermaidConfig(t, dark, phone?.matches ? 13 : 14));
     const id = `m${a.id.replace(/\W/g, '')}`;
-    return liftClusterLabels((await mermaid.render(id, roundDecisions(a.content))).svg);
+    return finishDiagram((await mermaid.render(id, roundDecisions(a.content))).svg);
   });
   diagrams = run.catch(() => {});
   return run;
@@ -158,13 +183,19 @@ const diagramText = (a: Artifact): Lifted => {
   return { ...(title ? { title } : {}), ...(caption ? { caption } : {}) };
 };
 
-export async function documentFor(a: Artifact, scheme: Scheme): Promise<Doc> {
+/** `fill`: the panel's page, where a single-view chart takes the page's height (the thread's keeps its own). */
+export async function documentFor(a: Artifact, scheme: Scheme, fill = false): Promise<Doc> {
   if (a.kind === 'html') return { html: htmlDocument(a.content, await kitHead(a, scheme)) };
   if (a.kind === 'vega-lite') {
     const [{ t, head }, rt] = await Promise.all([themeHead(scheme), loadScript(vizUrl)]);
     const chart = prepareChart(a.content, t);
     if ('error' in chart) return { html: null, refused: chart };
-    return { html: page(chartBody(chart, rt), head), rows: chart.rows };
+    const single = 'mark' in chart.spec || 'layer' in chart.spec;
+    if (fill && single) {
+      chart.spec.height = 'container';
+      chart.spec.autosize = { type: 'fit', contains: 'padding' };
+    }
+    return { html: page(chartBody(chart, rt, fill && single), head), rows: chart.rows };
   }
   if (a.kind === 'react') {
     const [rt, code, head] = await Promise.all([
@@ -183,7 +214,9 @@ export async function documentFor(a: Artifact, scheme: Scheme): Promise<Doc> {
   }
   const { t, head } = await themeHead(scheme);
   const svg = await diagram(a, t, scheme === 'dark');
-  return { html: page(`${figure('diagram', diagramText(a), svg)}${SIZE}`, head) };
+  // A wide diagram scrolls sideways on phones; a scrollable region is focusable.
+  const body = `<div class="scroll" tabindex="0">${svg}</div>`;
+  return { html: page(`${figure('diagram', diagramText(a), body)}${SIZE}`, head) };
 }
 
 /** A file name from the artifact's title. */

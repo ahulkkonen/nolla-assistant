@@ -61,7 +61,9 @@ function narrow(spec: Obj, width: number) {
   for (const x of xs)
     if (x.axis !== null)
       x.axis = { ...x.axis, labelExpr: `round(datum.index*${n - 1})%2 ? '' : datum.label` };
-  spec.height = Math.min(typeof spec.height === 'number' ? spec.height : 200, 200);
+  // A chart that fills the panel keeps the panel's height.
+  if (spec.height !== 'container')
+    spec.height = Math.min(typeof spec.height === 'number' ? spec.height : 200, 200);
 }
 
 const fail = (err: unknown) =>

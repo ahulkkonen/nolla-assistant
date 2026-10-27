@@ -212,10 +212,29 @@ figure:is(.chart, .diagram) figcaption {
 #vis {
   width: 100%;
 }
+/* In the panel a chart takes the page's height (the thread's chart keeps its own). */
+html:has(.chart.fill),
+html:has(.chart.fill) body {
+  height: 100%;
+}
+.chart.fill {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.chart.fill #vis {
+  flex: 1;
+  min-height: 240px;
+  overflow: hidden;
+}
 /* A ```mermaid artifact: centred, never wider than the page. Its edge, node and subgraph rules
    are in the diagram's own themeCSS (viz.ts), so the export looks the same. */
 .diagram svg {
   display: block;
   margin-inline: auto;
   height: auto;
+}
+/* On phones a wide diagram keeps its width and scrolls sideways (render.ts). */
+.diagram .scroll {
+  overflow-x: auto;
 }

@@ -125,7 +125,13 @@ function WritingCard({ kind, source }: { kind: ArtifactKind; source: string }) {
         className="shrink-0 animate-spin text-muted-foreground motion-reduce:animate-none"
       />
       {title && <span className="min-w-0 flex-1 truncate text-ui">{title}</span>}
-      <span className={cn('truncate text-meta text-muted-foreground', !title && 'flex-1')}>
+      {/* The finished card's right padding ("Avattu"); the title truncates first. */}
+      <span
+        className={cn(
+          'pr-2.5 text-meta text-muted-foreground',
+          title ? 'shrink-0' : 'min-w-0 flex-1 truncate',
+        )}
+      >
         {CARD_NAME[kind]} · kirjoittaa… {lines} {lines === 1 ? 'rivi' : 'riviä'}
       </span>
     </div>
