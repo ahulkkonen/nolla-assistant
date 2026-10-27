@@ -1444,7 +1444,7 @@ for (const scheme of ['light', 'dark'] as const) {
         await send(page, 'Lue note.txt ja jatka');
         await hold.reached;
         // Scrolled up while the turn runs: its tool round and its reply arrive as 2 new messages.
-        // Two scrolls: a scroll within 50 ms of the follow's own jump counts as the follow's.
+        // Scrolled up while the turn is held, in two steps like a reader.
         const region = page.getByRole('region', { name: 'Keskustelu' });
         await region.evaluate((el) => el.scrollTo({ top: 10 }));
         await page.waitForTimeout(100);

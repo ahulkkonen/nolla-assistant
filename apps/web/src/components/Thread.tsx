@@ -125,7 +125,7 @@ export function Thread() {
 
   // Follow the bottom while the user has not scrolled up (a jump, not a smooth scroll).
   useEffect(() => {
-    if (scroller.current) follow.follow(scroller.current, performance.now());
+    if (scroller.current) follow.follow(scroller.current);
   }, [messages, stream?.text, stream?.tools, running, allApprovals, subagents, failed]);
 
   // A search hit opens at its message once the chat's messages are in.
@@ -134,7 +134,7 @@ export function Thread() {
     const el = scroller.current?.querySelector(`[data-message-id="${CSS.escape(scrollTo)}"]`);
     if (!el) return;
     el.scrollIntoView({ block: 'center' });
-    follow.pinned = false;
+    if (scroller.current) setAway(follow.sync(scroller.current));
     useStore.getState().setScrollTo(null);
   }, [messages, scrollTo]);
 
@@ -260,20 +260,25 @@ export function Thread() {
         // Focus target of the pill; not a tab stop.
         tabIndex={-1}
         onScroll={(e) => {
-          const away = follow.scrolled(e.currentTarget, performance.now());
+          const away = follow.scrolled(e.currentTarget);
           if (away !== undefined) setAway(away);
         }}
         // The reader scrolls up: the follow stops at once, before a delta can pull the thread
         // back down; `onScroll` then sets it from the real position. It also ends a smooth jump.
         // Not inside a region that scrolls by itself (tool output, code): that scroll is not ours.
         onWheel={(e) => {
-          if (e.deltaY < 0 && !inner(e.target)) follow.up(e.currentTarget, performance.now());
-          else follow.interrupt();
+          // Pixels, or lines and pages (deltaMode 1, 2) as "far".
+          if (e.deltaY < 0 && !inner(e.target))
+            follow.up(e.currentTarget, e.deltaMode ? Number.POSITIVE_INFINITY : -e.deltaY);
+          else follow.jumping = false;
         }}
-        onTouchMove={() => follow.interrupt()}
+        onTouchMove={(e) => {
+          if (!inner(e.target)) follow.up(e.currentTarget);
+        }}
         onKeyDown={(e) => {
           const key = threadKey(e);
-          if (key === 'up' && !inner(e.target)) follow.up(e.currentTarget, performance.now());
+          if (key === 'up' && !inner(e.target))
+            follow.up(e.currentTarget, e.key === 'ArrowUp' ? 40 : Number.POSITIVE_INFINITY);
           if (key !== 'end') return;
           e.preventDefault();
           jump();

@@ -191,71 +191,115 @@ describe('cacheRate and withRate', () => {
   });
 });
 
-/** A scroll container double: 1000 px of content in a 400 px view. */
-const box = (scrollTop = 600) => ({
-  scrollTop,
-  scrollHeight: 1000,
-  clientHeight: 400,
-  scrollTo(o: ScrollToOptions) {
-    if (o.behavior !== 'smooth') this.scrollTop = (o.top ?? 0) - this.clientHeight;
-  },
-});
-
 describe('Follow', () => {
+  /** A double that clamps `scrollTop` like an element. */
+  const el = (scrollTop = 600, scrollHeight = 1000) => {
+    const o = {
+      top: scrollTop,
+      scrollHeight,
+      clientHeight: 400,
+      get scrollTop() {
+        return this.top;
+      },
+      set scrollTop(v: number) {
+        this.top = Math.max(0, Math.min(v, this.scrollHeight - this.clientHeight));
+      },
+      scrollTo(opt: ScrollToOptions) {
+        if (opt.behavior !== 'smooth') this.scrollTop = opt.top ?? 0;
+      },
+    };
+    return o;
+  };
   it('a jump already at the bottom ends at once; a smooth one without events ends by timer', () => {
     vi.useFakeTimers();
     const f = new Follow();
-    f.jump(box(600), true);
+    f.jump(el(600), true);
     expect(f.jumping).toBe(false);
-    const el = box(0);
-    f.jump(el, true);
+    f.jump(el(0), true);
     expect(f.jumping).toBe(true);
     vi.advanceTimersByTime(600);
     expect(f.jumping).toBe(false);
-    f.jump(box(0), false);
+    f.jump(el(0), false);
     expect(f.jumping).toBe(false);
     vi.useRealTimers();
   });
   it('scroll events during a smooth jump keep it pinned and the pill hidden', () => {
     const f = new Follow();
-    const el = box(0);
-    f.jump(el, true);
-    el.scrollTop = 300;
-    expect(f.scrolled(el, 1000)).toBeUndefined();
+    const e = el(0);
+    f.jump(e, true);
+    e.scrollTop = 300;
+    expect(f.scrolled(e)).toBeUndefined();
     expect(f.pinned).toBe(true);
-    el.scrollTop = 600;
-    expect(f.scrolled(el, 1100)).toBe(false);
+    e.scrollTop = 600;
+    expect(f.scrolled(e)).toBe(false);
     expect(f.jumping).toBe(false);
   });
-  it('unpins on the reader scrolling up only when the thread can scroll up', () => {
+  it('fast deltas: its own jumps never unpin, also when content grew before the event', () => {
     const f = new Follow();
-    f.up({ ...box(0) }, 0);
-    expect(f.pinned).toBe(true);
-    f.up({ ...box(600), scrollHeight: 400 }, 0);
-    expect(f.pinned).toBe(true);
-    const el = box(600);
-    f.up(el, 1000);
+    const e = el(600);
+    for (let i = 0; i < 5; i++) {
+      e.scrollHeight += 200;
+      f.follow(e);
+      e.scrollHeight += 50;
+      expect(f.scrolled(e)).toBeUndefined();
+      expect(f.pinned).toBe(true);
+    }
+  });
+  it('a reader scroll between fast deltas unpins and shows the pill', () => {
+    const f = new Follow();
+    const e = el(600);
+    f.follow(e);
+    e.scrollTop -= 300;
+    expect(f.scrolled(e)).toBe(true);
     expect(f.pinned).toBe(false);
-    // A late event of the follow's last jump does not pin it again.
-    expect(f.scrolled(el, 1020)).toBeUndefined();
+    e.scrollHeight += 200;
+    f.follow(e);
+    expect(e.scrollTop).toBe(300);
+  });
+  it('a late event of its own last jump after the reader scrolled up does not pin again', () => {
+    const f = new Follow();
+    const e = el(600);
+    f.follow(e);
+    f.up(e);
+    expect(f.pinned).toBe(false);
+    expect(f.scrolled(e)).toBe(false);
+  });
+  it('wheel and touch unpin only when the thread can scroll up', () => {
+    const f = new Follow();
+    f.up(el(0));
+    expect(f.pinned).toBe(true);
+    f.up(el(0, 400));
+    expect(f.pinned).toBe(true);
+    f.up(el(600));
     expect(f.pinned).toBe(false);
   });
-  it('content growth after its own scroll does not unpin; a later scroll by the reader does', () => {
+  it('touch: unpins at once, then the scroll decides', () => {
     const f = new Follow();
-    const el = box(600);
-    f.follow(el, 1000);
-    // A real element clamps the jump to the bottom; then the content grows by 200 px.
-    el.scrollTop = 600;
-    el.scrollHeight = 1200;
-    expect(f.scrolled(el, 1016)).toBeUndefined();
+    const e = el(600);
+    f.up(e);
+    expect(f.pinned).toBe(false);
+    e.scrollTop = 590;
+    expect(f.scrolled(e)).toBe(false);
     expect(f.pinned).toBe(true);
-    el.scrollTop = 100;
-    expect(f.scrolled(el, 2000)).toBe(true);
+  });
+  it('a small wheel-up within the bottom zone keeps it pinned, no pill', () => {
+    const f = new Follow();
+    const e = el(600);
+    f.follow(e);
+    f.up(e, 20);
+    expect(f.pinned).toBe(true);
+    e.scrollTop = 580;
+    expect(f.scrolled(e)).toBe(false);
+    expect(f.pinned).toBe(true);
+  });
+  it('sync takes the state from a search hit jump', () => {
+    const f = new Follow();
+    expect(f.sync(el(100))).toBe(true);
     expect(f.pinned).toBe(false);
   });
   it('reset pins and ends a jump', () => {
     const f = new Follow();
-    f.jump(box(0), true);
+    f.jump(el(0), true);
     f.pinned = false;
     f.reset();
     expect([f.pinned, f.jumping]).toEqual([true, false]);

@@ -306,50 +306,53 @@ const AWAY = 80;
 /**
  * Auto-follow of a streaming thread (brief 7.5). Only the reader unpins it (wheel, touch, keys or
  * a scroll this follow did not cause); the follow's own jumps and the pill's smooth scroll never
- * do. `now` is a `performance.now()` time.
+ * do. A scroll is the follow's own when `scrollTop` is where the follow put it (within 1 px).
  */
 export class Follow {
   pinned = true;
   jumping = false;
-  /** When the follow last scrolled by itself, and when the reader last scrolled up. */
-  private ours = Number.NEGATIVE_INFINITY;
-  private upAt = Number.NEGATIVE_INFINITY;
+  /** The `scrollTop` the follow set last; NaN once the reader moved. */
+  private set = Number.NaN;
   private scrolledSinceJump = false;
   private timer: ReturnType<typeof setTimeout> | undefined;
 
   /** Content changed: stay at the bottom while pinned (a jump, not a smooth scroll). */
-  follow(el: Scroller, now: number) {
+  follow(el: Scroller) {
     if (!this.pinned) return;
     el.scrollTop = el.scrollHeight;
-    this.ours = now;
+    // Read back: the element clamps the value.
+    this.set = el.scrollTop;
   }
 
   /** A scroll event: whether the reader is away from the bottom, or undefined to keep the state. */
-  scrolled(el: Scroller, now: number): boolean | undefined {
+  scrolled(el: Scroller): boolean | undefined {
     const gap = gapOf(el);
     this.scrolledSinceJump = true;
     if (this.jumping && gap >= NEAR) return undefined;
     this.jumping = false;
-    // A late event of the follow's last jump, right after the reader scrolled up: stale.
-    if (gap < NEAR && now - this.upAt < 100) return undefined;
-    // Content grew again after the follow's own scroll, within a frame: not the reader.
-    if (this.pinned && gap >= NEAR && now - this.ours < 50) return undefined;
+    // The follow's own jump (content may have grown since): not the reader.
+    if (Math.abs(el.scrollTop - this.set) <= 1) return gap < NEAR ? false : undefined;
+    return this.sync(el);
+  }
+
+  /** Takes the state from where the thread is now (the reader's scroll, a search hit's jump). */
+  sync(el: Scroller) {
+    const gap = gapOf(el);
+    this.set = Number.NaN;
     this.pinned = gap < NEAR;
     return gap > AWAY;
   }
 
-  /** The reader scrolls up: the follow stops at once, when the thread can scroll up at all. */
-  up(el: Scroller, now: number) {
+  /**
+   * The reader scrolls up by `delta` px (wheel, keys; touch: unknown): the follow stops at once,
+   * unless the thread cannot scroll up or the move stays within the bottom zone.
+   */
+  up(el: Scroller, delta = Number.POSITIVE_INFINITY) {
     this.jumping = false;
     if (el.scrollHeight <= el.clientHeight || el.scrollTop <= 0) return;
+    if (gapOf(el) + delta < NEAR) return;
     this.pinned = false;
-    this.upAt = now;
-    this.ours = Number.NEGATIVE_INFINITY;
-  }
-
-  /** The reader takes over a smooth jump (touch). */
-  interrupt() {
-    this.jumping = false;
+    this.set = Number.NaN;
   }
 
   /** The pill or End: to the bottom, and the follow resumes. */
@@ -359,8 +362,10 @@ export class Follow {
     clearTimeout(this.timer);
     el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
     // Already there (or an instant jump): no scroll event may come to end the jump.
-    if (gapOf(el) < NEAR) this.jumping = false;
-    else
+    if (gapOf(el) < NEAR) {
+      this.jumping = false;
+      this.set = el.scrollTop;
+    } else
       this.timer = setTimeout(() => {
         if (!this.scrolledSinceJump) this.jumping = false;
       }, 600);
@@ -370,6 +375,7 @@ export class Follow {
   reset() {
     this.pinned = true;
     this.jumping = false;
+    this.set = Number.NaN;
     clearTimeout(this.timer);
   }
 }
