@@ -121,14 +121,28 @@ async function kitHead(a: Artifact, scheme: Scheme) {
   return lib ? `${head}<script>${inline(lib)}</script>` : head;
 }
 
+/** `a` blended with `f` of `b`; both `#rrggbb`. */
+const mix = (a: string, b: string, f: number) =>
+  `#${[1, 3, 5]
+    .map((i) => {
+      const [x, y] = [a, b].map((c) => Number.parseInt(c.slice(i, i + 2), 16));
+      return Math.round((x ?? 0) * (1 - f) + (y ?? 0) * f)
+        .toString(16)
+        .padStart(2, '0');
+    })
+    .join('')}`;
+
+/** The cluster header strip's height: 28, 32 on phones (UI review round 4). */
+export const stripHeight = () => (phone?.matches ? 32 : 28);
+
 /**
- * Decision 26: subgraph titles paint over the edges. Each `g.cluster-label` moves to the end of
- * its `g.root` (its translate is in the root's coordinates, so it stays in place), and its empty
- * background rect gets the text's box plus 4 px, filled with the cluster colour by `themeCSS`: no
- * edge shows between the words; edge labels get 5 px of their background around them. Measured
- * in this page, where Mermaid measured too.
+ * Decision 26 as the UI review settled it: a subgraph's title is a header strip the cluster's
+ * full inner width, its text left-aligned 12 px in and centred, painted above the edges, so an
+ * entering edge passes under a bar instead of through a word. The strip is the band blended 12 %
+ * toward the text colour (1.2:1 or more on the band in both themes). Measured in this page, where
+ * Mermaid measured too.
  */
-function finishDiagram(svg: string) {
+function finishDiagram(svg: string, t: Tokens) {
   const box = document.createElement('div');
   box.style.cssText = 'position:absolute;top:0;left:-99999px;visibility:hidden';
   box.innerHTML = svg;
@@ -136,26 +150,42 @@ function finishDiagram(svg: string) {
   try {
     const root = box.querySelector('svg');
     if (!root) return svg;
-    for (const label of root.querySelectorAll('g.cluster-label')) {
+    const strip = stripHeight();
+    for (const label of root.querySelectorAll<SVGGElement>('g.cluster-label')) {
+      const g = label.closest<SVGGElement>('g.root');
+      const frame = label.closest('g.cluster')?.querySelector<SVGRectElement>(':scope > rect');
       const text = label.querySelector('text');
-      const bg = label.querySelector('rect.background');
-      if (text && bg) {
-        const b = text.getBBox();
-        bg.setAttribute('x', String(b.x - 4));
-        bg.setAttribute('y', String(b.y - 4));
-        bg.setAttribute('width', String(b.width + 8));
-        bg.setAttribute('height', String(b.height + 8));
-      }
-      label.closest('g.root')?.append(label);
+      if (!g || !frame || !text) continue;
+      // The frame in the root's coordinates (no rotation in a Mermaid layout).
+      const f = frame.getBBox();
+      const m = (g.getCTM() as DOMMatrix).inverse().multiply(frame.getCTM() as DOMMatrix);
+      const [x, y, w] = [f.x * m.a + m.e + 1, f.y * m.d + m.f + 1, f.width * m.a - 2];
+      const bar = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      for (const [k, v] of Object.entries({ x, y, width: w, height: strip }))
+        bar.setAttribute(k, String(v));
+      bar.setAttribute('class', 'cluster-strip');
+      bar.setAttribute('fill', mix(t['chart-band'], t.foreground, 0.12));
+      const b = text.getBBox();
+      label.setAttribute(
+        'transform',
+        `translate(${x + 12 - b.x}, ${y + (strip - b.height) / 2 - b.y})`,
+      );
+      g.append(bar, label);
     }
-    // An edge stops 5 px short of its label (UI review: lines touched the letters).
+    // An edge stops short of its label (5 px beside it, 2 above and below), and the label sits
+    // 3 px above the edge's middle, so a 12 px shaft shows above the arrowhead under it.
     for (const bg of root.querySelectorAll<SVGRectElement>('.edgeLabel rect.background')) {
       const b = bg.getBBox();
       if (!b.width) continue;
       bg.setAttribute('x', String(b.x - 5));
-      bg.setAttribute('y', String(b.y - 5));
+      bg.setAttribute('y', String(b.y - 2));
       bg.setAttribute('width', String(b.width + 10));
-      bg.setAttribute('height', String(b.height + 10));
+      bg.setAttribute('height', String(b.height + 4));
+      const label = bg.closest('g.edgeLabel');
+      const at = /translate\(([-\d.e]+),\s*([-\d.e]+)\)/.exec(
+        label?.getAttribute('transform') ?? '',
+      );
+      if (label && at) label.setAttribute('transform', `translate(${at[1]}, ${Number(at[2]) - 3})`);
     }
     return new XMLSerializer().serializeToString(root);
   } finally {
@@ -185,9 +215,9 @@ function diagram(a: Artifact, t: Tokens, dark: boolean): Promise<string> {
       document.fonts.load('12px "Inter Variable"'),
     ]);
     // Labels 14 px, 13 on phones.
-    mermaid.initialize(mermaidConfig(t, dark, phone?.matches ? 13 : 14));
+    mermaid.initialize(mermaidConfig(t, dark, phone?.matches ? 13 : 14, stripHeight()));
     const id = `m${a.id.replace(/\W/g, '')}`;
-    return finishDiagram((await mermaid.render(id, roundDecisions(a.content))).svg);
+    return finishDiagram((await mermaid.render(id, roundDecisions(a.content))).svg, t);
   });
   diagrams = run.catch(() => {});
   return run;

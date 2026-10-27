@@ -274,7 +274,7 @@ export const MERMAID_REPLY = `Suunnitelma:\n\n${block(
 )}`;
 /**
  * Phase 20: a flowchart with the user's subgraph title, two edges into the subgraph from above,
- * and the colour classes (no classDef).
+ * and every colour class (no classDef): `ok` on the subgraph band, `muted` outside it.
  */
 export const NWP_REPLY = `Ennuste syntyy näin:\n\n${block(
   'mermaid',
@@ -283,11 +283,12 @@ export const NWP_REPLY = `Ennuste syntyy näin:\n\n${block(
   A["Havainnot"]:::cool --> B
   A --> C
   subgraph NWP["3. Numeerinen sääennustus (NWP)"]
-    B["Data-assimilaatio"] --> C["Malliajo"]
+    B["Data-assimilaatio"] --> C["Malliajo"]:::ok
   end
   C --> D{"Laatu kunnossa?"}
   D -->|"Kyllä"| E["Ennuste julki"]:::warm
-  D -.->|"Ei"| F["Hälytys päivystäjälle"]:::alert`,
+  D -.->|"Ei"| F["Hälytys päivystäjälle"]:::alert
+  E --> G["Arkisto"]:::muted`,
 )}`;
 /** Phase 19: an HTML artifact on the design kit: `.card`, `.stat`, `.callout` and a Plot chart. */
 export const KIT_REPLY = `Tässä yhteenveto:\n\n${block(

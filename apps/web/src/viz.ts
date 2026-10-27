@@ -184,7 +184,7 @@ export const mermaidTheme = (t: Tokens, dark: boolean, fontSize = 14) => ({
   signalTextColor: t.foreground,
   labelBoxBkgColor: t.secondary,
   labelTextColor: t.foreground,
-  // The subgraph title's halo has the same colour (phase-20 decision 26).
+  // The subgraph band; its title strip is blended from it (render.ts).
   clusterBkg: t['chart-band'],
 });
 
@@ -232,9 +232,9 @@ const NODE_SHAPES = ['rect', 'polygon', 'path', 'circle', 'ellipse']
 /**
  * The diagram rules of the view and the export alike (decision 21), as literal token values;
  * Mermaid scopes them to the diagram's id, so they win over its own id rules. Edges are
- * --muted-foreground at 1.5 px whatever the scale; nodes have radius 8. A subgraph title gets a
- * halo of the cluster fill (decision 26); the node classes (decision 24). No `:is()`: Mermaid's
- * scoper splits at every comma.
+ * --muted-foreground at 1.5 px whatever the scale; nodes have radius 8; the node classes
+ * (decision 24). The subgraph title strip is drawn after render (render.ts). No `:is()`:
+ * Mermaid's scoper splits at every comma.
  */
 const diagramCss = (t: Tokens) => {
   const line = t['muted-foreground'];
@@ -242,8 +242,6 @@ const diagramCss = (t: Tokens) => {
 marker path { fill: ${line} !important; stroke: ${line} !important; }
 .node rect, .statediagram-state rect, .actor rect { rx: 8px; ry: 8px; }
 ${NODE_SHAPES} { stroke-width: 2px !important; }
-.cluster-label text { paint-order: stroke; stroke: ${t['chart-band']}; stroke-width: 4px; stroke-linejoin: round; }
-.cluster-label .background { fill: ${t['chart-band']} !important; opacity: 1 !important; }
 .edgeLabel .background { fill: ${t.card} !important; opacity: 1 !important; }
 ${nodeClass('warm', t['chart-accent-soft'], t['chart-1'])}
 ${nodeClass('cool', t['info-subtle'], t['chart-3'])}
@@ -254,7 +252,12 @@ ${nodeClass('muted', t.muted, t['chart-faint'])}
 };
 
 /** Mermaid's options (decisions 9, 21, 26 of phase 20, decision 9 of phase 19). */
-export const mermaidConfig = (t: Tokens, dark: boolean, fontSize: number): MermaidConfig => {
+export const mermaidConfig = (
+  t: Tokens,
+  dark: boolean,
+  fontSize: number,
+  strip = 28,
+): MermaidConfig => {
   const font = t['font-sans'];
   return {
     startOnLoad: false,
@@ -279,13 +282,13 @@ export const mermaidConfig = (t: Tokens, dark: boolean, fontSize: number): Merma
       // Less label padding: a decision diamond grows with its label's box (phase-19 UI review).
       padding: 8,
       nodeSpacing: 40,
-      // Dagre spaces a rank across a subgraph border 1.5 times: 32 gives 32 inside a subgraph and
-      // 48 into and out of it (UI review: at most 48 of bare edge).
-      rankSpacing: 32,
+      // Dagre spaces a rank across a subgraph border 1.5 times: 46 leaves room above the first node
+      // for the title strip and 22 px under it, and 12 px of edge into the subgraph.
+      rankSpacing: 46,
       // Mermaid's own default wraps a 20-letter label ("Hälytys päivystäjälle").
       wrappingWidth: 200,
-      // The title clear of the border and the first node, inside the 48 px rank above.
-      subGraphTitleMargin: { top: 10, bottom: 10 },
+      // Room for the title strip (render.ts) and 22 px or more between it and the first node.
+      subGraphTitleMargin: { top: strip + 4, bottom: 0 },
     },
     class: { htmlLabels: false },
     // A parse error throws (the caller shows it) instead of drawing Mermaid's error SVG.
@@ -538,9 +541,10 @@ export function prepareChart(source: string, t: Tokens): Chart | Refused {
   spec.$schema = SCHEMA;
   if ('mark' in spec || 'layer' in spec) spec.width = 'container';
   spec.autosize = { type: 'fit-x', contains: 'padding' };
-  // Bottom 6: x labels keep their descenders ("syys"), the svg is not cut at its baseline. Right 8
-  // also with end labels: `fit-x` already makes room for marks past the plot (UI review).
-  spec.padding = { left: 0, top: 4, right: 8, bottom: 6 };
+  // Bottom 6: x labels keep their descenders ("syys"), the svg is not cut at its baseline. Right 0,
+  // also with end labels: `fit-x` already makes room for marks and labels past the plot, and the
+  // plot ends on the card's 16 px gutter like the header above it (UI review).
+  spec.padding = { left: 0, top: 4, right: 0, bottom: 6 };
   spec.config = vegaConfig(t);
   return { spec, lifted, rows };
 }

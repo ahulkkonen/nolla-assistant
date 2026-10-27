@@ -223,17 +223,17 @@ describe('colour roles and theme keys (R2, R7)', () => {
     });
   });
 
-  it('sets sizing and padding (R3): 8 px right, also for end labels (fit-x contains them)', () => {
+  it('sets sizing and padding (R3): no right padding, also for end labels (fit-x contains them)', () => {
     const plain = prepareChart(bar(), T) as Chart;
     expect(plain.spec).toMatchObject({
       width: 'container',
       autosize: { type: 'fit-x', contains: 'padding' },
-      padding: { left: 0, top: 4, right: 8, bottom: 6 },
+      padding: { left: 0, top: 4, right: 0, bottom: 6 },
     });
     const labels = JSON.stringify({
       layer: [{ mark: 'line' }, { mark: { type: 'text', align: 'left', dx: 6 } }],
     });
-    expect((prepareChart(labels, T) as Chart).spec.padding).toMatchObject({ right: 8 });
+    expect((prepareChart(labels, T) as Chart).spec.padding).toMatchObject({ right: 0 });
   });
 });
 
@@ -315,18 +315,20 @@ describe('fonts and Mermaid config (phase 20)', () => {
       messageFontFamily: T['font-sans'],
       noteFontFamily: T['font-sans'],
     });
+    // Room for the 28 px title strip (32 on phones) and 4 px; the layout adds the title's height.
     expect(c.flowchart).toMatchObject({
-      rankSpacing: 32,
+      rankSpacing: 46,
       wrappingWidth: 200,
-      subGraphTitleMargin: { top: 10, bottom: 10 },
+      subGraphTitleMargin: { top: 32, bottom: 0 },
+    });
+    expect(mermaidConfig(T, false, 13, 32).flowchart?.subGraphTitleMargin).toEqual({
+      top: 36,
+      bottom: 0,
     });
     // Mermaid 12 lays out with ELK by default, which ignores the flowchart spacing.
     expect(c.layout).toBe('dagre');
     expect(c.themeVariables).toMatchObject({ clusterBkg: T['chart-band'] });
-    // The halo is the cluster fill; the edge colour is a literal token value.
-    expect(c.themeCSS).toContain(
-      `.cluster-label text { paint-order: stroke; stroke: ${T['chart-band']};`,
-    );
+    // The edge colour is a literal token value.
     expect(c.themeCSS).toContain(`stroke: ${T['muted-foreground']} !important`);
     expect(c.themeCSS).not.toContain(':is(');
   });
@@ -449,13 +451,10 @@ describe('UI review (phase 20)', () => {
     expect(mermaidConfig(T, false, 14).themeCSS).toContain('{ stroke-width: 2px !important; }');
   });
 
-  it('fills nodes with --card, edge and subgraph labels on opaque backgrounds', () => {
+  it('fills nodes with --card, edge labels on an opaque background', () => {
     const c = mermaidConfig(T, false, 14);
     expect(c.themeVariables).toMatchObject({ mainBkg: T.card, primaryBorderColor: T.input });
     expect(c.themeCSS).toContain(`.edgeLabel .background { fill: ${T.card} !important; opacity: 1`);
-    expect(c.themeCSS).toContain(
-      `.cluster-label .background { fill: ${T['chart-band']} !important; opacity: 1`,
-    );
   });
 });
 

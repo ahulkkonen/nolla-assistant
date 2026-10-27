@@ -384,7 +384,8 @@ export function Composer() {
               <>
                 <IconButton
                   label="Pysäytä"
-                  className="rounded-full border-border text-foreground"
+                  // The ring in --input: 3:1 or more on the composer (UI review).
+                  className="rounded-full border-input text-foreground"
                   onClick={() => stopTurn(chatId)}
                 >
                   <Square size={14} fill="currentColor" />
