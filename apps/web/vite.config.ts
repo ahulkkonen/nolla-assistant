@@ -10,7 +10,10 @@ export default defineConfig({
     react(),
     tailwindcss(),
     VitePWA({
-      registerType: 'autoUpdate',
+      // The new worker waits until the user picks "Päivitä" (main.tsx): with autoUpdate the open
+      // tab kept the old bundle after a deploy and showed none of the new features.
+      registerType: 'prompt',
+      injectRegister: false,
       includeAssets: ['apple-touch-icon.png'],
       manifest: {
         name: 'Avustaja',
