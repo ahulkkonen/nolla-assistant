@@ -117,7 +117,9 @@ export function InlineFigure({ a, onOpen }: { a: Artifact; onOpen: () => void })
   };
   return (
     <figure aria-label={a.title} className="overflow-hidden rounded-lg border bg-card font-sans">
-      <div className="flex h-9 items-center gap-1 pr-1 pl-4 max-md:h-12 max-md:gap-2">
+      {/* The icons' ink 16 px from the edge, as the label and the chart (UI review); phones keep
+          their 44 px targets at 4 px. */}
+      <div className="flex h-9 items-center gap-1 pr-[9px] pl-4 max-md:h-12 max-md:gap-2 max-md:pr-1">
         <span className="min-w-0 flex-1 truncate text-micro text-muted-foreground">
           {a.kind === 'mermaid' ? 'Kaavio' : 'Kuvaaja'}
         </span>
