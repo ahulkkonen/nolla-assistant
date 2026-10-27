@@ -761,6 +761,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
       chat: summary(r),
       messages,
       artifacts: messageArtifacts(messages),
+      running: registry.running(r.id),
       ...(link ? { forkedFrom: link } : {}),
       ...(memory.claims ? { claims: memory.claims.chips(r.id) } : {}),
     };
@@ -1311,7 +1312,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
 function forward(
   chatId: string,
   session: AgentSession,
-  { db, rooms, log, userId, pseudo, push, catalog, refusals }: BridgeDeps,
+  { db, rooms, log, userId, pseudo, push, catalog, refusals, registry }: BridgeDeps,
 ) {
   const emit = (msg: ServerMessage) => broadcast(rooms, chatId, msg);
   let streamId = randomUUID();
@@ -1387,11 +1388,19 @@ function forward(
         await stream(true);
         if (e.message.stopReason === 'error') {
           log.warn({ chatId, error: e.message.errorMessage }, 'model call failed');
-          const r = chatRow(db, userId, chatId);
+          // The model this run used: a change during the run is in the row already (phase 20).
+          const r = registry.builtWith(chatId) ?? chatRow(db, userId, chatId);
           if (r?.modelId) {
             if (isZdrRefusal(policyOf(r), e.message.errorMessage, catalog)) {
               refusals.set(chatId, r.modelId);
-              return emit(errorMsg('zdr_unavailable', chatId));
+              const { modelId } = policyOf(r);
+              return emit({
+                type: 'error',
+                code: 'zdr_unavailable',
+                message: ERRORS.zdr_unavailable,
+                chatId,
+                modelId,
+              });
             }
             // Shows the form LiteLLM used if a real refusal ever goes unrecognised (risk 3).
             log.warn(

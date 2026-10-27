@@ -209,6 +209,31 @@ test('phase 20: a model change during a run applies to the next turn; the data p
   expect((await srv.registry.get(chat.id)).model?.id).toBe(`zdr/${OPUS}`);
 });
 
+test('phase 20: a refusal during a model change is for the model the run used', {
+  timeout: 30_000,
+}, async () => {
+  // The prompt waits in the masking hook, so the model changes while the run is held.
+  const sc = await startFakeSidecar({});
+  cleanups.push(sc.close);
+  const proxy = await sidecarProxy(sc.url);
+  const { llm, c, create, refuseOpen } = await start([REFUSAL], { PSEUDO_URL: proxy.url });
+  const chat = await create({ modelId: FABLE, reasoning: 'auto' });
+  proxy.delayMs = 500;
+  c.send({ type: 'user.message', chatId: chat.id, text: 'Moi' });
+  await sleep(200);
+  c.send({ type: 'chat.setModel', chatId: chat.id, modelId: ARGON, reasoning: 'auto' });
+  expect((await c.next('chat.updated')).chat.modelPolicy.modelId).toBe(ARGON);
+  proxy.delayMs = 0;
+  const refusal = () => c.inbox.find((m) => m.type === 'error' && m.code === 'zdr_unavailable');
+  await vi.waitFor(() => expect(refusal()).toBeDefined(), { timeout: 10_000, interval: 50 });
+  expect(llm.requests[0]?.body.model).toBe(`zdr/${FABLE}`);
+  expect(refusal()).toMatchObject({ chatId: chat.id, modelId: FABLE });
+  c.inbox.splice(c.inbox.indexOf(refusal() as never), 1);
+  await c.idle();
+  // The refusal was Fable's: the consent for Argon, the chat's model now, is refused.
+  await refuseOpen(chat.id);
+});
+
 test('user.retry runs the refused turn again in place: the model and chat.state see it once', {
   timeout: 30_000,
 }, async () => {

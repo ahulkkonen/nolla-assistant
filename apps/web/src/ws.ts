@@ -127,10 +127,10 @@ export async function sendUserMessage(
   attachments: AttachmentRef[] = [],
   chatId: string | null = useStore.getState().activeChatId,
 ) {
-  // A new turn ends a pending consent or retry: neither may act on it.
-  policyIntent = null;
-  retryIntent = null;
   const id = chatId ?? (await createChat());
+  // A new turn ends a pending consent or retry of its chat: neither may act on it.
+  if (policyIntent?.chatId === id) policyIntent = null;
+  if (retryIntent?.chatId === id) retryIntent = null;
   const localId = `local-${crypto.randomUUID()}`;
   useStore.getState().addLocalMessage(id, {
     id: localId,
@@ -151,16 +151,17 @@ export function stopTurn(chatId: string) {
   send({ type: 'user.stop', chatId });
 }
 
-/** Decision 17: the chat's queued message starts a new turn once the reply has ended. */
+/**
+ * Decision 17: the chat's queued message starts a new turn once the reply has ended: on its idle
+ * status, or on a `chat.state` that says it is not running (an idle missed while offline).
+ */
 function sendQueued(msg: ServerMessage) {
-  if (msg.type !== 'agent.status' || msg.state !== 'idle') return;
-  const q = useStore.getState().queued[msg.chatId];
-  if (!q) return;
-  useStore.setState((s) => {
-    const { [msg.chatId]: _, ...rest } = s.queued;
-    return { queued: rest };
-  });
-  void sendUserMessage(q.text, q.attachments, msg.chatId);
+  const chatId =
+    msg.type === 'agent.status' ? msg.chatId : msg.type === 'chat.state' ? msg.chat.id : null;
+  const st = useStore.getState();
+  if (!chatId || st.agentStatus[chatId] === 'running') return;
+  const q = st.takeQueued(chatId);
+  if (q) void sendUserMessage(q.text, q.attachments, chatId);
 }
 
 /**
@@ -336,7 +337,9 @@ function open() {
       // Auto, favourites and the catalog for the model chip (phase-10).
       send({ type: 'models.list' });
       reportFocus();
-      if (store.activeChatId) send({ type: 'chat.open', chatId: store.activeChatId });
+      // The open chat, and every chat with a queued message: its `chat.state` tells if it runs.
+      for (const chatId of new Set([store.activeChatId, ...Object.keys(store.queued)]))
+        if (chatId) send({ type: 'chat.open', chatId });
     }
   };
   sock.onclose = (e) => {

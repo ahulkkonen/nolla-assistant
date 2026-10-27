@@ -202,6 +202,11 @@ export class SessionRegistry {
     return this.entries.has(chatId);
   }
 
+  /** The policy the chat's open session was built with; the row can be newer (phase 20). */
+  builtWith(chatId: string): ChatModel | undefined {
+    return this.entries.get(chatId)?.chat;
+  }
+
   /**
    * Marks `run` (the chat's `session.prompt`) as active from the call on: Pi's `isIdle` turns
    * false only when the run starts, after the input hooks (masking) ran.

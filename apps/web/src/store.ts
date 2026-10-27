@@ -244,6 +244,8 @@ type State = {
   enqueue(chatId: string, text: string, attachments: AttachmentRef[]): void;
   /** "Peru" and "Pysäytä": the queued message back into the composer. */
   unqueue(chatId: string): void;
+  /** The chat's queued message, out of the queue to be sent. */
+  takeQueued(chatId: string): State['queued'][string] | undefined;
   topics: TopicState['topics'];
   /** The first `topic.state` has arrived (the topics screen shows skeletons until then). */
   topicsLoaded: boolean;
@@ -317,19 +319,24 @@ export const sortChats = (chats: ChatSummary[]) =>
 
 /**
  * Phase-20 decision 13: the chat's new artifact list, and where the panel goes. New ids are the
- * ones the old list did not hold; none on a chat's `first` list. An open panel of this chat moves
- * to the last new artifact; a closed one opens only on a new page or component of the active chat
- * on the chat screen (figures show inline). An open artifact that is gone closes the panel.
+ * ones the old list did not hold; none on a chat's `first` list. A new page or component moves an
+ * open panel of this chat to it, and opens a closed one in the active chat on the chat screen; a
+ * new figure shows inline and moves nothing. An open artifact that is gone gives way to its twin
+ * or closes the panel.
  */
 function adopt(st: State, chatId: string, list: Artifact[], first = false): Partial<State> {
   const before = st.artifacts[chatId] ?? [];
   const added = first ? [] : list.filter((a) => !before.some((b) => b.id === a.id));
   const artifacts = { ...st.artifacts, [chatId]: list };
   const open = st.openArtifact?.chatId === chatId ? st.openArtifact : null;
-  const last = added.at(-1);
-  if (open && last) return { artifacts, openArtifact: { chatId, id: last.id } };
-  if (open && !list.some((a) => a.id === open.id)) return { artifacts, openArtifact: null };
   const page = added.findLast((a) => a.kind === 'html' || a.kind === 'react');
+  if (open && page) return { artifacts, openArtifact: { chatId, id: page.id } };
+  if (open && !list.some((a) => a.id === open.id)) {
+    // A local copy's server twin (same content) takes its place; else the panel closes.
+    const was = before.find((a) => a.id === open.id);
+    const twin = was && list.find((a) => a.content.trimEnd() === was.content.trimEnd());
+    return { artifacts, openArtifact: twin ? { chatId, id: twin.id } : null };
+  }
   if (!open && page && chatId === st.activeChatId && st.screen === 'chat')
     return { artifacts, openArtifact: { chatId, id: page.id } };
   return { artifacts };
@@ -404,6 +411,21 @@ const endTurn = (st: State, chatId: string) => ({
   memoryChip: omit(st.memoryChip, chatId),
   failed: omit(st.failed, chatId),
   zdrRefused: omit(st.zdrRefused, chatId),
+});
+
+/** A chat's run state (`agent.status`, or `chat.state` after a reconnect). */
+const status = (st: State, chatId: string, state: 'idle' | 'running'): Partial<State> => ({
+  agentStatus: { ...st.agentStatus, [chatId]: state },
+  // A turn that ended without a final (error, abort) must not leave a stale stream.
+  streaming: state === 'idle' ? omit(st.streaming, chatId) : st.streaming,
+  thinkingLive: state === 'idle' ? omit(st.thinkingLive, chatId) : st.thinkingLive,
+  // An idle chat waits for nothing: a stop drops its approval without a message.
+  ...(state === 'idle'
+    ? {
+        approvals: st.approvals.filter((a) => a.chatId !== chatId || a.expired || a.denied),
+        subagents: omit(st.subagents, chatId),
+      }
+    : {}),
 });
 
 /** Delta annotations are chunk-relative; `offset` is the chunk's start in the message. */
@@ -591,6 +613,10 @@ export const useStore = create<State>()((set, get) => {
               forkedFrom: { ...st.forkedFrom, [msg.chat.id]: msg.forkedFrom ?? null },
               ...(mine ? { pendingFork: null, activeChatId: msg.chat.id, screen: 'chat' } : {}),
               ...(msg.artifacts ? mergeArtifacts(st, msg.chat.id, msg.artifacts) : {}),
+              // Phase 20: an `agent.status` missed while offline (the run ended meanwhile).
+              ...(msg.running === undefined
+                ? {}
+                : status(st, msg.chat.id, msg.running ? 'running' : 'idle')),
             };
           });
         case 'fx.state':
@@ -737,22 +763,7 @@ export const useStore = create<State>()((set, get) => {
           }));
         }
         case 'agent.status':
-          return set((st) => ({
-            agentStatus: { ...st.agentStatus, [msg.chatId]: msg.state },
-            // A turn that ended without a final (error, abort) must not leave a stale stream.
-            streaming: msg.state === 'idle' ? omit(st.streaming, msg.chatId) : st.streaming,
-            thinkingLive:
-              msg.state === 'idle' ? omit(st.thinkingLive, msg.chatId) : st.thinkingLive,
-            // An idle chat waits for nothing: a stop drops its approval without a message.
-            ...(msg.state === 'idle'
-              ? {
-                  approvals: st.approvals.filter(
-                    (a) => a.chatId !== msg.chatId || a.expired || a.denied,
-                  ),
-                  subagents: omit(st.subagents, msg.chatId),
-                }
-              : {}),
-          }));
+          return set((st) => status(st, msg.chatId, msg.state));
         case 'agents.state':
           return set({ agents: msg.agents });
         case 'approval.request':
@@ -938,7 +949,13 @@ export const useStore = create<State>()((set, get) => {
             set((st) => ({
               zdrRefused: {
                 ...st.zdrRefused,
-                [chatId]: { modelId: st.policies[chatId]?.modelId ?? null },
+                // The model the refused run used (phase 20); it may have changed during the run.
+                [chatId]: {
+                  modelId:
+                    msg.modelId === undefined
+                      ? (st.policies[chatId]?.modelId ?? null)
+                      : msg.modelId,
+                },
               },
             }));
             if (chatId !== get().activeChatId)
@@ -1000,6 +1017,11 @@ export const useStore = create<State>()((set, get) => {
         };
       }),
     unqueue: (chatId) => set((st) => giveBack(st, chatId)),
+    takeQueued(chatId) {
+      const q = get().queued[chatId];
+      if (q) set((st) => ({ queued: omit(st.queued, chatId) }));
+      return q;
+    },
     decideApproval: (requestId, approved) =>
       set((st) => ({
         approvals: approved

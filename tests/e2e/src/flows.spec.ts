@@ -1517,7 +1517,7 @@ test('export: chart and diagram download as SVG with inlined fonts, and as PNG',
   app.llm.push({ text: CHART_REPLY });
   await app.login(page);
   await send(page, 'Piirrä kulutus');
-  // Phase 20: the panel opens from the inline figure; then the next figure follows into it.
+  // Phase 20: the panel opens from the inline figure.
   await thread(page).getByRole('button', { name: 'Avaa paneelissa' }).click();
   const frame = page.getByRole('complementary', { name: 'Artefaktit' }).locator('iframe');
   await expect(frame.contentFrame().locator('#vis svg')).toBeVisible();
@@ -1540,6 +1540,11 @@ test('export: chart and diagram download as SVG with inlined fonts, and as PNG',
 
   app.llm.push({ text: MERMAID_REPLY });
   await send(page, 'Piirrä suunnitelma');
+  // A new figure shows inline and leaves the panel where it is; it opens on request.
+  await thread(page)
+    .getByRole('figure', { name: 'Lomasuunnitelma' })
+    .getByRole('button', { name: 'Avaa paneelissa' })
+    .click();
   await expect(frame.contentFrame().locator('.diagram svg')).toBeVisible();
   const diagram = await save('Lataa SVG');
   expect(diagram.body.toString('utf8')).toContain('Lomasuunnitelma</text>');

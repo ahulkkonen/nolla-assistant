@@ -196,4 +196,33 @@ describe('ws client', () => {
     expect(sent('user.message')).toEqual([]);
     useStore.setState({ draft: null });
   });
+
+  it("a queued message sent in another chat keeps this chat's pending consent", () => {
+    const { frame, summary, sent } = chat();
+    setDataPolicy('c1', 'open');
+    frame({ type: 'agent.status', chatId: 'c2', state: 'running' });
+    useStore.getState().enqueue('c2', 'Toisaalla', []);
+    frame({ type: 'agent.status', chatId: 'c2', state: 'idle' });
+    expect(sent('user.message')).toMatchObject([{ chatId: 'c2', text: 'Toisaalla' }]);
+    frame({ type: 'chat.updated', chat: summary('open') });
+    expect(sent('user.retry')).toHaveLength(1);
+  });
+
+  it('after a reconnect, a chat.state that is not running sends the queued message', () => {
+    const { frame, sent } = chat();
+    frame({ type: 'agent.status', chatId: 'c2', state: 'running' });
+    useStore.getState().enqueue('c2', 'Jonossa', []);
+    // The socket dropped while the run ended: no idle arrived. The new socket's sign-in opens
+    // the chat (`auth.state` also reports the focus, which reads `document.hidden`).
+    vi.stubGlobal('document', { hidden: true });
+    frame({ type: 'auth.state', authenticated: true });
+    Reflect.deleteProperty(globalThis, 'document');
+    expect(sent('chat.open').map((m: { chatId: string }) => m.chatId)).toEqual(['c1', 'c2']);
+    const c2 = { ...useStore.getState().chats[0], id: 'c2' };
+    frame({ type: 'chat.state', chat: c2, messages: [], running: true });
+    expect(sent('user.message')).toEqual([]);
+    frame({ type: 'chat.state', chat: c2, messages: [], running: false });
+    expect(sent('user.message')).toMatchObject([{ chatId: 'c2', text: 'Jonossa' }]);
+    expect(useStore.getState().queued.c2).toBeUndefined();
+  });
 });

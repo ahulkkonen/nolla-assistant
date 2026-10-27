@@ -909,6 +909,8 @@ export const ServerMessage = z.discriminatedUnion('type', [
     chat: ChatSummary,
     messages: z.array(Message),
     artifacts: z.array(Artifact).optional(),
+    /** Phase 20: whether a run is active, for a client that missed its `agent.status`. */
+    running: z.boolean().optional(),
     /** Set for a chat that "Haarauta" started. */
     forkedFrom: ForkLink.nullable().optional(),
     /** Phase 17: claims this chat activated at once in the last 7 days (the chip). */
@@ -1144,6 +1146,8 @@ export const ServerMessage = z.discriminatedUnion('type', [
     message: z.string(),
     chatId: id64.optional(),
     requestId: id64.optional(),
+    /** `zdr_unavailable`: the model the refused run used; the chat can have another by now. */
+    modelId: ModelPolicy.shape.modelId.optional(),
   }),
   z.object({ type: z.literal('pong') }),
   z.object({

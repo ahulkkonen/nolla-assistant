@@ -70,7 +70,7 @@ export function ArtifactPanel() {
   const list = useStore((s) => (open ? s.artifacts[open.chatId] : undefined));
   const artifacts = list ?? EMPTY;
   const a = artifacts.find((x) => x.id === open?.id);
-  const { doc: ready, frame, onLoad, exportAs } = useFigure(a);
+  const { doc: ready, frame, onLoad, canExport, exportAs } = useFigure(a);
   const [copied, setCopied] = useState(false);
   const [tab, setTab] = useState<'preview' | 'code'>('preview');
   const mobile = useMobile();
@@ -82,7 +82,7 @@ export function ArtifactPanel() {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     });
-  const exportable = (a.kind === 'vega-lite' || a.kind === 'mermaid') && !!ready?.html;
+  const exportable = (a.kind === 'vega-lite' || a.kind === 'mermaid') && canExport;
   const title = <span className="truncate">{a.title}</span>;
   const code = (
     <pre

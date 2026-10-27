@@ -303,6 +303,9 @@ describe('fonts and Mermaid config (phase 20)', () => {
         'darkMode',
         'htmlLabels',
         'flowchart',
+        'sequence',
+        'class',
+        'dompurifyConfig',
       ]),
     );
     expect(c.fontFamily).toBe(T['font-sans']);

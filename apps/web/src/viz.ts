@@ -187,7 +187,8 @@ export const mermaidTheme = (t: Tokens, dark: boolean, fontSize = 14) => ({
 
 /**
  * Mermaid's own `secure` keys plus the theme's (phase-20 decision 21): a model's `%%{init}%%`
- * directive or front matter `config:` cannot replace our theme, fonts or layout.
+ * directive or front matter `config:` cannot replace our theme, fonts, layout or SVG labels, nor
+ * loosen the sanitizer (`dompurifyConfig`).
  */
 const SECURE = [
   'secure',
@@ -206,6 +207,9 @@ const SECURE = [
   'darkMode',
   'htmlLabels',
   'flowchart',
+  'sequence',
+  'class',
+  'dompurifyConfig',
 ];
 
 /**

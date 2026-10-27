@@ -52,6 +52,8 @@ export function useFigure(a: Artifact | undefined) {
   // A chart that fails inside the sandbox (Vega's own errors), or is not drawn in time, falls back
   // like a refused spec. A layout effect: the frame cannot load before `loaded` is set.
   const loaded = useRef(() => {});
+  // The chart page answers an export only once drawn (its `viz-svg` listener comes after).
+  const [drawn, setDrawn] = useState<string | null>(null);
   const chartHtml = doc?.rows ? doc.html : null;
   useLayoutEffect(() => {
     if (!chartHtml) return;
@@ -70,7 +72,10 @@ export function useFigure(a: Artifact | undefined) {
         clearTimeout(timer);
         timer = setTimeout(() => fail('Kaavion piirto kesti yli 10 sekuntia.'), RENDER_TIMEOUT);
       }
-      if (e.data?.type === 'viz-ready') clearTimeout(timer);
+      if (e.data?.type === 'viz-ready') {
+        clearTimeout(timer);
+        setDrawn(chartHtml);
+      }
       if (e.data?.type === 'viz-error') fail(String(e.data.message));
     };
     addEventListener('message', onMessage);
@@ -82,13 +87,14 @@ export function useFigure(a: Artifact | undefined) {
   }, [chartHtml]);
 
   const ready = a && doc?.id === a.id ? doc : null;
+  const canExport = !!ready?.html && (!ready.rows || drawn === ready.html);
   const exportAs = (format: 'svg' | 'png') => {
-    if (!a || !ready?.html) return;
+    if (!a || !canExport) return;
     exportFigure(a, format, frame.current).catch((err: unknown) =>
       useStore.getState().pushError(`Vienti epäonnistui: ${(err as Error).message}`),
     );
   };
-  return { doc: ready, frame, onLoad: () => loaded.current(), exportAs };
+  return { doc: ready, frame, onLoad: () => loaded.current(), canExport, exportAs };
 }
 
 /**
@@ -103,7 +109,7 @@ const PLACEHOLDER = 240;
  * header (48 under 768) of the kind and two actions, then the figure's own sandbox page.
  */
 export function InlineFigure({ a, onOpen }: { a: Artifact; onOpen: () => void }) {
-  const { doc, frame, onLoad, exportAs } = useFigure(a);
+  const { doc, frame, onLoad, canExport, exportAs } = useFigure(a);
   const [height, setHeight] = useState(() => heights.get(a.id));
   const onSize = (h: number) => {
     heights.set(a.id, h);
@@ -121,7 +127,7 @@ export function InlineFigure({ a, onOpen }: { a: Artifact; onOpen: () => void })
         <IconButton
           label="Lataa PNG"
           className="size-7"
-          disabled={!doc?.html}
+          disabled={!canExport}
           onClick={() => exportAs('png')}
         >
           <ImageDown size={16} />

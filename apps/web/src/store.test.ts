@@ -132,6 +132,10 @@ describe('store reducers', () => {
     useStore.getState().setActive('other');
     apply({ type: 'error', code: 'zdr_unavailable', message: 'x', chatId: 'bg' });
     expect(useStore.getState().zdrRefused.bg).toEqual({ modelId: fable.modelId });
+    // Phase 20: the refused run's own model, when the chat changed model during the run.
+    apply({ type: 'error', code: 'zdr_unavailable', message: 'x', chatId: 'bg', modelId: 'auto' });
+    expect(useStore.getState().zdrRefused.bg).toEqual({ modelId: 'auto' });
+    apply({ type: 'error', code: 'zdr_unavailable', message: 'x', chatId: 'bg' });
     // Only the level changes: the server drops its refusal record, so the alert goes too.
     const updated = (reasoning: 'auto' | 'high') =>
       apply({
@@ -312,12 +316,14 @@ describe('artifact panel (phase 20)', () => {
     expect(open()).toBeNull();
   });
 
-  it('an upsert of a new version moves an open panel to it', () => {
+  it('an upsert of a new version moves an open panel to it; a new figure does not', () => {
     const { apply } = useStore.getState();
     useStore.getState().setActive('c1');
     apply(state([art('v1')]));
     useStore.getState().showArtifact('c1', art('v1'));
-    apply({ type: 'artifact.upsert', chatId: 'c1', artifact: art('v2', 'vega-lite') });
+    apply({ type: 'artifact.upsert', chatId: 'c1', artifact: art('f1', 'vega-lite') });
+    expect(open()).toEqual({ chatId: 'c1', id: 'v1' });
+    apply({ type: 'artifact.upsert', chatId: 'c1', artifact: art('v2', 'react') });
     expect(open()).toEqual({ chatId: 'c1', id: 'v2' });
     // A known id updates in place: the panel stays.
     apply({ type: 'artifact.upsert', chatId: 'c1', artifact: { ...art('v1'), content: 'x' } });
@@ -333,6 +339,19 @@ describe('artifact panel (phase 20)', () => {
     // A reconnect after the reply: version 2 arrives in the chat's state.
     apply(state([art('v1'), art('v2')]));
     expect(open()).toEqual({ chatId: 'c1', id: 'v2' });
+    // A local copy open in the panel gives way to its server twin.
+    useStore.getState().showArtifact('c1', { ...art('local-x', 'mermaid'), content: 'graph TD' });
+    apply(state([art('v1'), art('v2'), { ...art('s3', 'mermaid'), content: 'graph TD' }]));
+    expect(open()).toEqual({ chatId: 'c1', id: 's3' });
+  });
+
+  it('chat.state carries the run state: an idle missed while offline ends the run', () => {
+    const { apply } = useStore.getState();
+    apply({ type: 'agent.status', chatId: 'c1', state: 'running' });
+    apply({ ...state([]), running: true });
+    expect(useStore.getState().agentStatus.c1).toBe('running');
+    apply({ ...state([]), running: false });
+    expect(useStore.getState().agentStatus.c1).toBe('idle');
   });
 
   it('a figure upsert with a closed panel opens nothing; an html upsert opens it', () => {
