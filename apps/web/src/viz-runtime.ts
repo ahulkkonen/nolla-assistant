@@ -105,8 +105,11 @@ const spec: Obj = JSON.parse(document.getElementById('spec')?.textContent ?? '{}
 if (el) {
   // The render timer starts here, in the parent (not when the page html was set).
   parent.postMessage({ type: 'viz-loaded' }, '*');
-  // R5: Vega measures text once; the inlined fonts must be ready first.
-  document.fonts.ready
+  // R5: Vega measures text once; the faces must be loaded first. A face loads only when text
+  // uses it, so `document.fonts.ready` alone comes too early (phase-20 decision 19).
+  Promise.all(
+    ['Inter Variable', 'Source Serif 4 Variable'].map((f) => document.fonts.load(`12px "${f}"`)),
+  )
     .then(() => draw(el, spec))
     .then(() => {
       parent.postMessage({ type: 'viz-ready' }, '*');

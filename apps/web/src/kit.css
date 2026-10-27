@@ -212,33 +212,10 @@ figure:is(.chart, .diagram) {
 #vis {
   width: 100%;
 }
-/* A ```mermaid artifact: centred, never wider than the page. Mermaid's own <style> uses id
-   selectors, hence !important. Edges: --muted-foreground at 1.5 px whatever the scale; nodes:
-   radius 8 and an --input border (the fill and border colours come from the theme variables). */
+/* A ```mermaid artifact: centred, never wider than the page. Its edge, node and subgraph rules
+   are in the diagram's own themeCSS (viz.ts), so the export looks the same. */
 .diagram svg {
   display: block;
   margin-inline: auto;
   height: auto;
-}
-.diagram
-  svg
-  :is(
-    .flowchart-link,
-    .transition,
-    .relation,
-    [class^="messageLine"],
-    .edge-pattern-solid,
-    .edge-pattern-dashed
-  ) {
-  stroke: var(--muted-foreground) !important;
-  stroke-width: 1.5px !important;
-  vector-effect: non-scaling-stroke;
-}
-.diagram svg marker path {
-  fill: var(--muted-foreground) !important;
-  stroke: var(--muted-foreground) !important;
-}
-.diagram svg :is(.node, .statediagram-state, .actor) rect {
-  rx: 8px;
-  ry: 8px;
 }

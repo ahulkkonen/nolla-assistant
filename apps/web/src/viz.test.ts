@@ -5,6 +5,7 @@ import {
   framedSvg,
   inlineHtml,
   liftTitle,
+  mermaidConfig,
   mermaidTheme,
   nbsp,
   prepareChart,
@@ -259,6 +260,59 @@ describe('theme builders', () => {
       lineColor: '#64635d',
     });
     expect(tokenSheet(T)).toMatch(/^:root\{--background:#faf9f5;--foreground:#141413;/);
+  });
+});
+
+describe('fonts and Mermaid config (phase 20)', () => {
+  it('drops every family key of the model (R2): font, labelFont, titleFont, subtitleFont', () => {
+    const { spec } = prepareChart(
+      bar({
+        encoding: {
+          x: { field: 'k', axis: { labelFont: 'Courier New', titleFont: 'Courier New' } },
+          y: { field: 'v', type: 'quantitative', legend: { labelFont: 'Courier New' } },
+        },
+        title: { text: 'T', font: 'Courier New', subtitleFont: 'Courier New' },
+        mark: { type: 'bar', font: 'Courier New' },
+      }),
+      T,
+    ) as Chart;
+    expect(JSON.stringify({ ...spec, config: undefined })).not.toContain('Courier New');
+    expect((spec.config as { axis: { labelFont: string } }).axis.labelFont).toBe(T['font-sans']);
+  });
+
+  it('secures the theme keys, measures with our font and keeps subgraph titles legible', () => {
+    const c = mermaidConfig(T, false, 14);
+    expect(c.secure).toEqual(
+      expect.arrayContaining([
+        'secure',
+        'securityLevel',
+        'maxEdges',
+        'theme',
+        'themeVariables',
+        'themeCSS',
+        'fontFamily',
+        'altFontFamily',
+        'fontSize',
+        'look',
+        'darkMode',
+        'htmlLabels',
+        'flowchart',
+      ]),
+    );
+    expect(c.fontFamily).toBe(T['font-sans']);
+    expect(c.sequence).toEqual({
+      actorFontFamily: T['font-sans'],
+      messageFontFamily: T['font-sans'],
+      noteFontFamily: T['font-sans'],
+    });
+    expect(c.flowchart?.subGraphTitleMargin).toEqual({ top: 4, bottom: 0 });
+    expect(c.themeVariables).toMatchObject({ clusterBkg: T['chart-band'] });
+    // The halo is the cluster fill; the edge colour is a literal token value.
+    expect(c.themeCSS).toContain(
+      `.cluster-label text { paint-order: stroke; stroke: ${T['chart-band']};`,
+    );
+    expect(c.themeCSS).toContain(`stroke: ${T['muted-foreground']} !important`);
+    expect(c.themeCSS).not.toContain(':is(');
   });
 });
 

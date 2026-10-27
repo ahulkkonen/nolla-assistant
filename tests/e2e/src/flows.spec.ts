@@ -19,6 +19,7 @@ import {
   memoryTurns,
   mockMic,
   mockPush,
+  NWP_REPLY,
   newAutomation,
   openFiles,
   openSettings,
@@ -1536,6 +1537,38 @@ test('inline figure: a lazy frame off screen does not fall back after 30 s', asy
     chart.locator('iframe').contentFrame().locator('#vis svg .mark-rect path').first(),
   ).toBeVisible();
   await expect(page.getByRole('region', { name: 'Kaavion data' })).toHaveCount(0);
+});
+
+test('diagram: a model directive keeps our font; subgraph titles paint over the edges', async ({
+  app,
+  page,
+}) => {
+  // T1: the model's %%{init}%% asks for another font; the secure keys keep ours.
+  app.llm.push({
+    text: NWP_REPLY.replace(
+      'flowchart TD',
+      '%%{init: {"themeVariables": {"fontFamily": "Courier New"}}}%%\nflowchart TD',
+    ),
+  });
+  await app.login(page);
+  await send(page, 'Piirrä ennuste');
+  const doc = thread(page)
+    .getByRole('figure', { name: 'Sääennusteen tuotanto' })
+    .locator('iframe')
+    .contentFrame();
+  const label = doc.locator('.diagram svg .node text').first();
+  await expect(label).toBeVisible();
+  const font = await label.evaluate((el) => getComputedStyle(el).fontFamily);
+  expect(font).toMatch(/^"?Inter Variable/);
+  expect(await doc.locator('.diagram svg style').first().textContent()).not.toContain('Courier');
+  // Decision 26: the cluster label is the last child of its root, after the edges.
+  const order = await doc
+    .locator('.diagram svg g.root')
+    .first()
+    .evaluate((root) =>
+      Array.from(root.children, (c) => c.getAttribute('class')?.split(' ')[0] ?? c.tagName),
+    );
+  expect(order.indexOf('cluster-label')).toBeGreaterThan(order.indexOf('edgePaths'));
 });
 
 test('vega-lite: a spec with a url falls back to its data as a table (R6)', async ({

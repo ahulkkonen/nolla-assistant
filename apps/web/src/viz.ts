@@ -3,6 +3,7 @@
 import interUrl from '@fontsource-variable/inter/files/inter-latin-wght-normal.woff2?url';
 import monoUrl from '@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2?url';
 import serifUrl from '@fontsource-variable/source-serif-4/files/source-serif-4-latin-wght-normal.woff2?url';
+import type { MermaidConfig } from 'mermaid';
 import { z } from 'zod';
 
 type Obj = Record<string, unknown>;
@@ -168,7 +169,79 @@ export const mermaidTheme = (t: Tokens, dark: boolean, fontSize = 14) => ({
   signalTextColor: t.foreground,
   labelBoxBkgColor: t.secondary,
   labelTextColor: t.foreground,
+  // The subgraph title's halo has the same colour (phase-20 decision 26).
+  clusterBkg: t['chart-band'],
 });
+
+/**
+ * Mermaid's own `secure` keys plus the theme's (phase-20 decision 21): a model's `%%{init}%%`
+ * directive or front matter `config:` cannot replace our theme, fonts or layout.
+ */
+const SECURE = [
+  'secure',
+  'securityLevel',
+  'startOnLoad',
+  'maxTextSize',
+  'suppressErrorRendering',
+  'maxEdges',
+  'theme',
+  'themeVariables',
+  'themeCSS',
+  'fontFamily',
+  'altFontFamily',
+  'fontSize',
+  'look',
+  'darkMode',
+  'htmlLabels',
+  'flowchart',
+];
+
+/**
+ * The diagram rules of the view and the export alike (decision 21), as literal token values;
+ * Mermaid scopes them to the diagram's id, so they win over its own id rules. Edges are
+ * --muted-foreground at 1.5 px whatever the scale; nodes have radius 8. A subgraph title gets a
+ * halo of the cluster fill (decision 26). No `:is()`: Mermaid's scoper splits at every comma.
+ */
+const diagramCss = (t: Tokens) => {
+  const line = t['muted-foreground'];
+  return `.flowchart-link, .transition, .relation, [class^="messageLine"], .edge-pattern-solid, .edge-pattern-dashed { stroke: ${line} !important; stroke-width: 1.5px !important; vector-effect: non-scaling-stroke; }
+marker path { fill: ${line} !important; stroke: ${line} !important; }
+.node rect, .statediagram-state rect, .actor rect { rx: 8px; ry: 8px; }
+.cluster-label text { paint-order: stroke; stroke: ${t['chart-band']}; stroke-width: 4px; stroke-linejoin: round; }`;
+};
+
+/** Mermaid's options (decisions 9, 21, 26 of phase 20, decision 9 of phase 19). */
+export const mermaidConfig = (t: Tokens, dark: boolean, fontSize: number): MermaidConfig => {
+  const font = t['font-sans'];
+  return {
+    startOnLoad: false,
+    securityLevel: 'strict',
+    secure: SECURE,
+    theme: 'base',
+    // Flat shapes: Mermaid 12's `neo` look adds tinted drop shadows.
+    look: 'classic',
+    themeVariables: mermaidTheme(t, dark, fontSize),
+    themeCSS: diagramCss(t),
+    // Mermaid measures text with these: the faces the CSS paints (T4).
+    fontFamily: font,
+    sequence: { actorFontFamily: font, messageFontFamily: font, noteFontFamily: font },
+    // SVG labels keep the export a plain SVG that a canvas can draw. Every diagram type that
+    // has the option; the per-type keys are deprecated but still read.
+    htmlLabels: false,
+    flowchart: {
+      htmlLabels: false,
+      // Less label padding: a decision diamond grows with its label's box (phase-19 UI review).
+      padding: 8,
+      nodeSpacing: 40,
+      rankSpacing: 40,
+      // The title leaves the border; the space to the first node stays.
+      subGraphTitleMargin: { top: 4, bottom: 0 },
+    },
+    class: { htmlLabels: false },
+    // A parse error throws (the caller shows it) instead of drawing Mermaid's error SVG.
+    suppressErrorRendering: true,
+  };
+};
 
 const text = z.union([z.string(), z.array(z.string())]);
 /** R6: the top-level shape; the rest is Vega-Lite's own business. */
@@ -198,6 +271,8 @@ function visit(node: unknown, fn: (o: Obj) => void) {
 }
 
 const DROP = new Set(['config', 'background', 'padding', 'autosize', 'font', 'scheme', '$schema']);
+/** R2 (phase-20 decision 20): every family key goes, `font` and `labelFont`, `titleFont`, …. */
+const dropped = (k: string) => DROP.has(k) || k.endsWith('Font');
 const COLOR_KEYS = new Set(['color', 'fill', 'stroke']);
 const LITERAL = /^(#[0-9a-f]{3,8}|(rgb|hsl)a?\(.*)$/i;
 type Ctx = 'color' | 'range' | undefined;
@@ -216,7 +291,7 @@ export function clean(node: unknown, map: Record<string, string>, ctx?: Ctx): un
   if (node && typeof node === 'object') {
     const out: Obj = {};
     for (const [k, v] of Object.entries(node)) {
-      if (DROP.has(k)) continue;
+      if (dropped(k)) continue;
       const child: Ctx = COLOR_KEYS.has(k)
         ? 'color'
         : k === 'range'

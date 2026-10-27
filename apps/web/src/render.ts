@@ -14,7 +14,7 @@ import {
   inlineHtml,
   type Lifted,
   lightTokens,
-  mermaidTheme,
+  mermaidConfig,
   pngBlob,
   prepareChart,
   type Refused,
@@ -120,31 +120,32 @@ async function kitHead(a: Artifact, scheme: Scheme) {
   return lib ? `${head}<script>${inline(lib)}</script>` : head;
 }
 
+/**
+ * Decision 26: subgraph titles paint over the edges. Each `g.cluster-label` moves to the end of
+ * its `g.root`; its translate is in the root's coordinates, so it stays in place.
+ */
+function liftClusterLabels(svg: string) {
+  if (!svg.includes('cluster-label')) return svg;
+  const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
+  if (doc.querySelector('parsererror')) return svg;
+  for (const label of doc.querySelectorAll('g.cluster-label'))
+    label.closest('g.root')?.append(label);
+  return new XMLSerializer().serializeToString(doc.documentElement);
+}
+
 let diagrams: Promise<unknown> = Promise.resolve();
 /** Mermaid's SVG with the theme of `t`. Its config is global: each render runs alone. */
 function diagram(a: Artifact, t: Tokens, dark: boolean): Promise<string> {
   const run = diagrams.then(async () => {
-    const { default: mermaid } = await import('mermaid');
-    // Decision 9: the `base` theme from our tokens. SVG labels (no HTML labels) keep the export
-    // a plain SVG that a canvas can draw.
-    mermaid.initialize({
-      startOnLoad: false,
-      securityLevel: 'strict',
-      theme: 'base',
-      // Flat shapes: Mermaid 12's `neo` look adds tinted drop shadows.
-      look: 'classic',
-      // Labels 14 px, 13 on phones.
-      themeVariables: mermaidTheme(t, dark, phone?.matches ? 13 : 14),
-      // Every diagram type that has the option; the per-type keys are deprecated but still read.
-      htmlLabels: false,
-      // Less label padding: a decision diamond grows with its label's box (phase-19 UI review).
-      flowchart: { htmlLabels: false, padding: 8, nodeSpacing: 40, rankSpacing: 40 },
-      class: { htmlLabels: false },
-      // A parse error throws (the caller shows it) instead of drawing Mermaid's error SVG.
-      suppressErrorRendering: true,
-    });
-    const { svg } = await mermaid.render(`m${a.id.replace(/\W/g, '')}`, roundDecisions(a.content));
-    return svg;
+    const [{ default: mermaid }] = await Promise.all([
+      import('mermaid'),
+      // Mermaid measures labels with Inter: it must be loaded first (decision 19).
+      document.fonts.load('12px "Inter Variable"'),
+    ]);
+    // Labels 14 px, 13 on phones.
+    mermaid.initialize(mermaidConfig(t, dark, phone?.matches ? 13 : 14));
+    const id = `m${a.id.replace(/\W/g, '')}`;
+    return liftClusterLabels((await mermaid.render(id, roundDecisions(a.content))).svg);
   });
   diagrams = run.catch(() => {});
   return run;
