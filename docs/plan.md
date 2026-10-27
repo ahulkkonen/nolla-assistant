@@ -314,7 +314,7 @@ The UI mirrors the 2026 ChatGPT and Claude apps: a collapsible left sidebar of c
 | Artifact panel | Right panel with tabs for each artifact in the chat; HTML/React in a sandboxed iframe, code with Monaco read-only, Mermaid rendered; actions: copy, download, open in new tab, close. |
 | Command palette | Fuzzy search over commands, chats, topics and agents. |
 | Vault | Table: kind, original, surrogate, mode, seen count, last seen. Row actions: merge (multi-select), split, pin, regenerate, allowlist, never-detect. Pending lane at the top with confirm / dismiss. Global toggle "show what the model saw". |
-| Memory | Two editable markdown panes (USER.md, MEMORY.md) with character counters; pending writes list with approve / reject; consolidation diff viewer. |
+| Memory | Tabs "Profiili" and "Havainnot" (phase 17). Profiili: the USER.md editor with a character counter, MEMORY.md read-only (generated from the active claims), the pending writes list with approve / reject. Havainnot: proposed claims (supersede proposals first) with evidence and chat links, active, stale (keep or lower) and superseded claims; accept, edit, reject, expiry; the claim precision line. |
 | Topics | List with counts; inbox of proposed topics with accept / rename / merge. |
 | Settings | Agents (list, edit YAML in a code editor), integrations (connect / disconnect MCP servers), automations (list with last run), models (LiteLLM aliases, read-only), backups (last snapshot time, "run now"), account (passkeys, push). |
 

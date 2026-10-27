@@ -197,7 +197,8 @@ function Pane({
 export function MemoryScreen() {
   const mem = useStore((s) => s.memory);
   const errors = useStore((s) => s.errorCount);
-  const [tab, setTab] = useState<'profile' | 'claims'>('profile');
+  const tab = useStore((s) => s.memoryTab);
+  const setTab = (memoryTab: typeof tab) => useStore.setState({ memoryTab });
   const [draft, setDraft] = useState<string | null>(null);
   // Only a real difference counts: opening the editor alone must not trigger the guard.
   const dirty = !!mem && draft !== null && draft !== mem.user;

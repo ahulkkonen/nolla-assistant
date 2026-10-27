@@ -197,6 +197,16 @@ type State = {
   claims: ClaimsState | null;
   /** Claims a chat activated at once (`claims.activated`, `chat.state.claims`): its chip. */
   claimChips: Record<string, ClaimChip[]>;
+  /**
+   * The claim whose action is on its way (its buttons wait); cleared by the next `claims.state`
+   * or an error. `undo`: the chip a "Kumoa" took away, restored when the reject fails.
+   */
+  claimAction: { id: number; undo?: { chatId: string; chip: ClaimChip } } | null;
+  /** The last failed claim action: the card shows it inline (no toast). */
+  claimError: { id: number; code: string; message: string } | null;
+  /** The Muisti screen's tab; "Avaa muisti" in a claim chip opens Havainnot. */
+  memoryTab: 'profile' | 'claims';
+
   /** Artifacts per chat (from `chat.state` and `artifact.upsert`, plus code blocks opened locally). */
   artifacts: Record<string, Artifact[]>;
   /** The artifact shown in the panel; the panel is closed when null. */
@@ -320,6 +330,9 @@ const omit = <T>(rec: Record<string, T>, key: string) => {
   return rest;
 };
 
+/** Finnish text for a server error code, else the server's own text. */
+export const errorText = (code: string, message: string) => ERROR_TEXT[code] ?? message;
+
 /** Finnish text per server error code; unknown codes show the server text. */
 const ERROR_TEXT: Record<string, string> = {
   llm_failed: 'Mallin kutsu epäonnistui.',
@@ -334,7 +347,6 @@ const ERROR_TEXT: Record<string, string> = {
   held: 'Edellinen viesti odottaa Nimisuojaa.',
   memory_full: 'Muisti on täynnä.',
   memory_conflict: 'Teksti on muuttunut, lataa uudelleen.',
-  invalid: 'Päivä on mennyt tai virheellinen.',
   zdr_unavailable: 'Mallilla ei ole ZDR-reittiä. Avaa keskustelu ja valitse toinen malli.',
 };
 
@@ -397,6 +409,9 @@ export const useStore = create<State>()((set, get) => {
     memoryChip: {},
     claims: null,
     claimChips: {},
+    claimAction: null,
+    claimError: null,
+    memoryTab: 'profile',
     artifacts: {},
     openArtifact: null,
     paletteOpen: false,
@@ -738,7 +753,21 @@ export const useStore = create<State>()((set, get) => {
           });
         case 'claims.state': {
           const { type: _, ...claims } = msg;
-          return set({ claims });
+          // Chips follow the state: a claim no longer active leaves its chip, a new text shows.
+          const active = new Map(claims.active.map((c) => [c.id, c]));
+          return set((st) => ({
+            claims,
+            claimAction: null,
+            claimChips: Object.fromEntries(
+              Object.entries(st.claimChips).map(([chatId, chips]) => [
+                chatId,
+                chips.flatMap((c) => {
+                  const now = active.get(c.id);
+                  return now ? [{ ...c, text: now.text }] : [];
+                }),
+              ]),
+            ),
+          }));
         }
         case 'claims.activated':
           return set((st) => ({
@@ -798,8 +827,31 @@ export const useStore = create<State>()((set, get) => {
           return set({ models });
         }
         case 'error': {
-          // Phase 13: the answer to a pending `chat.fork`; the edit box stays open for a retry.
           const st0 = get();
+          // Phase 17: a failed claim action shows on its card (or restores the chip it hid).
+          const action = st0.claimAction;
+          if (action)
+            return set((st) => ({
+              claimAction: null,
+              claimError: {
+                id: action.id,
+                code: msg.code,
+                message: errorText(msg.code, msg.message),
+              },
+              errorCount: st.errorCount + 1,
+              ...(action.undo
+                ? {
+                    claimChips: {
+                      ...st.claimChips,
+                      [action.undo.chatId]: [
+                        ...(st.claimChips[action.undo.chatId] ?? []),
+                        action.undo.chip,
+                      ],
+                    },
+                  }
+                : {}),
+            }));
+          // Phase 13: the answer to a pending `chat.fork`; the edit box stays open for a retry.
           if (
             st0.pendingFork &&
             msg.chatId === st0.pendingFork.chatId &&
@@ -867,6 +919,7 @@ export const useStore = create<State>()((set, get) => {
     setAuth: (auth) => set({ auth }),
     setActive: (activeChatId) => set({ activeChatId, screen: 'chat' }),
     setScreen: (screen) => set({ screen }),
+
     setScrollTo: (scrollTo) => set({ scrollTo }),
     setPendingAgentId: (pendingAgentId) => set({ pendingAgentId }),
     setStt(patch) {

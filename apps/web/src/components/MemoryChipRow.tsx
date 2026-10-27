@@ -2,7 +2,7 @@ import { Brain } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { type ClaimChip, type MemoryChip, useStore } from '../store.ts';
-import { send } from '../ws.ts';
+import { claimSend } from '../ws.ts';
 import { DiffLine } from './MemoryScreen.tsx';
 
 const SHOWN = 3;
@@ -56,14 +56,15 @@ export function MemoryChipRow({ chip }: { chip: MemoryChip }) {
  * "Kumoa" per claim (`claims.review` reject, the undo of an `auto` claim) and "Avaa muisti".
  */
 export function ClaimChipRow({ chatId, claims }: { chatId: string; claims: ClaimChip[] }) {
-  const undo = (id: number) => {
-    send({ type: 'claims.review', id, action: 'reject' });
+  // Hidden at once; a failed reject brings the chip back (store, `claimAction.undo`).
+  const undo = (chip: ClaimChip) => {
     useStore.setState((st) => ({
       claimChips: {
         ...st.claimChips,
-        [chatId]: (st.claimChips[chatId] ?? []).filter((c) => c.id !== id),
+        [chatId]: (st.claimChips[chatId] ?? []).filter((c) => c.id !== chip.id),
       },
     }));
+    claimSend({ type: 'claims.review', id: chip.id, action: 'reject' }, { chatId, chip });
   };
   return (
     <ul className="flex flex-col" aria-label="Uudet havainnot">
@@ -80,7 +81,7 @@ export function ClaimChipRow({ chatId, claims }: { chatId: string; claims: Claim
             variant="link"
             aria-label={`Kumoa: ${c.text}`}
             className="text-meta max-md:min-h-11"
-            onClick={() => undo(c.id)}
+            onClick={() => undo(c)}
           >
             Kumoa
           </Button>
@@ -88,7 +89,10 @@ export function ClaimChipRow({ chatId, claims }: { chatId: string; claims: Claim
             <Button
               variant="link"
               className="text-meta max-md:min-h-11"
-              onClick={() => useStore.getState().setScreen('memory')}
+              onClick={() => {
+                useStore.setState({ memoryTab: 'claims' });
+                useStore.getState().setScreen('memory');
+              }}
             >
               Avaa muisti
             </Button>

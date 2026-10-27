@@ -651,8 +651,8 @@ Review fixes (2026-10-26, after S4):
     accept or update answers `invalid`. An edited text is embedded before the transaction that
     writes it.
 15. `memory.edit` with target `memory` answers `memory_generated`; USER.md stays editable. The
-    consolidation proposal code is gone; `memory.consolidation.resolve` answers `not_implemented`
-    until W1 drops it from the web and the protocol.
+    consolidation proposal code is gone. W1 removed `memory.consolidation.resolve` and the
+    `memory.state.consolidation` field from the web, the protocol and the server.
 16. The extension reads the injected claim ids from the branch each turn.
 17. `recall` shows the newest supporting quote first and a contradicting quote as `Vastaan: "…"`.
 
@@ -666,3 +666,12 @@ Deviations from the decisions:
    chat with no new user message after `claimsThrough` costs no model call.
 4. The eval estimates tokens at 3 chars per token. The `usage.input` difference needs a working
    model.
+
+W1 (web, `dde7751` and the review fixes after it):
+
+1. The expiry field blocks a day before tomorrow by the browser's local date. The server checks
+   `validTo` against the UTC date. In Finland the two agree except in the first two or three hours
+   after local midnight, where the server is one day behind and so accepts the same days.
+2. A claim action disables that claim's buttons until the next `claims.state` or an error. A
+   failed action shows its error on the card (no toast) and keeps the editor open. A failed chip
+   undo brings the chip back.

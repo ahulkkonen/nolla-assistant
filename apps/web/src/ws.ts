@@ -5,7 +5,7 @@ import {
   type ModelPolicy,
   ServerMessage,
 } from '@pa/protocol';
-import { thinkingKey, useStore } from './store.ts';
+import { type ClaimChip, thinkingKey, useStore } from './store.ts';
 
 let ws: WebSocket | null = null;
 let url = '';
@@ -83,6 +83,18 @@ export function send(msg: ClientMessageInput) {
   const data = JSON.stringify(msg);
   if (ws?.readyState === WebSocket.OPEN) ws.send(data);
   else queue.push(data);
+}
+
+/**
+ * A claim action (phase 17): its card waits until the next `claims.state` or an error. `undo`:
+ * the chip a "Kumoa" hid, restored when the reject fails.
+ */
+export function claimSend(
+  msg: Extract<ClientMessageInput, { type: 'claims.review' | 'claims.update' | 'claims.stale' }>,
+  undo?: { chatId: string; chip: ClaimChip },
+) {
+  useStore.setState({ claimAction: { id: msg.id, ...(undo ? { undo } : {}) }, claimError: null });
+  send(msg);
 }
 
 /** Shows the search screen and runs a full-text search for `q`. */
