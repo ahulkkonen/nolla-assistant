@@ -36,10 +36,11 @@ const page = (body: string, head: string) =>
     head,
   );
 /**
- * Decision 5: a figure page tells its frame its height (`viz-size`), at once and on every change
- * (a drawn chart, a wider thread); the body's own height, so the frame's height never feeds back.
+ * Decision 5: a figure page tells its frame its height (`viz-size`), once drawn and on every change
+ * (a wider thread); the body's own height, so the frame's height never feeds back. A chart page
+ * waits for its chart: its title alone would shrink the placeholder before the chart grows it.
  */
-const SIZE = `<script>(function(){var h=0;new ResizeObserver(function(){var n=Math.ceil(document.body.getBoundingClientRect().height);if(n!==h){h=n;parent.postMessage({type:'viz-size',height:n},'*')}}).observe(document.body)})()</script>`;
+const SIZE = `<script>(function(){var h=0,v=document.getElementById('vis');new ResizeObserver(function(){var n=Math.ceil(document.body.getBoundingClientRect().height);if(n!==h&&!(v&&!v.firstChild)){h=n;parent.postMessage({type:'viz-size',height:n},'*')}}).observe(document.body)})()</script>`;
 
 const scripts = new Map<string, Promise<string>>();
 /** A bundled runtime's source, to inline into the sandbox document. */

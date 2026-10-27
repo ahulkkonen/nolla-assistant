@@ -449,6 +449,14 @@ export function prepareChart(source: string, t: Tokens): Chart | Refused {
           : undefined;
   if (error) return { error, rows };
   const spec = clean(raw, roles(t)) as Obj;
+  // Colour ramps blend in Lab: Vega-Lite's default HCL bends the band-to-blue ramp through pink.
+  visit(spec, (o) => {
+    for (const ch of ['color', 'fill', 'stroke']) {
+      const c = (o.encoding as Obj | undefined)?.[ch] as Obj | undefined;
+      if (c && typeof c === 'object' && !('value' in c) && c.scale !== null)
+        c.scale = { interpolate: 'lab', ...(c.scale as Obj | undefined) };
+    }
+  });
   clampSizes(spec);
   const lifted = liftTitle(spec);
   if ('mark' in spec || 'layer' in spec) liftYUnit(spec, t);

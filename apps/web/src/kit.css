@@ -206,7 +206,7 @@ figure:is(.chart, .diagram) {
 .chart strong {
   color: var(--card-foreground);
 }
-.chart figcaption {
+figure:is(.chart, .diagram) figcaption {
   margin-top: 12px;
 }
 #vis {

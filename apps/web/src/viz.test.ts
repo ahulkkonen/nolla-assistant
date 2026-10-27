@@ -1,3 +1,5 @@
+import { parse, View } from 'vega';
+import { compile } from 'vega-lite';
 import { describe, expect, it } from 'vitest';
 import {
   type Chart,
@@ -342,6 +344,29 @@ describe('colour (phase 20)', () => {
     expect(range.heatmap).toEqual(['#f3efe6', '#1d5bbf']);
     expect(range.diverging).toEqual(['#b5532a', '#f3efe6', '#2c7a73']);
     expect(range.ordinal).toEqual({ scheme: ['#f3efe6', '#1d5bbf'] });
+  });
+
+  it('blends the ordinal and sequential ramps in Lab: no hue detour through pink', async () => {
+    const mid = async (type: 'ordinal' | 'quantitative') => {
+      const chart = prepareChart(
+        JSON.stringify({
+          data: { values: [0, 5, 10].map((v, i) => ({ k: 'abc'[i], v })) },
+          mark: 'point',
+          encoding: { x: { field: 'k' }, color: { field: type === 'ordinal' ? 'k' : 'v', type } },
+        }),
+        T,
+      ) as Chart;
+      const view = new View(parse(compile(chart.spec as never).spec), { renderer: 'none' });
+      await view.runAsync();
+      const c = String(view.scale('color')(type === 'ordinal' ? 'b' : 5));
+      view.finalize();
+      return c.match(/\d+/g)?.map(Number) ?? [];
+    };
+    // HCL gave rgb(218, 140, 161) between --chart-band and --chart-3.
+    for (const type of ['ordinal', 'quantitative'] as const) {
+      const [r = 0, , b = 0] = await mid(type);
+      expect(b, type).toBeGreaterThan(r);
+    }
   });
 
   it('colours the Mermaid node classes without a classDef', () => {
