@@ -1,4 +1,11 @@
-import { type Annotation, type AttachmentRef, type CallUsage, mermaidMeta } from '@pa/protocol';
+import {
+  type Annotation,
+  type AttachmentRef,
+  artifactKind,
+  artifactTitle,
+  type CallUsage,
+  mermaidMeta,
+} from '@pa/protocol';
 import {
   AppWindow,
   ChartColumn,
@@ -58,13 +65,6 @@ export function CopyButton({ text, className }: { text: () => string; className:
   );
 }
 
-const ARTIFACT_KIND = {
-  html: 'html',
-  jsx: 'react',
-  tsx: 'react',
-  mermaid: 'mermaid',
-  'vega-lite': 'vega-lite',
-} as const;
 const hash = (s: string) => {
   let h = 5381;
   for (let i = 0; i < s.length; i++) h = (h * 33) ^ s.charCodeAt(i);
@@ -127,24 +127,22 @@ function Pre(props: ComponentProps<'pre'>) {
     isValidElement<{ children?: unknown }>(child) && typeof child.props.children === 'string'
       ? child.props.children
       : '';
-  const art: (typeof ARTIFACT_KIND)[keyof typeof ARTIFACT_KIND] | undefined =
-    ARTIFACT_KIND[lang as keyof typeof ARTIFACT_KIND];
+  const art = artifactKind(lang);
   // The panel shows this block now (same source): the card says so.
   const shown = useStore((s) => {
     const o = s.openArtifact;
     const a = o && s.artifacts[o.chatId]?.find((x) => x.id === o.id);
     return !!art && !!a && a.content.trimEnd() === source.trimEnd();
   });
-  const kind = art ?? (source.split('\n').length > 30 ? 'code' : undefined);
   const open = (shown: string) => {
     const st = useStore.getState();
     const content = shown || source;
-    if (!kind || !st.activeChatId) return;
+    if (!art || !st.activeChatId) return;
     st.showArtifact(st.activeChatId, {
       id: `local-${hash(content)}`,
-      kind,
+      kind: art,
       title:
-        (kind === 'mermaid' && mermaidMeta(content).title) ||
+        (art === 'mermaid' && mermaidMeta(content).title) ||
         (lang ? `${lang} (viestistä)` : 'Koodi (viestistä)'),
       ...(lang ? { language: lang } : {}),
       content,
@@ -168,7 +166,7 @@ function Pre(props: ComponentProps<'pre'>) {
           <AppWindow size={16} className="shrink-0 text-muted-foreground" />
         )}
         <span className="min-w-0 flex-1 truncate font-sans text-ui">
-          {figureTitle(art, source) ?? CARD_NAME[art]}
+          {artifactTitle(art, source) ?? CARD_NAME[art]}
         </span>
         {shown ? (
           <span className="flex h-8 items-center px-2.5 text-meta text-muted-foreground max-md:h-11">
@@ -182,11 +180,8 @@ function Pre(props: ComponentProps<'pre'>) {
         )}
       </div>
     );
-  return (
-    <CodeBlock lang={lang} {...(kind ? { onOpen: open } : {})}>
-      {props.children}
-    </CodeBlock>
-  );
+  // phase-20 W5: CodeBlock's `onOpen` ("Avaa artefaktina") has no caller now; remove it.
+  return <CodeBlock lang={lang}>{props.children}</CodeBlock>;
 }
 
 /** A card's name when its source has no title. */
@@ -196,26 +191,6 @@ const CARD_NAME = {
   mermaid: 'Kaavio',
   'vega-lite': 'Kuvaaja',
 };
-
-/**
- * The title of a page (`<title>` or the first `<h1>`), a chart spec (`title` or `title.text`) or a
- * diagram; none while it streams.
- */
-function figureTitle(kind: keyof typeof CARD_NAME, source: string) {
-  if (kind === 'mermaid') return mermaidMeta(source).title;
-  if (kind === 'react') return undefined;
-  if (kind === 'html') {
-    const m = /<title[^>]*>([^<]+)<\/title>|<h1[^>]*>([^<]+)<\/h1>/i.exec(source);
-    return (m?.[1] ?? m?.[2])?.trim() || undefined;
-  }
-  try {
-    const t = (JSON.parse(source) as { title?: unknown }).title;
-    const text = typeof t === 'object' && t ? (t as { text?: unknown }).text : t;
-    return typeof text === 'string' ? text : Array.isArray(text) ? text.join(' ') : undefined;
-  } catch {
-    return undefined;
-  }
-}
 
 /** One message's own "what the model saw" switch; the global setting still wins. */
 const SawContext = createContext(false);

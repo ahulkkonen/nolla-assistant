@@ -3,6 +3,9 @@ import {
   AgentFile,
   Annotation,
   AuthLogin,
+  artifactExt,
+  artifactKind,
+  artifactTitle,
   type CatalogModel,
   ClientMessage,
   cronToSchedule,
@@ -390,5 +393,48 @@ describe('mermaidMeta', () => {
     expect(mermaidMeta('flowchart TD\ntitle --> B').title).toBeUndefined();
     expect(mermaidMeta('flowchart TD\ntitle -- kyllä --> B').title).toBeUndefined();
     expect(mermaidMeta('flowchart TD\naccTitle: Kulku\ntitle --> B').title).toBe('Kulku');
+  });
+});
+
+describe('artifact whitelist', () => {
+  it('maps the five fences only', () => {
+    expect(['html', 'jsx', 'tsx', 'mermaid', 'vega-lite'].map(artifactKind)).toEqual([
+      'html',
+      'react',
+      'react',
+      'mermaid',
+      'vega-lite',
+    ]);
+    for (const lang of ['python', '', 'md', 'svg', 'constructor'])
+      expect(artifactKind(lang)).toBeUndefined();
+  });
+
+  it('reads the title of each kind', () => {
+    expect(artifactTitle('vega-lite', '{"title": "Myynti", "mark": "bar"}')).toBe('Myynti');
+    expect(artifactTitle('vega-lite', '{"title": {"text": ["Myynti", "2026"]}}')).toBe(
+      'Myynti 2026',
+    );
+    // A spec that still streams is partial JSON.
+    expect(artifactTitle('vega-lite', '{"title": "Myynti", "mark":')).toBeUndefined();
+    expect(artifactTitle('mermaid', 'flowchart TD\n  accTitle: Loma &amp; kesä\n  A-->B')).toBe(
+      'Loma & kesä',
+    );
+    expect(artifactTitle('mermaid', '---\ntitle: Kulku\n---\nflowchart TD\nA-->B')).toBe('Kulku');
+    expect(artifactTitle('mermaid', 'flowchart TD\nA-->B')).toBeUndefined();
+    expect(
+      artifactTitle('html', '<html><head><title>Sivu</title></head><h1>Otsikko</h1></html>'),
+    ).toBe('Sivu');
+    expect(artifactTitle('html', '<h2 class="a">A &amp; <b>B</b></h2>')).toBe('A & B');
+    expect(artifactTitle('html', `<p>${'x'.repeat(5000)}</p><h1>Myöhään</h1>`)).toBeUndefined();
+    expect(artifactTitle('react', 'export default () => <h1>Laskuri</h1>;')).toBe('Laskuri');
+    expect(artifactTitle('react', 'export default () => <div/>;')).toBeUndefined();
+  });
+
+  it('gives the file extension of each kind', () => {
+    expect(artifactExt({ kind: 'html' })).toBe('html');
+    expect(artifactExt({ kind: 'react', language: 'tsx' })).toBe('tsx');
+    expect(artifactExt({ kind: 'react', language: 'jsx' })).toBe('jsx');
+    expect(artifactExt({ kind: 'mermaid', language: 'mermaid' })).toBe('mmd');
+    expect(artifactExt({ kind: 'vega-lite' })).toBe('json');
   });
 });

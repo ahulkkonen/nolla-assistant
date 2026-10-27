@@ -5,7 +5,7 @@ import { extractArtifacts } from './artifacts.ts';
 const long = Array.from({ length: 31 }, (_, i) => `x = ${i}`).join('\n');
 
 describe('extractArtifacts', () => {
-  it('picks tagged blocks and long code, skips short code', () => {
+  it('picks the five fences; code of any length is no artifact', () => {
     const text = [
       'Intro',
       '```html\n<html><h1>My <b>page</b></h1></html>\n```',
@@ -23,11 +23,9 @@ describe('extractArtifacts', () => {
       ['mermaid', 'mermaid #3', 'mermaid'],
       ['mermaid', 'Loma & kesä', 'mermaid'],
       ['vega-lite', 'Myynti 2026', 'vega-lite'],
-      ['code', 'python #6', 'python'],
     ]);
     expect(a[0]?.id).toBe(createHash('sha1').update('m1:0').digest('hex'));
     expect(a[2]?.content).toBe('graph TD; A-->B');
-    expect(a[5]?.content).toBe(long);
   });
 
   it('ignores unclosed fences and plain text; the closer must match the opener', () => {
@@ -46,10 +44,5 @@ describe('extractArtifacts', () => {
     expect(t[0]?.title).toBe('A & B <3> "x"');
     const long = extractArtifacts('m', `\`\`\`html\n<h1>${'a'.repeat(300)}</h1>\n\`\`\``);
     expect(long[0]?.title).toHaveLength(120);
-  });
-
-  it('uses a markdown heading for long markdown', () => {
-    const md = `# Plan\n${long}`;
-    expect(extractArtifacts('m', `\`\`\`md\n${md}\n\`\`\``)[0]?.title).toBe('Plan');
   });
 });

@@ -1,4 +1,4 @@
-import { type Artifact, mermaidMeta } from '@pa/protocol';
+import { type Artifact, artifactExt, mermaidMeta } from '@pa/protocol';
 import {
   Check,
   ChevronDown,
@@ -53,12 +53,6 @@ const EMPTY: Artifact[] = [];
 const RENDER_TIMEOUT = 10_000;
 const LOAD_TIMEOUT = 30_000;
 const TAB = 'data-active:bg-card data-active:shadow-sm dark:data-active:bg-card';
-const EXT: Record<string, string> = {
-  html: 'html',
-  react: 'jsx',
-  mermaid: 'mmd',
-  'vega-lite': 'json',
-};
 
 /** `</script` would end an inline script early and `<!--` can change how the parser reads it. */
 const inline = (js: string) => js.replace(/<\/(script)/gi, '<\\/$1').replace(/<!--/g, '<\\!--');
@@ -248,8 +242,7 @@ const stem = (a: Artifact) =>
   a.title.replace(/[^\p{L}\p{N}_-]+/gu, '-').slice(0, 60) || 'artefakti';
 
 function download(a: Artifact) {
-  const ext = EXT[a.kind] ?? a.language ?? 'txt';
-  saveFile(new Blob([a.content], { type: a.mime ?? 'text/plain' }), `${stem(a)}.${ext}`);
+  saveFile(new Blob([a.content], { type: 'text/plain' }), `${stem(a)}.${artifactExt(a)}`);
 }
 
 /** R6 fallback: the error and the spec's data as a table, in the panel (not the sandbox). */
@@ -434,7 +427,6 @@ export function ArtifactPanel() {
       setTimeout(() => setCopied(false), 1500);
     });
   const ready = doc?.id === a.id ? doc : null;
-  const plain = a.kind === 'code' || a.kind === 'file';
   const theme = ready?.html ? ready.theme : undefined;
   const exportable = (a.kind === 'vega-lite' || a.kind === 'mermaid') && theme;
   const exportAs = (format: 'svg' | 'png') => {
@@ -448,8 +440,6 @@ export function ArtifactPanel() {
   const code = (
     <pre
       translate="no"
-      role={plain ? 'region' : undefined}
-      aria-label={plain ? `${a.title}: koodi` : undefined}
       // A scrollable region must be focusable (brief 7.8).
       tabIndex={0}
       className="size-full overflow-auto rounded-lg bg-muted p-4 font-mono text-code whitespace-pre"
@@ -504,17 +494,15 @@ export function ArtifactPanel() {
               title
             )}
           </h2>
-          {!plain && (
-            <TabsList className="order-last mb-2 w-full max-md:h-11!">
-              {/* Selected: --card with --shadow-sm (brief 7.5), not the canvas colour. */}
-              <TabsTrigger value="preview" className={TAB}>
-                Esikatselu
-              </TabsTrigger>
-              <TabsTrigger value="code" className={TAB}>
-                Koodi
-              </TabsTrigger>
-            </TabsList>
-          )}
+          <TabsList className="order-last mb-2 w-full max-md:h-11!">
+            {/* Selected: --card with --shadow-sm (brief 7.5), not the canvas colour. */}
+            <TabsTrigger value="preview" className={TAB}>
+              Esikatselu
+            </TabsTrigger>
+            <TabsTrigger value="code" className={TAB}>
+              Koodi
+            </TabsTrigger>
+          </TabsList>
           {/* Phones: Kopioi is in the Lataa menu and the 44 px targets keep 8 px apart. */}
           {/* 32 px buttons 4 apart (44 px and 8 apart on phones): one pitch for all. */}
           <div className="flex gap-1 max-md:gap-2">
@@ -552,8 +540,8 @@ export function ArtifactPanel() {
             <IconButton
               label="Avaa uudessa ikkunassa"
               className="size-8"
-              disabled={!plain && !ready?.html}
-              onClick={() => openInTab(a, plain ? null : (ready?.html ?? null))}
+              disabled={!ready?.html}
+              onClick={() => openInTab(a, ready?.html ?? null)}
             >
               <ExternalLink size={16} />
             </IconButton>
@@ -562,18 +550,12 @@ export function ArtifactPanel() {
             </IconButton>
           </div>
         </div>
-        {plain ? (
-          <div className="min-h-0 flex-1 p-3">{code}</div>
-        ) : (
-          <>
-            <TabsContent value="preview" className={cn('min-h-0 flex-1', !ready?.theme && 'p-3')}>
-              {preview}
-            </TabsContent>
-            <TabsContent value="code" className="min-h-0 flex-1 p-3">
-              {code}
-            </TabsContent>
-          </>
-        )}
+        <TabsContent value="preview" className={cn('min-h-0 flex-1', !ready?.theme && 'p-3')}>
+          {preview}
+        </TabsContent>
+        <TabsContent value="code" className="min-h-0 flex-1 p-3">
+          {code}
+        </TabsContent>
       </aside>
     </Tabs>
   );

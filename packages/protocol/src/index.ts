@@ -228,23 +228,102 @@ export const VaultPending = z.object({
 });
 export type VaultPending = z.infer<typeof VaultPending>;
 
+export const ArtifactKind = z.enum(['html', 'react', 'mermaid', 'vega-lite']);
+export type ArtifactKind = z.infer<typeof ArtifactKind>;
+
+/**
+ * The one artifact whitelist (phase-20 decision 1): fence info string to kind. Any other block,
+ * however long, is code.
+ */
+export const ARTIFACT_FENCES = {
+  html: 'html',
+  jsx: 'react',
+  tsx: 'react',
+  mermaid: 'mermaid',
+  'vega-lite': 'vega-lite',
+} as const satisfies Record<string, ArtifactKind>;
+
+/** The kinds that render inline in the thread (phase-20 decision 3). */
+export const FIGURE_KINDS = ['vega-lite', 'mermaid'] as const satisfies readonly ArtifactKind[];
+
 export const Artifact = z.object({
   id: z.string(),
-  kind: z.enum(['html', 'react', 'code', 'mermaid', 'vega-lite', 'file']),
+  kind: ArtifactKind,
   title: z.string(),
   language: z.string().optional(),
   content: z.string(),
-  mime: z.string().optional(),
 });
 export type Artifact = z.infer<typeof Artifact>;
 
+/** The kind of a lower-case fence info string; undefined for any block that is not an artifact. */
+export const artifactKind = (lang: string): ArtifactKind | undefined =>
+  Object.hasOwn(ARTIFACT_FENCES, lang)
+    ? ARTIFACT_FENCES[lang as keyof typeof ARTIFACT_FENCES]
+    : undefined;
+
+const ARTIFACT_EXT = {
+  html: 'html',
+  react: 'jsx',
+  mermaid: 'mmd',
+  'vega-lite': 'json',
+} as const satisfies Record<ArtifactKind, string>;
+
+/** The file extension of a saved artifact: a `tsx` block stays `.tsx`. */
+export const artifactExt = ({ kind, language }: Pick<Artifact, 'kind' | 'language'>) =>
+  kind === 'react' && language === 'tsx' ? 'tsx' : ARTIFACT_EXT[kind];
+
+const TITLE_SCAN = 4096;
+const MAX_TITLE = 120;
+const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"' };
+
+const cleanTitle = (s: string) =>
+  s
+    .replace(/<[^>]*>/g, '')
+    .replace(/&(amp|lt|gt|quot);/g, (_, e: string) => ENTITIES[e] ?? '')
+    .trim()
+    .slice(0, MAX_TITLE) || undefined;
+
+/** `title.text` (or a string `title`) of a Vega-Lite spec; a line array is joined. */
+function specTitle(content: string): string | undefined {
+  try {
+    const t = (JSON.parse(content) as { title?: unknown }).title;
+    const text = typeof t === 'object' && t !== null ? (t as { text?: unknown }).text : t;
+    const s = Array.isArray(text) ? text.join(' ') : text;
+    return typeof s === 'string' ? cleanTitle(s) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The text of the first `<h1>`..`<h6>` in `head`. */
+function headingOf(head: string): string | undefined {
+  for (let i = head.indexOf('<h'); i >= 0; i = head.indexOf('<h', i + 2)) {
+    if (!'123456'.includes(head[i + 2] ?? 'x')) continue;
+    const gt = head.indexOf('>', i);
+    const end = gt < 0 ? -1 : head.indexOf('</h', gt);
+    if (end < 0) break;
+    return cleanTitle(head.slice(gt + 1, end));
+  }
+  return undefined;
+}
+
 /**
- * The artifact sandbox policy: the header of `GET /api/sandbox` and the meta tag of every sandbox
- * document. `font-src data:` serves the inlined fonts (phase-19 decision 3).
+ * An artifact's title (phase-20 decision 2): a Vega-Lite spec's `title` (undefined while the JSON
+ * is partial), a diagram's `accTitle` or title line, else the `<title>` or the first
+ * `<h1>`..`<h6>` in the first 4 KB of a page or component. Tags are stripped, entities decoded.
  */
+export function artifactTitle(kind: ArtifactKind, content: string): string | undefined {
+  if (kind === 'vega-lite') return specTitle(content);
+  if (kind === 'mermaid') return cleanTitle(mermaidMeta(content).title ?? '');
+  const head = content.slice(0, TITLE_SCAN);
+  const title = /<title(?:\s[^>]*)?>([\s\S]*?)<\/title>/i.exec(head)?.[1];
+  return (title && cleanTitle(title)) || headingOf(head);
+}
+
 /**
  * A Mermaid diagram's `accTitle` and `accDescr` (phase 19): the artifact title and the lifted
- * heading and caption. Without `accTitle` the title is a `title` line of the diagram.
+ * heading and caption. Without `accTitle` the title is a `title` line of the diagram (also the
+ * `title:` of a front matter).
  */
 export function mermaidMeta(source: string) {
   const line = (re: RegExp) => re.exec(source)?.[1]?.trim() || undefined;
@@ -258,6 +337,10 @@ export function mermaidMeta(source: string) {
   };
 }
 
+/**
+ * The artifact sandbox policy: the header of `GET /api/sandbox` and the meta tag of every sandbox
+ * document. `font-src data:` serves the inlined fonts (phase-19 decision 3).
+ */
 export const SANDBOX_CSP =
   "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:; form-action 'none'; base-uri 'none'";
 
