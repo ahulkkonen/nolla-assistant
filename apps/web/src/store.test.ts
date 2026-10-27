@@ -1,4 +1,4 @@
-import type { ChatSummary, Message } from '@pa/protocol';
+import type { Artifact, ChatSummary, Message } from '@pa/protocol';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { serverIdOf, useStore } from './store.ts';
 
@@ -286,5 +286,64 @@ describe('store reducers', () => {
       ['r1', 'denied'],
       ['r2', 'expired'],
     ]);
+  });
+});
+
+describe('artifact panel (phase 20)', () => {
+  const art = (id: string, kind: Artifact['kind'] = 'html'): Artifact => ({
+    id,
+    kind,
+    title: id,
+    content: `<h1>${id}</h1>`,
+  });
+  const state = (artifacts: Artifact[]) => ({
+    type: 'chat.state' as const,
+    chat: chat('c1', false, '2026-01-01T00:00:00.000Z'),
+    messages: [],
+    artifacts,
+  });
+  const open = () => useStore.getState().openArtifact;
+
+  it('a chat change closes the panel', () => {
+    useStore.getState().setActive('c1');
+    useStore.getState().showArtifact('c1', art('a1'));
+    expect(open()).toEqual({ chatId: 'c1', id: 'a1' });
+    useStore.getState().setActive('c2');
+    expect(open()).toBeNull();
+  });
+
+  it('an upsert of a new version moves an open panel to it', () => {
+    const { apply } = useStore.getState();
+    useStore.getState().setActive('c1');
+    apply(state([art('v1')]));
+    useStore.getState().showArtifact('c1', art('v1'));
+    apply({ type: 'artifact.upsert', chatId: 'c1', artifact: art('v2', 'vega-lite') });
+    expect(open()).toEqual({ chatId: 'c1', id: 'v2' });
+    // A known id updates in place: the panel stays.
+    apply({ type: 'artifact.upsert', chatId: 'c1', artifact: { ...art('v1'), content: 'x' } });
+    expect(open()).toEqual({ chatId: 'c1', id: 'v2' });
+  });
+
+  it('a chat.state with a new id moves an open panel; the first chat.state opens nothing', () => {
+    const { apply } = useStore.getState();
+    useStore.getState().setActive('c1');
+    apply(state([art('v1')]));
+    expect(open()).toBeNull();
+    useStore.getState().showArtifact('c1', art('v1'));
+    // A reconnect after the reply: version 2 arrives in the chat's state.
+    apply(state([art('v1'), art('v2')]));
+    expect(open()).toEqual({ chatId: 'c1', id: 'v2' });
+  });
+
+  it('a figure upsert with a closed panel opens nothing; an html upsert opens it', () => {
+    const { apply } = useStore.getState();
+    useStore.getState().setActive('c1');
+    apply({ type: 'artifact.upsert', chatId: 'c1', artifact: art('f1', 'mermaid') });
+    expect(open()).toBeNull();
+    // Not in the chat on screen, or not on the chat screen: nothing opens.
+    apply({ type: 'artifact.upsert', chatId: 'c2', artifact: art('p0') });
+    expect(open()).toBeNull();
+    apply({ type: 'artifact.upsert', chatId: 'c1', artifact: art('p1') });
+    expect(open()).toEqual({ chatId: 'c1', id: 'p1' });
   });
 });

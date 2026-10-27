@@ -28,7 +28,7 @@ import { USAGE_TITLE, UsageScreen } from './components/UsageScreen.tsx';
 import { VAULT_TITLE, VaultScreen } from './components/VaultScreen.tsx';
 import { useMedia, useMobile } from './media.ts';
 import { resyncPush } from './push.ts';
-import { firstUserLine, useStore } from './store.ts';
+import { firstUserLine, shownArtifact, useStore } from './store.ts';
 import { connect, openChat, reportFocus } from './ws.ts';
 
 const SCREEN_TITLE = {
@@ -145,7 +145,7 @@ function Shell() {
   const drawer = mobile || !!overlay.current?.matches;
   // 1024–1279 px: the sidebar steps down to the rail while the side panel is open (brief 7.4).
   const wide = useMedia('(min-width: 1280px)');
-  const panel = useStore((s) => !!s.openArtifact || (s.screen === 'files' && !!s.filePreview));
+  const panel = useStore((s) => !!shownArtifact(s) || (s.screen === 'files' && !!s.filePreview));
   const docked = sidebarOpen && !drawer && (wide || !panel);
   const openDrawer = useRef(() => setSidebarOpen(true)).current;
   useEdgeSwipe(mobile && !sidebarOpen, openDrawer);

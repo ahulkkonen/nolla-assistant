@@ -304,6 +304,9 @@ for (const scheme of ['light', 'dark'] as const) {
           app.llm.push({ text });
           await app.login(page);
           await sendMessage(page, 'Piirrä');
+          // Phase 20: a chart or a diagram shows inline and opens in the panel on request.
+          if (screen !== 'kit-artifact')
+            await page.getByRole('figure').getByRole('button', { name: 'Avaa paneelissa' }).click();
           const frame = page.getByRole('complementary', { name: 'Artefaktit' }).locator('iframe');
           await expect(frame.contentFrame().locator(ready).first()).toBeVisible({
             timeout: 15_000,

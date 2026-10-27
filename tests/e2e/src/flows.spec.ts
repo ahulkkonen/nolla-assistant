@@ -1429,6 +1429,8 @@ test('vega-lite: the chart renders in the sandbox with the lifted title (phase 1
   app.llm.push({ text: CHART_REPLY });
   await app.login(page);
   await send(page, 'Piirrä kulutus');
+  // Phase 20: a chart shows inline; "Avaa paneelissa" opens it in the panel.
+  await thread(page).getByRole('button', { name: 'Avaa paneelissa' }).click();
   const panel = page.getByRole('complementary', { name: 'Artefaktit' });
   // The server titles the artifact from the spec's title.text.
   await expect(
@@ -1470,6 +1472,8 @@ test('export: chart and diagram download as SVG with inlined fonts, and as PNG',
   app.llm.push({ text: CHART_REPLY });
   await app.login(page);
   await send(page, 'Piirrä kulutus');
+  // Phase 20: the panel opens from the inline figure; then the next figure follows into it.
+  await thread(page).getByRole('button', { name: 'Avaa paneelissa' }).click();
   const frame = page.getByRole('complementary', { name: 'Artefaktit' }).locator('iframe');
   await expect(frame.contentFrame().locator('#vis svg')).toBeVisible();
   const svg = await save('Lataa SVG');

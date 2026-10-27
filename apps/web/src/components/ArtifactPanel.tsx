@@ -24,7 +24,7 @@ import { saveArtifact } from '../api.ts';
 import { fileError, showInFiles } from '../files.ts';
 import { useMobile } from '../media.ts';
 import { stem } from '../render.ts';
-import { useStore } from '../store.ts';
+import { shownArtifact, useStore } from '../store.ts';
 import { ActionMenu } from './Actions.tsx';
 import { ChartFallback, useFigure } from './Figure.tsx';
 import { IconButton } from './IconButton.tsx';
@@ -66,8 +66,8 @@ function openInTab(doc: string) {
  * clamp(440px, 40vw, 640px)), a full-screen sheet below. Header: title, Esikatselu / Koodi, actions.
  */
 export function ArtifactPanel() {
-  const open = useStore((s) => s.openArtifact);
-  const list = useStore((s) => (s.openArtifact ? s.artifacts[s.openArtifact.chatId] : undefined));
+  const open = useStore(shownArtifact);
+  const list = useStore((s) => (open ? s.artifacts[open.chatId] : undefined));
   const artifacts = list ?? EMPTY;
   const a = artifacts.find((x) => x.id === open?.id);
   const { doc: ready, frame, onLoad, exportAs } = useFigure(a);
