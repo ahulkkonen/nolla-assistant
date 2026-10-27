@@ -6,7 +6,7 @@ import { type FakeTurn, startFakeLlm } from '@pa/fake-llm';
 import { PseudoClient, pseudoExtension } from '@pa/pi-ext-pseudo';
 import { startFakeSidecar } from '@pa/pi-ext-pseudo/fake-sidecar';
 import { afterEach, expect, test } from 'vitest';
-import { type AskInput, type Child, subagentsExtension } from './index.ts';
+import { type AskInput, type Child, piCli as resolvePiCli, subagentsExtension } from './index.ts';
 
 const REAL = 'Matti Virtanen';
 const SURROGATE = 'Pekka Laaksonen';
@@ -211,3 +211,14 @@ test('onUsage gets each assistant message of a child with its usage (phase 13)',
     usage: { input: 120, output: 30 },
   });
 }, 60_000);
+
+// The production image installs Pi under apps/server only (peer dependency here).
+test('piCli resolves the Pi binary from the entry script paths', () => {
+  const saved = process.argv[1];
+  process.argv[1] = new URL('../../../apps/server/src/main.ts', import.meta.url).pathname;
+  try {
+    expect(resolvePiCli()).toMatch(/pi-coding-agent/);
+  } finally {
+    process.argv[1] = saved;
+  }
+});

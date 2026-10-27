@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { ExtensionFactory } from '@earendil-works/pi-coding-agent';
 import { Type } from 'typebox';
@@ -56,10 +56,16 @@ const INSTRUCTION =
   'Do the task below. Your final assistant message is your result: make it complete and self-contained.';
 
 const require = createRequire(import.meta.url);
-/** `bin.pi` of the installed Pi; its `exports` hide `package.json`, so walk the lookup paths. */
-function piCli(): string {
+/**
+ * `bin.pi` of the installed Pi; its `exports` hide `package.json`, so walk the lookup paths.
+ * Pi is a peer dependency here, so in the production image it lives under the server's own
+ * `node_modules`, not ours: the lookup also starts from the entry script (`apps/server`).
+ */
+export function piCli(): string {
   const name = '@earendil-works/pi-coding-agent';
-  for (const dir of require.resolve.paths(name) ?? []) {
+  const entry = process.argv[1] ? createRequire(resolve(process.argv[1])) : require;
+  const dirs = [...(require.resolve.paths(name) ?? []), ...(entry.resolve.paths(name) ?? [])];
+  for (const dir of dirs) {
     const pkg = join(dir, name, 'package.json');
     if (existsSync(pkg)) return join(dir, name, JSON.parse(readFileSync(pkg, 'utf8')).bin.pi);
   }
