@@ -38,10 +38,39 @@ const NAMES = [
 ] as const;
 export type Tokens = Record<(typeof NAMES)[number], string>;
 
-/** The active theme's token values (Vega and Mermaid need literal values, not `var()`). */
-export function readTokens(): Tokens {
-  const cs = getComputedStyle(document.documentElement);
+/**
+ * The token values of `root` (Vega and Mermaid need literal values, not `var()`); by default the
+ * active theme's.
+ */
+export function readTokens(root: Element = document.documentElement): Tokens {
+  const cs = (root.ownerDocument.defaultView ?? window).getComputedStyle(root);
   return Object.fromEntries(NAMES.map((n) => [n, cs.getPropertyValue(`--${n}`).trim()])) as Tokens;
+}
+
+let light: Promise<Tokens> | undefined;
+/**
+ * The light theme's tokens for every export (phase-20 decision 7): a hidden same-origin frame
+ * with `data-theme="light"` and the app's own style sheets, so tokens.css stays the one source.
+ */
+export function lightTokens() {
+  light ??= new Promise<Tokens>((resolve, reject) => {
+    const frame = document.createElement('iframe');
+    frame.hidden = true;
+    const sheets = [...document.querySelectorAll('link[rel="stylesheet"], style')];
+    frame.srcdoc = `<!doctype html><html data-theme="light"><head>${sheets.map((n) => n.outerHTML).join('')}</head></html>`;
+    frame.onload = () => {
+      const root = frame.contentDocument?.documentElement;
+      if (root) resolve(readTokens(root));
+      else reject(new Error('teema'));
+      frame.remove();
+    };
+    document.body.append(frame);
+  });
+  // A failed read is tried again on the next export.
+  light.catch(() => {
+    light = undefined;
+  });
+  return light;
 }
 
 /** `:root { --name: value }` of the active theme, for the sandbox page (decision 4). */

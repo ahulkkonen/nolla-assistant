@@ -1,14 +1,13 @@
 import {
   type Annotation,
+  type Artifact,
   type AttachmentRef,
   artifactKind,
   artifactTitle,
   type CallUsage,
-  mermaidMeta,
 } from '@pa/protocol';
 import {
   AppWindow,
-  ChartColumn,
   Check,
   Copy,
   Eye,
@@ -17,7 +16,6 @@ import {
   PanelRight,
   Pencil,
   RotateCcw,
-  Workflow,
 } from 'lucide-react';
 import { Popover } from 'radix-ui';
 import {
@@ -42,6 +40,7 @@ import { cn } from '@/lib/utils';
 import { touch } from '../media.ts';
 import { type SubagentChild, type ToolView, useStore } from '../store.ts';
 import { mdBlocks, settleTail, withDefinitions } from '../thread.ts';
+import { InlineFigure } from './Figure.tsx';
 import { IconButton, Tip } from './IconButton.tsx';
 import { MessageMeta, metaText } from './MessageMeta.tsx';
 import { SubagentRow } from './SubagentRow.tsx';
@@ -134,54 +133,42 @@ function Pre(props: ComponentProps<'pre'>) {
     const a = o && s.artifacts[o.chatId]?.find((x) => x.id === o.id);
     return !!art && !!a && a.content.trimEnd() === source.trimEnd();
   });
-  const open = (shown: string) => {
-    const st = useStore.getState();
-    const content = shown || source;
-    if (!art || !st.activeChatId) return;
-    st.showArtifact(st.activeChatId, {
-      id: `local-${hash(content)}`,
-      kind: art,
-      title:
-        (art === 'mermaid' && mermaidMeta(content).title) ||
-        (lang ? `${lang} (viestistä)` : 'Koodi (viestistä)'),
-      ...(lang ? { language: lang } : {}),
-      content,
-    });
+  if (!art) return <CodeBlock lang={lang}>{props.children}</CodeBlock>;
+  const a: Artifact = {
+    id: `local-${hash(source)}`,
+    kind: art,
+    title: artifactTitle(art, source) ?? CARD_NAME[art],
+    ...(lang ? { language: lang } : {}),
+    content: source,
   };
-  // An artifact (a page, a component, a chart, a diagram) is a compact card in the thread; its
-  // code is in the panel's Koodi tab.
-  if (art)
-    return (
-      <div
-        className={cn(
-          'flex min-h-12 items-center gap-3 rounded-lg py-2 pr-2 pl-4 font-sans',
-          shown ? 'bg-accent' : 'bg-muted',
-        )}
-      >
-        {art === 'mermaid' ? (
-          <Workflow size={16} className="shrink-0 text-muted-foreground" />
-        ) : art === 'vega-lite' ? (
-          <ChartColumn size={16} className="shrink-0 text-muted-foreground" />
-        ) : (
-          <AppWindow size={16} className="shrink-0 text-muted-foreground" />
-        )}
-        <span className="min-w-0 flex-1 truncate font-sans text-ui">
-          {artifactTitle(art, source) ?? CARD_NAME[art]}
+  const open = () => {
+    const st = useStore.getState();
+    if (st.activeChatId) st.showArtifact(st.activeChatId, a);
+  };
+  // A chart or a diagram shows inline (phase-20 decision 3).
+  if (art === 'vega-lite' || art === 'mermaid') return <InlineFigure a={a} onOpen={open} />;
+  // A page or a component is a compact card in the thread; its code is in the panel's Koodi tab.
+  return (
+    <div
+      className={cn(
+        'flex min-h-12 items-center gap-3 rounded-lg py-2 pr-2 pl-4 font-sans',
+        shown ? 'bg-accent' : 'bg-muted',
+      )}
+    >
+      <AppWindow size={16} className="shrink-0 text-muted-foreground" />
+      <span className="min-w-0 flex-1 truncate font-sans text-ui">{a.title}</span>
+      {shown ? (
+        <span className="flex h-8 items-center px-2.5 text-meta text-muted-foreground max-md:h-11">
+          Avattu
         </span>
-        {shown ? (
-          <span className="flex h-8 items-center px-2.5 text-meta text-muted-foreground max-md:h-11">
-            Avattu
-          </span>
-        ) : (
-          <Button variant="outline" size="sm" onClick={() => open('')}>
-            <PanelRight size={16} />
-            Avaa paneelissa
-          </Button>
-        )}
-      </div>
-    );
-  // phase-20 W5: CodeBlock's `onOpen` ("Avaa artefaktina") has no caller now; remove it.
-  return <CodeBlock lang={lang}>{props.children}</CodeBlock>;
+      ) : (
+        <Button variant="outline" size="sm" onClick={open}>
+          <PanelRight size={16} />
+          Avaa paneelissa
+        </Button>
+      )}
+    </div>
+  );
 }
 
 /** A card's name when its source has no title. */

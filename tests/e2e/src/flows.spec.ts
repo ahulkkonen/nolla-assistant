@@ -2,6 +2,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { inflateSync } from 'node:zlib';
 import { SEARCH_DENIED } from '@pa/server/src/search-tool.ts';
 import type { Page } from '@playwright/test';
 import {
@@ -1460,6 +1461,83 @@ test('export: chart and diagram download as SVG with inlined fonts, and as PNG',
   expect(diagram.body.toString('utf8')).toContain('Lomasuunnitelma</text>');
 });
 
+/** RGBA of a PNG's first pixel: no filter changes it (every filter adds zeros there). */
+const firstPixel = (png: Buffer) => {
+  const data: Buffer[] = [];
+  for (let at = 8; at < png.length; at += png.readUInt32BE(at) + 12)
+    if (png.toString('ascii', at + 4, at + 8) === 'IDAT')
+      data.push(png.subarray(at + 8, at + 8 + png.readUInt32BE(at)));
+  return [...inflateSync(Buffer.concat(data)).subarray(1, 5)];
+};
+
+test('inline figures: a chart and a diagram in the thread, keyboard actions, a light PNG in dark mode', async ({
+  app,
+  page,
+}) => {
+  await page.emulateMedia({ colorScheme: 'dark' });
+  app.llm.push({ text: CHART_REPLY });
+  app.llm.push({ text: MERMAID_REPLY });
+  await app.login(page);
+  await send(page, 'Piirrä kulutus');
+  // Phase-20 decision 3: the figure has the chart's title as its name and its own sandbox page.
+  const chart = thread(page).getByRole('figure', { name: 'Sähkönkulutus kuukausittain 2025' });
+  await expect(
+    chart.locator('iframe').contentFrame().locator('#vis svg .mark-rect path').first(),
+  ).toBeVisible();
+  await expect(chart.getByText('Kuvaaja', { exact: true })).toBeVisible();
+  // Keyboard: Tab from the user message reaches both actions, in order.
+  await thread(page).getByText('Piirrä kulutus', { exact: true }).click();
+  const open = chart.getByRole('button', { name: 'Avaa paneelissa' });
+  for (let i = 0; i < 20 && !(await open.evaluate((el) => el === document.activeElement)); i++)
+    await page.keyboard.press('Tab');
+  await expect(open).toBeFocused();
+  await page.keyboard.press('Tab');
+  const png = chart.getByRole('button', { name: 'Lataa PNG' });
+  await expect(png).toBeFocused();
+  // Decision 7: the export is light whatever the theme.
+  const [file] = await Promise.all([page.waitForEvent('download'), page.keyboard.press('Enter')]);
+  expect(file.suggestedFilename()).toBe('Sähkönkulutus-kuukausittain-2025.png');
+  expect(firstPixel(readFileSync(await file.path()))).toEqual([255, 255, 255, 255]);
+
+  await send(page, 'Piirrä suunnitelma');
+  const diagram = thread(page).getByRole('figure', { name: 'Lomasuunnitelma' });
+  await expect(diagram.locator('iframe').contentFrame().locator('.diagram svg')).toBeVisible();
+  await expect(diagram.getByText('Kaavio', { exact: true })).toBeVisible();
+  const [file2] = await Promise.all([
+    page.waitForEvent('download'),
+    diagram.getByRole('button', { name: 'Lataa PNG' }).click(),
+  ]);
+  expect(firstPixel(readFileSync(await file2.path()))).toEqual([255, 255, 255, 255]);
+  // "Avaa paneelissa" opens the figure in the panel.
+  await diagram.getByRole('button', { name: 'Avaa paneelissa' }).click();
+  const panel = page.getByRole('complementary', { name: 'Artefaktit' });
+  await expect(panel.getByRole('heading', { name: 'Lomasuunnitelma' })).toBeVisible();
+});
+
+test('inline figure: a lazy frame off screen does not fall back after 30 s', async ({
+  app,
+  page,
+}) => {
+  test.setTimeout(120_000);
+  const prose = Array.from(
+    { length: 200 },
+    (_, i) => `Kappale ${i + 1}: kaavion jälkeen tulee pitkä selitys, joka vie tilaa.`,
+  ).join('\n\n');
+  app.llm.push({ text: `${CHART_REPLY}\n\n${prose}` });
+  await app.login(page);
+  await send(page, 'Piirrä ja selitä');
+  await expect(thread(page).getByText('Kappale 200:')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Pysäytä' })).toHaveCount(0);
+  // The thread follows to the end: the figure is far above, and its lazy frame waits.
+  await page.waitForTimeout(31_000);
+  const chart = thread(page).getByRole('figure', { name: 'Sähkönkulutus kuukausittain 2025' });
+  await chart.scrollIntoViewIfNeeded();
+  await expect(
+    chart.locator('iframe').contentFrame().locator('#vis svg .mark-rect path').first(),
+  ).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Kaavion data' })).toHaveCount(0);
+});
+
 test('vega-lite: a spec with a url falls back to its data as a table (R6)', async ({
   app,
   page,
@@ -1467,7 +1545,10 @@ test('vega-lite: a spec with a url falls back to its data as a table (R6)', asyn
   app.llm.push({ text: REFUSED_REPLY });
   await app.login(page);
   await send(page, 'Piirrä haettu data');
-  const data = page.getByRole('region', { name: 'Kaavion data' });
+  // Phase 20: the fallback shows in the thread's figure.
+  const data = thread(page)
+    .getByRole('figure', { name: 'Haettu data' })
+    .getByRole('region', { name: 'Kaavion data' });
   await expect(data.getByText('Kaavio epäonnistui')).toBeVisible();
   await expect(data.getByText(/url/)).toBeVisible();
   await expect(data.getByRole('cell', { name: 'Kahvi' })).toBeVisible();

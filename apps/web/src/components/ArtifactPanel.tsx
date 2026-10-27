@@ -70,7 +70,7 @@ export function ArtifactPanel() {
   const list = useStore((s) => (s.openArtifact ? s.artifacts[s.openArtifact.chatId] : undefined));
   const artifacts = list ?? EMPTY;
   const a = artifacts.find((x) => x.id === open?.id);
-  const { doc: ready, frame, exportAs } = useFigure(a);
+  const { doc: ready, frame, onLoad, exportAs } = useFigure(a);
   const [copied, setCopied] = useState(false);
   const [tab, setTab] = useState<'preview' | 'code'>('preview');
   const mobile = useMobile();
@@ -99,7 +99,7 @@ export function ArtifactPanel() {
   ) : ready?.error ? (
     <p className="p-1 text-muted-foreground">Artefaktin näyttäminen epäonnistui: {ready.error}</p>
   ) : ready?.html ? (
-    <SandboxFrame ref={frame} title={a.title} html={ready.html} themed />
+    <SandboxFrame ref={frame} title={a.title} html={ready.html} themed onLoad={onLoad} />
   ) : (
     <p className="p-1 text-muted-foreground">Ladataan…</p>
   );

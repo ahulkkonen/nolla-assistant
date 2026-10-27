@@ -198,6 +198,10 @@ th {
     break-inside: avoid;
   }
 }
+/* A chart or a diagram page is one figure: the page's 16 px padding is its only margin. */
+figure:is(.chart, .diagram) {
+  margin: 0;
+}
 /* The chart page of a ```vega-lite artifact (R1). */
 .chart strong {
   color: var(--card-foreground);

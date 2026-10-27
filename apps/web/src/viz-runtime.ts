@@ -67,31 +67,59 @@ function narrow(spec: Obj, width: number) {
 const fail = (err: unknown) =>
   parent.postMessage({ type: 'viz-error', message: String((err as Error)?.message ?? err) }, '*');
 
+const draw = (box: HTMLElement, spec: Obj) => {
+  narrow(spec, box.clientWidth);
+  return embed(box, spec as never, {
+    renderer: 'svg',
+    actions: false,
+    mode: 'vega-lite',
+    ast: true,
+    expr: expressionInterpreter,
+    formatLocale: FI_NUMBER,
+    timeFormatLocale: FI_TIME,
+  });
+};
+
+/**
+ * Export (phase-20 decision 7): the parent sends the spec again with the light theme; it is drawn
+ * off screen at the chart's width, and its SVG goes back to the parent only.
+ */
+const exportSvg = async (el: HTMLElement, spec: Obj) => {
+  const box = document.createElement('div');
+  box.style.cssText = `position:absolute;top:0;left:-99999px;width:${el.clientWidth}px`;
+  document.body.append(box);
+  try {
+    const { view } = await draw(box, spec);
+    try {
+      return await view.toSVG();
+    } finally {
+      view.finalize();
+    }
+  } finally {
+    box.remove();
+  }
+};
+
 const el = document.getElementById('vis');
 const spec: Obj = JSON.parse(document.getElementById('spec')?.textContent ?? '{}');
 if (el) {
   // The render timer starts here, in the parent (not when the page html was set).
   parent.postMessage({ type: 'viz-loaded' }, '*');
-  narrow(spec, el.clientWidth);
   // R5: Vega measures text once; the inlined fonts must be ready first.
   document.fonts.ready
-    .then(() =>
-      embed(el, spec as never, {
-        renderer: 'svg',
-        actions: false,
-        mode: 'vega-lite',
-        ast: true,
-        expr: expressionInterpreter,
-        formatLocale: FI_NUMBER,
-        timeFormatLocale: FI_TIME,
-      }),
-    )
-    .then(({ view }) => {
+    .then(() => draw(el, spec))
+    .then(() => {
       parent.postMessage({ type: 'viz-ready' }, '*');
-      // Export (decision 12): the parent asks, the SVG goes back to the parent only.
       addEventListener('message', (e) => {
-        if (e.source !== parent || e.data?.type !== 'viz-svg') return;
-        view.toSVG().then((svg) => parent.postMessage({ type: 'viz-svg', svg }, '*'), fail);
+        if (e.source !== parent || e.data?.type !== 'viz-svg' || !e.data.spec) return;
+        exportSvg(el, e.data.spec).then(
+          (svg) => parent.postMessage({ type: 'viz-svg', svg }, '*'),
+          (err: unknown) =>
+            parent.postMessage(
+              { type: 'viz-svg', error: String((err as Error)?.message ?? err) },
+              '*',
+            ),
+        );
       });
     }, fail);
 }
