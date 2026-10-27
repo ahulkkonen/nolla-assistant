@@ -17,8 +17,9 @@ const contentWidth = () => {
 const axis = (a: Options | undefined) => ({ ...a, tickSize: 0, line: false, labelArrow: 'none' });
 
 /**
- * `Plot.plot` with the kit's look (like the Vega config): the full content width and a
- * rotated y label centred on its axis, as Vega titles it. Colours and grid come from kit.css.
+ * `Plot.plot` with the kit's look (like the Vega config): the full content width, y ticks that
+ * end above the largest value (`nice`) and the y unit as horizontal text above the top tick, as
+ * the Vega axis. Colours and grid come from kit.css.
  */
 function plot(options: Options = {}) {
   const width = contentWidth();
@@ -28,9 +29,13 @@ function plot(options: Options = {}) {
     width: width > 0 ? width : 320,
     marginLeft: Math.max(Number(options.marginLeft) || 0, 56),
     x: axis(options.x),
-    y: { ...axis(options.y), labelAnchor: 'center' },
+    y: { nice: true, ...axis(options.y), labelAnchor: 'top' },
   } as ObservablePlot.PlotOptions);
 }
+
+// Bars round their end only, radius 4 (Vega `cornerRadiusEnd`).
+const barY: typeof ObservablePlot.barY = (data, o) => ObservablePlot.barY(data, { ry2: 4, ...o });
+const barX: typeof ObservablePlot.barX = (data, o) => ObservablePlot.barX(data, { rx2: 4, ...o });
 
 // `Plot.barY(…).plot()` goes through `Mark.prototype.plot`, not the global: it gets the kit too.
 ObservablePlot.Mark.prototype.plot = function (
@@ -40,4 +45,4 @@ ObservablePlot.Mark.prototype.plot = function (
   return plot({ ...o, marks: [...marks, this] });
 } as ObservablePlot.Mark['plot'];
 
-Object.assign(globalThis, { Plot: { ...ObservablePlot, plot }, d3 });
+Object.assign(globalThis, { Plot: { ...ObservablePlot, plot, barX, barY }, d3 });

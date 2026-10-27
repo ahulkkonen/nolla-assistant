@@ -86,6 +86,15 @@ export function vegaConfig(t: Tokens): Obj {
       titlePadding: 8,
     },
     axisX: { grid: false },
+    // The unit as horizontal text above the top tick, not a rotated title (as Plot's).
+    axisY: {
+      titleAngle: 0,
+      titleAnchor: 'end',
+      titleAlign: 'left',
+      titleBaseline: 'bottom',
+      titleX: 0,
+      titleY: -8,
+    },
     legend: { ...label, ...title, labelColor: t.foreground, orient: 'top', symbolType: 'circle' },
     header: { labelFont: sans, labelColor: t.foreground, titleFont: sans },
     text: { font: sans, fontSize: 13, color: t.foreground },
@@ -428,3 +437,12 @@ export async function pngBlob(svg: string, width: number, height: number): Promi
     URL.revokeObjectURL(url);
   }
 }
+
+/**
+ * A flowchart decision `id{label}` draws as a rounded box (`id([label])`): Mermaid sizes the
+ * diamond from its label's box, so it dwarfs the other nodes. The source in Koodi is unchanged.
+ */
+export const roundDecisions = (src: string) =>
+  /^\s*(flowchart|graph)\b/m.test(src.replace(/^---[\s\S]*?---/, '').trimStart())
+    ? src.replace(/(\b[\w-]+)\{(?!\{)([^{}\n]+)\}(?!\})/g, '$1([$2])')
+    : src;

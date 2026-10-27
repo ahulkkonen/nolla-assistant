@@ -38,6 +38,7 @@ import {
   type Refused,
   type Row,
   readTokens,
+  roundDecisions,
   type Tokens,
   tokenSheet,
 } from '../viz.ts';
@@ -222,12 +223,13 @@ async function documentFor(a: Artifact, scheme: Scheme): Promise<Doc> {
       themeVariables: mermaidTheme(t, scheme === 'dark', phone?.matches ? 13 : 14),
       // Every diagram type that has the option; the per-type keys are deprecated but still read.
       htmlLabels: false,
-      flowchart: { htmlLabels: false },
+      // Less label padding: a decision diamond grows with its label's box (phase-19 UI review).
+      flowchart: { htmlLabels: false, padding: 8, nodeSpacing: 40, rankSpacing: 40 },
       class: { htmlLabels: false },
       // A parse error throws (the panel shows it) instead of drawing Mermaid's error SVG.
       suppressErrorRendering: true,
     });
-    const { svg } = await mermaid.render(`m${a.id.replace(/\W/g, '')}`, a.content);
+    const { svg } = await mermaid.render(`m${a.id.replace(/\W/g, '')}`, roundDecisions(a.content));
     // R1 for diagrams: accTitle and accDescr as the heading and the caption.
     const { title, description: caption } = mermaidMeta(a.content);
     const lifted = { ...(title ? { title } : {}), ...(caption ? { caption } : {}) };
@@ -519,31 +521,30 @@ export function ArtifactPanel() {
             >
               {copied ? <Check size={16} /> : <Copy size={16} />}
             </IconButton>
-            {exportable ? (
-              <ActionMenu
-                label="Lataa"
-                Icon={Download}
-                actions={[
-                  { label: 'Lataa SVG', Icon: FileImage, run: () => exportAs('svg') },
-                  { label: 'Lataa PNG', Icon: FileImage, run: () => exportAs('png') },
-                  { label: 'Lataa lähdekoodi', Icon: FileCode, run: () => download(a) },
-                ]}
-              />
-            ) : (
-              <IconButton label="Lataa" className="size-8" onClick={() => download(a)}>
-                <Download size={16} />
-              </IconButton>
-            )}
-            {/* A code block opened from a message (`local-…`) has no artifact on the server. */}
-            {!a.id.startsWith('local-') && (
-              <IconButton
-                label="Tallenna tiedostoksi"
-                className="size-8"
-                onClick={() => void saveToWork(open.chatId, a.id)}
-              >
-                <Save size={16} />
-              </IconButton>
-            )}
+            {/* One "Lataa" menu for every kind; four icons in the header (phase-19 UI review). */}
+            <ActionMenu
+              label="Lataa"
+              Icon={Download}
+              actions={[
+                ...(exportable
+                  ? [
+                      { label: 'Lataa SVG', Icon: FileImage, run: () => exportAs('svg') },
+                      { label: 'Lataa PNG', Icon: FileImage, run: () => exportAs('png') },
+                    ]
+                  : []),
+                { label: 'Lataa lähdekoodi', Icon: FileCode, run: () => download(a) },
+                // A code block opened from a message (`local-…`) has no artifact on the server.
+                ...(a.id.startsWith('local-')
+                  ? []
+                  : [
+                      {
+                        label: 'Tallenna työkansioon',
+                        Icon: Save,
+                        run: () => void saveToWork(open.chatId, a.id),
+                      },
+                    ]),
+              ]}
+            />
             <IconButton
               label="Avaa uudessa ikkunassa"
               className="size-8"

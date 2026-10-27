@@ -52,8 +52,8 @@ const price = (m: CatalogModel) => (
   </>
 );
 /** The catalog's two number columns: fixed widths, so the header and every row line up. */
-const COL_CTX = 'w-14 shrink-0 text-right tabular-nums';
-const COL_PRICE = 'w-32 shrink-0 text-right tabular-nums';
+const COL_CTX = 'w-12 shrink-0 text-right tabular-nums';
+const COL_PRICE = 'w-28 shrink-0 text-right tabular-nums';
 
 const ALIAS = '__alias__';
 
@@ -445,12 +445,10 @@ function CatalogDialog({
           <span className="flex grow basis-0 items-center gap-2">
             <span className="max-w-56 truncate text-ui md:max-w-80">{m.name}</span>
             {!m.zdr && <Badge variant="warning">Ei ZDR</Badge>}
-            {/* Truncates the provider first: the model part of the id stays readable. */}
-            <span className="flex w-0 min-w-0 flex-1 font-mono text-[13px] text-muted-foreground">
-              <span className="min-w-0 truncate">{m.id.slice(0, m.id.indexOf('/') + 1)}</span>
-              <span className="max-w-full min-w-0 shrink-0 truncate">
-                {m.id.slice(m.id.indexOf('/') + 1)}
-              </span>
+            {/* The model part of the id, cut from the end; the provider only for screen readers. */}
+            <span className="w-0 min-w-0 flex-1 truncate font-mono text-[13px] text-muted-foreground">
+              <span className="sr-only">{m.id.slice(0, m.id.indexOf('/') + 1)}</span>
+              {m.id.slice(m.id.indexOf('/') + 1)}
             </span>
           </span>
           <span className="ml-auto flex gap-6 text-meta max-md:hidden">

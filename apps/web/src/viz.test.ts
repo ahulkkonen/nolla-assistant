@@ -10,6 +10,7 @@ import {
   prepareChart,
   type Refused,
   roles,
+  roundDecisions,
   type Tokens,
   tokenSheet,
   vegaConfig,
@@ -258,5 +259,14 @@ describe('theme builders', () => {
       lineColor: '#64635d',
     });
     expect(tokenSheet(T)).toMatch(/^:root\{--background:#faf9f5;--foreground:#141413;/);
+  });
+});
+
+describe('roundDecisions', () => {
+  it('draws a flowchart decision as a rounded box, nothing else changes', () => {
+    expect(roundDecisions('flowchart TD\nA --> B{Mökki vai matka?}\nB -->|x| C{{Hex}}')).toBe(
+      'flowchart TD\nA --> B([Mökki vai matka?])\nB -->|x| C{{Hex}}',
+    );
+    expect(roundDecisions('sequenceDiagram\nA->>B: {x}')).toBe('sequenceDiagram\nA->>B: {x}');
   });
 });

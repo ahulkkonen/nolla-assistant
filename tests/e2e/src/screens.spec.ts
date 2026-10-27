@@ -94,7 +94,10 @@ const axe = async (page: Page, name: string) => {
         ? {
             ...v,
             nodes: v.nodes.filter(
-              (n) => !n.target.join(' ').includes('data-radix-popper-content-wrapper'),
+              // The tooltip's visually hidden copy (`#radix-…`, role tooltip) is portalled there too.
+              (n) =>
+                !n.target.join(' ').includes('data-radix-popper-content-wrapper') &&
+                !/^#radix-/.test(n.target.join(' ')),
             ),
           }
         : v,
@@ -672,7 +675,8 @@ for (const scheme of ['light', 'dark'] as const) {
           app.llm.push(titleTurn('Esittelysivu', 'Käyttäjä pyysi sivun.'));
           await app.login(page);
           await sendMessage(page, 'Tee sivu');
-          await page.getByRole('button', { name: 'Tallenna tiedostoksi' }).click();
+          await page.getByRole('button', { name: 'Lataa', exact: true }).click();
+          await page.getByRole('menuitem', { name: 'Tallenna työkansioon' }).click();
           const toast = page.getByText('Tallennettu Työkansioon');
           await expect(toast).toBeVisible();
           await expect(page.getByText('Esittelysivu').first()).toBeVisible({ timeout: 15_000 });
@@ -1423,7 +1427,16 @@ for (const scheme of ['light', 'dark'] as const) {
           await openSettings(page, 'Muisti');
           await page.getByRole('tab', { name: 'Havainnot' }).click();
           await expect(page.getByText('Korvaa: Käyttäjä juo aamuisin kahvia.')).toBeVisible();
+          await page.getByRole('button', { name: /^Korvatut/ }).click();
           await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+          // The whole tab: the page scrolls inside the app shell, so the viewport grows to fit.
+          const tall = await page.getByRole('tabpanel').evaluate((el) => {
+            let box = el.parentElement;
+            while (box && getComputedStyle(box).overflowY !== 'auto') box = box.parentElement;
+            if (box) box.scrollTop = 0;
+            return el.getBoundingClientRect().bottom + 48;
+          });
+          await page.setViewportSize({ width: vp.width, height: Math.ceil(tall) });
           await shot(page, 'memory-claims', vp.width, scheme);
         });
       });

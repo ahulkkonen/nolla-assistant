@@ -103,34 +103,36 @@ export function ChatCost() {
   const fx = useStore((s) => s.fx);
   if (!usage?.tokens) return null;
   const rate = cacheRate(usage);
+  const rows: [string, string][] = [
+    ...(usage.input !== undefined
+      ? ([
+          ['Syöte', count.format(usage.input)],
+          ['Välimuistista', count.format(usage.cacheRead ?? 0)],
+          ['Välimuistiin', count.format(usage.cacheWrite ?? 0)],
+          ['Tuloste', count.format(usage.output ?? 0)],
+        ] as [string, string][])
+      : []),
+    ...(rate ? ([['Välimuisti', rate]] as [string, string][]) : []),
+  ];
+  const note = fx ? 'Euroina EKP:n kurssilla' : 'Dollareina: euromuunnos ei ole saatavilla';
   return (
     <Tip
-      // Below the header, aligned to its right edge: the first bubble sits further down.
+      // Below the header, aligned to its right edge.
       side="bottom"
       align="end"
+      // Screen readers get the same rows as one text (the grid lives in the visible copy only).
+      ariaLabel={[...rows.map(([k, v]) => `${k} ${v}`), note].join(', ')}
       label={
-        // One labelled item per line, as text and <br> only (see MessageMeta's tooltip: axe).
-        <>
-          {usage.input !== undefined && (
-            <>
-              Syöte {count.format(usage.input)}
-              <br />
-              Välimuistista {count.format(usage.cacheRead ?? 0)}
-              <br />
-              Välimuistiin {count.format(usage.cacheWrite ?? 0)}
-              <br />
-              Tuloste {count.format(usage.output ?? 0)}
-              <br />
-            </>
-          )}
-          {rate && (
-            <>
-              Välimuisti {rate}
-              <br />
-            </>
-          )}
-          {fx ? 'Euroina EKP:n kurssilla' : 'Dollareina: euromuunnos ei ole saatavilla'}
-        </>
+        // The visible layout only; the tooltip's text for screen readers is `ariaLabel`.
+        <span aria-hidden="true" className="grid grid-cols-[auto_auto] gap-x-4 tabular-nums">
+          {rows.map(([k, v]) => (
+            <span key={k} className="contents">
+              <span>{k}</span>
+              <span className="text-right">{v}</span>
+            </span>
+          ))}
+          <span className="col-span-2 pt-1">{note}</span>
+        </span>
       }
     >
       <span

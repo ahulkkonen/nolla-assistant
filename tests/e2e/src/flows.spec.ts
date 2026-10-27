@@ -655,7 +655,8 @@ test.describe('files', () => {
     // Save an artifact and find it in Tiedostot.
     app.llm.push({ text: HTML_REPLY });
     await send(page, 'Tee sivu');
-    await page.getByRole('button', { name: 'Tallenna tiedostoksi' }).click();
+    await page.getByRole('button', { name: 'Lataa', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Tallenna työkansioon' }).click();
     await page.getByRole('button', { name: 'Näytä' }).click();
     await expect(page.getByRole('group', { name: 'Näkymä' })).toBeVisible();
     await expect(table.getByText('Hei artefakti.html', { exact: true })).toBeVisible();
@@ -1192,7 +1193,7 @@ test.describe('claims', () => {
     await openClaims(page);
     await section(page, 'Vanhentuvat').getByRole('button', { name: 'Laske luottamusta' }).click();
     await expect(section(page, 'Vanhentuvat')).toHaveCount(0);
-    await expect(card(page, 'Käyttäjä käy salilla tiistaisin.')).toContainText('Varmuus 60 %');
+    await expect(card(page, 'Käyttäjä käy salilla tiistaisin.')).toContainText('varmuus 60 %');
   });
 
   test('chip: an auto claim shows under the reply and Kumoa rejects it', async ({ app, page }) => {

@@ -1,5 +1,16 @@
 import { type Annotation, type AttachmentRef, type CallUsage, mermaidMeta } from '@pa/protocol';
-import { Check, Copy, Eye, EyeOff, FileText, PanelRight, Pencil, RotateCcw } from 'lucide-react';
+import {
+  ChartColumn,
+  Check,
+  Copy,
+  Eye,
+  EyeOff,
+  FileText,
+  PanelRight,
+  Pencil,
+  RotateCcw,
+  Workflow,
+} from 'lucide-react';
 import { Popover } from 'radix-ui';
 import {
   type ComponentProps,
@@ -132,11 +143,41 @@ function Pre(props: ComponentProps<'pre'>) {
       content,
     });
   };
+  // A chart or a diagram is a compact card in the thread; its code is in the panel's Koodi tab.
+  if (kind === 'vega-lite' || kind === 'mermaid')
+    return (
+      <div className="flex min-h-12 items-center gap-3 rounded-lg bg-muted py-2 pr-2 pl-4 font-sans">
+        {kind === 'mermaid' ? (
+          <Workflow size={16} className="shrink-0 text-muted-foreground" />
+        ) : (
+          <ChartColumn size={16} className="shrink-0 text-muted-foreground" />
+        )}
+        <span className="min-w-0 flex-1 truncate font-sans text-ui">
+          {figureTitle(kind, source) ?? (kind === 'mermaid' ? 'Kaavio' : 'Kuvaaja')}
+        </span>
+        <Button variant="outline" size="sm" onClick={() => open('')}>
+          <PanelRight size={16} />
+          Avaa paneelissa
+        </Button>
+      </div>
+    );
   return (
     <CodeBlock lang={lang} {...(kind ? { onOpen: open } : {})}>
       {props.children}
     </CodeBlock>
   );
+}
+
+/** The title of a chart spec (`title` or `title.text`) or a diagram; none while it streams. */
+function figureTitle(kind: 'vega-lite' | 'mermaid', source: string) {
+  if (kind === 'mermaid') return mermaidMeta(source).title;
+  try {
+    const t = (JSON.parse(source) as { title?: unknown }).title;
+    const text = typeof t === 'object' && t ? (t as { text?: unknown }).text : t;
+    return typeof text === 'string' ? text : Array.isArray(text) ? text.join(' ') : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** One message's own "what the model saw" switch; the global setting still wins. */

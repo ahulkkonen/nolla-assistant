@@ -1,7 +1,6 @@
 import { CLAIM_TEXT_MAX, type Claim, type ClaimKind } from '@pa/protocol';
 import { ChevronRight, Lightbulb } from 'lucide-react';
 import { type ReactNode, useEffect, useId, useState } from 'react';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -30,10 +29,10 @@ const dayFormat = new Intl.DateTimeFormat('fi', {
   year: 'numeric',
 });
 
-/** "12.10.2026" from an ISO time or a `VVVV-KK-PP` day; "10/2026" from a `VVVV-KK` month. */
+/** "12.10.2026" from an ISO time or a `VVVV-KK-PP` day; "10.2026" from a `VVVV-KK` month. */
 export function claimDate(s: string) {
   const month = /^(\d{4})-(\d{2})$/.exec(s);
-  if (month) return `${Number(month[2])}/${month[1]}`;
+  if (month) return `${Number(month[2])}.${month[1]}`;
   const day = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
   const d = day ? new Date(Number(day[1]), Number(day[2]) - 1, Number(day[3])) : new Date(s);
   return dayFormat.format(d);
@@ -79,7 +78,7 @@ function Evidence({ claim }: { claim: Claim }) {
           key={i}
           className="flex flex-col gap-0.5 border-l-2 border-border pl-3"
         >
-          <q className="text-meta text-pretty text-foreground">{e.quote}</q>
+          <q className="font-serif text-meta text-pretty text-muted-foreground italic">{e.quote}</q>
           <span className="flex flex-wrap items-center gap-x-2">
             {e.stance === 'contradicts' && <span className="text-meta text-warning">Vastaan</span>}
             <ChatLink chatId={e.chatId} />
@@ -90,17 +89,16 @@ function Evidence({ claim }: { claim: Claim }) {
   );
 }
 
-/** Kind badge, confidence and validity: the meta line of a claim. */
-function Meta({ claim, children }: { claim: Claim; children?: ReactNode }) {
-  return (
-    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-meta text-muted-foreground tabular-nums">
-      <Badge variant="outline">{KIND_LABEL[claim.kind]}</Badge>
-      <span>Varmuus {percent.format(claim.confidence)}</span>
-      {claim.validFrom && <span>· alkaen {claimDate(claim.validFrom)}</span>}
-      {claim.validTo && <span>· voimassa {claimDate(claim.validTo)} asti</span>}
-      {children}
-    </div>
-  );
+/** "Rytmi · varmuus 70 % · alkaen 10.2026": the meta line of a claim, `extra` at its end. */
+function Meta({ claim, extra = [] }: { claim: Claim; extra?: (string | false | null)[] }) {
+  const parts = [
+    KIND_LABEL[claim.kind],
+    `varmuus ${percent.format(claim.confidence)}`,
+    claim.validFrom && `alkaen ${claimDate(claim.validFrom)}`,
+    claim.validTo && `voimassa ${claimDate(claim.validTo)} asti`,
+    ...extra,
+  ].filter(Boolean);
+  return <p className="text-meta text-muted-foreground tabular-nums">{parts.join(' · ')}</p>;
 }
 
 /** The inline editor: 3–240 characters, a live counter, Enter with Ctrl/Cmd saves. */
@@ -267,13 +265,16 @@ function ClaimCard({ claim }: { claim: Claim }) {
       // Null only when the user cleared a date that was set.
       ...(mode === 'edit' ? { text: text.trim() } : { validTo: expiry || null }),
     });
-  const meta = !proposed && (
-    <>
-      {!claim.validFrom && <span>· alkaen {claimDate(claim.recordedAt)}</span>}
-      {claim.lastConfirmedAt && <span>· vahvistettu {claimDate(claim.lastConfirmedAt)}</span>}
-      <span>· nähty {claim.timesSeen} kertaa</span>
-    </>
-  );
+  const meta = proposed
+    ? []
+    : [
+        !claim.validFrom && `alkaen ${claimDate(claim.recordedAt)}`,
+        claim.lastConfirmedAt && `vahvistettu ${claimDate(claim.lastConfirmedAt)}`,
+        `nähty ${claim.timesSeen} kertaa`,
+      ];
+
+  /** "Hyväksy: Käyttäjä juo…": every action names its claim. */
+  const named = (action: string) => `${action}: ${claim.text}`;
   const saveOff =
     busy ||
     (mode === 'edit'
@@ -282,14 +283,6 @@ function ClaimCard({ claim }: { claim: Claim }) {
 
   return (
     <li className="flex flex-col gap-3 rounded-lg border bg-card p-4">
-      <Meta claim={claim}>{meta}</Meta>
-      {proposed && claim.supersedes && (
-        // A contradiction: the old claim first, tinted, no strike-through (brief 7.1).
-        <p className="rounded-sm bg-destructive-subtle px-2 py-1 text-body text-pretty">
-          <span className="text-meta text-muted-foreground">Korvaa: </span>
-          {claim.supersedes.text}
-        </p>
-      )}
       {mode === 'edit' ? (
         <TextEdit
           value={text}
@@ -297,7 +290,14 @@ function ClaimCard({ claim }: { claim: Claim }) {
           onSave={() => !saveOff && (proposed ? accept() : save())}
         />
       ) : (
-        <p className="text-body text-pretty hyphens-auto">{claim.text}</p>
+        <p className="text-heading text-pretty hyphens-auto">{claim.text}</p>
+      )}
+      <Meta claim={claim} extra={meta} />
+      {proposed && claim.supersedes && (
+        // A contradiction: the old claim, quieter, no strike-through (brief 7.1).
+        <p className="text-meta text-pretty text-muted-foreground">
+          Korvaa: {claim.supersedes.text}
+        </p>
       )}
       {updated && <p className="text-meta text-muted-foreground">Päivitetty: {claim.text}</p>}
       {proposed && <Evidence claim={claim} />}
@@ -307,30 +307,50 @@ function ClaimCard({ claim }: { claim: Claim }) {
           {failText(error)}
         </p>
       )}
-      <div className="flex flex-wrap justify-end gap-2 max-md:grid max-md:grid-cols-2">
+      <div
+        className={cn(
+          'flex flex-wrap justify-end gap-2 max-md:grid max-md:grid-cols-2',
+          // Active, idle: three actions in one phone row.
+          !proposed && mode === 'idle' && 'max-md:grid-cols-3',
+        )}
+      >
         {mode === 'idle' ? (
           <>
-            <Button variant="ghost" disabled={busy} onClick={reject}>
+            <Button variant="ghost" disabled={busy} onClick={reject} aria-label={named('Hylkää')}>
               Hylkää
             </Button>
-            <Button variant="outline" disabled={busy} onClick={() => setMode('expiry')}>
+            <Button
+              variant="outline"
+              disabled={busy}
+              onClick={() => setMode('expiry')}
+              aria-label={named('Voimassa asti')}
+            >
               Voimassa asti
             </Button>
-            <Button variant="outline" disabled={busy} onClick={() => setMode('edit')}>
+            <Button
+              variant="outline"
+              disabled={busy}
+              onClick={() => setMode('edit')}
+              aria-label={named('Muokkaa')}
+            >
               Muokkaa
             </Button>
             {proposed && (
-              <Button disabled={busy} onClick={accept}>
+              <Button disabled={busy} onClick={accept} aria-label={named('Hyväksy')}>
                 Hyväksy
               </Button>
             )}
           </>
         ) : (
           <>
-            <Button variant="ghost" disabled={busy} onClick={reset}>
+            <Button variant="ghost" disabled={busy} onClick={reset} aria-label={named('Peruuta')}>
               Peruuta
             </Button>
-            <Button disabled={saveOff} onClick={proposed ? accept : save}>
+            <Button
+              disabled={saveOff}
+              aria-label={named(proposed ? 'Hyväksy' : 'Tallenna')}
+              onClick={proposed ? accept : save}
+            >
               {proposed ? 'Hyväksy' : 'Tallenna'}
             </Button>
           </>
@@ -345,10 +365,11 @@ function StaleRow({ claim }: { claim: Claim }) {
   const { busy, error } = useClaimAction(claim.id);
   return (
     <li className="flex flex-col gap-3 rounded-lg border bg-card p-4">
-      <Meta claim={claim}>
-        <span>· vahvistettu {claimDate(claim.lastConfirmedAt ?? claim.recordedAt)}</span>
-      </Meta>
-      <p className="text-body text-pretty hyphens-auto">{claim.text}</p>
+      <p className="text-heading text-pretty hyphens-auto">{claim.text}</p>
+      <Meta
+        claim={claim}
+        extra={[`vahvistettu ${claimDate(claim.lastConfirmedAt ?? claim.recordedAt)}`]}
+      />
       {error && (
         <p role="alert" className="text-meta text-destructive">
           {failText(error)}
@@ -359,12 +380,14 @@ function StaleRow({ claim }: { claim: Claim }) {
           variant="outline"
           disabled={busy}
           onClick={() => claimSend({ type: 'claims.stale', id: claim.id, action: 'lower' })}
+          aria-label={`Laske luottamusta: ${claim.text}`}
         >
           Laske luottamusta
         </Button>
         <Button
           disabled={busy}
           onClick={() => claimSend({ type: 'claims.stale', id: claim.id, action: 'keep' })}
+          aria-label={`Pidä: ${claim.text}`}
         >
           Pidä
         </Button>
@@ -472,7 +495,8 @@ export function ClaimsTab() {
               aria-expanded={history}
               aria-controls="claims-superseded-list"
               onClick={() => setHistory(!history)}
-              className="-ml-2 gap-1 px-2 text-heading"
+              // A disclosure, not a toggle: no fill while open.
+              className="-ml-2 gap-1 px-2 text-heading aria-expanded:bg-transparent"
             >
               <ChevronRight
                 size={16}

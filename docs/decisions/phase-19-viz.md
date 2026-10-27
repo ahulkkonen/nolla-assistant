@@ -234,6 +234,20 @@ A blind UI review scored the first screenshots as FAIL. Changes:
 - Plot and D3 load when the source matches `\bPlot\b` or `\bd3\b`. A false positive only
   costs bytes.
 
+## Second UI review fixes (2026-10-27)
+
+- One axis style for Vega and Plot: no domain line, bar ends rounded 4 px (`cornerRadiusEnd`,
+  Plot `ry2`/`rx2`), grid in `--border`. Plot y ticks end above the largest value (`nice`).
+- The y unit is horizontal text above the top tick in both (Vega `titleAngle: 0` at the axis
+  top, Plot `labelAnchor: 'top'`); no rotated y title.
+- In the thread a ```vega-lite or ```mermaid block is a compact card (title and "Avaa
+  paneelissa"); its source is in the panel's Koodi tab.
+- The panel header has four icons; "Tallenna työkansioon" is in the "Lataa" menu for every
+  kind. The preview stays flush with the panel (no inset frame), as decided.
+- Mermaid flowcharts: `padding: 8`, `nodeSpacing: 40`, `rankSpacing: 40`, so a decision diamond
+  stays near the size of the other nodes.
+- Kit rules: a callout has a 2 px left rule; `pre` has 16 px padding, also at the scroll end.
+
 ## Code review fixes (2026-10-27)
 
 - A `{ step }` width or height is at most 100 px per band, at every level, as numeric sizes.

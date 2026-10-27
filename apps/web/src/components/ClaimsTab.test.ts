@@ -10,5 +10,5 @@ test('expiryDay: a month becomes its last day, a day stays, none is empty', () =
 
 test('claimDate: Finnish day and month forms', () => {
   expect(claimDate('2026-10-05')).toBe('5.10.2026');
-  expect(claimDate('2026-10')).toBe('10/2026');
+  expect(claimDate('2026-10')).toBe('10.2026');
 });

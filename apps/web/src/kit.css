@@ -79,7 +79,7 @@ kbd {
 }
 pre {
   margin: 0 0 12px;
-  padding: 12px;
+  padding: 16px;
   overflow-x: auto;
   border-radius: 8px;
   background: var(--muted);
@@ -122,7 +122,7 @@ th {
   max-width: 68ch;
   margin: 0 0 12px;
   padding: 12px 16px;
-  border-left: 3px solid var(--info);
+  border-left: 2px solid var(--info);
   border-radius: 8px;
   background: var(--info-subtle);
 }
@@ -151,7 +151,7 @@ th {
   margin: 0;
 }
 /* Observable Plot, styled like the Vega charts: our font and page colour, muted tick and axis
-   labels, no tick marks, grid in --border, bars with radius 3. */
+   labels, no tick marks, grid in --border (as Vega's gridColor); bar ends round in the runtime. */
 [class^="plot-"] {
   --plot-background: var(--card);
   font-family: var(--font-sans);
@@ -166,9 +166,6 @@ th {
 [class^="plot-"] g[aria-label$="grid"] {
   stroke: var(--border);
   stroke-opacity: 1;
-}
-[class^="plot-"] g[aria-label="bar"] rect {
-  rx: 3px;
 }
 @media print {
   body {
