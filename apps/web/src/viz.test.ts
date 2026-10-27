@@ -30,6 +30,10 @@ const T = {
   link: '#1d5bbf',
   info: '#1d5bbf',
   'info-subtle': '#e5eefb',
+  destructive: '#b42318',
+  'destructive-subtle': '#fbe7e4',
+  success: '#26702b',
+  'success-subtle': '#e6f2e3',
   'warning-subtle': '#fbefd9',
   'warning-line': '#b7791f',
   'chart-1': '#b5532a',
@@ -38,7 +42,7 @@ const T = {
   'chart-4': '#9a6700',
   'chart-5': '#7151c4',
   'chart-6': '#b5446e',
-  'chart-faint': '#9a988f',
+  'chart-faint': '#929088',
   'chart-band': '#f3efe6',
   'chart-accent-soft': '#f4dfd3',
   'font-sans': '"Inter Variable", system-ui, sans-serif',
@@ -313,6 +317,39 @@ describe('fonts and Mermaid config (phase 20)', () => {
     );
     expect(c.themeCSS).toContain(`stroke: ${T['muted-foreground']} !important`);
     expect(c.themeCSS).not.toContain(':is(');
+  });
+});
+
+describe('colour (phase 20)', () => {
+  it('maps @c1 to @c6 to the six chart colours; @accent stays @c1', () => {
+    const r = roles(T);
+    expect([1, 2, 3, 4, 5, 6].map((i) => r[`c${i}`])).toEqual([
+      '#b5532a',
+      '#2c7a73',
+      '#1d5bbf',
+      '#9a6700',
+      '#7151c4',
+      '#b5446e',
+    ]);
+    expect(r.accent).toBe(r.c1);
+    const spec = JSON.parse(bar({ encoding: { color: { value: '@c5' } } }));
+    expect(clean(spec, r)).toMatchObject({ encoding: { color: { value: '#7151c4' } } });
+  });
+
+  it('gives sequential, diverging and ordinal ranges from the tokens', () => {
+    const range = (vegaConfig(T) as { range: Record<string, unknown> }).range;
+    expect(range.ramp).toEqual(['#f3efe6', '#1d5bbf']);
+    expect(range.heatmap).toEqual(['#f3efe6', '#1d5bbf']);
+    expect(range.diverging).toEqual(['#b5532a', '#f3efe6', '#2c7a73']);
+    expect(range.ordinal).toEqual({ scheme: ['#f3efe6', '#1d5bbf'] });
+  });
+
+  it('colours the Mermaid node classes without a classDef', () => {
+    const css = mermaidConfig(T, false, 14).themeCSS ?? '';
+    expect(css).toContain('.node.alert rect, .node.alert polygon');
+    expect(css).toContain('{ fill: #fbe7e4 !important; stroke: #b42318 !important; }');
+    for (const c of ['warm', 'cool', 'alert', 'ok', 'muted'])
+      expect(css).toContain(`.node.${c} rect`);
   });
 });
 

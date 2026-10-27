@@ -254,7 +254,8 @@
   --chart-4: #9a6700;
   --chart-5: #7151c4;
   --chart-6: #b5446e;
-  --chart-faint: #9a988f;
+  /* 3.2:1 on --card (phase-20 decision 23). */
+  --chart-faint: #929088;
   --chart-band: #f3efe6;
   --chart-accent-soft: #f4dfd3;
   --radius: 12px;

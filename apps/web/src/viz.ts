@@ -22,6 +22,10 @@ const NAMES = [
   'link',
   'info',
   'info-subtle',
+  'destructive',
+  'destructive-subtle',
+  'success',
+  'success-subtle',
   'warning-subtle',
   'warning-line',
   'chart-1',
@@ -38,6 +42,7 @@ const NAMES = [
   'font-mono',
 ] as const;
 export type Tokens = Record<(typeof NAMES)[number], string>;
+const CHART = ['chart-1', 'chart-2', 'chart-3', 'chart-4', 'chart-5', 'chart-6'] as const;
 
 /**
  * The token values of `root` (Vega and Mermaid need literal values, not `var()`); by default the
@@ -77,15 +82,15 @@ export function lightTokens() {
 /** `:root { --name: value }` of the active theme, for the sandbox page (decision 4). */
 export const tokenSheet = (t: Tokens) => `:root{${NAMES.map((n) => `--${n}:${t[n]}`).join(';')}}`;
 
-/** R7: the colour roles the model may write. */
+/** R7: the colour roles the model may write; `@c1`..`@c6` are the six chart colours (phase 20). */
 export const roles = (t: Tokens): Record<string, string> => ({
   fg: t.foreground,
   muted: t['muted-foreground'],
   faint: t['chart-faint'],
   accent: t['chart-1'],
   'accent-soft': t['chart-accent-soft'],
-  c2: t['chart-2'],
   band: t['chart-band'],
+  ...Object.fromEntries(CHART.map((n, i) => [`c${i + 1}`, t[n]])),
 });
 
 /** R2: the theme config; the model never writes one. */
@@ -134,8 +139,15 @@ export function vegaConfig(t: Tokens): Obj {
     line: { strokeWidth: 2 },
     point: { filled: true },
     rule: { color: t['chart-faint'] },
+    // Phase-20 decision 23: no new hue. A quantitative colour field gets the sequential band to
+    // blue, one with `domainMid` the diverging clay to teal (both ends tell apart for red-green
+    // colour blindness); `scheme` stays dropped.
     range: {
-      category: [1, 2, 3, 4, 5, 6].map((i) => t[`chart-${i}` as keyof Tokens]),
+      category: CHART.map((n) => t[n]),
+      ramp: [t['chart-band'], t['chart-3']],
+      heatmap: [t['chart-band'], t['chart-3']],
+      diverging: [t['chart-1'], t['chart-band'], t['chart-2']],
+      ordinal: { scheme: [t['chart-band'], t['chart-3']] },
     },
   };
 }
@@ -197,17 +209,33 @@ const SECURE = [
 ];
 
 /**
+ * A node class the model writes as `A:::warm` (phase-20 decision 24): Mermaid adds the class also
+ * without a `classDef`. Text stays --foreground.
+ */
+const nodeClass = (name: string, fill: string, stroke: string) =>
+  ['rect', 'polygon', 'path', 'circle', 'ellipse']
+    .map((shape) => `.node.${name} ${shape}`)
+    .join(', ') + ` { fill: ${fill} !important; stroke: ${stroke} !important; }`;
+
+/**
  * The diagram rules of the view and the export alike (decision 21), as literal token values;
  * Mermaid scopes them to the diagram's id, so they win over its own id rules. Edges are
  * --muted-foreground at 1.5 px whatever the scale; nodes have radius 8. A subgraph title gets a
- * halo of the cluster fill (decision 26). No `:is()`: Mermaid's scoper splits at every comma.
+ * halo of the cluster fill (decision 26); the node classes (decision 24). No `:is()`: Mermaid's
+ * scoper splits at every comma.
  */
 const diagramCss = (t: Tokens) => {
   const line = t['muted-foreground'];
   return `.flowchart-link, .transition, .relation, [class^="messageLine"], .edge-pattern-solid, .edge-pattern-dashed { stroke: ${line} !important; stroke-width: 1.5px !important; vector-effect: non-scaling-stroke; }
 marker path { fill: ${line} !important; stroke: ${line} !important; }
 .node rect, .statediagram-state rect, .actor rect { rx: 8px; ry: 8px; }
-.cluster-label text { paint-order: stroke; stroke: ${t['chart-band']}; stroke-width: 4px; stroke-linejoin: round; }`;
+.cluster-label text { paint-order: stroke; stroke: ${t['chart-band']}; stroke-width: 4px; stroke-linejoin: round; }
+${nodeClass('warm', t['chart-accent-soft'], t['chart-1'])}
+${nodeClass('cool', t['info-subtle'], t['chart-3'])}
+${nodeClass('alert', t['destructive-subtle'], t.destructive)}
+${nodeClass('ok', t['success-subtle'], t.success)}
+${nodeClass('muted', t.muted, t['chart-faint'])}
+.node.muted text { fill: ${t['muted-foreground']} !important; }`;
 };
 
 /** Mermaid's options (decisions 9, 21, 26 of phase 20, decision 9 of phase 19). */

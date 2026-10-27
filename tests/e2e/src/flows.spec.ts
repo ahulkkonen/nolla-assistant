@@ -1539,7 +1539,7 @@ test('inline figure: a lazy frame off screen does not fall back after 30 s', asy
   await expect(page.getByRole('region', { name: 'Kaavion data' })).toHaveCount(0);
 });
 
-test('diagram: a model directive keeps our font; subgraph titles paint over the edges', async ({
+test('diagram: a model directive keeps our font; subgraph titles paint over the edges; classes colour nodes', async ({
   app,
   page,
 }) => {
@@ -1569,6 +1569,19 @@ test('diagram: a model directive keeps our font; subgraph titles paint over the 
       Array.from(root.children, (c) => c.getAttribute('class')?.split(' ')[0] ?? c.tagName),
     );
   expect(order.indexOf('cluster-label')).toBeGreaterThan(order.indexOf('edgePaths'));
+  // Decision 24: `:::alert` without a classDef fills with --destructive-subtle.
+  const want = await page.evaluate(() => {
+    const probe = document.body.appendChild(document.createElement('i'));
+    probe.style.color = 'var(--destructive-subtle)';
+    const c = getComputedStyle(probe).color;
+    probe.remove();
+    return c;
+  });
+  const fill = await doc
+    .locator('.diagram svg .node.alert :is(rect, path, polygon)')
+    .first()
+    .evaluate((el) => getComputedStyle(el).fill);
+  expect(fill).toBe(want);
 });
 
 test('vega-lite: a spec with a url falls back to its data as a table (R6)', async ({
