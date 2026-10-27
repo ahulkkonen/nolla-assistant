@@ -1348,6 +1348,51 @@ test('streaming: an html block shows the writing card, never its source; long co
   await expect(page.getByRole('complementary', { name: 'Artefaktit' })).toHaveCount(0);
 });
 
+test('queue: a message waits for the reply, Peru gives it back, then it goes after the reply; the model chip opens during a run', async ({
+  app,
+  page,
+}) => {
+  const long = Array.from({ length: 20 }, (_, i) => `Kappale ${i + 1}: vastaus jatkuu.`).join(
+    '\n\n',
+  );
+  app.llm.push({ text: long });
+  app.llm.push({ ...titleTurn('Jono', 'Käyttäjä kokeili jonoa.'), match: 'Aiheet:' });
+  app.llm.push({ text: 'Jonon viestiin vastattu.', match: 'Toinen kysymys' });
+  const hold = await holdAt(page, 'Kappale 3');
+  await app.login(page);
+  await send(page, 'Kirjoita pitkä vastaus');
+  await hold.reached;
+  // Phase-20 decision 15: the chip opens during a run; the change is for the next reply.
+  const chip = page.getByRole('button', { name: /^Malli: / });
+  await chip.hover();
+  await expect(page.getByRole('tooltip')).toContainText('Muutos koskee seuraavaa vastausta');
+  await chip.click();
+  await expect(page.getByRole('menuitemradio', { name: /^Auto/ })).toBeVisible();
+  await chip.click();
+  await expect(page.getByRole('menu')).toHaveCount(0);
+
+  // Decision 17: text during a reply shows Pysäytä and Lisää jonoon; Enter queues.
+  await page.getByLabel('Viesti').fill('Toinen kysymys');
+  await expect(page.getByRole('button', { name: 'Pysäytä' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Lisää jonoon' })).toBeVisible();
+  await page.getByLabel('Viesti').press('Enter');
+  const row = page.getByText('Jonossa', { exact: true }).locator('..');
+  await expect(row).toContainText('Toinen kysymys');
+  await expect(page.getByLabel('Viesti')).toHaveValue('');
+  await row.getByRole('button', { name: 'Peru jonotus' }).click();
+  await expect(page.getByText('Jonossa', { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel('Viesti')).toHaveValue('Toinen kysymys');
+
+  // Queued again: it goes when the reply has ended, as a new turn.
+  await page.getByRole('button', { name: 'Lisää jonoon' }).click();
+  await expect(row).toContainText('Toinen kysymys');
+  await expect(thread(page).getByText('Toinen kysymys', { exact: true })).toHaveCount(0);
+  hold.release();
+  await expect(thread(page).getByText('Toinen kysymys', { exact: true })).toBeVisible();
+  await expect(page.locator('.md').last()).toHaveText('Jonon viestiin vastattu.');
+  await expect(page.getByText('Jonossa', { exact: true })).toHaveCount(0);
+});
+
 test('artifact CSP is the first element even when the HTML starts with a script', async ({
   app,
   page,

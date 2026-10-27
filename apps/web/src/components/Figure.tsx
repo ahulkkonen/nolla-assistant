@@ -91,8 +91,10 @@ export function useFigure(a: Artifact | undefined) {
   return { doc: ready, frame, onLoad: () => loaded.current(), exportAs };
 }
 
-/** Heights of drawn figures by artifact id: a figure that mounts again (the reply's end, another
- * chat and back) keeps its height instead of the placeholder's. */
+/**
+ * Heights of drawn figures by artifact id: a figure that mounts again (the reply's end, another
+ * chat and back) keeps its height instead of the placeholder's.
+ */
 const heights = new Map<string, number>();
 const PLACEHOLDER = 240;
 

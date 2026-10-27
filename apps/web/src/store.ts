@@ -230,8 +230,20 @@ type State = {
   vault: { entities: VaultEntity[]; pending: VaultPending[] } | null;
   /** Per chat, the user message that waits for the vault (`chat.held`): its text, given back on a drop. */
   held: Record<string, string>;
-  /** Text for the composer to take back: a held message that was dropped. Never sent again by itself. */
-  draft: { chatId: string; text: string } | null;
+  /**
+   * Text for the composer to take back: a held message that was dropped, or a queued one given
+   * back. Never sent again by itself.
+   */
+  draft: { chatId: string; text: string; attachments?: AttachmentRef[] } | null;
+  /**
+   * Phase-20 decision 17: one message per chat written while a reply runs; `ws.ts` sends it when
+   * the chat goes idle. Stop, a failed reply or a held message give it back to the composer.
+   */
+  queued: Record<string, { text: string; attachments: AttachmentRef[] }>;
+  /** Adds to the chat's queued message (a blank line between). */
+  enqueue(chatId: string, text: string, attachments: AttachmentRef[]): void;
+  /** "Peru" and "Pysäytä": the queued message back into the composer. */
+  unqueue(chatId: string): void;
   topics: TopicState['topics'];
   /** The first `topic.state` has arrived (the topics screen shows skeletons until then). */
   topicsLoaded: boolean;
@@ -344,6 +356,21 @@ const omit = <T>(rec: Record<string, T>, key: string) => {
   return rest;
 };
 
+/** The chat's queued message as the composer's draft (after a draft it already has). */
+const giveBack = (st: State, chatId: string): Partial<State> => {
+  const q = st.queued[chatId];
+  if (!q) return {};
+  const before = st.draft?.chatId === chatId ? st.draft : undefined;
+  return {
+    queued: omit(st.queued, chatId),
+    draft: {
+      chatId,
+      text: [before?.text, q.text].filter(Boolean).join('\n\n'),
+      attachments: [...(before?.attachments ?? []), ...q.attachments],
+    },
+  };
+};
+
 /** Finnish text for a server error code, else the server's own text. */
 export const errorText = (code: string, message: string) => ERROR_TEXT[code] ?? message;
 
@@ -437,6 +464,7 @@ export const useStore = create<State>()((set, get) => {
     vault: null,
     held: {},
     draft: null,
+    queued: {},
     topics: [],
     topicsLoaded: false,
     proposals: [],
@@ -634,6 +662,7 @@ export const useStore = create<State>()((set, get) => {
             failed: omit(st.failed, msg.chatId),
             zdrRefused: omit(st.zdrRefused, msg.chatId),
             policies: omit(st.policies, msg.chatId),
+            queued: omit(st.queued, msg.chatId),
             approvals: st.approvals.filter((a) => a.chatId !== msg.chatId),
             ...(st.activeChatId === msg.chatId
               ? { activeChatId: null, screen: 'chat', scrollTo: null }
@@ -807,7 +836,10 @@ export const useStore = create<State>()((set, get) => {
         // Phase 12: a message that names an issued surrogate waits for an answer in the vault.
         case 'chat.held': {
           const last = get().messages[msg.chatId]?.findLast((m) => m.role === 'user');
-          set((st) => ({ held: { ...st.held, [msg.chatId]: last?.text ?? '' } }));
+          set((st) => ({
+            held: { ...st.held, [msg.chatId]: last?.text ?? '' },
+            ...giveBack(st, msg.chatId),
+          }));
           // A question, not a success: a warning toast that stays long enough to use its action.
           toast.warning(ERROR_TEXT.pseudo_collision ?? msg.type, {
             duration: 8000,
@@ -838,6 +870,9 @@ export const useStore = create<State>()((set, get) => {
           return set({ models });
         }
         case 'error': {
+          // A failed reply: its queued message goes back to the composer, not into a new turn.
+          if (msg.chatId && ['llm_failed', 'prompt_failed', 'zdr_unavailable'].includes(msg.code))
+            set((st) => giveBack(st, msg.chatId as string));
           const st0 = get();
           // Phase 17: a failed claim action shows on its card (or restores the chip it hid).
           const action = st0.claimAction;
@@ -951,6 +986,20 @@ export const useStore = create<State>()((set, get) => {
           openArtifact: { chatId, id: known?.id ?? a.id },
         };
       }),
+    enqueue: (chatId, text, attachments) =>
+      set((st) => {
+        const was = st.queued[chatId];
+        return {
+          queued: {
+            ...st.queued,
+            [chatId]: {
+              text: [was?.text, text].filter(Boolean).join('\n\n'),
+              attachments: [...(was?.attachments ?? []), ...attachments],
+            },
+          },
+        };
+      }),
+    unqueue: (chatId) => set((st) => giveBack(st, chatId)),
     decideApproval: (requestId, approved) =>
       set((st) => ({
         approvals: approved

@@ -2,6 +2,7 @@ import type { CatalogModel, ModelChoice } from '@pa/protocol';
 import { Check, ChevronDown, Search, ShieldCheck, ShieldOff, Star } from 'lucide-react';
 import {
   type KeyboardEvent,
+  type ReactElement,
   type ReactNode,
   useDeferredValue,
   useEffect,
@@ -68,13 +69,6 @@ export function ModelPicker() {
   const mobile = useMobile();
   const agent = useAgent().name;
   const isOpen = policy.dataPolicy === 'open';
-
-  // A run disables the chip: nothing may pop open again when it ends.
-  useEffect(() => {
-    if (!running) return;
-    setCatalogOpen(false);
-    useStore.setState({ modelMenuOpen: false });
-  }, [running]);
 
   const label = (
     <>
@@ -152,39 +146,31 @@ export function ModelPicker() {
     </DropdownMenuRadioItem>
   );
 
+  // Phase-20 decision 15: the chip works during a reply; the change applies to the next one.
+  const tip = (trigger: ReactElement) => (
+    <Tip label="Muutos koskee seuraavaa vastausta" {...(running ? {} : { open: false })}>
+      {trigger}
+    </Tip>
+  );
   let control: ReactNode;
-  if (running)
-    control = (
-      <Tip label="Malli vaihdetaan, kun vastaus on valmis">
-        <Button
-          variant="ghost"
-          aria-disabled="true"
-          aria-label={ariaLabel}
-          className={cn(
-            chip,
-            'cursor-not-allowed text-muted-foreground hover:bg-transparent hover:text-muted-foreground',
-          )}
-        >
-          {label}
-        </Button>
-      </Tip>
-    );
-  else if (mobile)
+  if (mobile)
     // Phones: a bottom sheet, so every level fits without a scroll inside a menu.
     control = (
       <>
-        <Button
-          variant="ghost"
-          aria-label={ariaLabel}
-          aria-haspopup="dialog"
-          aria-expanded={open}
-          onClick={() => setOpen(true)}
-          className={cn(chip, 'text-muted-foreground hover:text-foreground')}
-        >
-          {label}
-          {/* As on desktop and as the agent chip: the chip opens a choice. */}
-          <ChevronDown size={16} className="shrink-0" />
-        </Button>
+        {tip(
+          <Button
+            variant="ghost"
+            aria-label={ariaLabel}
+            aria-haspopup="dialog"
+            aria-expanded={open}
+            onClick={() => setOpen(true)}
+            className={cn(chip, 'text-muted-foreground hover:text-foreground')}
+          >
+            {label}
+            {/* As on desktop and as the agent chip: the chip opens a choice. */}
+            <ChevronDown size={16} className="shrink-0" />
+          </Button>,
+        )}
         <Sheet open={open} onOpenChange={setOpen}>
           <SheetContent
             side="bottom"
@@ -234,8 +220,10 @@ export function ModelPicker() {
             {isOpen && (
               <>
                 <p className="px-3 pt-2 text-meta text-muted-foreground">{openNote}</p>
+                {/* Consent stays an idle action (decision 15). */}
                 <Button
                   variant="ghost"
+                  disabled={running}
                   className="h-11 justify-start gap-3 font-normal"
                   onClick={() => {
                     setOpen(false);
@@ -254,16 +242,18 @@ export function ModelPicker() {
   else
     control = (
       <DropdownMenu modal={false} open={open} onOpenChange={setOpen}>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant="ghost"
-            aria-label={ariaLabel}
-            className={cn(chip, 'text-muted-foreground hover:text-foreground')}
-          >
-            {label}
-            <ChevronDown size={16} className="shrink-0" />
-          </Button>
-        </DropdownMenuTrigger>
+        {tip(
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              aria-label={ariaLabel}
+              className={cn(chip, 'text-muted-foreground hover:text-foreground')}
+            >
+              {label}
+              <ChevronDown size={16} className="shrink-0" />
+            </Button>
+          </DropdownMenuTrigger>,
+        )}
         <DropdownMenuContent side="top" align="start" collisionPadding={8} className="w-[300px]">
           <DropdownMenuLabel className="text-micro text-muted-foreground">Malli</DropdownMenuLabel>
           <DropdownMenuRadioGroup value={policy.modelId ?? ALIAS} onValueChange={pickModel}>
@@ -295,7 +285,7 @@ export function ModelPicker() {
             <>
               <DropdownMenuSeparator />
               <p className="px-2 py-1.5 text-meta text-muted-foreground">{openNote}</p>
-              <DropdownMenuItem onSelect={restore}>
+              <DropdownMenuItem onSelect={restore} disabled={running}>
                 <ShieldCheck size={16} className="text-muted-foreground" />
                 Palauta ZDR
               </DropdownMenuItem>

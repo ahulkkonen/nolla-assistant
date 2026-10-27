@@ -1,7 +1,15 @@
 import type { Message } from '@pa/protocol';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useStore } from './store.ts';
-import { connect, disconnect, retryTurn, send, sendUserMessage, setDataPolicy } from './ws.ts';
+import {
+  connect,
+  disconnect,
+  retryTurn,
+  send,
+  sendUserMessage,
+  setDataPolicy,
+  stopTurn,
+} from './ws.ts';
 
 class FakeWebSocket {
   static OPEN = 1;
@@ -152,5 +160,40 @@ describe('ws client', () => {
     retryTurn('c1');
     expect(sent('user.retry')).toEqual([]);
     expect(sent('user.message')).toHaveLength(2);
+  });
+
+  it('a queued message goes once when its chat goes idle, with its attachments', () => {
+    const { frame, sent } = chat();
+    const file = { id: 'f1', name: 'kuva.png', mime: 'image/png', size: 1, kind: 'image' as const };
+    frame({ type: 'agent.status', chatId: 'c1', state: 'running' });
+    useStore.getState().enqueue('c1', 'Eka', []);
+    useStore.getState().enqueue('c1', 'Toka', [file]);
+    expect(useStore.getState().queued.c1).toEqual({ text: 'Eka\n\nToka', attachments: [file] });
+    expect(sent('user.message')).toEqual([]);
+    frame({ type: 'agent.status', chatId: 'c1', state: 'idle' });
+    expect(sent('user.message')).toMatchObject([
+      { chatId: 'c1', text: 'Eka\n\nToka', attachments: [file] },
+    ]);
+    expect(useStore.getState().queued.c1).toBeUndefined();
+    frame({ type: 'agent.status', chatId: 'c1', state: 'idle' });
+    expect(sent('user.message')).toHaveLength(1);
+  });
+
+  it('a stop or a failed reply gives the queued message back to the composer', () => {
+    const { frame, sent } = chat();
+    frame({ type: 'agent.status', chatId: 'c1', state: 'running' });
+    useStore.getState().enqueue('c1', 'Odota', []);
+    stopTurn('c1');
+    expect(sent('user.stop')).toHaveLength(1);
+    expect(useStore.getState().draft).toMatchObject({ chatId: 'c1', text: 'Odota' });
+    frame({ type: 'agent.status', chatId: 'c1', state: 'idle' });
+    useStore.setState({ draft: null });
+    frame({ type: 'agent.status', chatId: 'c1', state: 'running' });
+    useStore.getState().enqueue('c1', 'Uudestaan', []);
+    frame({ type: 'error', code: 'llm_failed', message: 'x', chatId: 'c1' });
+    frame({ type: 'agent.status', chatId: 'c1', state: 'idle' });
+    expect(useStore.getState().draft).toMatchObject({ chatId: 'c1', text: 'Uudestaan' });
+    expect(sent('user.message')).toEqual([]);
+    useStore.setState({ draft: null });
   });
 });

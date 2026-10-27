@@ -199,6 +199,53 @@ export const LINE_REPLY = `Hinnat kehittyivät näin:\n\n${block('vega-lite', {
     },
   ],
 })}\n\nHelsingin hinnat nousivat kesäkuuhun mennessä noin prosentin.`;
+const SPOT = [
+  [9.1, 6.2, 11.4],
+  [8.4, 5.9, 10.8],
+  [6.2, 5.1, 9.6],
+  [4.8, 4.6, 8.9],
+  [3.9, 4.2, 8.1],
+  [3.1, 4.4, 7.7],
+];
+/** Phase 20: a multi-series line chart, one series in `@accent`, the context in `@faint`. */
+export const SERIES_REPLY = `Hinnat kehittyivät näin:\n\n${block('vega-lite', {
+  title: {
+    text: 'Pörssisähkön hinta 2026',
+    subtitle: 'Suomen hinta **laski** keväällä naapurimaita nopeammin.',
+  },
+  description: 'Viivakaavio pörssisähkön kuukausihinnasta Suomessa, Ruotsissa ja Virossa 2026.',
+  usermeta: { caption: 'Lähde: kuukausikeskiarvot, snt/kWh.' },
+  data: {
+    values: SPOT.flatMap((row, i) =>
+      ['Suomi', 'Ruotsi', 'Viro'].map((maa, j) => ({
+        kk: `2026-0${i + 1}-01`,
+        maa,
+        hinta: row[j],
+      })),
+    ),
+  },
+  encoding: {
+    x: { field: 'kk', type: 'temporal', title: null, axis: { format: '%b', tickCount: 6 } },
+    y: { field: 'hinta', type: 'quantitative', title: 'snt/kWh' },
+    color: {
+      field: 'maa',
+      type: 'nominal',
+      scale: { domain: ['Suomi', 'Ruotsi', 'Viro'], range: ['@accent', '@faint', '@faint'] },
+      legend: null,
+    },
+  },
+  layer: [
+    { mark: 'line' },
+    {
+      transform: [{ filter: 'month(datum.kk) == 5' }],
+      mark: { type: 'text', align: 'left', dx: 6 },
+      encoding: {
+        text: { field: 'maa' },
+        color: { condition: { test: "datum.maa === 'Suomi'", value: '@accent' }, value: '@muted' },
+      },
+    },
+  ],
+})}\n\nSuomen hinta oli kesäkuussa alin.`;
 /** Phase 19: a refused spec (R6): a `url` in a transform; the fallback shows the inline rows. */
 export const REFUSED_REPLY = `Kaavio:\n\n${block('vega-lite', {
   title: 'Haettu data',

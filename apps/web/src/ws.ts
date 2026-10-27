@@ -118,12 +118,19 @@ export function createChat(): Promise<string> {
   });
 }
 
-/** Shows the message at once (the server does not echo it) and sends it; creates the chat if needed. */
-export async function sendUserMessage(text: string, attachments: AttachmentRef[] = []) {
+/**
+ * Shows the message at once (the server does not echo it) and sends it to `chatId`, else to the
+ * open chat; creates the chat if needed.
+ */
+export async function sendUserMessage(
+  text: string,
+  attachments: AttachmentRef[] = [],
+  chatId: string | null = useStore.getState().activeChatId,
+) {
   // A new turn ends a pending consent or retry: neither may act on it.
   policyIntent = null;
   retryIntent = null;
-  const id = useStore.getState().activeChatId ?? (await createChat());
+  const id = chatId ?? (await createChat());
   const localId = `local-${crypto.randomUUID()}`;
   useStore.getState().addLocalMessage(id, {
     id: localId,
@@ -136,6 +143,24 @@ export async function sendUserMessage(text: string, attachments: AttachmentRef[]
   });
   // `message.accepted` gives the message its entry id (a fork needs it).
   send({ type: 'user.message', chatId: id, text, attachments, localId });
+}
+
+/** "Pysäytä" and Esc: the chat's queued message goes back to the composer (phase-20 decision 17). */
+export function stopTurn(chatId: string) {
+  useStore.getState().unqueue(chatId);
+  send({ type: 'user.stop', chatId });
+}
+
+/** Decision 17: the chat's queued message starts a new turn once the reply has ended. */
+function sendQueued(msg: ServerMessage) {
+  if (msg.type !== 'agent.status' || msg.state !== 'idle') return;
+  const q = useStore.getState().queued[msg.chatId];
+  if (!q) return;
+  useStore.setState((s) => {
+    const { [msg.chatId]: _, ...rest } = s.queued;
+    return { queued: rest };
+  });
+  void sendUserMessage(q.text, q.attachments, msg.chatId);
 }
 
 /**
@@ -297,6 +322,7 @@ function open() {
     store.apply(msg);
     settlePolicy(msg, was);
     settleRetry(msg);
+    sendQueued(msg);
     if (msg.type === 'chat.created') {
       const waiter = createWaiters.shift();
       waiter?.(msg.chat.id);
