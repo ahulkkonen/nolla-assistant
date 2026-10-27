@@ -578,3 +578,11 @@ def test_ner_drops_unknown_words_at_a_sentence_start():
 
     assert plausible("Hulkkonen", at_start=True) and plausible("Mentorini")
     assert not plausible("Mentorini", at_start=True)
+
+
+@needs_lexicon
+def test_question_word_and_unknown_word_are_no_person(vault):
+    _, spans = mask(vault, "Milloin Satamarahdin sopimus uusitaan?")  # Milloin: a form of Milla for Voikko
+    assert spans == []
+    _, spans = mask(vault, "Eilen Milla Satamarahdin soitti.")
+    assert [s["real_form"] for s in spans] == ["Milla Satamarahdin"]

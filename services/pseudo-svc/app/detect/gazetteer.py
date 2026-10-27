@@ -327,8 +327,11 @@ def detect(text: str, ctx=None) -> list[Candidate]:
             i += 2 if nxt and nxt[0].start() == start else 1
             continue
         # full name: first name followed by a surname or a capitalised word that is not a place
+        # An unknown capitalised word counts as the surname only when the first name is no ordinary word at a
+        # sentence start: Voikko reads "Milloin" as a form of Milla, so "Milloin Satamarahdin sopimus" is no person.
         if first and adjacent and (nxt[2] or not nxt[1] or nxt[0].group(0).endswith("nen")) \
-                and not (not nxt[2] and place(nxt[0].group(0))):
+                and not (not nxt[2] and (place(nxt[0].group(0))
+                                         or (_sentence_start(text, m.start()) and common_word(w)))):
             n2 = nxt[0]
             last_lemma = nxt[2] or (lemmas(n2.group(0))[0][0] if lemmas(n2.group(0)) else n2.group(0))
             score = 0.95 if nxt[2] else 0.75
