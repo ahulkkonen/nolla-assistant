@@ -214,7 +214,7 @@ test('onUsage gets each assistant message of a child with its usage (phase 13)',
 
 // The production image installs Pi under apps/server only (peer dependency here).
 test('piCli resolves the Pi binary from the entry script paths', () => {
-  const saved = process.argv[1];
+  const saved = process.argv[1] ?? '';
   process.argv[1] = new URL('../../../apps/server/src/main.ts', import.meta.url).pathname;
   try {
     expect(resolvePiCli()).toMatch(/pi-coding-agent/);
