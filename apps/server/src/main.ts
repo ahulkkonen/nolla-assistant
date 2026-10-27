@@ -1,3 +1,4 @@
+import { writeSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openDb, users } from '@pa/db';
@@ -383,7 +384,13 @@ async function allowlistSelf(
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const { app, close } = await start();
-  const shutdown = () => {
+  // Who stops the server: a signal, or an empty event loop. writeSync: the logger may not flush
+  // before an exit. A Docker OOM kill logs nothing (no signal reaches the process).
+  const say = (what: string) =>
+    writeSync(2, `${JSON.stringify({ level: 40, time: Date.now(), msg: what })}\n`);
+  process.on('beforeExit', (code) => say(`beforeExit ${code}`));
+  const shutdown = (signal: string) => {
+    say(`signal ${signal}`);
     close().then(
       () => process.exit(0),
       (err: unknown) => {
@@ -392,6 +399,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       },
     );
   };
-  process.once('SIGTERM', shutdown);
-  process.once('SIGINT', shutdown);
+  process.once('SIGTERM', () => shutdown('SIGTERM'));
+  process.once('SIGINT', () => shutdown('SIGINT'));
+  process.once('SIGHUP', () => shutdown('SIGHUP'));
 }

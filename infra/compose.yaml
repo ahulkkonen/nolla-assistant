@@ -31,7 +31,9 @@ services:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 30s
       timeout: 3s
-    mem_limit: 400m
+    # The process holds the e5 embedding model (ONNX), the Pi runtime and child processes (OCR,
+    # subagents). At 400m Docker OOM-killed it silently (exit 0, no signal) on 2026-10-27.
+    mem_limit: 1g
     networks: [internal, mcp]
 
   # Finnish PII pseudonymization sidecar (plan §6, decision 0003). Holds the encrypted vault in /data.
