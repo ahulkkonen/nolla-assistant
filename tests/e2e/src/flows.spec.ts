@@ -1129,7 +1129,7 @@ test.describe('claims', () => {
     await expect(section(page, 'Aktiiviset')).toContainText('Käyttäjä haluaa vastaukset lyhyinä.');
     await expect(page.getByText('Hyväksytty 2 · hylätty 1')).toBeVisible();
     const tea = card(page, 'Käyttäjä juo aamuisin teetä.');
-    await expect(tea).toContainText('Korvaa: Käyttäjä juo aamuisin kahvia.');
+    await expect(tea).toContainText('KorvaaKäyttäjä juo aamuisin kahvia.');
     await tea.getByRole('button', { name: 'Hyväksy' }).click();
     await expect(section(page, 'Aktiiviset')).toContainText('Käyttäjä juo aamuisin teetä.');
     await expect(section(page, 'Aktiiviset')).not.toContainText('Käyttäjä juo aamuisin kahvia.');
@@ -1308,7 +1308,7 @@ test('artifact panel: an html reply opens in a sandboxed iframe', async ({ app, 
   await expect(frame.contentFrame().getByRole('heading', { name: 'Hei artefakti' })).toBeVisible();
   await panel.getByRole('button', { name: 'Sulje artefaktit' }).click();
   await expect(panel).toHaveCount(0);
-  await page.getByRole('button', { name: 'Avaa artefaktina' }).click();
+  await page.getByRole('button', { name: 'Avaa paneelissa' }).click();
   await expect(panel).toBeVisible();
 });
 

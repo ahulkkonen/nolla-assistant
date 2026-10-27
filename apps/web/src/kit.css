@@ -193,12 +193,13 @@ th {
 #vis {
   width: 100%;
 }
-/* A ```mermaid artifact: centred, never wider than the page. Mermaid's own <style> uses id
+/* A ```mermaid artifact: on the page's left edge, never wider than the page. Mermaid's own <style> uses id
    selectors, hence !important. Edges: --muted-foreground at 1.5 px whatever the scale; nodes:
    radius 8 and an --input border (the fill and border colours come from the theme variables). */
 .diagram svg {
   display: block;
-  margin-inline: auto;
+  /* Left, on the title's and the caption's edge. */
+  margin-inline: 0;
   height: auto;
 }
 .diagram

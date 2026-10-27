@@ -103,16 +103,19 @@ export function ChatCost() {
   const fx = useStore((s) => s.fx);
   if (!usage?.tokens) return null;
   const rate = cacheRate(usage);
-  const rows: [string, string][] = [
+  // Label, value, unit: the units get their own column.
+  const rows: [string, string, string][] = [
     ...(usage.input !== undefined
       ? ([
-          ['Syöte', count.format(usage.input)],
-          ['Välimuistista', count.format(usage.cacheRead ?? 0)],
-          ['Välimuistiin', count.format(usage.cacheWrite ?? 0)],
-          ['Tuloste', count.format(usage.output ?? 0)],
-        ] as [string, string][])
+          ['Syöte', count.format(usage.input), 'tokenia'],
+          ['Välimuistista luettu', count.format(usage.cacheRead ?? 0), 'tokenia'],
+          ['Välimuistiin kirjoitettu', count.format(usage.cacheWrite ?? 0), 'tokenia'],
+          ['Tuloste', count.format(usage.output ?? 0), 'tokenia'],
+        ] as [string, string, string][])
       : []),
-    ...(rate ? ([['Välimuisti', rate]] as [string, string][]) : []),
+    ...(rate
+      ? ([['Osumaosuus', rate.replace(/\s%$/, ''), '%']] as [string, string, string][])
+      : []),
   ];
   const note = fx ? 'Euroina EKP:n kurssilla' : 'Dollareina: euromuunnos ei ole saatavilla';
   return (
@@ -121,17 +124,18 @@ export function ChatCost() {
       side="bottom"
       align="end"
       // Screen readers get the same rows as one text (the grid lives in the visible copy only).
-      ariaLabel={[...rows.map(([k, v]) => `${k} ${v}`), note].join(', ')}
+      ariaLabel={[...rows.map(([k, v, u]) => `${k} ${v} ${u}`), note].join(', ')}
       label={
         // The visible layout only; the tooltip's text for screen readers is `ariaLabel`.
-        <span aria-hidden="true" className="grid grid-cols-[auto_auto] gap-x-4 tabular-nums">
-          {rows.map(([k, v]) => (
+        <span aria-hidden="true" className="grid grid-cols-[auto_auto_auto] gap-x-2 tabular-nums">
+          {rows.map(([k, v, u]) => (
             <span key={k} className="contents">
-              <span>{k}</span>
+              <span className="pr-2">{k}</span>
               <span className="text-right">{v}</span>
+              <span>{u}</span>
             </span>
           ))}
-          <span className="col-span-2 pt-1">{note}</span>
+          <span className="col-span-3 pt-1">{note}</span>
         </span>
       }
     >

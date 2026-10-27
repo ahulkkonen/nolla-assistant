@@ -28,14 +28,22 @@ function plot(options: Options = {}) {
     // 0 before layout (a hidden frame): Plot's own minimum.
     width: width > 0 ? width : 320,
     marginLeft: Math.max(Number(options.marginLeft) || 0, 56),
-    x: axis(options.x),
-    y: { nice: true, ...axis(options.y), labelAnchor: 'top' },
+    // The Vega charts' right gutter.
+    marginRight: options.marginRight ?? 15,
+    // Band gaps as Vega's `bandPaddingInner` 0.25 (Plot ignores it on other scales).
+    x: { padding: 0.25, ...axis(options.x) },
+    // The unit at the plot's left edge, above the top tick, as in Vega.
+    y: { nice: true, ...axis(options.y), labelAnchor: 'top', labelOffset: 0 },
   } as ObservablePlot.PlotOptions);
 }
 
-// Bars round their end only, radius 4 (Vega `cornerRadiusEnd`).
-const barY: typeof ObservablePlot.barY = (data, o) => ObservablePlot.barY(data, { ry2: 4, ...o });
+// Bars round their end only, radius 4 (Vega `cornerRadiusEnd`). Measured: the corner names work
+// in pixel space, so the top of a positive barY is y1 and the right end of a barX is x2.
+const barY: typeof ObservablePlot.barY = (data, o) => ObservablePlot.barY(data, { ry1: 4, ...o });
 const barX: typeof ObservablePlot.barX = (data, o) => ObservablePlot.barX(data, { rx2: 4, ...o });
+// A rule at zero reads as a grid line, not an ink domain line.
+const ruleY: typeof ObservablePlot.ruleY = (data, o) =>
+  ObservablePlot.ruleY(data, { stroke: 'var(--border)', ...o });
 
 // `Plot.barY(…).plot()` goes through `Mark.prototype.plot`, not the global: it gets the kit too.
 ObservablePlot.Mark.prototype.plot = function (
@@ -45,4 +53,4 @@ ObservablePlot.Mark.prototype.plot = function (
   return plot({ ...o, marks: [...marks, this] });
 } as ObservablePlot.Mark['plot'];
 
-Object.assign(globalThis, { Plot: { ...ObservablePlot, plot, barX, barY }, d3 });
+Object.assign(globalThis, { Plot: { ...ObservablePlot, plot, barX, barY, ruleY }, d3 });

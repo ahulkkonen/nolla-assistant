@@ -294,10 +294,13 @@ function ClaimCard({ claim }: { claim: Claim }) {
       )}
       <Meta claim={claim} extra={meta} />
       {proposed && claim.supersedes && (
-        // A contradiction: the old claim, quieter, no strike-through (brief 7.1).
-        <p className="text-meta text-pretty text-muted-foreground">
-          Korvaa: {claim.supersedes.text}
-        </p>
+        // A contradiction, as its own step: the claim it replaces, quieter, no strike-through.
+        <div className="flex flex-col gap-0.5">
+          <span className="text-micro text-muted-foreground">Korvaa</span>
+          <p className="text-body text-pretty text-muted-foreground italic">
+            {claim.supersedes.text}
+          </p>
+        </div>
       )}
       {updated && <p className="text-meta text-muted-foreground">Päivitetty: {claim.text}</p>}
       {proposed && <Evidence claim={claim} />}
@@ -316,7 +319,8 @@ function ClaimCard({ claim }: { claim: Claim }) {
       >
         {mode === 'idle' ? (
           <>
-            <Button variant="ghost" disabled={busy} onClick={reject} aria-label={named('Hylkää')}>
+            {/* Outline: on a phone's 2 × 2 grid no cell looks empty. */}
+            <Button variant="outline" disabled={busy} onClick={reject} aria-label={named('Hylkää')}>
               Hylkää
             </Button>
             <Button
@@ -413,7 +417,7 @@ function Section({
   children: ReactNode;
 }) {
   return (
-    <section aria-labelledby={id} className="flex flex-col gap-3">
+    <section aria-labelledby={id} className="flex flex-col gap-4">
       <div className="flex flex-col gap-1">
         <h2 id={id} className="flex items-baseline gap-2 text-heading">
           {title}
@@ -488,7 +492,7 @@ export function ClaimsTab() {
         </Section>
       )}
       {superseded.length > 0 && (
-        <section aria-labelledby="claims-superseded" className="flex flex-col gap-3">
+        <section aria-labelledby="claims-superseded" className="flex flex-col gap-4">
           <h2 id="claims-superseded" className="text-heading">
             <Button
               variant="ghost"
@@ -511,7 +515,7 @@ export function ClaimsTab() {
           {history && (
             <ul id="claims-superseded-list" className="flex flex-col divide-y">
               {superseded.map((c) => (
-                <li key={c.id} className="flex flex-col gap-0.5 py-3">
+                <li key={c.id} className="flex flex-col gap-0.5 py-3 first:pt-0">
                   <span className="text-body text-pretty text-muted-foreground">{c.text}</span>
                   <span className="text-meta text-muted-foreground tabular-nums">
                     {KIND_LABEL[c.kind]}

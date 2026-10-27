@@ -285,7 +285,8 @@ export function Thread() {
         }}
         className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-4 outline-none"
       >
-        <div className="mx-auto flex w-full max-w-(--thread-max) flex-col gap-6 py-6">
+        {/* Bottom 64: at the end the latest action row sits above the composer's fade. */}
+        <div className="mx-auto flex w-full max-w-(--thread-max) flex-col gap-6 pt-6 pb-16">
           <FindBar scroller={scroller} />
           {chatId && <ForkRow chatId={chatId} />}
           {turns.map((t, n) => {
@@ -439,7 +440,7 @@ export function Thread() {
       {/* Prose fades out above the composer instead of ending on a hard cut. */}
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-x-0 bottom-0 h-9 bg-linear-to-t from-background"
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-15 bg-linear-to-t from-background"
       />
       {away && (
         // Brief 7.5: 12 px above the composer, centred on the thread column. Dark has no

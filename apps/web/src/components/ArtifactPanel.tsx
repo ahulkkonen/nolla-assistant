@@ -24,6 +24,7 @@ import { saveArtifact } from '../api.ts';
 import runtimeUrl from '../artifact-runtime.ts?worker&url';
 import { fileError, showInFiles } from '../files.ts';
 import kitCss from '../kit.css?raw';
+import { useMobile } from '../media.ts';
 import plotUrl from '../plot-runtime.ts?worker&url';
 import { useStore } from '../store.ts';
 import {
@@ -381,6 +382,7 @@ export function ArtifactPanel() {
   const frame = useRef<HTMLIFrameElement>(null);
   const [copied, setCopied] = useState(false);
   const [tab, setTab] = useState<'preview' | 'code'>('preview');
+  const mobile = useMobile();
 
   // Keyed by content, not object identity: a streaming upsert of another artifact must not reload
   // this one. The old document stays up until the new one is ready.
@@ -426,6 +428,11 @@ export function ArtifactPanel() {
 
   if (!open || !a) return null;
   const close = () => useStore.setState({ openArtifact: null });
+  const copy = () =>
+    void navigator.clipboard.writeText(a.content).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
   const ready = doc?.id === a.id ? doc : null;
   const plain = a.kind === 'code' || a.kind === 'file';
   const theme = ready?.html ? ready.theme : undefined;
@@ -508,19 +515,13 @@ export function ArtifactPanel() {
               </TabsTrigger>
             </TabsList>
           )}
-          <div className="flex">
-            <IconButton
-              label={copied ? 'Kopioitu' : 'Kopioi'}
-              className="size-8"
-              onClick={() =>
-                void navigator.clipboard.writeText(a.content).then(() => {
-                  setCopied(true);
-                  setTimeout(() => setCopied(false), 1500);
-                })
-              }
-            >
-              {copied ? <Check size={16} /> : <Copy size={16} />}
-            </IconButton>
+          {/* Phones: Kopioi is in the Lataa menu and the 44 px targets keep 8 px apart. */}
+          <div className="flex max-md:gap-2">
+            {!mobile && (
+              <IconButton label={copied ? 'Kopioitu' : 'Kopioi'} className="size-8" onClick={copy}>
+                {copied ? <Check size={16} /> : <Copy size={16} />}
+              </IconButton>
+            )}
             {/* One "Lataa" menu for every kind; four icons in the header (phase-19 UI review). */}
             <ActionMenu
               label="Lataa"
@@ -532,6 +533,7 @@ export function ArtifactPanel() {
                       { label: 'Lataa PNG', Icon: FileImage, run: () => exportAs('png') },
                     ]
                   : []),
+                ...(mobile ? [{ label: 'Kopioi', Icon: Copy, run: copy }] : []),
                 { label: 'Lataa lähdekoodi', Icon: FileCode, run: () => download(a) },
                 // A code block opened from a message (`local-…`) has no artifact on the server.
                 ...(a.id.startsWith('local-')

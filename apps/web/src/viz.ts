@@ -295,7 +295,8 @@ export function prepareChart(source: string, t: Tokens): Chart | Refused {
   spec.$schema = SCHEMA;
   if ('mark' in spec || 'layer' in spec) spec.width = 'container';
   spec.autosize = { type: 'fit-x', contains: 'padding' };
-  spec.padding = { left: 0, top: 4, right: endLabels ? 44 : 8, bottom: 0 };
+  // Bottom 6: x labels keep their descenders ("syys"), the svg is not cut at its baseline.
+  spec.padding = { left: 0, top: 4, right: endLabels ? 44 : 8, bottom: 6 };
   spec.config = vegaConfig(t);
   return { spec, lifted, rows };
 }

@@ -389,7 +389,8 @@ for (const scheme of ['light', 'dark'] as const) {
         await catalog.getByRole('button', { name: 'Lisää suosikkeihin: Claude Fable 5.1' }).click();
         await expect(catalog.getByRole('heading', { name: 'Suosikit' })).toBeVisible();
         await page.mouse.move(vp.width - 8, vp.height - 8);
-        await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+        // The first row holds the roving tab stop: it reads as the row Enter picks.
+        await catalog.locator('[data-cell]').first().focus();
         await shot(page, 'model-catalog', vp.width, scheme);
       });
 
@@ -1426,7 +1427,7 @@ for (const scheme of ['light', 'dark'] as const) {
           seedClaims(app, chat.id);
           await openSettings(page, 'Muisti');
           await page.getByRole('tab', { name: 'Havainnot' }).click();
-          await expect(page.getByText('Korvaa: Käyttäjä juo aamuisin kahvia.')).toBeVisible();
+          await expect(page.getByText('Korvaa', { exact: true })).toBeVisible();
           await page.getByRole('button', { name: /^Korvatut/ }).click();
           await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
           // The whole tab: the page scrolls inside the app shell, so the viewport grows to fit.

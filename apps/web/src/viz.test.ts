@@ -221,7 +221,7 @@ describe('colour roles and theme keys (R2, R7)', () => {
     expect(plain.spec).toMatchObject({
       width: 'container',
       autosize: { type: 'fit-x', contains: 'padding' },
-      padding: { left: 0, top: 4, right: 8, bottom: 0 },
+      padding: { left: 0, top: 4, right: 8, bottom: 6 },
     });
     const labels = JSON.stringify({
       layer: [{ mark: 'line' }, { mark: { type: 'text', align: 'left', dx: 6 } }],

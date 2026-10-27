@@ -1,5 +1,6 @@
 import { type Annotation, type AttachmentRef, type CallUsage, mermaidMeta } from '@pa/protocol';
 import {
+  AppWindow,
   ChartColumn,
   Check,
   Copy,
@@ -126,9 +127,9 @@ function Pre(props: ComponentProps<'pre'>) {
     isValidElement<{ children?: unknown }>(child) && typeof child.props.children === 'string'
       ? child.props.children
       : '';
-  const kind =
-    ARTIFACT_KIND[lang as keyof typeof ARTIFACT_KIND] ??
-    (source.split('\n').length > 30 ? 'code' : undefined);
+  const art: (typeof ARTIFACT_KIND)[keyof typeof ARTIFACT_KIND] | undefined =
+    ARTIFACT_KIND[lang as keyof typeof ARTIFACT_KIND];
+  const kind = art ?? (source.split('\n').length > 30 ? 'code' : undefined);
   const open = (shown: string) => {
     const st = useStore.getState();
     const content = shown || source;
@@ -143,17 +144,20 @@ function Pre(props: ComponentProps<'pre'>) {
       content,
     });
   };
-  // A chart or a diagram is a compact card in the thread; its code is in the panel's Koodi tab.
-  if (kind === 'vega-lite' || kind === 'mermaid')
+  // An artifact (a page, a component, a chart, a diagram) is a compact card in the thread; its
+  // code is in the panel's Koodi tab.
+  if (art)
     return (
       <div className="flex min-h-12 items-center gap-3 rounded-lg bg-muted py-2 pr-2 pl-4 font-sans">
-        {kind === 'mermaid' ? (
+        {art === 'mermaid' ? (
           <Workflow size={16} className="shrink-0 text-muted-foreground" />
-        ) : (
+        ) : art === 'vega-lite' ? (
           <ChartColumn size={16} className="shrink-0 text-muted-foreground" />
+        ) : (
+          <AppWindow size={16} className="shrink-0 text-muted-foreground" />
         )}
         <span className="min-w-0 flex-1 truncate font-sans text-ui">
-          {figureTitle(kind, source) ?? (kind === 'mermaid' ? 'Kaavio' : 'Kuvaaja')}
+          {figureTitle(art, source) ?? CARD_NAME[art]}
         </span>
         <Button variant="outline" size="sm" onClick={() => open('')}>
           <PanelRight size={16} />
@@ -168,9 +172,25 @@ function Pre(props: ComponentProps<'pre'>) {
   );
 }
 
-/** The title of a chart spec (`title` or `title.text`) or a diagram; none while it streams. */
-function figureTitle(kind: 'vega-lite' | 'mermaid', source: string) {
+/** A card's name when its source has no title. */
+const CARD_NAME = {
+  html: 'HTML-sivu',
+  react: 'React-komponentti',
+  mermaid: 'Kaavio',
+  'vega-lite': 'Kuvaaja',
+};
+
+/**
+ * The title of a page (`<title>` or the first `<h1>`), a chart spec (`title` or `title.text`) or a
+ * diagram; none while it streams.
+ */
+function figureTitle(kind: keyof typeof CARD_NAME, source: string) {
   if (kind === 'mermaid') return mermaidMeta(source).title;
+  if (kind === 'react') return undefined;
+  if (kind === 'html') {
+    const m = /<title[^>]*>([^<]+)<\/title>|<h1[^>]*>([^<]+)<\/h1>/i.exec(source);
+    return (m?.[1] ?? m?.[2])?.trim() || undefined;
+  }
   try {
     const t = (JSON.parse(source) as { title?: unknown }).title;
     const text = typeof t === 'object' && t ? (t as { text?: unknown }).text : t;

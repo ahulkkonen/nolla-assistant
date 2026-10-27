@@ -52,7 +52,7 @@ const price = (m: CatalogModel) => (
   </>
 );
 /** The catalog's two number columns: fixed widths, so the header and every row line up. */
-const COL_CTX = 'w-12 shrink-0 text-right tabular-nums';
+const COL_CTX = 'w-16 shrink-0 text-right tabular-nums';
 const COL_PRICE = 'w-28 shrink-0 text-right tabular-nums';
 
 const ALIAS = '__alias__';
@@ -431,24 +431,34 @@ function CatalogDialog({
     const pick = cell(m.id, 'pick');
     const star = cell(m.id, 'star');
     return (
-      <li key={m.id} className="flex items-center gap-2 rounded-md pr-1 hover:bg-accent">
+      <li
+        key={m.id}
+        // The row with the roving tab stop reads as the one Enter picks (the footer says so).
+        className={cn(
+          'flex items-center gap-2 rounded-md pr-1 hover:bg-accent',
+          (tabStop === pick || tabStop === star) && 'bg-accent',
+        )}
+      >
         <button
           type="button"
           data-cell={pick}
           tabIndex={tabStop === pick ? 0 : -1}
           onClick={() => onPick(m.id)}
-          // Wraps: the columns stay on the name's line while the name fits beside them, else they
-          // drop to a second line, right-aligned. The id has no intrinsic width, so only the name
-          // and the badge decide the wrap; the id fills what is left and truncates.
+          // The name, then a meta line with the id and the badge; the columns sit at the right.
           className="flex min-h-11 min-w-0 flex-1 flex-wrap items-center gap-x-2 rounded-md px-3 py-1 text-left"
         >
-          <span className="flex grow basis-0 items-center gap-2">
-            <span className="max-w-56 truncate text-ui md:max-w-80">{m.name}</span>
-            {!m.zdr && <Badge variant="warning">Ei ZDR</Badge>}
-            {/* The model part of the id, cut from the end; the provider only for screen readers. */}
-            <span className="w-0 min-w-0 flex-1 truncate font-mono text-[13px] text-muted-foreground">
-              <span className="sr-only">{m.id.slice(0, m.id.indexOf('/') + 1)}</span>
-              {m.id.slice(m.id.indexOf('/') + 1)}
+          <span className="flex min-w-0 grow basis-0 flex-col">
+            <span className="truncate text-ui">{m.name}</span>
+            <span className="flex min-w-0 items-center gap-2">
+              {/* The model part of the id, cut from the end; the provider for screen readers. */}
+              <span
+                title={m.id}
+                className="min-w-0 truncate font-mono text-[13px] text-muted-foreground"
+              >
+                <span className="sr-only">{m.id.slice(0, m.id.indexOf('/') + 1)}</span>
+                {m.id.slice(m.id.indexOf('/') + 1)}
+              </span>
+              {!m.zdr && <Badge variant="warning">Ei ZDR</Badge>}
             </span>
           </span>
           <span className="ml-auto flex gap-6 text-meta max-md:hidden">
