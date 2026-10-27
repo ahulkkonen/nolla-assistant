@@ -520,8 +520,9 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
   };
 
   /**
-   * A model or policy change needs an idle chat (decision 14). Synchronous, like the row write
-   * after it: no prompt can start between the check and the write.
+   * A data-policy change needs an idle chat (decision 14; phase-20 decision 15 lets a model
+   * change through). Synchronous, like the row write after it: no prompt can start between the
+   * check and the write.
    */
   const assertIdle = (chatId: string) => {
     if (registry.running(chatId)) throw new RunActive();
@@ -1009,7 +1010,8 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
       case 'chat.setModel': {
         owned(msg.chatId);
         if (!validChoice(msg)) return send(socket, errorMsg('bad_message'));
-        assertIdle(msg.chatId);
+        // Also during a run (phase-20 decision 15): the running session ends its turn, and
+        // `registry.get` rebuilds it with the new row once it settles.
         // Consent was for one model: a change ends it (phase-10 decision 9).
         refusals.delete(msg.chatId);
         update(msg.chatId, { modelId: msg.modelId, reasoning: msg.reasoning, dataPolicy: 'zdr' });
