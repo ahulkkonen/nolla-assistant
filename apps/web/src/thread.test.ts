@@ -2,10 +2,12 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   cacheRate,
   duration,
+  endsInFence,
   Follow,
   findOffsets,
   mdBlocks,
   messageTime,
+  nodeText,
   replyUsage,
   sameLengthLower,
   settleTail,
@@ -195,10 +197,46 @@ describe('settleTail', () => {
     expect(settleTail('\n---')).toBe('\n---');
     expect(settleTail('```\n- ')).toBe('```\n- ');
   });
+  it('holds back a last line that opens a fence: its info string may still grow', () => {
+    expect(settleTail('Sivu:\n```ht')).toBe('Sivu:');
+    expect(settleTail('Sivu:\n```html')).toBe('Sivu:');
+    expect(settleTail('```')).toBe('');
+    expect(settleTail('- ```js')).toBe('');
+    expect(settleTail('Sivu:\n```html\n')).toBe('Sivu:\n```html\n');
+    expect(settleTail('```py\nx\n```')).toBe('```py\nx\n```');
+  });
+  it('tells whether a block ends inside a fence', () => {
+    expect(endsInFence('Sivu:\n```html\n<h1>x')).toBe(true);
+    expect(endsInFence('1. ```js\n   const a = 1')).toBe(true);
+    expect(endsInFence('```\nx\n```')).toBe(false);
+    expect(endsInFence('Teksti `koodi`')).toBe(false);
+  });
   it('leaves code inside an open fence alone', () => {
     expect(settleTail('```js\nconst a = `x')).toBe('```js\nconst a = `x');
     expect(settleTail('```\nx\n```\nsee `y')).toBe('```\nx\n```\nsee `y`');
     expect(settleTail('1. ```js\n   const a = `x')).toBe('1. ```js\n   const a = `x');
+  });
+});
+
+describe('nodeText', () => {
+  it('reads every text below a code node, also inside annotation spans and next to the caret', () => {
+    const text = (value: string) => ({ type: 'text', value });
+    const pre = {
+      type: 'element',
+      children: [
+        {
+          type: 'element',
+          children: [
+            text('<p>Hei '),
+            { type: 'element', children: [text('Matti Virtanen')] },
+            text('!</p>\n'),
+            { type: 'element', children: [] },
+          ],
+        },
+      ],
+    };
+    expect(nodeText(pre)).toBe('<p>Hei Matti Virtanen!</p>\n');
+    expect(nodeText(undefined)).toBe('');
   });
 });
 

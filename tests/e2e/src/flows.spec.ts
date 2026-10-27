@@ -15,6 +15,7 @@ import {
   editAgent,
   expect,
   HTML_REPLY,
+  holdAt,
   MERMAID_REPLY,
   memoryTurns,
   mockMic,
@@ -24,6 +25,7 @@ import {
   openFiles,
   openSettings,
   openVault,
+  PAGE_REPLY,
   png,
   REFUSED_REPLY,
   search,
@@ -1312,6 +1314,38 @@ test('artifact panel: an html reply opens in a sandboxed iframe', async ({ app, 
   await expect(panel).toHaveCount(0);
   await page.getByRole('button', { name: 'Avaa paneelissa' }).click();
   await expect(panel).toBeVisible();
+});
+
+test('streaming: an html block shows the writing card, never its source; long code stays code', async ({
+  app,
+  page,
+}) => {
+  app.llm.push({ text: PAGE_REPLY });
+  const hold = await holdAt(page, '<h1>Raportti');
+  await app.login(page);
+  await send(page, 'Tee raportti');
+  await hold.reached;
+  // Phase-20 decision 8: the kind, the title and the line count; no source, no button.
+  const card = thread(page).locator('[aria-busy="true"]');
+  await expect(card).toContainText('Kuukausiraportti');
+  await expect(card).toContainText(/HTML-sivu · kirjoittaa… \d+ riviä/);
+  await expect(card.getByRole('button')).toHaveCount(0);
+  await expect(thread(page).locator('pre')).toHaveCount(0);
+  await expect(thread(page).getByText('<h1>', { exact: false })).toHaveCount(0);
+  hold.release();
+  await expect(thread(page).getByText('Sivu on valmis.')).toBeVisible();
+  await expect(card).toHaveCount(0);
+
+  // Decision 11: a 40-line block of code is code, with Kopioi, and no artifact.
+  const py = Array.from({ length: 40 }, (_, i) => `print(${i + 1})`).join('\n');
+  app.llm.push({ text: `Koodi:\n\n\`\`\`python\n${py}\n\`\`\`` });
+  await page.getByRole('button', { name: 'Sulje artefaktit' }).click();
+  await send(page, 'Kirjoita koodi');
+  const code = thread(page).getByRole('region', { name: 'Koodi: python' });
+  await expect(code).toContainText('print(40)');
+  await expect(code.locator('xpath=..').getByRole('button', { name: 'Kopioi' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Avaa artefaktina' })).toHaveCount(0);
+  await expect(page.getByRole('complementary', { name: 'Artefaktit' })).toHaveCount(0);
 });
 
 test('artifact CSP is the first element even when the HTML starts with a script', async ({

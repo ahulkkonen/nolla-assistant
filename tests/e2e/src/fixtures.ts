@@ -416,6 +416,56 @@ export const test = base.extend<{
   baseURL: async ({ app }, use) => use(app.url),
 });
 
+/**
+ * Holds the server's frames from the delta after which the streamed text contains `text`, until
+ * `release()`: the reply stays mid-stream, the run active (phase 20). Once only; call it before
+ * the page opens the WebSocket.
+ */
+export const holdAt = async (page: Page, text: string) => {
+  let streamed = '';
+  let armed = true;
+  let holding = false;
+  const held: (string | Buffer)[] = [];
+  let deliver: (m: string | Buffer) => void = () => {};
+  let seen: () => void = () => {};
+  const reached = new Promise<void>((r) => (seen = r));
+  await page.routeWebSocket(/\/ws$/, (ws) => {
+    const server = ws.connectToServer();
+    deliver = (m) => ws.send(m);
+    server.onMessage((m) => {
+      if (holding) return void held.push(m);
+      ws.send(m);
+      const msg = typeof m === 'string' ? JSON.parse(m) : undefined;
+      if (armed && msg?.type === 'message.delta' && (streamed += msg.text).includes(text)) {
+        armed = false;
+        holding = true;
+        seen();
+      }
+    });
+  });
+  return {
+    reached,
+    release: () => {
+      holding = false;
+      for (const m of held.splice(0)) deliver(m);
+    },
+  };
+};
+
+/** Phase 20: an HTML page written in a reply, with a title the writing card can show. */
+export const PAGE_REPLY = `Tässä sivu:\n\n${block(
+  'html',
+  `<!doctype html>
+<html lang="fi">
+<head><title>Kuukausiraportti</title></head>
+<body>
+<h1>Raportti lokakuulta</h1>
+<p>Kulut pysyivät budjetissa.</p>
+<p>Tulot kasvoivat hieman.</p>
+</body>
+</html>`,
+)}\n\nSivu on valmis.`;
+
 /** Opens Tiedostot from the sidebar (the drawer under 768 px). */
 export const openFiles = async (page: Page) => {
   const menu = page.getByRole('button', { name: 'Valikko' });
