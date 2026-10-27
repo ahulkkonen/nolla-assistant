@@ -386,5 +386,44 @@ phase-19 rules, decisions 3, 8, 17 and 23–26):
 - A queued message that arrives before Pi's prompt promise resolves at settle steers into the old
   session (old model). The window is the time between `agent_settled` and the idle event.
 - Safari has no scroll anchoring: a figure that grows above the viewport moves the text.
-- The halo hides an edge under the title glyphs only; an edge can still run between words.
+- Entering edges pass under the subgraph header strip; they are not routed around it.
 - WebKit was not measured.
+
+## Status (2026-10-27)
+
+Commits on `phase-20`, merged into `main` as a fast-forward: S1 `dac2123`, S2 `72a4dc3`, S4
+`80e97bf`, W1 to W7 and S3 `c9992e7` to `382c6c1`, pixel pass `86b1046`, review fixes `868eb9f`,
+UI rounds `777fccd`, `73ac698`, `c7d7801`, `797118a`, `aa374c2`.
+
+Findings during implementation that change the record:
+
+- Mermaid 12.2.0 lays out with ELK by default. ELK ignores `rankSpacing`, `nodeSpacing` and
+  `subGraphTitleMargin`, which is why the measurement in decision 26 saw no effect. `mermaidConfig`
+  sets `layout: 'dagre'` (and `layout` is in `secure`). Edges are curved, not right-angled.
+- Dagre spaces a rank across a subgraph border at 1.5 times `rankSpacing`. No option gives even
+  gaps and room for the title, so the gaps inside a subgraph are two thirds of the gaps outside.
+- The halo of decision 26 was not enough: a masked edge still reads as a crossing. The cluster
+  title is a full-width header strip (28 px, 32 under 768 px; band blended 12 percent toward the
+  text colour; title left-aligned 12 px in), painted above the edges, with the first node at
+  least 22 px below the strip. Entering edges pass under the strip as under a swimlane header.
+- `prepareChart` reads a date without a time in a temporal field as local midnight, so the first
+  tick keeps its label; colour scales interpolate in Lab (the HCL default passed through pink);
+  `@accent` lines are 2.5 px and `@faint` lines 1.5 px; `labelOverlap: 'parity'` with
+  `labelSeparation: 12`; the panel chart fills the panel height with about one y tick per 100 px.
+- A figure page scales its diagram to the frame width down to 0.85; below that it keeps its size
+  and scrolls sideways with a fade at the cut edge.
+- The `error` message carries the `modelId` the session ran on and `chat.state` carries `running`,
+  so a ZDR refusal during a model change names the right model and a queued message survives a
+  reconnect.
+- Fastify refuses `addHook` after `listen`: a late debugging hook in `main.ts` crash-looped the
+  server once during this phase. The server's memory limit is 1 GiB since `c7a9d4e` (the Docker
+  OOM kill at 400 MiB was silent: exit 0, no signal).
+
+Gate run on `aa374c2`: `pnpm typecheck` and `pnpm lint` pass; `pnpm test` passes every unit suite
+(server 192 and 1 skipped, web 102, protocol 45, contract 23, pseudo 18, memory 12, sandbox 5,
+subagents 14, mcp 14, fake-llm 6, masked-only 2, db 2) and e2e 545 of 545 (4 skipped); the
+`screens` project passes with strict axe (484); `pnpm test:egress` passes; the server image builds
+(`pa-server:p20`, 22 GB free on the Docker disk after a prune). The code review found 0 blocking
+and 5 should-fix findings, all fixed in `868eb9f`. The pixel pass measured every P1 check. The
+blind UI review passed on the fifth round (every cell 4 or 5, no blocking or should-fix finding).
+WebKit was not measured.
