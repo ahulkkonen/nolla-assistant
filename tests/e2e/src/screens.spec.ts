@@ -114,7 +114,9 @@ const axe = async (page: Page, name: string) => {
 };
 
 const shot = async (page: Page, screen: string, w: number, scheme: string) => {
-  // Let transitions and the caret settle.
+  // The streaming caret stays on: its blink must not decide whether a shot shows it.
+  await page.addStyleTag({ content: '.md .caret { animation: none !important; }' });
+  // Let transitions settle.
   await page.waitForTimeout(400);
   const noScroll = await page.evaluate(
     () => document.documentElement.scrollWidth <= window.innerWidth,

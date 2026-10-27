@@ -125,7 +125,8 @@ async function kitHead(a: Artifact, scheme: Scheme) {
  * Decision 26: subgraph titles paint over the edges. Each `g.cluster-label` moves to the end of
  * its `g.root` (its translate is in the root's coordinates, so it stays in place), and its empty
  * background rect gets the text's box plus 4 px, filled with the cluster colour by `themeCSS`: no
- * edge shows between the words. Measured in this page, where Mermaid measured too.
+ * edge shows between the words; edge labels get 5 px of their background around them. Measured
+ * in this page, where Mermaid measured too.
  */
 function finishDiagram(svg: string) {
   const box = document.createElement('div');
@@ -146,6 +147,15 @@ function finishDiagram(svg: string) {
         bg.setAttribute('height', String(b.height + 8));
       }
       label.closest('g.root')?.append(label);
+    }
+    // An edge stops 5 px short of its label (UI review: lines touched the letters).
+    for (const bg of root.querySelectorAll<SVGRectElement>('.edgeLabel rect.background')) {
+      const b = bg.getBBox();
+      if (!b.width) continue;
+      bg.setAttribute('x', String(b.x - 5));
+      bg.setAttribute('y', String(b.y - 5));
+      bg.setAttribute('width', String(b.width + 10));
+      bg.setAttribute('height', String(b.height + 10));
     }
     return new XMLSerializer().serializeToString(root);
   } finally {
@@ -200,9 +210,9 @@ export async function documentFor(a: Artifact, scheme: Scheme, fill = false): Pr
     if (fill && single) {
       chart.spec.height = 'container';
       chart.spec.autosize = { type: 'fit', contains: 'padding' };
-      // About one y tick per 60 px of the panel's plot (UI review: 26 ticks at 1440).
+      // About one y tick per 100 px of the panel's plot, 5 to 7 lines as in the thread.
       const config = chart.spec.config as { axisY?: object };
-      config.axisY = { ...config.axisY, tickCount: { expr: 'ceil(height / 60)' } };
+      config.axisY = { ...config.axisY, tickCount: { expr: 'ceil(height / 100)' } };
     }
     return { html: page(chartBody(chart, rt, fill && single), head), rows: chart.rows };
   }

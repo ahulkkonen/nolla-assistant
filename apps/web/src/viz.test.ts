@@ -223,7 +223,7 @@ describe('colour roles and theme keys (R2, R7)', () => {
     });
   });
 
-  it('sets sizing and padding (R3): 44 px right only for end labels', () => {
+  it('sets sizing and padding (R3): 8 px right, also for end labels (fit-x contains them)', () => {
     const plain = prepareChart(bar(), T) as Chart;
     expect(plain.spec).toMatchObject({
       width: 'container',
@@ -233,7 +233,7 @@ describe('colour roles and theme keys (R2, R7)', () => {
     const labels = JSON.stringify({
       layer: [{ mark: 'line' }, { mark: { type: 'text', align: 'left', dx: 6 } }],
     });
-    expect((prepareChart(labels, T) as Chart).spec.padding).toMatchObject({ right: 44 });
+    expect((prepareChart(labels, T) as Chart).spec.padding).toMatchObject({ right: 8 });
   });
 });
 
@@ -315,7 +315,11 @@ describe('fonts and Mermaid config (phase 20)', () => {
       messageFontFamily: T['font-sans'],
       noteFontFamily: T['font-sans'],
     });
-    expect(c.flowchart?.subGraphTitleMargin).toEqual({ top: 12, bottom: 12 });
+    expect(c.flowchart).toMatchObject({
+      rankSpacing: 32,
+      wrappingWidth: 200,
+      subGraphTitleMargin: { top: 10, bottom: 10 },
+    });
     // Mermaid 12 lays out with ELK by default, which ignores the flowchart spacing.
     expect(c.layout).toBe('dagre');
     expect(c.themeVariables).toMatchObject({ clusterBkg: T['chart-band'] });
@@ -442,7 +446,7 @@ describe('UI review (phase 20)', () => {
     // A style, so the encoding wins over the theme's 2 px.
     expect(vegaConfig(T)).toMatchObject({ style: { line: { strokeWidth: 2 } } });
     expect(mermaidConfig(T, false, 14).themeCSS).toContain('.node rect, .node polygon');
-    expect(mermaidConfig(T, false, 14).themeCSS).toContain('{ stroke-width: 1.5px !important; }');
+    expect(mermaidConfig(T, false, 14).themeCSS).toContain('{ stroke-width: 2px !important; }');
   });
 
   it('fills nodes with --card, edge and subgraph labels on opaque backgrounds', () => {

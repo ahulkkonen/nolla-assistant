@@ -224,7 +224,7 @@ const nodeClass = (name: string, fill: string, stroke: string) =>
   ['rect', 'polygon', 'path', 'circle', 'ellipse']
     .map((shape) => `.node.${name} ${shape}`)
     .join(', ') + ` { fill: ${fill} !important; stroke: ${stroke} !important; }`;
-/** Node shapes; their 1.5 px border covers a whole pixel at 1x (a 1 px one blurs over two). */
+/** Node shapes; a 2 px border keeps a full-colour pixel at 1x (a 1 px one blurs over two). */
 const NODE_SHAPES = ['rect', 'polygon', 'path', 'circle', 'ellipse']
   .map((s) => `.node ${s}`)
   .join(', ');
@@ -241,7 +241,7 @@ const diagramCss = (t: Tokens) => {
   return `.flowchart-link, .transition, .relation, [class^="messageLine"], .edge-pattern-solid, .edge-pattern-dashed { stroke: ${line} !important; stroke-width: 1.5px !important; vector-effect: non-scaling-stroke; }
 marker path { fill: ${line} !important; stroke: ${line} !important; }
 .node rect, .statediagram-state rect, .actor rect { rx: 8px; ry: 8px; }
-${NODE_SHAPES} { stroke-width: 1.5px !important; }
+${NODE_SHAPES} { stroke-width: 2px !important; }
 .cluster-label text { paint-order: stroke; stroke: ${t['chart-band']}; stroke-width: 4px; stroke-linejoin: round; }
 .cluster-label .background { fill: ${t['chart-band']} !important; opacity: 1 !important; }
 .edgeLabel .background { fill: ${t.card} !important; opacity: 1 !important; }
@@ -279,9 +279,13 @@ export const mermaidConfig = (t: Tokens, dark: boolean, fontSize: number): Merma
       // Less label padding: a decision diamond grows with its label's box (phase-19 UI review).
       padding: 8,
       nodeSpacing: 40,
-      rankSpacing: 40,
-      // The title 12 px from the border and from the first node.
-      subGraphTitleMargin: { top: 12, bottom: 12 },
+      // Dagre spaces a rank across a subgraph border 1.5 times: 32 gives 32 inside a subgraph and
+      // 48 into and out of it (UI review: at most 48 of bare edge).
+      rankSpacing: 32,
+      // Mermaid's own default wraps a 20-letter label ("Hälytys päivystäjälle").
+      wrappingWidth: 200,
+      // The title clear of the border and the first node, inside the 48 px rank above.
+      subGraphTitleMargin: { top: 10, bottom: 10 },
     },
     class: { htmlLabels: false },
     // A parse error throws (the caller shows it) instead of drawing Mermaid's error SVG.
@@ -495,7 +499,6 @@ export function prepareChart(source: string, t: Tokens): Chart | Refused {
   let url = false;
   let href = false;
   let sequence = 0;
-  let endLabels = false;
   visit(raw, (o) => {
     if (Array.isArray(o.values)) tables.push(o.values as Row[]);
     if (o.datasets && typeof o.datasets === 'object')
@@ -503,9 +506,6 @@ export function prepareChart(source: string, t: Tokens): Chart | Refused {
     if (o.sequence && typeof o.sequence === 'object') sequence += steps(o.sequence as Obj);
     if ('url' in o) url = true;
     if ('href' in o) href = true;
-    const mark = typeof o.mark === 'object' && o.mark ? (o.mark as Obj) : undefined;
-    if ((mark?.type ?? o.mark) === 'text' && (mark?.align === 'left' || Number(mark?.dx) > 0))
-      endLabels = true;
   });
   const rows = tables[0] ?? [];
   const parsed = Spec.safeParse(raw);
@@ -538,8 +538,9 @@ export function prepareChart(source: string, t: Tokens): Chart | Refused {
   spec.$schema = SCHEMA;
   if ('mark' in spec || 'layer' in spec) spec.width = 'container';
   spec.autosize = { type: 'fit-x', contains: 'padding' };
-  // Bottom 6: x labels keep their descenders ("syys"), the svg is not cut at its baseline.
-  spec.padding = { left: 0, top: 4, right: endLabels ? 44 : 8, bottom: 6 };
+  // Bottom 6: x labels keep their descenders ("syys"), the svg is not cut at its baseline. Right 8
+  // also with end labels: `fit-x` already makes room for marks past the plot (UI review).
+  spec.padding = { left: 0, top: 4, right: 8, bottom: 6 };
   spec.config = vegaConfig(t);
   return { spec, lifted, rows };
 }
