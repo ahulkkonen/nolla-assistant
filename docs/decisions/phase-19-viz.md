@@ -234,6 +234,25 @@ A blind UI review scored the first screenshots as FAIL. Changes:
 - Plot and D3 load when the source matches `\bPlot\b` or `\bd3\b`. A false positive only
   costs bytes.
 
+## Code review fixes (2026-10-27)
+
+- A `{ step }` width or height is at most 100 px per band, at every level, as numeric sizes.
+- The exported SVG keeps `href` and `xlink:href` on `image`, `a` and `use` only when they point
+  inside the file (`#id`); `url(…)` leaves every inline `style` attribute too.
+- The render timer starts when the frame reports `viz-loaded` (its script runs) and gives 10 s
+  from there; a frame that never reports fails after 30 s.
+- `mermaidMeta`: a `title` line that holds an edge token (`-->`, `---`, `==>`, `-.->`, `--`) is
+  an edge, not a title.
+- Plot: `Mark.prototype.plot` is wrapped too, so `Plot.barY(…).plot()` gets the kit; the width
+  is 320 px when the content width is 0 (a frame not laid out yet).
+
+Ceilings:
+
+- Transforms that produce rows (`sequence` aside: `flatten`, `fold`, `impute`, `density`,
+  `loess` and the like) are not capped beyond the 10 s timer.
+- The timer runs in the parent page. A sandbox that blocks its own main thread is cut off from
+  view by the fallback, but its frame keeps running until the artifact closes.
+
 ## Status (2026-10-26)
 
 - Tasks 1 to 6 are done. `pnpm typecheck` and `pnpm lint` pass.

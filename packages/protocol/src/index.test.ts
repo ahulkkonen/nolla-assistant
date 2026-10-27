@@ -9,6 +9,7 @@ import {
   decryptCommand,
   ExportStart,
   ModelId,
+  mermaidMeta,
   type Schedule,
   SEARCH_ENTITY_REASON,
   SEARCH_MAX_RESULTS,
@@ -380,5 +381,14 @@ describe('phase 17 claims messages', () => {
     ).toMatchObject({
       validTo: '2028-02-29',
     });
+  });
+});
+
+describe('mermaidMeta', () => {
+  it('reads a title line, but not an edge from a node called title', () => {
+    expect(mermaidMeta('flowchart TD\ntitle Prosessi\nA --> B').title).toBe('Prosessi');
+    expect(mermaidMeta('flowchart TD\ntitle --> B').title).toBeUndefined();
+    expect(mermaidMeta('flowchart TD\ntitle -- kyllä --> B').title).toBeUndefined();
+    expect(mermaidMeta('flowchart TD\naccTitle: Kulku\ntitle --> B').title).toBe('Kulku');
   });
 });

@@ -70,6 +70,8 @@ const fail = (err: unknown) =>
 const el = document.getElementById('vis');
 const spec: Obj = JSON.parse(document.getElementById('spec')?.textContent ?? '{}');
 if (el) {
+  // The render timer starts here, in the parent (not when the page html was set).
+  parent.postMessage({ type: 'viz-loaded' }, '*');
   narrow(spec, el.clientWidth);
   // R5: Vega measures text once; the inlined fonts must be ready first.
   document.fonts.ready

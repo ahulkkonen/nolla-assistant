@@ -21,13 +21,23 @@ const axis = (a: Options | undefined) => ({ ...a, tickSize: 0, line: false, labe
  * rotated y label centred on its axis, as Vega titles it. Colours and grid come from kit.css.
  */
 function plot(options: Options = {}) {
+  const width = contentWidth();
   return ObservablePlot.plot({
     ...options,
-    width: contentWidth(),
+    // 0 before layout (a hidden frame): Plot's own minimum.
+    width: width > 0 ? width : 320,
     marginLeft: Math.max(Number(options.marginLeft) || 0, 56),
     x: axis(options.x),
     y: { ...axis(options.y), labelAnchor: 'center' },
   } as ObservablePlot.PlotOptions);
 }
+
+// `Plot.barY(…).plot()` goes through `Mark.prototype.plot`, not the global: it gets the kit too.
+ObservablePlot.Mark.prototype.plot = function (
+  this: ObservablePlot.Mark,
+  { marks = [], ...o } = {},
+) {
+  return plot({ ...o, marks: [...marks, this] });
+} as ObservablePlot.Mark['plot'];
 
 Object.assign(globalThis, { Plot: { ...ObservablePlot, plot }, d3 });

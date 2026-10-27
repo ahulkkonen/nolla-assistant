@@ -147,6 +147,7 @@ const Spec = z
   );
 const MAX_ROWS = 500;
 const MAX_SIZE = 2000;
+const MAX_STEP = 100;
 const SCHEMA = 'https://vega.github.io/schema/vega-lite/v6.json';
 
 /** Calls `fn` on every object of the spec except the data rows (`values`, `datasets`). */
@@ -198,11 +199,18 @@ export function clean(node: unknown, map: Record<string, string>, ctx?: Ctx): un
   return node;
 }
 
-/** Numeric `width` and `height` anywhere (concat, facet, repeat, layers) at most 2000 px. */
+/**
+ * `width` and `height` at every level (concat, facet, repeat, layers): a number at most 2000 px,
+ * a `{ step }` at most 100 px per band.
+ */
 function clampSizes(spec: unknown) {
   visit(spec, (o) => {
-    for (const k of ['width', 'height'])
-      if (typeof o[k] === 'number') o[k] = Math.min(o[k] as number, MAX_SIZE);
+    for (const k of ['width', 'height']) {
+      const v = o[k];
+      if (typeof v === 'number') o[k] = Math.min(v, MAX_SIZE);
+      else if (v && typeof v === 'object' && typeof (v as Obj).step === 'number')
+        o[k] = { ...(v as Obj), step: Math.min((v as Obj).step as number, MAX_STEP) };
+    }
   });
 }
 
@@ -335,11 +343,20 @@ export function framedSvg(inner: string, lifted: Lifted, t: Tokens, fonts: strin
   const doc = new DOMParser().parseFromString(inner, 'image/svg+xml');
   if (doc.querySelector('parsererror')) throw new Error('SVG ei ole kelvollinen');
   const el = doc.documentElement;
-  // A Mermaid `themeCSS` directive is model-written: no external resource in the file.
+  // A Mermaid `themeCSS` directive is model-written: no external resource in the file. Links
+  // and images may point inside the file (`#id`) only; inline styles lose `url(…)`.
   for (const style of el.querySelectorAll('style'))
     style.textContent = (style.textContent ?? '')
       .replace(/@import[^;]*;?/gi, '')
       .replace(/url\([^)]*\)/gi, 'none');
+  for (const node of el.querySelectorAll('image, a, use'))
+    for (const attr of ['href', 'xlink:href'])
+      if (!(node.getAttribute(attr) ?? '#').startsWith('#')) node.removeAttribute(attr);
+  for (const node of el.querySelectorAll('[style]'))
+    node.setAttribute(
+      'style',
+      (node.getAttribute('style') ?? '').replace(/url\([^)]*\)/gi, 'none'),
+    );
   const box = el
     .getAttribute('viewBox')
     ?.split(/[\s,]+/)

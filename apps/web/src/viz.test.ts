@@ -124,6 +124,20 @@ describe('spec guard, security review', () => {
     ]);
   });
 
+  it('clamps a band step to 100 px at every level', () => {
+    const spec = JSON.stringify({
+      hconcat: [
+        { width: { step: 5000 }, mark: 'bar' },
+        { facet: { field: 'k' }, spec: { height: { step: 400 }, mark: 'bar' } },
+      ],
+    });
+    const { spec: out } = prepareChart(spec, T) as Chart;
+    expect(out.hconcat).toEqual([
+      { width: { step: 100 }, mark: 'bar' },
+      { facet: { field: 'k' }, spec: { height: { step: 100 }, mark: 'bar' } },
+    ]);
+  });
+
   it('keeps colour-like text outside colour keys', () => {
     const spec = bar({
       title: '#2024 kasvoi',

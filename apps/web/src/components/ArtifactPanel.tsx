@@ -49,6 +49,7 @@ import { SidePanel } from './SidePanel.tsx';
 
 const EMPTY: Artifact[] = [];
 const RENDER_TIMEOUT = 10_000;
+const LOAD_TIMEOUT = 30_000;
 const TAB = 'data-active:bg-card data-active:shadow-sm dark:data-active:bg-card';
 const EXT: Record<string, string> = {
   html: 'html',
@@ -402,9 +403,15 @@ export function ArtifactPanel() {
     if (!chartHtml) return;
     const fail = (error: string) =>
       setDoc((d) => d && { ...d, html: null, refused: { error, rows: d.rows ?? [] } });
-    const timer = setTimeout(() => fail('Kaavion piirto kesti yli 10 sekuntia.'), RENDER_TIMEOUT);
+    // 10 s from the frame's "loaded" report (its script runs); a frame that never reports fails
+    // after 30 s.
+    let timer = setTimeout(() => fail('Kaavion piirto ei alkanut.'), LOAD_TIMEOUT);
     const onMessage = (e: MessageEvent<{ type?: string; message?: unknown }>) => {
       if (e.source !== frame.current?.contentWindow) return;
+      if (e.data?.type === 'viz-loaded') {
+        clearTimeout(timer);
+        timer = setTimeout(() => fail('Kaavion piirto kesti yli 10 sekuntia.'), RENDER_TIMEOUT);
+      }
       if (e.data?.type === 'viz-ready') clearTimeout(timer);
       if (e.data?.type === 'viz-error') fail(String(e.data.message));
     };

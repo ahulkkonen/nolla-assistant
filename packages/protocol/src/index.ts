@@ -248,8 +248,12 @@ export type Artifact = z.infer<typeof Artifact>;
  */
 export function mermaidMeta(source: string) {
   const line = (re: RegExp) => re.exec(source)?.[1]?.trim() || undefined;
+  // `title A --> B` is an edge from a node called "title", not a title.
+  const title = line(/^\s*title\s*:?\s+(.+)$/m);
   return {
-    title: line(/^\s*accTitle\s*:\s*(.+)$/m) ?? line(/^\s*title\s*:?\s+(.+)$/m),
+    title:
+      line(/^\s*accTitle\s*:\s*(.+)$/m) ??
+      (title && !/-->|---|==>|-\.->|--/.test(title) ? title : undefined),
     description: line(/^\s*accDescr\s*:\s*(.+)$/m),
   };
 }
