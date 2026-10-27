@@ -12,6 +12,7 @@ import {
   sumUsage,
   thoughtFor,
   threadKey,
+  withDefinitions,
   withRate,
 } from './thread.ts';
 
@@ -125,6 +126,32 @@ describe('mdBlocks', () => {
     });
     expect(mdBlocks('```\n[x]: https://e.fi\n```\n\nb\n').definitions).toEqual([]);
   });
+  it('a final text shares its last line, a definition with its URL on the next line', () => {
+    expect(mdBlocks('see [x]\n\n[x]: https://e.fi', true).definitions).toEqual([
+      { label: 'x', line: '[x]: https://e.fi' },
+    ]);
+    expect(mdBlocks('see [x]\n\n[x]: https://e.fi').definitions).toEqual([]);
+    expect(mdBlocks('see [x]\n\n[x]:\n  https://e.fi\n').definitions).toEqual([
+      { label: 'x', line: '[x]:\n  https://e.fi' },
+    ]);
+  });
+  it('collects a definition only where it can start a block', () => {
+    expect(mdBlocks('kappale\n[x]: https://e.fi\n').definitions).toEqual([]);
+    expect(mdBlocks('[a]: https://a\n[b]: https://b\n').definitions.map((d) => d.label)).toEqual([
+      'a',
+      'b',
+    ]);
+    expect(mdBlocks('```\nx\n```\n[c]: https://c\n').definitions.map((d) => d.label)).toEqual([
+      'c',
+    ]);
+  });
+  it('matches labels without case or extra spaces', () => {
+    const { definitions } = mdBlocks('[Lähde  Yksi]: https://e.fi\n', true);
+    expect(withDefinitions('katso [lähde yksi]', definitions)).toBe(
+      'katso [lähde yksi]\n\n[Lähde  Yksi]: https://e.fi',
+    );
+    expect(withDefinitions('katso [muu]', definitions)).toBe('katso [muu]');
+  });
   it('keeps text with a footnote definition whole', () => {
     expect(blocks('a[^1]\n\nb\n\n[^1]: lähde\n')).toEqual(['a[^1]\n\nb\n\n[^1]: lähde\n']);
   });
@@ -143,6 +170,10 @@ describe('settleTail', () => {
     expect(settleTail('see ``code`')).toBe('see ``code');
     expect(settleTail('see \\` and `x')).toBe('see \\` and `x`');
     expect(settleTail('a \\`')).toBe('a \\`');
+  });
+  it('treats a backslash inside a code span as literal', () => {
+    expect(settleTail('`a\\` ja [b](c')).toBe('`a\\` ja [b](c)');
+    expect(settleTail('\\`a ja `b')).toBe('\\`a ja `b`');
   });
   it('never closes a link inside an unclosed code span', () => {
     expect(settleTail('`[a](b')).toBe('`[a](b`');

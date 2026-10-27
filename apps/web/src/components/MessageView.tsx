@@ -22,7 +22,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import { touch } from '../media.ts';
 import { type SubagentChild, type ToolView, useStore } from '../store.ts';
-import { mdBlocks, settleTail } from '../thread.ts';
+import { mdBlocks, settleTail, withDefinitions } from '../thread.ts';
 import { IconButton, Tip } from './IconButton.tsx';
 import { MessageMeta, metaText } from './MessageMeta.tsx';
 import { SubagentRow } from './SubagentRow.tsx';
@@ -316,18 +316,12 @@ export const MarkdownText = memo(function MarkdownText({
     if (tail) blocks[blocks.length - 1] = tail;
     else blocks.pop();
   }
-  // Each block gets the reference definitions it uses (`[label]`); they render nothing.
-  const withDefinitions = (b: string) => {
-    const low = b.toLowerCase();
-    const used = definitions.filter((d) => low.includes(`[${d.label}]`) && !b.includes(d.line));
-    return used.length ? `${b}\n\n${used.map((d) => d.line).join('\n')}` : b;
-  };
   return (
     <div className="md break-words">
       {blocks.map((b, i) => (
         <Block
           key={i}
-          text={withDefinitions(b)}
+          text={withDefinitions(b, definitions)}
           rehype={i === blocks.length - 1 ? rehypeLast : rehype}
         />
       ))}

@@ -162,8 +162,11 @@ const closes = (line: string, open: string) => {
     !!m && m[1]![0] === open[0] && m[1]!.length >= open.length && !line.slice(m[0].length).trim()
   );
 };
-/** A link reference definition, or a footnote definition (`[^1]:`). */
-const DEFINITION = /^ {0,3}\[([^\]\n]+)\]:\s*\S/;
+/** A link reference definition (the URL may be on the next line), or a footnote (`[^1]:`). */
+const DEFINITION = /^ {0,3}\[([^\]\n]+)\]:(\s*\S)?/;
+/** A reference label as Markdown matches it: case and inner whitespace do not count. */
+const labelKey = (label: string) => label.trim().replace(/\s+/g, ' ').toLowerCase();
+type Definition = { label: string; line: string };
 
 /**
  * Splits Markdown at blank lines outside code fences, so a streamed reply re-renders only its
@@ -177,17 +180,19 @@ const DEFINITION = /^ {0,3}\[([^\]\n]+)\]:\s*\S/;
 export function mdBlocks(
   text: string,
   final = false,
-): { blocks: string[]; definitions: { label: string; line: string }[] } {
+): { blocks: string[]; definitions: Definition[] } {
   const lines = text.split('\n');
   const blocks: string[] = [];
-  const definitions: { label: string; line: string }[] = [];
+  const definitions: Definition[] = [];
+  // A definition starts a block: at the start, after a blank line or after another definition.
+  let canDefine = true;
   const whole = { blocks: [text], definitions: [] };
   let start = 0;
   let fence = '';
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]!;
     if (fence) {
-      if (closes(line, fence)) fence = '';
+      if (closes(line, fence)) [fence, canDefine] = ['', true];
       continue;
     }
     const open = FENCE.exec(line);
@@ -197,9 +202,19 @@ export function mdBlocks(
     }
     const def = DEFINITION.exec(line);
     if (def?.[1]?.startsWith('^')) return whole;
-    // The last line may still grow: only finished definitions are shared.
-    if (def?.[1] && i + 1 < lines.length)
-      definitions.push({ label: def[1].trim().toLowerCase(), line });
+    const isDef: boolean = !!def?.[1] && canDefine;
+    if (isDef && def?.[1]) {
+      // The URL on the next line: both lines. The last line may still grow, so only finished
+      // definitions are shared, except in a final text.
+      const next = def[2] ? undefined : lines[i + 1];
+      const end = def[2] ? i : i + 1;
+      if ((def[2] || next?.trim()) && (final || end + 1 < lines.length))
+        definitions.push({
+          label: labelKey(def[1]),
+          line: next === undefined ? line : `${line}\n${next}`,
+        });
+    }
+    canDefine = !line.trim() || isDef;
     if (
       !line.trim() &&
       i > start &&
@@ -215,13 +230,34 @@ export function mdBlocks(
   return { blocks, definitions };
 }
 
-/** The length of the unclosed code span opener (0: every span closed); escaped backticks are text. */
+/**
+ * The length of the unclosed code span opener (0: every span closed). A backslash escapes a
+ * backtick only outside a span; inside one it is literal (`` `a\` `` is closed).
+ */
 const openSpan = (text: string) => {
   let open = 0;
-  for (const run of text.replace(/\\`/g, '').match(/`+/g) ?? [])
-    open = open === run.length ? 0 : open || run.length;
+  for (let i = 0; i < text.length; ) {
+    if (!open && text[i] === '\\') {
+      i += 2;
+      continue;
+    }
+    if (text[i] !== '`') {
+      i++;
+      continue;
+    }
+    let n = 0;
+    while (text[i] === '`') [i, n] = [i + 1, n + 1];
+    open = open === n ? 0 : open || n;
+  }
   return open;
 };
+
+/** `block` with the reference definitions it uses (`[label]`, case and spaces ignored). */
+export function withDefinitions(block: string, definitions: Definition[]) {
+  const low = labelKey(block);
+  const used = definitions.filter((d) => low.includes(`[${d.label}]`) && !block.includes(d.line));
+  return used.length ? `${block}\n\n${used.map((d) => d.line).join('\n')}` : block;
+}
 
 /** Table cells of a row: escaped pipes and pipes inside code spans do not split. */
 const cells = (row: string) =>
