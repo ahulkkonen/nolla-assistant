@@ -199,6 +199,53 @@ export const LINE_REPLY = `Hinnat kehittyivät näin:\n\n${block('vega-lite', {
     },
   ],
 })}\n\nHelsingin hinnat nousivat kesäkuuhun mennessä noin prosentin.`;
+const SPOT = [
+  [9.1, 6.2, 11.4],
+  [8.4, 5.9, 10.8],
+  [6.2, 5.1, 9.6],
+  [4.8, 4.6, 8.9],
+  [3.9, 4.2, 8.1],
+  [3.1, 4.4, 7.7],
+];
+/** Phase 20: a multi-series line chart, one series in `@accent`, the context in `@faint`. */
+export const SERIES_REPLY = `Hinnat kehittyivät näin:\n\n${block('vega-lite', {
+  title: {
+    text: 'Pörssisähkön hinta 2026',
+    subtitle: 'Suomen hinta **laski** keväällä naapurimaita nopeammin.',
+  },
+  description: 'Viivakaavio pörssisähkön kuukausihinnasta Suomessa, Ruotsissa ja Virossa 2026.',
+  usermeta: { caption: 'Lähde: kuukausikeskiarvot, snt/kWh.' },
+  data: {
+    values: SPOT.flatMap((row, i) =>
+      ['Suomi', 'Ruotsi', 'Viro'].map((maa, j) => ({
+        kk: `2026-0${i + 1}-01`,
+        maa,
+        hinta: row[j],
+      })),
+    ),
+  },
+  encoding: {
+    x: { field: 'kk', type: 'temporal', title: null, axis: { format: '%b', tickCount: 6 } },
+    y: { field: 'hinta', type: 'quantitative', title: 'snt/kWh' },
+    color: {
+      field: 'maa',
+      type: 'nominal',
+      scale: { domain: ['Suomi', 'Ruotsi', 'Viro'], range: ['@accent', '@faint', '@faint'] },
+      legend: null,
+    },
+  },
+  layer: [
+    { mark: 'line' },
+    {
+      transform: [{ filter: 'month(datum.kk) == 5' }],
+      mark: { type: 'text', align: 'left', dx: 6 },
+      encoding: {
+        text: { field: 'maa' },
+        color: { condition: { test: "datum.maa === 'Suomi'", value: '@accent' }, value: '@muted' },
+      },
+    },
+  ],
+})}\n\nSuomen hinta oli kesäkuussa alin.`;
 /** Phase 19: a refused spec (R6): a `url` in a transform; the fallback shows the inline rows. */
 export const REFUSED_REPLY = `Kaavio:\n\n${block('vega-lite', {
   title: 'Haettu data',
@@ -224,6 +271,23 @@ export const MERMAID_REPLY = `Suunnitelma:\n\n${block(
   B --> C{"Mökki vai matka?"}
   C -->|"Mökki"| D["Varaa mökki"]
   C -->|"Matka"| E["Varaa liput"]`,
+)}`;
+/**
+ * Phase 20: a flowchart with the user's subgraph title, two edges into the subgraph from above,
+ * and the colour classes (no classDef).
+ */
+export const NWP_REPLY = `Ennuste syntyy näin:\n\n${block(
+  'mermaid',
+  `flowchart TD
+  accTitle: Sääennusteen tuotanto
+  A["Havainnot"]:::cool --> B
+  A --> C
+  subgraph NWP["3. Numeerinen sääennustus (NWP)"]
+    B["Data-assimilaatio"] --> C["Malliajo"]
+  end
+  C --> D{"Laatu kunnossa?"}
+  D -->|"Kyllä"| E["Ennuste julki"]:::warm
+  D -.->|"Ei"| F["Hälytys päivystäjälle"]:::alert`,
 )}`;
 /** Phase 19: an HTML artifact on the design kit: `.card`, `.stat`, `.callout` and a Plot chart. */
 export const KIT_REPLY = `Tässä yhteenveto:\n\n${block(
@@ -398,6 +462,56 @@ export const test = base.extend<{
   },
   baseURL: async ({ app }, use) => use(app.url),
 });
+
+/**
+ * Holds the server's frames from the delta after which the streamed text contains `text`, until
+ * `release()`: the reply stays mid-stream, the run active (phase 20). Once only; call it before
+ * the page opens the WebSocket.
+ */
+export const holdAt = async (page: Page, text: string) => {
+  let streamed = '';
+  let armed = true;
+  let holding = false;
+  const held: (string | Buffer)[] = [];
+  let deliver: (m: string | Buffer) => void = () => {};
+  let seen: () => void = () => {};
+  const reached = new Promise<void>((r) => (seen = r));
+  await page.routeWebSocket(/\/ws$/, (ws) => {
+    const server = ws.connectToServer();
+    deliver = (m) => ws.send(m);
+    server.onMessage((m) => {
+      if (holding) return void held.push(m);
+      ws.send(m);
+      const msg = typeof m === 'string' ? JSON.parse(m) : undefined;
+      if (armed && msg?.type === 'message.delta' && (streamed += msg.text).includes(text)) {
+        armed = false;
+        holding = true;
+        seen();
+      }
+    });
+  });
+  return {
+    reached,
+    release: () => {
+      holding = false;
+      for (const m of held.splice(0)) deliver(m);
+    },
+  };
+};
+
+/** Phase 20: an HTML page written in a reply, with a title the writing card can show. */
+export const PAGE_REPLY = `Tässä sivu:\n\n${block(
+  'html',
+  `<!doctype html>
+<html lang="fi">
+<head><title>Kuukausiraportti</title></head>
+<body>
+<h1>Raportti lokakuulta</h1>
+<p>Kulut pysyivät budjetissa.</p>
+<p>Tulot kasvoivat hieman.</p>
+</body>
+</html>`,
+)}\n\nSivu on valmis.`;
 
 /** Opens Tiedostot from the sidebar (the drawer under 768 px). */
 export const openFiles = async (page: Page) => {

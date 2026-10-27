@@ -259,7 +259,7 @@ async function bootProxied(turns: Parameters<typeof bootChat>[0]) {
   return { ...(await bootChat(turns, { PSEUDO_URL: proxy.url })), sc, proxy };
 }
 
-test('chat.fork holds the source: a model change during its restore step fails', async () => {
+test('chat.fork holds the source: a data-policy change during its restore step fails', async () => {
   const { c, chat, proxy } = await bootProxied([
     { text: 'Eka.' },
     { text: 'Toka.' },
@@ -272,7 +272,8 @@ test('chat.fork holds the source: a model change during its restore step fails',
   c.inbox.length = 0;
   c.send({ type: 'chat.fork', chatId: chat.id, messageId: user2?.id ?? '', text: 'Muokattu' });
   await sleep(200);
-  c.send({ type: 'chat.setModel', chatId: chat.id, modelId: 'auto', reasoning: 'auto' });
+  // A model change may run now (phase-20 decision 15); a policy change still waits.
+  c.send({ type: 'chat.setDataPolicy', chatId: chat.id, dataPolicy: 'zdr' });
   await expect(c.next('chat.updated')).rejects.toThrow('server error: failed');
   proxy.delayMs = 0;
   await c.next('chat.created');

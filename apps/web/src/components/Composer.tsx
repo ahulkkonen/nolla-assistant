@@ -1,6 +1,7 @@
 import type { AttachmentRef } from '@pa/protocol';
 import {
   ArrowUp,
+  Clock,
   Eye,
   FileText,
   FolderOpen,
@@ -18,6 +19,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -29,7 +31,7 @@ import { uploadFiles } from '../api.ts';
 import { touch } from '../media.ts';
 import { useShortcuts } from '../shortcuts.ts';
 import { useStore } from '../store.ts';
-import { send, sendUserMessage } from '../ws.ts';
+import { sendUserMessage, stopTurn } from '../ws.ts';
 import { AgentPicker } from './AgentPicker.tsx';
 import { DropOverlay, useFileDrop } from './FileDrop.tsx';
 import { IconButton } from './IconButton.tsx';
@@ -38,6 +40,15 @@ import { ModelPicker } from './ModelPicker.tsx';
 import { WorkPicker } from './TreeDialogs.tsx';
 
 type Chip = { key: string; name: string; preview?: string; ref?: AttachmentRef };
+
+/** Files already uploaded (work-dir copies, a queued message given back) as chips. */
+const refChips = (refs: AttachmentRef[]): Chip[] =>
+  refs.map((ref) => ({
+    key: crypto.randomUUID(),
+    name: ref.name,
+    ref,
+    ...(ref.kind === 'image' ? { preview: `/api/files/${encodeURIComponent(ref.id)}` } : {}),
+  }));
 
 /** The textarea grows to min(40dvh, 320px), then scrolls (brief 7.5). */
 const maxHeight = () => Math.min(window.innerHeight * 0.4, 320);
@@ -52,14 +63,19 @@ export function Composer() {
   const [mic, setMic] = useState<MicState>('idle');
   const [elapsed, setElapsed] = useState(0);
   const [workPicker, setWorkPicker] = useState(false);
-  const queued = useStore((s) => s.attachQueue);
-  // Phase 12: a message held by the vault, and the text of one that was dropped.
+  const attachQueue = useStore((s) => s.attachQueue);
+  // Phase 20: the message that waits for the reply to end.
+  const queued = useStore((s) => (chatId ? s.queued[chatId] : undefined));
+  // Phase 12: a message held by the vault, and the text of one that was dropped or given back.
   const held = useStore((s) => (chatId ? s.held[chatId] !== undefined : false));
   const draft = useStore((s) => s.draft);
   useEffect(() => {
     if (!draft || draft.chatId !== chatId) return;
-    setText((t) => t || draft.text);
+    // Ahead of what is typed since: nothing is lost.
+    setText((t) => [draft.text, t].filter(Boolean).join('\n\n'));
+    if (draft.attachments?.length) setChips((c) => [...refChips(draft.attachments ?? []), ...c]);
     useStore.setState({ draft: null });
+    requestAnimationFrame(resize);
   }, [draft, chatId]);
   const area = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
@@ -127,18 +143,10 @@ export function Composer() {
 
   // Work-dir copies ("Liitä keskusteluun", "Valitse työkansiosta") arrive already uploaded.
   useEffect(() => {
-    if (!queued.length) return;
-    setChips((c) => [
-      ...c,
-      ...queued.map((ref) => ({
-        key: crypto.randomUUID(),
-        name: ref.name,
-        ref,
-        ...(ref.kind === 'image' ? { preview: `/api/files/${encodeURIComponent(ref.id)}` } : {}),
-      })),
-    ]);
+    if (!attachQueue.length) return;
+    setChips((c) => [...c, ...refChips(attachQueue)]);
     useStore.setState({ attachQueue: [] });
-  }, [queued]);
+  }, [attachQueue]);
 
   const remove = (keys: string[]) =>
     setChips((c) =>
@@ -149,14 +157,16 @@ export function Composer() {
       }),
     );
 
+  /** Sends, or while a reply runs adds to the chat's queue (phase-20 decision 17). */
   const submit = async () => {
-    if (!canSend || running) return;
+    if (!canSend) return;
     const body = text.trim();
     const refs = chips.flatMap((c) => (c.ref ? [c.ref] : []));
     setText('');
     remove(chips.map((c) => c.key));
     requestAnimationFrame(resize);
-    await sendUserMessage(body, refs);
+    if (running && chatId) useStore.getState().enqueue(chatId, body, refs);
+    else await sendUserMessage(body, refs);
   };
 
   useShortcuts(
@@ -164,7 +174,7 @@ export function Composer() {
     () => area.current?.focus(),
   );
 
-  /** Enter sends on keyboards; touch keyboards get a newline (brief 7.8). ↑ edits the last. */
+  /** Enter sends (or queues) on keyboards; touch keyboards get a newline (brief 7.8). ↑ edits the last. */
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.nativeEvent.isComposing) return;
     if (e.key === 'Enter' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && !touch) {
@@ -238,6 +248,27 @@ export function Composer() {
         </div>
       )}
       <div className="mx-auto w-full max-w-(--thread-max) rounded-2xl border border-border bg-card shadow-sm transition-colors duration-100 focus-within:border-input">
+        {queued && chatId && (
+          <div className="flex items-center gap-2 px-3 pt-3 text-meta">
+            <Clock size={16} className="shrink-0 text-muted-foreground" />
+            <span className="shrink-0 text-muted-foreground">Jonossa</span>
+            <span className="min-w-0 flex-1 truncate">{queued.text}</span>
+            {queued.attachments.length > 0 && (
+              <span className="shrink-0 text-muted-foreground">
+                +{queued.attachments.length}{' '}
+                {queued.attachments.length === 1 ? 'liite' : 'liitettä'}
+              </span>
+            )}
+            <Button
+              variant="ghost"
+              aria-label="Peru jonotus"
+              onClick={() => useStore.getState().unqueue(chatId)}
+              className="h-6 shrink-0 px-2 text-meta text-muted-foreground hover:text-foreground"
+            >
+              Peru
+            </Button>
+          </div>
+        )}
         {chips.length > 0 && (
           <ul className="flex flex-wrap gap-2 px-3 pt-3" aria-label="Liitteet">
             {chips.map((c) => (
@@ -347,13 +378,32 @@ export function Composer() {
           <ModelPicker />
           <div className="ml-auto flex shrink-0 items-center gap-2">
             <MicButton onText={insertTranscript} onState={setMic} meter={meter} />
-            {running && chatId ? (
+            {running && chatId && canSend ? (
+              // Text during a reply: it can wait in the queue (phase-20 decision 17).
+              <>
+                <IconButton
+                  label="Pysäytä"
+                  className="rounded-full border-border text-foreground"
+                  onClick={() => stopTurn(chatId)}
+                >
+                  <Square size={14} fill="currentColor" />
+                </IconButton>
+                <IconButton
+                  label="Lisää jonoon"
+                  variant="primary"
+                  className="rounded-full border-0"
+                  onClick={() => void submit()}
+                >
+                  <ArrowUp size={16} />
+                </IconButton>
+              </>
+            ) : running && chatId ? (
               <IconButton
                 label="Pysäytä"
                 variant="primary"
                 // No transparent border: the fill is the whole 36 / 44 px target.
                 className="rounded-full border-0"
-                onClick={() => send({ type: 'user.stop', chatId })}
+                onClick={() => stopTurn(chatId)}
               >
                 <Square size={14} fill="currentColor" />
               </IconButton>

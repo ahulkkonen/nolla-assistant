@@ -209,7 +209,7 @@ type State = {
 
   /** Artifacts per chat (from `chat.state` and `artifact.upsert`, plus code blocks opened locally). */
   artifacts: Record<string, Artifact[]>;
-  /** The artifact shown in the panel; the panel is closed when null. */
+  /** The artifact of the panel (`shownArtifact`); closed when null or on another chat. */
   openArtifact: { chatId: string; id: string } | null;
   paletteOpen: boolean;
   settingsOpen: boolean;
@@ -230,8 +230,20 @@ type State = {
   vault: { entities: VaultEntity[]; pending: VaultPending[] } | null;
   /** Per chat, the user message that waits for the vault (`chat.held`): its text, given back on a drop. */
   held: Record<string, string>;
-  /** Text for the composer to take back: a held message that was dropped. Never sent again by itself. */
-  draft: { chatId: string; text: string } | null;
+  /**
+   * Text for the composer to take back: a held message that was dropped, or a queued one given
+   * back. Never sent again by itself.
+   */
+  draft: { chatId: string; text: string; attachments?: AttachmentRef[] } | null;
+  /**
+   * Phase-20 decision 17: one message per chat written while a reply runs; `ws.ts` sends it when
+   * the chat goes idle. Stop, a failed reply or a held message give it back to the composer.
+   */
+  queued: Record<string, { text: string; attachments: AttachmentRef[] }>;
+  /** Adds to the chat's queued message (a blank line between). */
+  enqueue(chatId: string, text: string, attachments: AttachmentRef[]): void;
+  /** "Peru" and "Pysäytä": the queued message back into the composer. */
+  unqueue(chatId: string): void;
   topics: TopicState['topics'];
   /** The first `topic.state` has arrived (the topics screen shows skeletons until then). */
   topicsLoaded: boolean;
@@ -304,30 +316,59 @@ export const sortChats = (chats: ChatSummary[]) =>
   );
 
 /**
+ * Phase-20 decision 13: the chat's new artifact list, and where the panel goes. New ids are the
+ * ones the old list did not hold; none on a chat's `first` list. An open panel of this chat moves
+ * to the last new artifact; a closed one opens only on a new page or component of the active chat
+ * on the chat screen (figures show inline). An open artifact that is gone closes the panel.
+ */
+function adopt(st: State, chatId: string, list: Artifact[], first = false): Partial<State> {
+  const before = st.artifacts[chatId] ?? [];
+  const added = first ? [] : list.filter((a) => !before.some((b) => b.id === a.id));
+  const artifacts = { ...st.artifacts, [chatId]: list };
+  const open = st.openArtifact?.chatId === chatId ? st.openArtifact : null;
+  const last = added.at(-1);
+  if (open && last) return { artifacts, openArtifact: { chatId, id: last.id } };
+  if (open && !list.some((a) => a.id === open.id)) return { artifacts, openArtifact: null };
+  const page = added.findLast((a) => a.kind === 'html' || a.kind === 'react');
+  if (!open && page && chatId === st.activeChatId && st.screen === 'chat')
+    return { artifacts, openArtifact: { chatId, id: page.id } };
+  return { artifacts };
+}
+
+/**
  * `chat.state` artifacts plus the ones opened locally from code blocks (`local-` ids, not known
- * to the server); the panel closes when its artifact is gone.
+ * to the server) that have no server twin yet.
  */
 function mergeArtifacts(st: State, chatId: string, server: Artifact[]): Partial<State> {
   const local = (st.artifacts[chatId] ?? []).filter(
     (a) =>
       a.id.startsWith('local-') && !server.some((x) => x.content.trimEnd() === a.content.trimEnd()),
   );
-  const next = [...server, ...local];
-  const open = st.openArtifact;
-  if (open?.chatId !== chatId || next.some((a) => a.id === open.id))
-    return { artifacts: { ...st.artifacts, [chatId]: next } };
-  // The open local copy now has a server twin: follow it, else close the panel.
-  const was = st.artifacts[chatId]?.find((a) => a.id === open.id);
-  const twin = was && server.find((x) => x.content.trimEnd() === was.content.trimEnd());
-  return {
-    artifacts: { ...st.artifacts, [chatId]: next },
-    openArtifact: twin ? { chatId, id: twin.id } : null,
-  };
+  return adopt(st, chatId, [...server, ...local], !st.artifacts[chatId]);
 }
+
+/** The artifact the panel shows: only on the chat screen, only of the chat on it (decision 12). */
+export const shownArtifact = (s: State) =>
+  s.screen === 'chat' && s.openArtifact?.chatId === s.activeChatId ? s.openArtifact : null;
 
 const omit = <T>(rec: Record<string, T>, key: string) => {
   const { [key]: _, ...rest } = rec;
   return rest;
+};
+
+/** The chat's queued message as the composer's draft (after a draft it already has). */
+const giveBack = (st: State, chatId: string): Partial<State> => {
+  const q = st.queued[chatId];
+  if (!q) return {};
+  const before = st.draft?.chatId === chatId ? st.draft : undefined;
+  return {
+    queued: omit(st.queued, chatId),
+    draft: {
+      chatId,
+      text: [before?.text, q.text].filter(Boolean).join('\n\n'),
+      attachments: [...(before?.attachments ?? []), ...q.attachments],
+    },
+  };
 };
 
 /** Finnish text for a server error code, else the server's own text. */
@@ -423,6 +464,7 @@ export const useStore = create<State>()((set, get) => {
     vault: null,
     held: {},
     draft: null,
+    queued: {},
     topics: [],
     topicsLoaded: false,
     proposals: [],
@@ -603,14 +645,11 @@ export const useStore = create<State>()((set, get) => {
           return set((st) => {
             const list = st.artifacts[msg.chatId] ?? [];
             const i = list.findIndex((a) => a.id === msg.artifact.id);
-            const next = i < 0 ? [...list, msg.artifact] : list.with(i, msg.artifact);
-            return {
-              artifacts: { ...st.artifacts, [msg.chatId]: next },
-              // A new artifact in the open chat opens the panel on it.
-              ...(i < 0 && msg.chatId === st.activeChatId && st.screen === 'chat'
-                ? { openArtifact: { chatId: msg.chatId, id: msg.artifact.id } }
-                : {}),
-            };
+            return adopt(
+              st,
+              msg.chatId,
+              i < 0 ? [...list, msg.artifact] : list.with(i, msg.artifact),
+            );
           });
         case 'chat.deleted':
           return set((st) => ({
@@ -623,6 +662,7 @@ export const useStore = create<State>()((set, get) => {
             failed: omit(st.failed, msg.chatId),
             zdrRefused: omit(st.zdrRefused, msg.chatId),
             policies: omit(st.policies, msg.chatId),
+            queued: omit(st.queued, msg.chatId),
             approvals: st.approvals.filter((a) => a.chatId !== msg.chatId),
             ...(st.activeChatId === msg.chatId
               ? { activeChatId: null, screen: 'chat', scrollTo: null }
@@ -796,7 +836,10 @@ export const useStore = create<State>()((set, get) => {
         // Phase 12: a message that names an issued surrogate waits for an answer in the vault.
         case 'chat.held': {
           const last = get().messages[msg.chatId]?.findLast((m) => m.role === 'user');
-          set((st) => ({ held: { ...st.held, [msg.chatId]: last?.text ?? '' } }));
+          set((st) => ({
+            held: { ...st.held, [msg.chatId]: last?.text ?? '' },
+            ...giveBack(st, msg.chatId),
+          }));
           // A question, not a success: a warning toast that stays long enough to use its action.
           toast.warning(ERROR_TEXT.pseudo_collision ?? msg.type, {
             duration: 8000,
@@ -827,6 +870,9 @@ export const useStore = create<State>()((set, get) => {
           return set({ models });
         }
         case 'error': {
+          // A failed reply: its queued message goes back to the composer, not into a new turn.
+          if (msg.chatId && ['llm_failed', 'prompt_failed', 'zdr_unavailable'].includes(msg.code))
+            set((st) => giveBack(st, msg.chatId as string));
           const st0 = get();
           // Phase 17: a failed claim action shows on its card (or restores the chip it hid).
           const action = st0.claimAction;
@@ -940,6 +986,20 @@ export const useStore = create<State>()((set, get) => {
           openArtifact: { chatId, id: known?.id ?? a.id },
         };
       }),
+    enqueue: (chatId, text, attachments) =>
+      set((st) => {
+        const was = st.queued[chatId];
+        return {
+          queued: {
+            ...st.queued,
+            [chatId]: {
+              text: [was?.text, text].filter(Boolean).join('\n\n'),
+              attachments: [...(was?.attachments ?? []), ...attachments],
+            },
+          },
+        };
+      }),
+    unqueue: (chatId) => set((st) => giveBack(st, chatId)),
     decideApproval: (requestId, approved) =>
       set((st) => ({
         approvals: approved
@@ -1001,4 +1061,14 @@ export const useStore = create<State>()((set, get) => {
       set({ showThinking });
     },
   };
+});
+
+// Phase-20 decision 12: the panel belongs to its chat; another chat (or a new one) closes it.
+useStore.subscribe((s, prev) => {
+  if (
+    s.activeChatId !== prev.activeChatId &&
+    s.openArtifact &&
+    s.openArtifact.chatId !== s.activeChatId
+  )
+    useStore.setState({ openArtifact: null });
 });

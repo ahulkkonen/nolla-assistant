@@ -13,16 +13,20 @@ import {
   editAgent,
   expect,
   HTML_REPLY,
+  holdAt,
   KIT_REPLY,
   MERMAID_REPLY,
   memoryTurns,
   mockMic,
   mockPush,
+  NWP_REPLY,
   newAutomation,
   openFiles,
   openSettings,
   openVault,
+  PAGE_REPLY,
   png,
+  SERIES_REPLY,
   search,
   searchTurns,
   secondDevice,
@@ -304,12 +308,58 @@ for (const scheme of ['light', 'dark'] as const) {
           app.llm.push({ text });
           await app.login(page);
           await sendMessage(page, 'Piirrä');
+          // Phase 20: a chart or a diagram shows inline and opens in the panel on request.
+          if (screen !== 'kit-artifact')
+            await page.getByRole('figure').getByRole('button', { name: 'Avaa paneelissa' }).click();
           const frame = page.getByRole('complementary', { name: 'Artefaktit' }).locator('iframe');
           await expect(frame.contentFrame().locator(ready).first()).toBeVisible({
             timeout: 15_000,
           });
           await shot(page, screen, vp.width, scheme);
         });
+
+      // Phase 20: figures in the thread, the writing card and the queue.
+      for (const [screen, text, ready] of [
+        ['chart-inline', SERIES_REPLY, '#vis svg .mark-line path'],
+        ['mermaid-inline', NWP_REPLY, '.diagram svg'],
+      ] as const)
+        test(screen, async ({ app, page }) => {
+          app.llm.push({ text });
+          await app.login(page);
+          await sendMessage(page, 'Piirrä');
+          await expect(
+            page.getByRole('figure').locator('iframe').contentFrame().locator(ready).first(),
+          ).toBeVisible({ timeout: 15_000 });
+          await expect(page.getByRole('button', { name: 'Pysäytä' })).toHaveCount(0);
+          await shot(page, screen, vp.width, scheme);
+        });
+
+      test('artifact-streaming', async ({ app, page }) => {
+        app.llm.push({ text: PAGE_REPLY });
+        const hold = await holdAt(page, '<h1>Raportti');
+        await app.login(page);
+        await sendMessage(page, 'Tee raportti');
+        await hold.reached;
+        await expect(page.locator('[aria-busy="true"]')).toContainText('kirjoittaa…');
+        await shot(page, 'artifact-streaming', vp.width, scheme);
+        hold.release();
+      });
+
+      test('composer-queue', async ({ app, page }) => {
+        app.llm.push({ text: LONG });
+        const hold = await holdAt(page, 'Kappale 6');
+        await app.login(page);
+        await sendMessage(page, 'Kirjoita pitkä vastaus');
+        await hold.reached;
+        await page.getByLabel('Viesti').fill('Tee lopuksi lyhyt yhteenveto listana.');
+        await page.getByRole('button', { name: 'Lisää jonoon' }).click();
+        await expect(page.getByText('Jonossa', { exact: true })).toBeVisible();
+        // Text again: the two run buttons, Pysäytä and Lisää jonoon.
+        await page.getByLabel('Viesti').fill('Lisää myös lähteet.');
+        await expect(page.getByRole('button', { name: 'Lisää jonoon' })).toBeVisible();
+        await shot(page, 'composer-queue', vp.width, scheme);
+        hold.release();
+      });
 
       test('palette', async ({ app, page }) => {
         await app.login(page);

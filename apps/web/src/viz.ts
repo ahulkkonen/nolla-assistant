@@ -3,6 +3,7 @@
 import interUrl from '@fontsource-variable/inter/files/inter-latin-wght-normal.woff2?url';
 import monoUrl from '@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2?url';
 import serifUrl from '@fontsource-variable/source-serif-4/files/source-serif-4-latin-wght-normal.woff2?url';
+import type { MermaidConfig } from 'mermaid';
 import { z } from 'zod';
 
 type Obj = Record<string, unknown>;
@@ -21,6 +22,10 @@ const NAMES = [
   'link',
   'info',
   'info-subtle',
+  'destructive',
+  'destructive-subtle',
+  'success',
+  'success-subtle',
   'warning-subtle',
   'warning-line',
   'chart-1',
@@ -37,25 +42,55 @@ const NAMES = [
   'font-mono',
 ] as const;
 export type Tokens = Record<(typeof NAMES)[number], string>;
+const CHART = ['chart-1', 'chart-2', 'chart-3', 'chart-4', 'chart-5', 'chart-6'] as const;
 
-/** The active theme's token values (Vega and Mermaid need literal values, not `var()`). */
-export function readTokens(): Tokens {
-  const cs = getComputedStyle(document.documentElement);
+/**
+ * The token values of `root` (Vega and Mermaid need literal values, not `var()`); by default the
+ * active theme's.
+ */
+export function readTokens(root: Element = document.documentElement): Tokens {
+  const cs = (root.ownerDocument.defaultView ?? window).getComputedStyle(root);
   return Object.fromEntries(NAMES.map((n) => [n, cs.getPropertyValue(`--${n}`).trim()])) as Tokens;
+}
+
+let light: Promise<Tokens> | undefined;
+/**
+ * The light theme's tokens for every export (phase-20 decision 7): a hidden same-origin frame
+ * with `data-theme="light"` and the app's own style sheets, so tokens.css stays the one source.
+ */
+export function lightTokens() {
+  light ??= new Promise<Tokens>((resolve, reject) => {
+    const frame = document.createElement('iframe');
+    frame.hidden = true;
+    const sheets = [...document.querySelectorAll('link[rel="stylesheet"], style')];
+    frame.srcdoc = `<!doctype html><html data-theme="light"><head>${sheets.map((n) => n.outerHTML).join('')}</head></html>`;
+    frame.onload = () => {
+      const root = frame.contentDocument?.documentElement;
+      if (root) resolve(readTokens(root));
+      else reject(new Error('teema'));
+      frame.remove();
+    };
+    document.body.append(frame);
+  });
+  // A failed read is tried again on the next export.
+  light.catch(() => {
+    light = undefined;
+  });
+  return light;
 }
 
 /** `:root { --name: value }` of the active theme, for the sandbox page (decision 4). */
 export const tokenSheet = (t: Tokens) => `:root{${NAMES.map((n) => `--${n}:${t[n]}`).join(';')}}`;
 
-/** R7: the colour roles the model may write. */
+/** R7: the colour roles the model may write; `@c1`..`@c6` are the six chart colours (phase 20). */
 export const roles = (t: Tokens): Record<string, string> => ({
   fg: t.foreground,
   muted: t['muted-foreground'],
   faint: t['chart-faint'],
   accent: t['chart-1'],
   'accent-soft': t['chart-accent-soft'],
-  c2: t['chart-2'],
   band: t['chart-band'],
+  ...Object.fromEntries(CHART.map((n, i) => [`c${i + 1}`, t[n]])),
 });
 
 /** R2: the theme config; the model never writes one. */
@@ -104,8 +139,15 @@ export function vegaConfig(t: Tokens): Obj {
     line: { strokeWidth: 2 },
     point: { filled: true },
     rule: { color: t['chart-faint'] },
+    // Phase-20 decision 23: no new hue. A quantitative colour field gets the sequential band to
+    // blue, one with `domainMid` the diverging clay to teal (both ends tell apart for red-green
+    // colour blindness); `scheme` stays dropped.
     range: {
-      category: [1, 2, 3, 4, 5, 6].map((i) => t[`chart-${i}` as keyof Tokens]),
+      category: CHART.map((n) => t[n]),
+      ramp: [t['chart-band'], t['chart-3']],
+      heatmap: [t['chart-band'], t['chart-3']],
+      diverging: [t['chart-1'], t['chart-band'], t['chart-2']],
+      ordinal: { scheme: [t['chart-band'], t['chart-3']] },
     },
   };
 }
@@ -139,7 +181,95 @@ export const mermaidTheme = (t: Tokens, dark: boolean, fontSize = 14) => ({
   signalTextColor: t.foreground,
   labelBoxBkgColor: t.secondary,
   labelTextColor: t.foreground,
+  // The subgraph title's halo has the same colour (phase-20 decision 26).
+  clusterBkg: t['chart-band'],
 });
+
+/**
+ * Mermaid's own `secure` keys plus the theme's (phase-20 decision 21): a model's `%%{init}%%`
+ * directive or front matter `config:` cannot replace our theme, fonts or layout.
+ */
+const SECURE = [
+  'secure',
+  'securityLevel',
+  'startOnLoad',
+  'maxTextSize',
+  'suppressErrorRendering',
+  'maxEdges',
+  'theme',
+  'themeVariables',
+  'themeCSS',
+  'fontFamily',
+  'altFontFamily',
+  'fontSize',
+  'look',
+  'darkMode',
+  'htmlLabels',
+  'flowchart',
+];
+
+/**
+ * A node class the model writes as `A:::warm` (phase-20 decision 24): Mermaid adds the class also
+ * without a `classDef`. Text stays --foreground.
+ */
+const nodeClass = (name: string, fill: string, stroke: string) =>
+  ['rect', 'polygon', 'path', 'circle', 'ellipse']
+    .map((shape) => `.node.${name} ${shape}`)
+    .join(', ') + ` { fill: ${fill} !important; stroke: ${stroke} !important; }`;
+
+/**
+ * The diagram rules of the view and the export alike (decision 21), as literal token values;
+ * Mermaid scopes them to the diagram's id, so they win over its own id rules. Edges are
+ * --muted-foreground at 1.5 px whatever the scale; nodes have radius 8. A subgraph title gets a
+ * halo of the cluster fill (decision 26); the node classes (decision 24). No `:is()`: Mermaid's
+ * scoper splits at every comma.
+ */
+const diagramCss = (t: Tokens) => {
+  const line = t['muted-foreground'];
+  return `.flowchart-link, .transition, .relation, [class^="messageLine"], .edge-pattern-solid, .edge-pattern-dashed { stroke: ${line} !important; stroke-width: 1.5px !important; vector-effect: non-scaling-stroke; }
+marker path { fill: ${line} !important; stroke: ${line} !important; }
+.node rect, .statediagram-state rect, .actor rect { rx: 8px; ry: 8px; }
+.cluster-label text { paint-order: stroke; stroke: ${t['chart-band']}; stroke-width: 4px; stroke-linejoin: round; }
+${nodeClass('warm', t['chart-accent-soft'], t['chart-1'])}
+${nodeClass('cool', t['info-subtle'], t['chart-3'])}
+${nodeClass('alert', t['destructive-subtle'], t.destructive)}
+${nodeClass('ok', t['success-subtle'], t.success)}
+${nodeClass('muted', t.muted, t['chart-faint'])}
+.node.muted text { fill: ${t['muted-foreground']} !important; }`;
+};
+
+/** Mermaid's options (decisions 9, 21, 26 of phase 20, decision 9 of phase 19). */
+export const mermaidConfig = (t: Tokens, dark: boolean, fontSize: number): MermaidConfig => {
+  const font = t['font-sans'];
+  return {
+    startOnLoad: false,
+    securityLevel: 'strict',
+    secure: SECURE,
+    theme: 'base',
+    // Flat shapes: Mermaid 12's `neo` look adds tinted drop shadows.
+    look: 'classic',
+    themeVariables: mermaidTheme(t, dark, fontSize),
+    themeCSS: diagramCss(t),
+    // Mermaid measures text with these: the faces the CSS paints (T4).
+    fontFamily: font,
+    sequence: { actorFontFamily: font, messageFontFamily: font, noteFontFamily: font },
+    // SVG labels keep the export a plain SVG that a canvas can draw. Every diagram type that
+    // has the option; the per-type keys are deprecated but still read.
+    htmlLabels: false,
+    flowchart: {
+      htmlLabels: false,
+      // Less label padding: a decision diamond grows with its label's box (phase-19 UI review).
+      padding: 8,
+      nodeSpacing: 40,
+      rankSpacing: 40,
+      // The title leaves the border; the space to the first node stays.
+      subGraphTitleMargin: { top: 4, bottom: 0 },
+    },
+    class: { htmlLabels: false },
+    // A parse error throws (the caller shows it) instead of drawing Mermaid's error SVG.
+    suppressErrorRendering: true,
+  };
+};
 
 const text = z.union([z.string(), z.array(z.string())]);
 /** R6: the top-level shape; the rest is Vega-Lite's own business. */
@@ -169,6 +299,8 @@ function visit(node: unknown, fn: (o: Obj) => void) {
 }
 
 const DROP = new Set(['config', 'background', 'padding', 'autosize', 'font', 'scheme', '$schema']);
+/** R2 (phase-20 decision 20): every family key goes, `font` and `labelFont`, `titleFont`, …. */
+const dropped = (k: string) => DROP.has(k) || k.endsWith('Font');
 const COLOR_KEYS = new Set(['color', 'fill', 'stroke']);
 const LITERAL = /^(#[0-9a-f]{3,8}|(rgb|hsl)a?\(.*)$/i;
 type Ctx = 'color' | 'range' | undefined;
@@ -187,7 +319,7 @@ export function clean(node: unknown, map: Record<string, string>, ctx?: Ctx): un
   if (node && typeof node === 'object') {
     const out: Obj = {};
     for (const [k, v] of Object.entries(node)) {
-      if (DROP.has(k)) continue;
+      if (dropped(k)) continue;
       const child: Ctx = COLOR_KEYS.has(k)
         ? 'color'
         : k === 'range'

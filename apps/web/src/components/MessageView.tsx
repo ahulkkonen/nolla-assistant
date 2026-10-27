@@ -1,23 +1,23 @@
 import {
   type Annotation,
+  type Artifact,
+  type ArtifactKind,
   type AttachmentRef,
   artifactKind,
   artifactTitle,
   type CallUsage,
-  mermaidMeta,
 } from '@pa/protocol';
 import {
   AppWindow,
-  ChartColumn,
   Check,
   Copy,
   Eye,
   EyeOff,
   FileText,
+  LoaderCircle,
   PanelRight,
   Pencil,
   RotateCcw,
-  Workflow,
 } from 'lucide-react';
 import { Popover } from 'radix-ui';
 import {
@@ -41,7 +41,15 @@ import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import { touch } from '../media.ts';
 import { type SubagentChild, type ToolView, useStore } from '../store.ts';
-import { mdBlocks, settleTail, withDefinitions } from '../thread.ts';
+import {
+  endsInFence,
+  mdBlocks,
+  nodeText,
+  settleTail,
+  type TextNode,
+  withDefinitions,
+} from '../thread.ts';
+import { InlineFigure } from './Figure.tsx';
 import { IconButton, Tip } from './IconButton.tsx';
 import { MessageMeta, metaText } from './MessageMeta.tsx';
 import { SubagentRow } from './SubagentRow.tsx';
@@ -72,18 +80,10 @@ const hash = (s: string) => {
 };
 
 /**
- * The thread's code block (brief 7.5): --muted, radius 12, a 36 px header (language, actions),
- * body 16, scrolls sideways. `onOpen` adds "Avaa artefaktina"; the file preview has none.
+ * The thread's code block (brief 7.5): --muted, radius 12, a 36 px header (language, Kopioi),
+ * body 16, scrolls sideways. Any code, however long, stays code (phase-20 decision 11).
  */
-export function CodeBlock({
-  lang,
-  children,
-  onOpen,
-}: {
-  lang: string;
-  children: ReactNode;
-  onOpen?: (content: string) => void;
-}) {
+export function CodeBlock({ lang, children }: { lang: string; children: ReactNode }) {
   const ref = useRef<HTMLPreElement>(null);
   return (
     <div className="overflow-hidden rounded-lg bg-muted">
@@ -91,15 +91,6 @@ export function CodeBlock({
         <span className="min-w-0 flex-1 truncate font-sans text-micro text-muted-foreground">
           {lang || 'koodi'}
         </span>
-        {onOpen && (
-          <IconButton
-            label="Avaa artefaktina"
-            className="size-7"
-            onClick={() => onOpen(ref.current?.textContent ?? '')}
-          >
-            <PanelRight size={16} />
-          </IconButton>
-        )}
         <CopyButton text={() => ref.current?.textContent ?? ''} className="size-7" />
       </div>
       <pre
@@ -117,16 +108,38 @@ export function CodeBlock({
   );
 }
 
-function Pre(props: ComponentProps<'pre'>) {
+/** The artifact card's frame (brief 7.5); a phone's 44 px button makes it 60 px high. */
+const CARD = 'flex min-h-12 items-center gap-3 rounded-lg py-2 pr-2 pl-4 font-sans max-md:min-h-15';
+
+/**
+ * Phase-20 decision 8: a whitelisted block that is still being written shows its progress, never
+ * its source: the kind, the title once it is known, and the line count.
+ */
+function WritingCard({ kind, source }: { kind: ArtifactKind; source: string }) {
+  const lines = source ? source.replace(/\n$/, '').split('\n').length : 0;
+  const title = artifactTitle(kind, source);
+  return (
+    <div aria-busy="true" className={cn(CARD, 'bg-muted')}>
+      <LoaderCircle
+        size={16}
+        className="shrink-0 animate-spin text-muted-foreground motion-reduce:animate-none"
+      />
+      {title && <span className="min-w-0 flex-1 truncate text-ui">{title}</span>}
+      <span className={cn('truncate text-meta text-muted-foreground', !title && 'flex-1')}>
+        {CARD_NAME[kind]} · kirjoittaa… {lines} {lines === 1 ? 'rivi' : 'riviä'}
+      </span>
+    </div>
+  );
+}
+
+function Pre({ node, ...props }: ComponentProps<'pre'> & ExtraProps) {
   const child = props.children;
   const className = isValidElement<{ className?: string; children?: unknown }>(child)
     ? (child.props.className ?? '')
     : '';
   const lang = /language-(\S+)/.exec(className)?.[1]?.toLowerCase() ?? '';
-  const source =
-    isValidElement<{ children?: unknown }>(child) && typeof child.props.children === 'string'
-      ? child.props.children
-      : '';
+  // Decision 10: every text below the node; the caret and annotation spans are elements.
+  const source = nodeText(node as TextNode | undefined);
   const art = artifactKind(lang);
   // The panel shows this block now (same source): the card says so.
   const shown = useStore((s) => {
@@ -134,54 +147,39 @@ function Pre(props: ComponentProps<'pre'>) {
     const a = o && s.artifacts[o.chatId]?.find((x) => x.id === o.id);
     return !!art && !!a && a.content.trimEnd() === source.trimEnd();
   });
-  const open = (shown: string) => {
-    const st = useStore.getState();
-    const content = shown || source;
-    if (!art || !st.activeChatId) return;
-    st.showArtifact(st.activeChatId, {
-      id: `local-${hash(content)}`,
-      kind: art,
-      title:
-        (art === 'mermaid' && mermaidMeta(content).title) ||
-        (lang ? `${lang} (viestistä)` : 'Koodi (viestistä)'),
-      ...(lang ? { language: lang } : {}),
-      content,
-    });
+  if (!art) return <CodeBlock lang={lang}>{props.children}</CodeBlock>;
+  if ((props as Record<string, unknown>)['data-streaming'])
+    return <WritingCard kind={art} source={source} />;
+  const a: Artifact = {
+    id: `local-${hash(source)}`,
+    kind: art,
+    title: artifactTitle(art, source) ?? CARD_NAME[art],
+    ...(lang ? { language: lang } : {}),
+    content: source,
   };
-  // An artifact (a page, a component, a chart, a diagram) is a compact card in the thread; its
-  // code is in the panel's Koodi tab.
-  if (art)
-    return (
-      <div
-        className={cn(
-          'flex min-h-12 items-center gap-3 rounded-lg py-2 pr-2 pl-4 font-sans',
-          shown ? 'bg-accent' : 'bg-muted',
-        )}
-      >
-        {art === 'mermaid' ? (
-          <Workflow size={16} className="shrink-0 text-muted-foreground" />
-        ) : art === 'vega-lite' ? (
-          <ChartColumn size={16} className="shrink-0 text-muted-foreground" />
-        ) : (
-          <AppWindow size={16} className="shrink-0 text-muted-foreground" />
-        )}
-        <span className="min-w-0 flex-1 truncate font-sans text-ui">
-          {artifactTitle(art, source) ?? CARD_NAME[art]}
+  const open = () => {
+    const st = useStore.getState();
+    if (st.activeChatId) st.showArtifact(st.activeChatId, a);
+  };
+  // A chart or a diagram shows inline (phase-20 decision 3).
+  if (art === 'vega-lite' || art === 'mermaid') return <InlineFigure a={a} onOpen={open} />;
+  // A page or a component is a compact card in the thread; its code is in the panel's Koodi tab.
+  return (
+    <div className={cn(CARD, shown ? 'bg-accent' : 'bg-muted')}>
+      <AppWindow size={16} className="shrink-0 text-muted-foreground" />
+      <span className="min-w-0 flex-1 truncate font-sans text-ui">{a.title}</span>
+      {shown ? (
+        <span className="flex h-8 items-center px-2.5 text-meta text-muted-foreground max-md:h-11">
+          Avattu
         </span>
-        {shown ? (
-          <span className="flex h-8 items-center px-2.5 text-meta text-muted-foreground max-md:h-11">
-            Avattu
-          </span>
-        ) : (
-          <Button variant="outline" size="sm" onClick={() => open('')}>
-            <PanelRight size={16} />
-            Avaa paneelissa
-          </Button>
-        )}
-      </div>
-    );
-  // phase-20 W5: CodeBlock's `onOpen` ("Avaa artefaktina") has no caller now; remove it.
-  return <CodeBlock lang={lang}>{props.children}</CodeBlock>;
+      ) : (
+        <Button variant="outline" size="sm" onClick={open}>
+          <PanelRight size={16} />
+          Avaa paneelissa
+        </Button>
+      )}
+    </div>
+  );
 }
 
 /** A card's name when its source has no title. */
@@ -321,6 +319,19 @@ const rehypeCaret = () => (tree: HNode) => {
   });
 };
 
+/** Rehype plugin: the live tail ends inside a fence; its block is the last `pre` (decision 8). */
+const rehypeOpenFence = () => (tree: HNode) => {
+  let last: HNode | undefined;
+  const walk = (n: HNode) => {
+    for (const c of n.children ?? []) {
+      if (c.tagName === 'pre') last = c;
+      walk(c);
+    }
+  };
+  walk(tree);
+  if (last) last.properties = { ...last.properties, dataStreaming: 'true' };
+};
+
 const components = { pre: Pre, span: Span };
 const plugins = [remarkGfm];
 const NONE: Annotation[] = [];
@@ -355,12 +366,6 @@ export const MarkdownText = memo(function MarkdownText({
       .filter(([real]) => real)
       .sort((x, y) => y[0].length - x[0].length),
   );
-  // The base plugins depend on the annotations only: finished blocks keep the same array.
-  const rehype = useMemo(() => {
-    const pairs = JSON.parse(key) as [string, string][];
-    return pairs.length ? [rehypeAnnotate(pairs)] : [];
-  }, [key]);
-  const rehypeLast = useMemo(() => (live ? [...rehype, rehypeCaret] : rehype), [rehype, live]);
   // Blocks render as siblings in one `.md`, so the DOM is the same as one parse would give.
   const { blocks, definitions } = mdBlocks(text, !live);
   if (live) {
@@ -369,6 +374,16 @@ export const MarkdownText = memo(function MarkdownText({
     if (tail) blocks[blocks.length - 1] = tail;
     else blocks.pop();
   }
+  const open = live && endsInFence(blocks.at(-1) ?? '');
+  // The base plugins depend on the annotations only: finished blocks keep the same array.
+  const rehype = useMemo(() => {
+    const pairs = JSON.parse(key) as [string, string][];
+    return pairs.length ? [rehypeAnnotate(pairs)] : [];
+  }, [key]);
+  const rehypeLast = useMemo(
+    () => (live ? [...rehype, ...(open ? [rehypeOpenFence] : []), rehypeCaret] : rehype),
+    [rehype, live, open],
+  );
   return (
     <div className="md break-words">
       {blocks.map((b, i) => (

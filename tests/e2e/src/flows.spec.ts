@@ -2,6 +2,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { inflateSync } from 'node:zlib';
 import { SEARCH_DENIED } from '@pa/server/src/search-tool.ts';
 import type { Page } from '@playwright/test';
 import {
@@ -14,14 +15,17 @@ import {
   editAgent,
   expect,
   HTML_REPLY,
+  holdAt,
   MERMAID_REPLY,
   memoryTurns,
   mockMic,
   mockPush,
+  NWP_REPLY,
   newAutomation,
   openFiles,
   openSettings,
   openVault,
+  PAGE_REPLY,
   png,
   REFUSED_REPLY,
   search,
@@ -1312,6 +1316,83 @@ test('artifact panel: an html reply opens in a sandboxed iframe', async ({ app, 
   await expect(panel).toBeVisible();
 });
 
+test('streaming: an html block shows the writing card, never its source; long code stays code', async ({
+  app,
+  page,
+}) => {
+  app.llm.push({ text: PAGE_REPLY });
+  const hold = await holdAt(page, '<h1>Raportti');
+  await app.login(page);
+  await send(page, 'Tee raportti');
+  await hold.reached;
+  // Phase-20 decision 8: the kind, the title and the line count; no source, no button.
+  const card = thread(page).locator('[aria-busy="true"]');
+  await expect(card).toContainText('Kuukausiraportti');
+  await expect(card).toContainText(/HTML-sivu · kirjoittaa… \d+ riviä/);
+  await expect(card.getByRole('button')).toHaveCount(0);
+  await expect(thread(page).locator('pre')).toHaveCount(0);
+  await expect(thread(page).getByText('<h1>', { exact: false })).toHaveCount(0);
+  hold.release();
+  await expect(thread(page).getByText('Sivu on valmis.')).toBeVisible();
+  await expect(card).toHaveCount(0);
+
+  // Decision 11: a 40-line block of code is code, with Kopioi, and no artifact.
+  const py = Array.from({ length: 40 }, (_, i) => `print(${i + 1})`).join('\n');
+  app.llm.push({ text: `Koodi:\n\n\`\`\`python\n${py}\n\`\`\`` });
+  await page.getByRole('button', { name: 'Sulje artefaktit' }).click();
+  await send(page, 'Kirjoita koodi');
+  const code = thread(page).getByRole('region', { name: 'Koodi: python' });
+  await expect(code).toContainText('print(40)');
+  await expect(code.locator('xpath=..').getByRole('button', { name: 'Kopioi' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Avaa artefaktina' })).toHaveCount(0);
+  await expect(page.getByRole('complementary', { name: 'Artefaktit' })).toHaveCount(0);
+});
+
+test('queue: a message waits for the reply, Peru gives it back, then it goes after the reply; the model chip opens during a run', async ({
+  app,
+  page,
+}) => {
+  const long = Array.from({ length: 20 }, (_, i) => `Kappale ${i + 1}: vastaus jatkuu.`).join(
+    '\n\n',
+  );
+  app.llm.push({ text: long });
+  app.llm.push({ ...titleTurn('Jono', 'Käyttäjä kokeili jonoa.'), match: 'Aiheet:' });
+  app.llm.push({ text: 'Jonon viestiin vastattu.', match: 'Toinen kysymys' });
+  const hold = await holdAt(page, 'Kappale 3');
+  await app.login(page);
+  await send(page, 'Kirjoita pitkä vastaus');
+  await hold.reached;
+  // Phase-20 decision 15: the chip opens during a run; the change is for the next reply.
+  const chip = page.getByRole('button', { name: /^Malli: / });
+  await chip.hover();
+  await expect(page.getByRole('tooltip')).toContainText('Muutos koskee seuraavaa vastausta');
+  await chip.click();
+  await expect(page.getByRole('menuitemradio', { name: /^Auto/ })).toBeVisible();
+  await chip.click();
+  await expect(page.getByRole('menu')).toHaveCount(0);
+
+  // Decision 17: text during a reply shows Pysäytä and Lisää jonoon; Enter queues.
+  await page.getByLabel('Viesti').fill('Toinen kysymys');
+  await expect(page.getByRole('button', { name: 'Pysäytä' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Lisää jonoon' })).toBeVisible();
+  await page.getByLabel('Viesti').press('Enter');
+  const row = page.getByText('Jonossa', { exact: true }).locator('..');
+  await expect(row).toContainText('Toinen kysymys');
+  await expect(page.getByLabel('Viesti')).toHaveValue('');
+  await row.getByRole('button', { name: 'Peru jonotus' }).click();
+  await expect(page.getByText('Jonossa', { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel('Viesti')).toHaveValue('Toinen kysymys');
+
+  // Queued again: it goes when the reply has ended, as a new turn.
+  await page.getByRole('button', { name: 'Lisää jonoon' }).click();
+  await expect(row).toContainText('Toinen kysymys');
+  await expect(thread(page).getByText('Toinen kysymys', { exact: true })).toHaveCount(0);
+  hold.release();
+  await expect(thread(page).getByText('Toinen kysymys', { exact: true })).toBeVisible();
+  await expect(page.locator('.md').last()).toHaveText('Jonon viestiin vastattu.');
+  await expect(page.getByText('Jonossa', { exact: true })).toHaveCount(0);
+});
+
 test('artifact CSP is the first element even when the HTML starts with a script', async ({
   app,
   page,
@@ -1393,6 +1474,8 @@ test('vega-lite: the chart renders in the sandbox with the lifted title (phase 1
   app.llm.push({ text: CHART_REPLY });
   await app.login(page);
   await send(page, 'Piirrä kulutus');
+  // Phase 20: a chart shows inline; "Avaa paneelissa" opens it in the panel.
+  await thread(page).getByRole('button', { name: 'Avaa paneelissa' }).click();
   const panel = page.getByRole('complementary', { name: 'Artefaktit' });
   // The server titles the artifact from the spec's title.text.
   await expect(
@@ -1434,6 +1517,8 @@ test('export: chart and diagram download as SVG with inlined fonts, and as PNG',
   app.llm.push({ text: CHART_REPLY });
   await app.login(page);
   await send(page, 'Piirrä kulutus');
+  // Phase 20: the panel opens from the inline figure; then the next figure follows into it.
+  await thread(page).getByRole('button', { name: 'Avaa paneelissa' }).click();
   const frame = page.getByRole('complementary', { name: 'Artefaktit' }).locator('iframe');
   await expect(frame.contentFrame().locator('#vis svg')).toBeVisible();
   const svg = await save('Lataa SVG');
@@ -1460,6 +1545,128 @@ test('export: chart and diagram download as SVG with inlined fonts, and as PNG',
   expect(diagram.body.toString('utf8')).toContain('Lomasuunnitelma</text>');
 });
 
+/** RGBA of a PNG's first pixel: no filter changes it (every filter adds zeros there). */
+const firstPixel = (png: Buffer) => {
+  const data: Buffer[] = [];
+  for (let at = 8; at < png.length; at += png.readUInt32BE(at) + 12)
+    if (png.toString('ascii', at + 4, at + 8) === 'IDAT')
+      data.push(png.subarray(at + 8, at + 8 + png.readUInt32BE(at)));
+  return [...inflateSync(Buffer.concat(data)).subarray(1, 5)];
+};
+
+test('inline figures: a chart and a diagram in the thread, keyboard actions, a light PNG in dark mode', async ({
+  app,
+  page,
+}) => {
+  await page.emulateMedia({ colorScheme: 'dark' });
+  app.llm.push({ text: CHART_REPLY });
+  app.llm.push({ text: MERMAID_REPLY });
+  await app.login(page);
+  await send(page, 'Piirrä kulutus');
+  // Phase-20 decision 3: the figure has the chart's title as its name and its own sandbox page.
+  const chart = thread(page).getByRole('figure', { name: 'Sähkönkulutus kuukausittain 2025' });
+  await expect(
+    chart.locator('iframe').contentFrame().locator('#vis svg .mark-rect path').first(),
+  ).toBeVisible();
+  await expect(chart.getByText('Kuvaaja', { exact: true })).toBeVisible();
+  // Keyboard: Tab from the user message reaches both actions, in order.
+  await thread(page).getByText('Piirrä kulutus', { exact: true }).click();
+  const open = chart.getByRole('button', { name: 'Avaa paneelissa' });
+  for (let i = 0; i < 20 && !(await open.evaluate((el) => el === document.activeElement)); i++)
+    await page.keyboard.press('Tab');
+  await expect(open).toBeFocused();
+  await page.keyboard.press('Tab');
+  const png = chart.getByRole('button', { name: 'Lataa PNG' });
+  await expect(png).toBeFocused();
+  // Decision 7: the export is light whatever the theme.
+  const [file] = await Promise.all([page.waitForEvent('download'), page.keyboard.press('Enter')]);
+  expect(file.suggestedFilename()).toBe('Sähkönkulutus-kuukausittain-2025.png');
+  expect(firstPixel(readFileSync(await file.path()))).toEqual([255, 255, 255, 255]);
+
+  await send(page, 'Piirrä suunnitelma');
+  const diagram = thread(page).getByRole('figure', { name: 'Lomasuunnitelma' });
+  await expect(diagram.locator('iframe').contentFrame().locator('.diagram svg')).toBeVisible();
+  await expect(diagram.getByText('Kaavio', { exact: true })).toBeVisible();
+  const [file2] = await Promise.all([
+    page.waitForEvent('download'),
+    diagram.getByRole('button', { name: 'Lataa PNG' }).click(),
+  ]);
+  expect(firstPixel(readFileSync(await file2.path()))).toEqual([255, 255, 255, 255]);
+  // "Avaa paneelissa" opens the figure in the panel.
+  await diagram.getByRole('button', { name: 'Avaa paneelissa' }).click();
+  const panel = page.getByRole('complementary', { name: 'Artefaktit' });
+  await expect(panel.getByRole('heading', { name: 'Lomasuunnitelma' })).toBeVisible();
+});
+
+test('inline figure: a lazy frame off screen does not fall back after 30 s', async ({
+  app,
+  page,
+}) => {
+  test.setTimeout(120_000);
+  const prose = Array.from(
+    { length: 200 },
+    (_, i) => `Kappale ${i + 1}: kaavion jälkeen tulee pitkä selitys, joka vie tilaa.`,
+  ).join('\n\n');
+  app.llm.push({ text: `${CHART_REPLY}\n\n${prose}` });
+  await app.login(page);
+  await send(page, 'Piirrä ja selitä');
+  await expect(thread(page).getByText('Kappale 200:')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Pysäytä' })).toHaveCount(0);
+  // The thread follows to the end: the figure is far above, and its lazy frame waits.
+  await page.waitForTimeout(31_000);
+  const chart = thread(page).getByRole('figure', { name: 'Sähkönkulutus kuukausittain 2025' });
+  await chart.scrollIntoViewIfNeeded();
+  await expect(
+    chart.locator('iframe').contentFrame().locator('#vis svg .mark-rect path').first(),
+  ).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Kaavion data' })).toHaveCount(0);
+});
+
+test('diagram: a model directive keeps our font; subgraph titles paint over the edges; classes colour nodes', async ({
+  app,
+  page,
+}) => {
+  // T1: the model's %%{init}%% asks for another font; the secure keys keep ours.
+  app.llm.push({
+    text: NWP_REPLY.replace(
+      'flowchart TD',
+      '%%{init: {"themeVariables": {"fontFamily": "Courier New"}}}%%\nflowchart TD',
+    ),
+  });
+  await app.login(page);
+  await send(page, 'Piirrä ennuste');
+  const doc = thread(page)
+    .getByRole('figure', { name: 'Sääennusteen tuotanto' })
+    .locator('iframe')
+    .contentFrame();
+  const label = doc.locator('.diagram svg .node text').first();
+  await expect(label).toBeVisible();
+  const font = await label.evaluate((el) => getComputedStyle(el).fontFamily);
+  expect(font).toMatch(/^"?Inter Variable/);
+  expect(await doc.locator('.diagram svg style').first().textContent()).not.toContain('Courier');
+  // Decision 26: the cluster label is the last child of its root, after the edges.
+  const order = await doc
+    .locator('.diagram svg g.root')
+    .first()
+    .evaluate((root) =>
+      Array.from(root.children, (c) => c.getAttribute('class')?.split(' ')[0] ?? c.tagName),
+    );
+  expect(order.indexOf('cluster-label')).toBeGreaterThan(order.indexOf('edgePaths'));
+  // Decision 24: `:::alert` without a classDef fills with --destructive-subtle.
+  const want = await page.evaluate(() => {
+    const probe = document.body.appendChild(document.createElement('i'));
+    probe.style.color = 'var(--destructive-subtle)';
+    const c = getComputedStyle(probe).color;
+    probe.remove();
+    return c;
+  });
+  const fill = await doc
+    .locator('.diagram svg .node.alert :is(rect, path, polygon)')
+    .first()
+    .evaluate((el) => getComputedStyle(el).fill);
+  expect(fill).toBe(want);
+});
+
 test('vega-lite: a spec with a url falls back to its data as a table (R6)', async ({
   app,
   page,
@@ -1467,7 +1674,10 @@ test('vega-lite: a spec with a url falls back to its data as a table (R6)', asyn
   app.llm.push({ text: REFUSED_REPLY });
   await app.login(page);
   await send(page, 'Piirrä haettu data');
-  const data = page.getByRole('region', { name: 'Kaavion data' });
+  // Phase 20: the fallback shows in the thread's figure.
+  const data = thread(page)
+    .getByRole('figure', { name: 'Haettu data' })
+    .getByRole('region', { name: 'Kaavion data' });
   await expect(data.getByText('Kaavio epäonnistui')).toBeVisible();
   await expect(data.getByText(/url/)).toBeVisible();
   await expect(data.getByRole('cell', { name: 'Kahvi' })).toBeVisible();

@@ -270,25 +270,48 @@ const cells = (row: string) =>
     .split('|');
 
 /**
- * The streamed last block, settled so that it never shows what the final text will not render;
- * when unsure it holds back instead of closing. An unclosed inline code span or link URL is
- * closed; a table's delimiter row gets its missing cells; a half-typed fence, a lone list marker
- * or a setext underline (`-`, `--`, `=`) after text waits for the next delta. An unclosed fence
- * already renders as a code block (CommonMark).
+ * The fence `lines` end inside ('' when every fence closed), the line that opened it, and the line
+ * after the last closed fence.
  */
-export function settleTail(block: string): string {
-  const lines = block.split('\n');
+function scanFences(lines: string[]) {
   let fence = '';
+  let opened = -1;
   let after = 0;
   lines.forEach((line, i) => {
     if (fence) {
       if (closes(line, fence)) [fence, after] = ['', i + 1];
     } else {
       const open = FENCE.exec(line);
-      if (open) fence = open[1]!;
+      if (open) [fence, opened] = [open[1]!, i];
     }
   });
-  const last = lines.at(-1)!;
+  return { fence, opened, after };
+}
+
+/** A streamed block that ends inside an open code fence (phase-20 decision 8). */
+export const endsInFence = (block: string) => !!scanFences(block.split('\n')).fence;
+
+/** All text below a hast node: a code block's source, with caret and annotation spans in it. */
+export type TextNode = { type: string; value?: string; children?: TextNode[] };
+export const nodeText = (n: TextNode | undefined): string =>
+  !n ? '' : n.type === 'text' ? (n.value ?? '') : (n.children ?? []).map(nodeText).join('');
+
+/**
+ * The streamed last block, settled so that it never shows what the final text will not render;
+ * when unsure it holds back instead of closing. An unclosed inline code span or link URL is
+ * closed; a table's delimiter row gets its missing cells; a half-typed fence, a fence opener
+ * whose info string may still grow (phase-20 decision 9), a lone list marker or a setext
+ * underline (`-`, `--`, `=`) after text waits for the next delta. An unclosed fence already
+ * renders as a code block (CommonMark).
+ */
+export function settleTail(block: string): string {
+  const lines = block.split('\n');
+  let { fence, opened, after } = scanFences(lines);
+  if (fence && opened === lines.length - 1) {
+    lines.pop();
+    fence = '';
+  }
+  const last = lines.at(-1) ?? '';
   const prev = lines.at(-2)?.trim();
   if (
     /^\s*(`{1,2}|~{1,2})$/.test(last) ||

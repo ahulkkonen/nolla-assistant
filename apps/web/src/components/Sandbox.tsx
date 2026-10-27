@@ -1,5 +1,5 @@
 import { SANDBOX_CSP } from '@pa/protocol';
-import { type RefObject, useEffect, useRef } from 'react';
+import { type RefObject, useEffect, useLayoutEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
 
 /**
@@ -41,22 +41,40 @@ export function postWhenReady(win: () => Window | null | undefined, html: string
 
 /**
  * A file's page: white, radius 12 and a border. A `themed` artifact page sits on the panel's own
- * --card surface without a frame (phase-19 decision 6).
+ * --card surface without a frame (phase-19 decision 6). With `onSize` the frame is an inline
+ * figure (phase-20 decision 5): lazy, and told its document's height by the page (`viz-size`),
+ * from its own window only, clamped to 80–2400 px.
  */
 export function SandboxFrame({
   title,
   html,
   themed,
   ref,
+  onLoad,
+  onSize,
 }: {
   title: string;
   html: string;
   themed?: boolean;
   ref?: RefObject<HTMLIFrameElement | null>;
+  /** The frame's load event: a chart's load timer starts there (phase-20 decision 6). */
+  onLoad?: () => void;
+  onSize?: (height: number) => void;
 }) {
   const own = useRef<HTMLIFrameElement>(null);
   const frame = ref ?? own;
-  useEffect(() => postWhenReady(() => frame.current?.contentWindow, html), [html, frame]);
+  // A layout effect: nothing runs between the frame's insert and the listener (decision 14).
+  useLayoutEffect(() => postWhenReady(() => frame.current?.contentWindow, html), [html, frame]);
+  useEffect(() => {
+    if (!onSize) return;
+    const onMessage = (e: MessageEvent<{ type?: string; height?: unknown }>) => {
+      const h = e.data?.height;
+      if (e.source !== frame.current?.contentWindow || e.data?.type !== 'viz-size') return;
+      if (typeof h === 'number' && Number.isFinite(h)) onSize(Math.min(2400, Math.max(80, h)));
+    };
+    addEventListener('message', onMessage);
+    return () => removeEventListener('message', onMessage);
+  }, [onSize, frame]);
   return (
     <iframe
       // A new document needs a fresh page: the sandbox page writes one document only.
@@ -65,6 +83,8 @@ export function SandboxFrame({
       title={title}
       sandbox="allow-scripts"
       src={SANDBOX_URL}
+      {...(onSize ? { loading: 'lazy' as const } : {})}
+      onLoad={onLoad}
       className={cn('block size-full', themed ? 'bg-card' : 'rounded-lg border bg-white')}
     />
   );

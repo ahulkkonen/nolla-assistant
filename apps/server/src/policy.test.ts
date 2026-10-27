@@ -170,6 +170,45 @@ test('proofs 3, 4, 6: open needs a recorded refusal, ends with the model; titles
   await refuseOpen(chat.id);
 });
 
+test('phase 20: a model change during a run applies to the next turn; the data policy waits', {
+  timeout: 30_000,
+}, async () => {
+  const OPUS = 'anthropic/claude-opus-5.5';
+  const { llm, srv, c, row, create } = await start([
+    // The thinking keeps the run going while the changes arrive.
+    { text: 'Vanha malli vastaa.', reasoning: 'Mietin vielä hetken.', thinkMs: 1500 },
+    TITLE,
+    { text: 'Uusi malli vastaa.' },
+  ]);
+  const chat = await create({ modelId: ARGON, reasoning: 'auto' });
+  c.send({ type: 'user.message', chatId: chat.id, text: 'Moi' });
+  expect((await c.next('agent.status')).state).toBe('running');
+  c.send({ type: 'chat.setModel', chatId: chat.id, modelId: OPUS, reasoning: 'high' });
+  const changed = await c.next('chat.updated');
+  expect(changed.chat.modelPolicy).toEqual({ modelId: OPUS, reasoning: 'high', dataPolicy: 'zdr' });
+  expect(row(chat.id)).toMatchObject({ modelId: OPUS, reasoning: 'high', dataPolicy: 'zdr' });
+  expect(srv.registry.running(chat.id)).toBe(true);
+  // Consent stays an idle action.
+  c.send({ type: 'chat.setDataPolicy', chatId: chat.id, dataPolicy: 'zdr' });
+  await expect(c.next('chat.updated')).rejects.toThrow('server error: failed');
+  expect((await c.next('message.final')).message.text).toBe('Vanha malli vastaa.');
+  await c.idle();
+  expect(llm.requests[0]?.body.model).toBe(`zdr/${ARGON}`);
+
+  // The next turn runs on a session rebuilt with the new model.
+  c.send({ type: 'user.message', chatId: chat.id, text: 'Jatketaan' });
+  await vi.waitFor(
+    () =>
+      expect(
+        c.inbox.some((m) => m.type === 'message.final' && m.message.text === 'Uusi malli vastaa.'),
+      ).toBe(true),
+    { timeout: 10_000, interval: 50 },
+  );
+  const turns = llm.requests.filter((r) => r.body.model !== 'zdr/task-small');
+  expect(turns[1]?.body).toMatchObject({ model: `zdr/${OPUS}`, reasoning: { effort: 'high' } });
+  expect((await srv.registry.get(chat.id)).model?.id).toBe(`zdr/${OPUS}`);
+});
+
 test('user.retry runs the refused turn again in place: the model and chat.state see it once', {
   timeout: 30_000,
 }, async () => {
