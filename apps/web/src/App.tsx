@@ -43,11 +43,21 @@ const SCREEN_TITLE = {
   devices: DEVICES_TITLE,
 };
 
-/** The desktop header's title: shown once the chat has a title; a tooltip when it is cut. */
+/**
+ * The desktop header's title: the chat's title, or its first user line until it has one (an
+ * empty new chat shows none); a tooltip when it is cut.
+ */
 function ChatTitle({ title }: { title: string }) {
   const titled = useStore((s) => {
     const id = s.activeChatId;
-    return !!id && !!(s.chats.find((c) => c.id === id)?.title ?? s.summaries[id]?.title);
+    return (
+      !!id &&
+      !!(
+        s.chats.find((c) => c.id === id)?.title ??
+        s.summaries[id]?.title ??
+        s.messages[id]?.length
+      )
+    );
   });
   const [cut, setCut] = useState(false);
   if (!titled) return <h1 className="sr-only">{title}</h1>;

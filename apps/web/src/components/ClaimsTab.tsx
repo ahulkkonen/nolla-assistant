@@ -58,7 +58,8 @@ function ChatLink({ chatId }: { chatId: string | null }) {
   return (
     <Button
       variant="link"
-      className="min-w-0 justify-start text-meta max-md:min-h-11"
+      // 44 px phone target from ::after, so the quote keeps its 8 px gap.
+      className="relative min-w-0 justify-start text-meta after:absolute after:inset-x-0 after:-inset-y-3"
       aria-label={`Avaa keskustelu: ${title ?? UNTITLED}`}
       onClick={() => openChat(chatId)}
     >
@@ -76,7 +77,7 @@ function Evidence({ claim }: { claim: Claim }) {
         <li
           // Quotes have no id; their order is the server's (newest first).
           key={i}
-          className="flex flex-col gap-0.5 border-l-2 border-border pl-3"
+          className="flex flex-col items-start gap-2 border-l-2 border-border pl-3"
         >
           <q className="font-serif text-meta text-pretty text-muted-foreground italic">{e.quote}</q>
           <span className="flex flex-wrap items-center gap-x-2">
@@ -310,13 +311,7 @@ function ClaimCard({ claim }: { claim: Claim }) {
           {failText(error)}
         </p>
       )}
-      <div
-        className={cn(
-          'flex flex-wrap justify-end gap-2 max-md:grid max-md:grid-cols-2',
-          // Active, idle: three actions in one phone row.
-          !proposed && mode === 'idle' && 'max-md:grid-cols-3',
-        )}
-      >
+      <div className="flex flex-wrap justify-end gap-2 max-md:grid max-md:grid-cols-2">
         {mode === 'idle' ? (
           <>
             {/* Outline: on a phone's 2 × 2 grid no cell looks empty. */}
@@ -328,6 +323,8 @@ function ClaimCard({ claim }: { claim: Claim }) {
               disabled={busy}
               onClick={() => setMode('expiry')}
               aria-label={named('Voimassa asti')}
+              // Active on a phone: "Hylkää | Muokkaa", then this one across the card.
+              className={cn(!proposed && 'max-md:order-last max-md:col-span-2')}
             >
               Voimassa asti
             </Button>
@@ -492,7 +489,8 @@ export function ClaimsTab() {
         </Section>
       )}
       {superseded.length > 0 && (
-        <section aria-labelledby="claims-superseded" className="flex flex-col gap-4">
+        // The disclosure button's own padding stands in for most of the 16 px gap.
+        <section aria-labelledby="claims-superseded" className="flex flex-col gap-1">
           <h2 id="claims-superseded" className="text-heading">
             <Button
               variant="ghost"
@@ -515,7 +513,7 @@ export function ClaimsTab() {
           {history && (
             <ul id="claims-superseded-list" className="flex flex-col divide-y">
               {superseded.map((c) => (
-                <li key={c.id} className="flex flex-col gap-0.5 py-3 first:pt-0">
+                <li key={c.id} className="flex flex-col gap-0.5 py-3 first:pt-0 last:pb-0">
                   <span className="text-body text-pretty text-muted-foreground">{c.text}</span>
                   <span className="text-meta text-muted-foreground tabular-nums">
                     {KIND_LABEL[c.kind]}

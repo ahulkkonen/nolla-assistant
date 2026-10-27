@@ -248,6 +248,34 @@ export function liftTitle(spec: Obj): Lifted {
   return out;
 }
 
+/**
+ * The y unit of a single view (`encoding.y` of the spec or its first layer that has one) moves to
+ * a chart title anchored at the left edge of the whole chart, so it starts on the tick-label
+ * column, as in Plot; the axis keeps no title. A concat or facet keeps its axis titles.
+ */
+function liftYUnit(spec: Obj, t: Tokens) {
+  for (const view of [spec, ...((Array.isArray(spec.layer) ? spec.layer : []) as Obj[])]) {
+    const y = (view.encoding as Obj | undefined)?.y as Obj | undefined;
+    if (!y || typeof y !== 'object') continue;
+    if (y.axis === null) return;
+    const axis = (y.axis ?? {}) as Obj;
+    const unit = axis.title !== undefined ? axis.title : y.title !== undefined ? y.title : y.field;
+    if (unit === null || unit === undefined || unit === '') return;
+    y.axis = { ...axis, title: null };
+    spec.title = {
+      text: Array.isArray(unit) ? unit.join(' ') : String(unit),
+      anchor: 'start',
+      frame: 'bounds',
+      font: t['font-sans'],
+      fontSize: 12,
+      fontWeight: 500,
+      color: t['muted-foreground'],
+      offset: 8,
+    };
+    return;
+  }
+}
+
 export type Chart = { spec: Obj; lifted: Lifted; rows: Row[] };
 export type Refused = { error: string; rows: Row[] };
 
@@ -291,6 +319,7 @@ export function prepareChart(source: string, t: Tokens): Chart | Refused {
   const spec = clean(raw, roles(t)) as Obj;
   clampSizes(spec);
   const lifted = liftTitle(spec);
+  if ('mark' in spec || 'layer' in spec) liftYUnit(spec, t);
   // R6: always Vega-Lite; a raw Vega spec (its own $schema) cannot pass the guard as one.
   spec.$schema = SCHEMA;
   if ('mark' in spec || 'layer' in spec) spec.width = 'container';

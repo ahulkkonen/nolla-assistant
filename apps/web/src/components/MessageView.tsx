@@ -129,6 +129,12 @@ function Pre(props: ComponentProps<'pre'>) {
       : '';
   const art: (typeof ARTIFACT_KIND)[keyof typeof ARTIFACT_KIND] | undefined =
     ARTIFACT_KIND[lang as keyof typeof ARTIFACT_KIND];
+  // The panel shows this block now (same source): the card says so.
+  const shown = useStore((s) => {
+    const o = s.openArtifact;
+    const a = o && s.artifacts[o.chatId]?.find((x) => x.id === o.id);
+    return !!art && !!a && a.content.trimEnd() === source.trimEnd();
+  });
   const kind = art ?? (source.split('\n').length > 30 ? 'code' : undefined);
   const open = (shown: string) => {
     const st = useStore.getState();
@@ -148,7 +154,12 @@ function Pre(props: ComponentProps<'pre'>) {
   // code is in the panel's Koodi tab.
   if (art)
     return (
-      <div className="flex min-h-12 items-center gap-3 rounded-lg bg-muted py-2 pr-2 pl-4 font-sans">
+      <div
+        className={cn(
+          'flex min-h-12 items-center gap-3 rounded-lg py-2 pr-2 pl-4 font-sans',
+          shown ? 'bg-accent' : 'bg-muted',
+        )}
+      >
         {art === 'mermaid' ? (
           <Workflow size={16} className="shrink-0 text-muted-foreground" />
         ) : art === 'vega-lite' ? (
@@ -159,10 +170,16 @@ function Pre(props: ComponentProps<'pre'>) {
         <span className="min-w-0 flex-1 truncate font-sans text-ui">
           {figureTitle(art, source) ?? CARD_NAME[art]}
         </span>
-        <Button variant="outline" size="sm" onClick={() => open('')}>
-          <PanelRight size={16} />
-          Avaa paneelissa
-        </Button>
+        {shown ? (
+          <span className="flex h-8 items-center px-2.5 text-meta text-muted-foreground max-md:h-11">
+            Avattu
+          </span>
+        ) : (
+          <Button variant="outline" size="sm" onClick={() => open('')}>
+            <PanelRight size={16} />
+            Avaa paneelissa
+          </Button>
+        )}
       </div>
     );
   return (

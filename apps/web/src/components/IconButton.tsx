@@ -11,12 +11,13 @@ type TipProps = {
   align?: 'start' | 'center' | 'end';
   /** The text screen readers get instead of `label` (a label with layout elements). */
   ariaLabel?: string;
+  className?: string;
   /** Controlled: `false` keeps it shut (e.g. while recording), `true` shows a hint. */
   open?: boolean;
 };
 
 /** Kit tooltip around one trigger element; none on touch screens (brief 7.5). */
-export function Tip({ label, children, side, align, ariaLabel, open }: TipProps) {
+export function Tip({ label, children, side, align, ariaLabel, className, open }: TipProps) {
   if (touch && open === undefined) return children;
   return (
     <Tooltip {...(open === undefined ? {} : { open })}>
@@ -27,6 +28,7 @@ export function Tip({ label, children, side, align, ariaLabel, open }: TipProps)
         {...(side ? { side } : {})}
         {...(align ? { align } : {})}
         {...(ariaLabel ? { 'aria-label': ariaLabel } : {})}
+        {...(className ? { className } : {})}
       >
         {label}
       </TooltipContent>

@@ -25,13 +25,16 @@ h2 {
   text-wrap: balance;
   margin: 0 0 8px;
 }
-h1 {
-  font-size: 26px;
-  line-height: 32px;
-}
+/* A page title and a chart's title share one size (the chart page uses h2). */
+h1,
 h2 {
   font-size: 21.6px;
   line-height: 28px;
+}
+/* The line under a title is its subtitle. */
+h1 + p,
+h2 + p {
+  color: var(--muted-foreground);
 }
 h3 {
   font-size: 18px;
@@ -180,10 +183,6 @@ th {
   }
 }
 /* The chart page of a ```vega-lite artifact (R1). */
-.chart h2 + p,
-.diagram h2 + p {
-  color: var(--muted-foreground);
-}
 .chart strong {
   color: var(--card-foreground);
 }
@@ -193,13 +192,12 @@ th {
 #vis {
   width: 100%;
 }
-/* A ```mermaid artifact: on the page's left edge, never wider than the page. Mermaid's own <style> uses id
+/* A ```mermaid artifact: centred, never wider than the page. Mermaid's own <style> uses id
    selectors, hence !important. Edges: --muted-foreground at 1.5 px whatever the scale; nodes:
    radius 8 and an --input border (the fill and border colours come from the theme variables). */
 .diagram svg {
   display: block;
-  /* Left, on the title's and the caption's edge. */
-  margin-inline: 0;
+  margin-inline: auto;
   height: auto;
 }
 .diagram

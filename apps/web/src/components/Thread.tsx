@@ -448,7 +448,8 @@ export function Thread() {
         <Button
           variant="outline"
           onClick={jump}
-          className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-card px-4 text-foreground shadow-sm hover:bg-accent dark:shadow-md"
+          // Above the fade; 36 px, 44 below 768; 12 px over the composer.
+          className="absolute bottom-3 left-1/2 z-10 h-9 -translate-x-1/2 rounded-full bg-card px-4 text-foreground shadow-sm hover:bg-accent max-md:h-11 dark:shadow-md"
         >
           <ArrowDown />
           Uusimpaan

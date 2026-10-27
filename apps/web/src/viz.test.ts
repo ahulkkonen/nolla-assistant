@@ -270,3 +270,15 @@ describe('roundDecisions', () => {
     expect(roundDecisions('sequenceDiagram\nA->>B: {x}')).toBe('sequenceDiagram\nA->>B: {x}');
   });
 });
+
+describe('y unit', () => {
+  it('moves to a title on the left edge of the chart; the axis keeps none', () => {
+    const spec = JSON.stringify({
+      mark: 'bar',
+      encoding: { x: { field: 'k' }, y: { field: 'v', title: 'Kulutus (kWh)' } },
+    });
+    const { spec: out } = prepareChart(spec, T) as Chart;
+    expect(out.title).toMatchObject({ text: 'Kulutus (kWh)', anchor: 'start', frame: 'bounds' });
+    expect((out.encoding as { y: { axis: unknown } }).y.axis).toEqual({ title: null });
+  });
+});

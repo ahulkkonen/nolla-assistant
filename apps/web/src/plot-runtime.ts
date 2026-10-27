@@ -18,23 +18,36 @@ const axis = (a: Options | undefined) => ({ ...a, tickSize: 0, line: false, labe
 
 /**
  * `Plot.plot` with the kit's look (like the Vega config): the full content width, y ticks that
- * end above the largest value (`nice`) and the y unit as horizontal text above the top tick, as
- * the Vega axis. Colours and grid come from kit.css.
+ * end above the largest value (`nice`), the y unit as horizontal text above the tick labels and
+ * the tick labels starting on the page's text edge, as in Vega. Colours and grid: kit.css.
  */
 function plot(options: Options = {}) {
   const width = contentWidth();
-  return ObservablePlot.plot({
-    ...options,
-    // 0 before layout (a hidden frame): Plot's own minimum.
-    width: width > 0 ? width : 320,
-    marginLeft: Math.max(Number(options.marginLeft) || 0, 56),
-    // The Vega charts' right gutter.
-    marginRight: options.marginRight ?? 15,
-    // Band gaps as Vega's `bandPaddingInner` 0.25 (Plot ignores it on other scales).
-    x: { padding: 0.25, ...axis(options.x) },
-    // The unit at the plot's left edge, above the top tick, as in Vega.
-    y: { nice: true, ...axis(options.y), labelAnchor: 'top', labelOffset: 0 },
-  } as ObservablePlot.PlotOptions);
+  const render = (marginLeft: number) =>
+    ObservablePlot.plot({
+      ...options,
+      // 0 before layout (a hidden frame): Plot's own minimum.
+      width: width > 0 ? width : 320,
+      marginLeft,
+      // The Vega charts' right gutter.
+      marginRight: options.marginRight ?? 15,
+      // Band gaps as Vega's `bandPaddingInner` 0.25 (Plot ignores it on other scales).
+      x: { padding: 0.25, ...axis(options.x) },
+      // The unit at the left edge above the top tick; labels 8 px from the plot, as Vega's.
+      y: { nice: true, ...axis(options.y), tickPadding: 8, labelAnchor: 'top' },
+    } as ObservablePlot.PlotOptions);
+  // A first render off the page: the widest y tick label sets the left margin, so the labels
+  // start on the text edge. A frame not laid out yet measures 0 and keeps 56.
+  const probe = render(56);
+  probe.style.position = 'absolute';
+  probe.style.visibility = 'hidden';
+  document.body.append(probe);
+  const labels = probe.querySelector<SVGGraphicsElement>('g[aria-label="y-axis tick label"]');
+  const w = labels ? Math.ceil(labels.getBBox().width) : 0;
+  probe.remove();
+  if (w) return render(w + 8);
+  probe.style.position = probe.style.visibility = '';
+  return probe;
 }
 
 // Bars round their end only, radius 4 (Vega `cornerRadiusEnd`). Measured: the corner names work

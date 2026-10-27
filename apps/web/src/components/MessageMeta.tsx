@@ -116,15 +116,23 @@ export function ChatCost() {
     ...(rate
       ? ([['Osumaosuus', rate.replace(/\s%$/, ''), '%']] as [string, string, string][])
       : []),
+    // The cost with its currency in the unit column.
+    [
+      'Hinta',
+      formatCost(usage.costUsd, fx, { reply: true }).replace(/\s*[€$]$/, ''),
+      fx ? '€' : '$',
+    ],
   ];
-  const note = fx ? 'Euroina EKP:n kurssilla' : 'Dollareina: euromuunnos ei ole saatavilla';
+  // Only dollars need a word: no ECB rate yet.
+  const note = fx ? undefined : 'Dollareina: euromuunnos ei ole saatavilla';
   return (
     <Tip
       // Below the header, aligned to its right edge.
       side="bottom"
       align="end"
       // Screen readers get the same rows as one text (the grid lives in the visible copy only).
-      ariaLabel={[...rows.map(([k, v, u]) => `${k} ${v} ${u}`), note].join(', ')}
+      ariaLabel={[...rows.map(([k, v, u]) => `${k} ${v} ${u}`), ...(note ? [note] : [])].join(', ')}
+      className="px-3 py-2"
       label={
         // The visible layout only; the tooltip's text for screen readers is `ariaLabel`.
         <span aria-hidden="true" className="grid grid-cols-[auto_auto_auto] gap-x-2 tabular-nums">
@@ -135,7 +143,7 @@ export function ChatCost() {
               <span>{u}</span>
             </span>
           ))}
-          <span className="col-span-3 pt-1">{note}</span>
+          {note && <span className="col-span-3 pt-2">{note}</span>}
         </span>
       }
     >
