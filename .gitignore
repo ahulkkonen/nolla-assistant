@@ -18,3 +18,4 @@ tests/pii/last-run.json
 services/pseudo-svc/.venv/
 services/pseudo-svc/data/forms/
 .claude/worktrees/
+tests/memory-eval/models/

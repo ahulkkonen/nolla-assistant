@@ -547,3 +547,34 @@ def test_old_one_word_surrogate_still_collides_after_the_upgrade(vault):
     e, old = _upgrade(vault, "s1")
     masked, spans, found = M.mask_input(vault, U, "s1", f"Hei {old}!")
     assert (masked, spans) == ("", []) and [(f["entity_id"], f["kind"]) for f in found] == [(e["id"], "PERSON")]
+
+
+def test_title_must_be_the_whole_word():
+    assert gazetteer.TITLES.match("dr") and gazetteer.TITLES.match("Naapuri")
+    assert gazetteer.TITLES.match("dreijauskurssilla") is None  # "dr" is no title prefix
+    _, spans = mask(Vault_(), "Käyn dreijauskurssilla Vantaalla joka toinen viikko.")
+    assert spans == []
+
+
+def Vault_():
+    import tempfile
+
+    from app.vault import Vault
+
+    return Vault(str(tempfile.mkdtemp()) + "/v.db", KEY)
+
+
+@needs_lexicon
+def test_two_ordinary_words_are_no_mixed_case_name(vault):
+    _, spans = mask(vault, "Ensi vuoden loppuun mennessä tavoittelen B1-tasoa.")
+    assert spans == []
+    _, spans = mask(vault, "Ensi vuoden alussa Jari pouta soittaa.")
+    assert [s["real_form"] for s in spans] == ["Jari pouta"]
+
+
+@needs_lexicon
+def test_ner_drops_unknown_words_at_a_sentence_start():
+    from app.detect.ner import plausible
+
+    assert plausible("Hulkkonen", at_start=True) and plausible("Mentorini")
+    assert not plausible("Mentorini", at_start=True)

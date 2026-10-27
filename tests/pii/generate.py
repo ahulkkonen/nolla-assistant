@@ -594,6 +594,10 @@ mixed-case,phone-typed,first-name-only :: tänään {{Sari|P|Sari||etunimi}} {{o
 mixed-case,phone-typed,first-name-only :: kuulin että {{Tuomas|P|Tuomas||etunimi}} {{unohti|!P|verbi, ei sukunimi}} avaimet
 mixed-case,phone-typed,first-name-only :: onko {{Riikka|P|Riikka||etunimi}} {{kotona|!P|adverbi, ei sukunimi}} jo
 mixed-case,phone-typed,first-name-only :: luulin että {{Ville|P|Ville||etunimi}} {{nukkuu|!P|verbi, ei sukunimi}} vielä
+# --- memory eval false positives, 2026-10-27 (c551-c553)
+no-pii,place-vs-surname :: Käyn dreijauskurssilla {{Vantaalla|!P|paikka titteliltä näyttävän sanan jälkeen}} joka toinen viikko.
+no-pii,mixed-case :: {{Ensi vuoden|!P|kaksi tavallista sanaa, ei nimi}} loppuun mennessä tavoittelen B1-tasoa.
+no-pii,sentence-initial-common-noun :: {{Mentorini|!P|lauseen alussa, ei nimi}} ehdotti, että hakisin johtamiskoulutukseen.
 """
 
 MARK = re.compile(r"\{\{(.+?)\}\}")
@@ -673,7 +677,7 @@ def text_slice(text: str, span: dict) -> str:
 def main() -> None:
     lines = [ln for ln in SRC.splitlines() if ln.strip() and not ln.startswith("#")]
     recs = [parse(i + 1, ln) for i, ln in enumerate(lines)]
-    assert len(recs) == 550, len(recs)
+    assert len(recs) == 553, len(recs)
     out = Path(__file__).with_name("corpus.jsonl")
     out.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in recs), encoding="utf-8")
     print(f"wrote {len(recs)} lines to {out}")

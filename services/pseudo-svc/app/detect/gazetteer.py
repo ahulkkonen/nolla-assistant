@@ -18,7 +18,7 @@ TITLES = re.compile(
     r"maisteri|insinööri|lääkäri|opettaja|rehtori|pastori|kirkkoherra|ministeri|presidentti|kollega|"
     r"naapuri|ystävä|kaveri|pomo|esihenkilö|esimies|asiakas|potilas|sihteeri|asianajaja|"
     r"veli|veljeni|sisko|siskoni|sisar|serkku|setä|täti|eno|isä|äiti|mummo|vaari|poika|tytär|vaimo|mies|"
-    r"puoliso|kumppani|isoäiti|isoisä|appi|anoppi|vävy|miniä|lanko|käly|tyttöystävä|poikaystävä)",
+    r"puoliso|kumppani|isoäiti|isoisä|appi|anoppi|vävy|miniä|lanko|käly|tyttöystävä|poikaystävä)$",
     re.I,
 )
 # capitalised words that start sentences and are also names (Usko, Toivo, Onni): need extra context
@@ -291,10 +291,12 @@ def _lower_surname(text: str, m) -> tuple[int, int, str, float] | None:
         or surname_shaped(w)
     if not last:
         return None
+    lexicon = _voikko() is not None or forms.omorfi() is not None
+    if lexicon and common_word(m.group(0)) and common_word(lm.group(0)):
+        return None  # Ensi vuoden, Toivo laine: two ordinary words, as in lower_names
     # ponytail: a surname that is also an ordinary word (pouta, laine, koski, mäki) still scores 0.75, above
     # PENDING_BELOW, because a leaked surname costs more than a masked word. Ceiling: "Pekka koski minua" is masked.
     # Upgrade: lower the score when Voikko reads the word as a verb in this position.
-    lexicon = _voikko() is not None or forms.omorfi() is not None
     return lm.start(), lm.end(), last, 0.9 if lexicon and not common_word(lm.group(0)) else 0.75
 
 

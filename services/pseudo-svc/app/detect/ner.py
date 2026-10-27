@@ -34,23 +34,28 @@ def engine():
 NAME_TOKEN = re.compile(r"[A-ZÅÄÖ][a-zåäöéü]+(?:-[A-ZÅÄÖ][a-zåäöéü]+)?")
 
 
-def plausible(span: str) -> bool:
-    """spaCy tags SKU-123, 'B.' and sentence-initial nouns (Koski, Juhannus) as PERSON: keep only
-    capitalised name-shaped tokens, and a single token only when it is no ordinary word or place."""
-    from .gazetteer import common_word, place
+def plausible(span: str, at_start: bool = False) -> bool:
+    """spaCy tags SKU-123, 'B.' and sentence-initial nouns (Koski, Juhannus, Mentorini) as PERSON: keep only
+    capitalised name-shaped tokens, and a single token only when it is no ordinary word or place, and at a
+    sentence start only when the lexicon knows it as a name."""
+    from .gazetteer import common_word, known_name, place
 
     toks = span.split()
     if not toks or not all(NAME_TOKEN.fullmatch(t) for t in toks):
         return False
-    return len(toks) > 1 or not (common_word(toks[0]) or place(toks[0]))
+    if len(toks) > 1:
+        return True
+    return not (common_word(toks[0]) or place(toks[0])) and (not at_start or known_name(toks[0]))
 
 
 def detect(text: str, ctx=None) -> list[Candidate]:
     if not engine():
         return []
+    from .gazetteer import _sentence_start
+
     out = []
     for r in engine().analyze(text=text, language="fi", entities=["PERSON"]):
         s = text[r.start:r.end]
-        if plausible(s):
+        if plausible(s, _sentence_start(text, r.start)):
             out.append(Candidate(r.start, r.end, "PERSON", s, "ner", float(r.score), s))
     return out

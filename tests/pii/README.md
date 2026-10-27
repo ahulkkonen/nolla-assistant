@@ -7,7 +7,7 @@ All names are synthetic combinations of common Finnish first names and surnames.
 
 | File | Purpose |
 |---|---|
-| `corpus.jsonl` | 550 labelled texts: c001–c312 from phase 3, c313–c516 from phase 12, c517–c550 from the mixed-case fix. Do not edit by hand. |
+| `corpus.jsonl` | 553 labelled texts: c001–c312 from phase 3, c313–c516 from phase 12, c517–c550 from the mixed-case fix, c551–c553 from the memory eval false positives. Do not edit by hand. |
 | `generate.py` | Hand-written source of the corpus with inline markup. Edit this file, then run it to rebuild `corpus.jsonl`. |
 | `validate.py` | Checks the corpus and prints the counts per kind and per tag. |
 | `vault-seed.json` | The 15 people that the harness registers in the vault before a run. |

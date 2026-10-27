@@ -179,6 +179,19 @@ lines and the harness enforces the plan's thresholds.
     - Not covered: a lower-case surname that Omorfi also knows as a place (`Anu rannalle`, `Mika
       salmelle`) stays unmasked after a first name. A lone lower-case surname that is also an ordinary
       word (`pouta`) stays unmasked after the upgrade too (decision 15).
+20. **Three false positives from the memory eval (2026-10-27).** The real extraction run of phase 17
+    showed `Vantaalla`, `Ensi vuoden` and `Mentorini` masked as persons. Each had its own cause:
+    - The title list was a prefix match: `TITLES.match("dreijauskurssilla")` matched `dr`, so the
+      place `Vantaalla` after it passed as a titled surname. The pattern is now anchored at the end.
+    - The mixed-case rule (decision 19) accepted `Ensi vuoden`: `Ensi` is a first name with 77 holders,
+      `vuoden` inflects like the surname `Vuoti` (428 holders). The rule now refuses a pair whose two
+      words are both ordinary words, as `lower_names` does for `toivo laine`. `Jari pouta` still
+      scores 0.75 because `Jari` is no ordinary word.
+    - spaCy tagged the sentence-initial `Mentorini` as PERSON, and the filter kept it because Voikko
+      does not know `mentori`. A single NER token at a sentence start now needs a Voikko name reading
+      (`known_name`). `Hulkkonen` at a sentence start still passes.
+    Corpus lines c551 to c553 hold the three decoys. The corpus gate stays green (PERSON recall 0.986,
+    precision 0.991).
 
 ## Data model
 
