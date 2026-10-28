@@ -59,5 +59,6 @@ pages of diagram styles and a written discussion.
 ## Status
 
 Merged to main 2026-10-28. One review pass (cavecrew): four findings fixed (markers in
-artifacts, edge ends from Mermaid's `LS-`/`LE-` classes, auto-approve list from the gate's profile,
+artifacts, edge ends from every split of Mermaid's `L_<from>_<to>_<n>` id with the path's own start point as
+the tiebreak (Mermaid 12 paths carry no `LS-`/`LE-` classes), auto-approve list from the gate's profile,
 export sanitiser on presentation attributes), rest recorded above.

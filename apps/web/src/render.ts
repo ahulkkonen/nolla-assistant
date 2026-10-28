@@ -328,6 +328,18 @@ function channel(blocked: [number, number][], from: number, to: number) {
  * that Mermaid laid out on its own (a nested root).
  * ponytail: a node beside a frame in a row where the frame has no node may touch the frame.
  */
+/** The candidate pair whose source node is nearest to the first point of Mermaid's path. */
+function nearest(pairs: (readonly [Node, Node])[], points: string | undefined) {
+  try {
+    const [at] = JSON.parse(atob(points ?? '')) as { x: number; y: number }[];
+    if (!at) return pairs[0];
+    const d = ([s]: readonly [Node, Node]) => Math.hypot(s.x - at.x, s.y1 - at.y);
+    return pairs.reduce((best, pair) => (d(pair) < d(best) ? pair : best));
+  } catch {
+    return pairs[0];
+  }
+}
+
 function columns(svg: SVGSVGElement, o: Sarake, strip: number) {
   const root = svg.querySelector<SVGGElement>(':scope > g > g.root');
   if (!root || root.querySelector(':scope > .nodes > .root')) return false;
@@ -474,11 +486,16 @@ function columns(svg: SVGSVGElement, o: Sarake, strip: number) {
   for (const l of root.querySelectorAll(':scope > .edgeLabels > .edgeLabel'))
     if (!l.textContent?.trim()) l.remove();
   for (const p of root.querySelectorAll<SVGPathElement>(':scope > .edgePaths > path')) {
-    // Mermaid classes each edge `LS-<from> LE-<to>`; the id joins them with `_`, which an id may hold.
-    const cls = [...p.classList];
-    const s = nodes.get(cls.find((c) => c.startsWith('LS-'))?.slice(3) ?? '');
-    const t = nodes.get(cls.find((c) => c.startsWith('LE-'))?.slice(3) ?? '');
-    if (!s || !t) continue;
+    // Mermaid's edge id is `L_<from>_<to>_<n>` and an id may hold `_`: every split that names two
+    // nodes is a candidate, and the start of Mermaid's own path (`data-points`) picks between them.
+    const id = /^L_(.+)_\d+$/.exec(p.dataset.id ?? '')?.[1] ?? '';
+    const pairs = [...nodes.keys()].flatMap((k) => {
+      const to = nodes.get(id.slice(k.length + 1));
+      return id.startsWith(`${k}_`) && to ? [[nodes.get(k) as Node, to] as const] : [];
+    });
+    const pair = pairs.length > 1 ? nearest(pairs, p.dataset.points) : pairs[0];
+    if (!pair) continue;
+    const [s, t] = pair;
     const label = root
       .querySelector(`:scope > .edgeLabels .label[data-id="${CSS.escape(p.dataset.id ?? '')}"]`)
       ?.closest('.edgeLabel');
