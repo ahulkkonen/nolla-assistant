@@ -648,6 +648,23 @@ export const showSidebar = async (page: Page) => {
   if (await menu.isVisible()) await menu.click();
 };
 
+/**
+ * Turns the chat switch `name` (phase 21) to `on`: its composer chip ≥ 768; on phones its row in
+ * the model sheet, which then closes.
+ */
+export const flip = async (page: Page, name: string, on: boolean) => {
+  const phone = (page.viewportSize()?.width ?? 1280) < 768;
+  if (phone) await page.getByRole('button', { name: /^Malli: / }).click();
+  const control = page.getByRole(phone ? 'switch' : 'button', { name, exact: true });
+  const state = phone ? 'aria-checked' : 'aria-pressed';
+  await expect(control).toHaveAttribute(state, String(!on));
+  await control.click();
+  await expect(control).toHaveAttribute(state, String(on));
+  if (!phone) return;
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog', { name: 'Mallin valinta' })).toHaveCount(0);
+};
+
 /** Accepts the first topic proposal. */
 export async function acceptProposal(page: Page) {
   const inbox = page.getByRole('region', { name: 'Ehdotukset' });

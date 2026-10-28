@@ -16,6 +16,7 @@ import {
   deviceRows,
   editAgent,
   expect,
+  flip,
   HTML_REPLY,
   holdAt,
   MERMAID_REPLY,
@@ -50,6 +51,11 @@ const newChat = (page: Page) =>
   page.getByRole('button', { name: 'Uusi keskustelu' }).first().click();
 /** The thread, not `main`: `main` also holds the sr-only chat title (h1). */
 const thread = (page: Page) => page.getByRole('region', { name: 'Keskustelu' });
+/** The chat's two phase-21 switches: composer chips on the desktop, the model sheet on a phone. */
+const VIEWPORTS = [
+  { width: 1280, height: 720 },
+  { width: 390, height: 844 },
+];
 
 test('login: wrong password errors, right password shows shell', async ({ app, page }) => {
   await page.goto(app.url);
@@ -458,47 +464,53 @@ test.describe('approval', () => {
   });
 });
 
-test.describe('auto-approve', () => {
-  // Phase-21 decision 7: the fake broker gives the chat a `bash` tool (in `approval.always`).
-  test.use({ broker: true });
+for (const viewport of VIEWPORTS)
+  test.describe(`auto-approve ${viewport.width}`, () => {
+    // Phase-21 decision 7: the fake broker gives the chat a `bash` tool (in `approval.always`).
+    test.use({ broker: true, viewport });
 
-  test('Hyväksy automaattisesti: bash runs without a card; off, the card is back', async ({
-    app,
-    page,
-  }) => {
-    app.llm.push({ text: 'Hei.', match: 'Moi' });
-    for (const [match, command] of [
-      ['Aja komento', 'echo valmis'],
-      ['Toinen komento', 'echo taas'],
-    ] as const) {
-      app.llm.push({ toolCalls: [{ name: 'bash', args: { command } }], match });
-      app.llm.push({ text: 'Ajettu.', match });
-    }
-    await app.login(page);
-    await send(page, 'Moi');
-    await expect(page.locator('.md').last()).toHaveText('Hei.');
-    const chip = page.getByRole('button', { name: 'Hyväksy automaattisesti' });
-    await expect(chip).toHaveAttribute('aria-pressed', 'false');
-    await chip.hover();
-    await expect(page.getByRole('tooltip')).toContainText('write, edit, bash');
-    await chip.click();
-    await expect(chip).toHaveAttribute('aria-pressed', 'true');
+    test('Hyväksy automaattisesti: bash runs without a card; off, the card is back', async ({
+      app,
+      page,
+    }) => {
+      app.llm.push({ text: 'Hei.', match: 'Moi' });
+      for (const [match, command] of [
+        ['Aja komento', 'echo valmis'],
+        ['Toinen komento', 'echo taas'],
+      ] as const) {
+        app.llm.push({ toolCalls: [{ name: 'bash', args: { command } }], match });
+        app.llm.push({ text: 'Ajettu.', match });
+      }
+      await app.login(page);
+      await send(page, 'Moi');
+      await expect(page.locator('.md').last()).toHaveText('Hei.');
+      // The tools: the chip's tooltip, the sheet row's secondary text.
+      if (viewport.width < 768) {
+        await page.getByRole('button', { name: /^Malli: / }).click();
+        await expect(
+          page.getByRole('switch', { name: 'Hyväksy automaattisesti' }),
+        ).toHaveAccessibleDescription(/write, edit, bash/);
+        await page.keyboard.press('Escape');
+      } else {
+        await page.getByRole('button', { name: 'Hyväksy automaattisesti' }).hover();
+        await expect(page.getByRole('tooltip')).toContainText('write, edit, bash');
+      }
+      await flip(page, 'Hyväksy automaattisesti', true);
 
-    await send(page, 'Aja komento');
-    await expect(page.getByRole('button', { name: /^bash valmis/ })).toBeVisible();
-    await expect(page.locator('.md').last()).toHaveText('Ajettu.');
-    await expect(page.getByRole('heading', { name: /Hyväksytäänkö työkalu/ })).toHaveCount(0);
+      await send(page, 'Aja komento');
+      await expect(page.getByRole('button', { name: /^bash valmis/ })).toBeVisible();
+      await expect(page.locator('.md').last()).toHaveText('Ajettu.');
+      await expect(page.getByRole('heading', { name: /Hyväksytäänkö työkalu/ })).toHaveCount(0);
 
-    // Off: the gate asks again.
-    await chip.click();
-    await expect(chip).toHaveAttribute('aria-pressed', 'false');
-    await send(page, 'Toinen komento');
-    const card = page.getByRole('region', { name: /Hyväksytäänkö työkalu bash/ });
-    await expect(card).toContainText('echo taas');
-    await card.getByRole('button', { name: 'Hyväksy' }).click();
-    await expect(page.getByRole('button', { name: /^bash valmis/ })).toHaveCount(2);
+      // Off: the gate asks again.
+      await flip(page, 'Hyväksy automaattisesti', false);
+      await send(page, 'Toinen komento');
+      const card = page.getByRole('region', { name: /Hyväksytäänkö työkalu bash/ });
+      await expect(card).toContainText('echo taas');
+      await card.getByRole('button', { name: 'Hyväksy' }).click();
+      await expect(page.getByRole('button', { name: /^bash valmis/ })).toHaveCount(2);
+    });
   });
-});
 
 test.describe('export', () => {
   test.use({ pseudo: 'full' });
@@ -1451,56 +1463,57 @@ test('queue: a message waits for the reply, Peru gives it back, then it goes aft
   await expect(page.getByText('Jonossa', { exact: true })).toHaveCount(0);
 });
 
-test('confidence: the toggle reaches the next turn; each sentence shows its level; copy drops the markers', async ({
-  app,
-  page,
-  context,
-}) => {
-  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
-  app.llm.push({ text: 'Ensin ilman merkintöjä.' });
-  app.llm.push({ ...titleTurn('Tampere', 'Käyttäjä kysyi Tampereesta.'), match: 'Aiheet:' });
-  app.llm.push({ text: CONFIDENCE_REPLY, match: 'Kerro Tampereesta' });
-  await app.login(page);
-  await send(page, 'Moi');
-  await expect(page.locator('.md').last()).toHaveText('Ensin ilman merkintöjä.');
-  const toggle = page.getByRole('button', { name: 'Luottamus', exact: true });
-  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
-  await toggle.click();
-  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+for (const viewport of VIEWPORTS)
+  test.describe(`confidence ${viewport.width}`, () => {
+    test.use({ viewport });
 
-  await send(page, 'Kerro Tampereesta');
-  const reply = page.locator('.md').last();
-  await expect(reply).toHaveText(CONFIDENCE_PLAIN);
-  const prompt = (text: string) =>
-    JSON.stringify(
-      app.llm.requests.find((r) => JSON.stringify(r.body.messages).includes(text))?.body
-        .messages[0],
-    );
-  expect(prompt('Moi')).not.toContain('Luottamusmerkinnät');
-  expect(prompt('Kerro Tampereesta')).toContain('Luottamusmerkinnät');
-  const spans = reply.locator('span.conf');
-  await expect(spans).toHaveCount(3);
-  await expect(spans.nth(0)).toHaveAttribute('title', 'Luottamus 9/9');
-  await expect(spans.nth(1)).toHaveAttribute('title', 'Luottamus 5/9');
-  await expect(spans.nth(2)).toHaveAttribute('title', 'Luottamus 1/9');
-  // The contrast follows N: 100 is the text colour, 0 is the muted one.
-  await expect(spans.nth(0)).toHaveAttribute('style', '--conf: 100;');
-  await expect(spans.nth(2)).toHaveAttribute('style', '--conf: 0;');
-  const color = (i: number) => spans.nth(i).evaluate((el) => getComputedStyle(el).color);
-  expect(await color(2)).not.toBe(await color(0));
+    test('confidence: the toggle reaches the next turn; each sentence shows its level; copy drops the markers', async ({
+      app,
+      page,
+      context,
+    }) => {
+      await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+      app.llm.push({ text: 'Ensin ilman merkintöjä.' });
+      app.llm.push({ ...titleTurn('Tampere', 'Käyttäjä kysyi Tampereesta.'), match: 'Aiheet:' });
+      app.llm.push({ text: CONFIDENCE_REPLY, match: 'Kerro Tampereesta' });
+      await app.login(page);
+      await send(page, 'Moi');
+      await expect(page.locator('.md').last()).toHaveText('Ensin ilman merkintöjä.');
+      await flip(page, 'Luottamus', true);
 
-  await reply.hover();
-  await page.getByRole('button', { name: 'Kopioi', exact: true }).last().click();
-  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(CONFIDENCE_PLAIN);
+      await send(page, 'Kerro Tampereesta');
+      const reply = page.locator('.md').last();
+      await expect(reply).toHaveText(CONFIDENCE_PLAIN);
+      const prompt = (text: string) =>
+        JSON.stringify(
+          app.llm.requests.find((r) => JSON.stringify(r.body.messages).includes(text))?.body
+            .messages[0],
+        );
+      expect(prompt('Moi')).not.toContain('Luottamusmerkinnät');
+      expect(prompt('Kerro Tampereesta')).toContain('Luottamusmerkinnät');
+      const spans = reply.locator('span.conf');
+      await expect(spans).toHaveCount(3);
+      await expect(spans.nth(0)).toHaveAttribute('title', 'Luottamus 9/9');
+      await expect(spans.nth(1)).toHaveAttribute('title', 'Luottamus 5/9');
+      await expect(spans.nth(2)).toHaveAttribute('title', 'Luottamus 1/9');
+      // The contrast follows N: 100 is the text colour, 0 is the muted one.
+      await expect(spans.nth(0)).toHaveAttribute('style', '--conf: 100;');
+      await expect(spans.nth(2)).toHaveAttribute('style', '--conf: 0;');
+      const color = (i: number) => spans.nth(i).evaluate((el) => getComputedStyle(el).color);
+      expect(await color(2)).not.toBe(await color(0));
 
-  // The flag comes back with `chat.state`; off goes to the server too.
-  await page.reload();
-  await page.locator('nav li > button').click({ position: { x: 16, y: 16 } });
-  await expect(page.locator('.md').last()).toHaveText(CONFIDENCE_PLAIN);
-  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
-  await toggle.click();
-  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
-});
+      await reply.hover();
+      await page.getByRole('button', { name: 'Kopioi', exact: true }).last().click();
+      expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(CONFIDENCE_PLAIN);
+
+      // The flag comes back with `chat.state`; off goes to the server too.
+      await page.reload();
+      if (viewport.width < 768) await page.getByRole('button', { name: 'Valikko' }).click();
+      await page.locator('nav li > button').click({ position: { x: 16, y: 16 } });
+      await expect(page.locator('.md').last()).toHaveText(CONFIDENCE_PLAIN);
+      await flip(page, 'Luottamus', false);
+    });
+  });
 
 test('artifact CSP is the first element even when the HTML starts with a script', async ({
   app,
