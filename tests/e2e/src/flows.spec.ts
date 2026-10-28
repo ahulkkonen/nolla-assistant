@@ -519,6 +519,19 @@ test('model policy: a favourite without ZDR is refused, allowed for the chat, th
   await chip.click();
   await page.getByRole('menuitem', { name: 'Kaikki mallit…' }).click();
   const catalog = page.getByRole('dialog', { name: 'Kaikki mallit' });
+  // Phase 21: "Uusimmat" in lab order, Anthropic's alias target and Google's newest model; Opus
+  // is neither and stays in "Kaikki mallit". The search filters every section.
+  const latest = catalog.getByRole('region', { name: 'Uusimmat' });
+  const all = catalog.getByRole('region', { name: 'Kaikki mallit' });
+  await expect(latest.getByRole('listitem')).toHaveText([/^Claude Fable 5\.1/, /^Gemini 4 Argon/]);
+  await expect(all.getByRole('listitem')).toHaveText([/^Claude Opus 5\.5/]);
+  const search = catalog.getByRole('textbox', { name: 'Hae malleja' });
+  await search.fill('argon');
+  await expect(latest.getByRole('listitem')).toHaveText([/^Gemini 4 Argon/]);
+  await expect(all).toHaveCount(0);
+  await search.fill('opus');
+  await expect(latest).toHaveCount(0);
+  await search.fill('');
   await catalog.getByRole('button', { name: 'Lisää suosikkeihin: Claude Fable 5.1' }).click();
   await expect(catalog.getByRole('heading', { name: 'Suosikit' })).toBeVisible();
   // Listed once; the star keeps the focus when its row moves to Suosikit.
@@ -526,6 +539,7 @@ test('model policy: a favourite without ZDR is refused, allowed for the chat, th
   await expect(
     catalog.getByRole('button', { name: 'Poista suosikeista: Claude Fable 5.1' }),
   ).toBeFocused();
+  await expect(latest.getByRole('listitem')).toHaveText([/^Gemini 4 Argon/]);
   await page.keyboard.press('Escape');
   await chip.click();
   await page.getByRole('menuitemradio', { name: /^Claude Fable 5\.1/ }).click();

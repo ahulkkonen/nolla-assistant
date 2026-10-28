@@ -509,6 +509,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
       .all()
       .map((f) => f.modelId),
     catalog: catalog.list().map(({ maxTokens: _, cacheRead: __, cacheWrite: ___, ...m }) => m),
+    latest: catalog.latest(),
     fetchedAt: catalog.fetchedAt(),
   });
 

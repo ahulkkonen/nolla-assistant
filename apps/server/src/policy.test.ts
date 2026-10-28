@@ -605,6 +605,11 @@ test('models.list and models.favorite answer models.state to the asking socket',
     ['anthropic/claude-opus-5.5', true],
     [FABLE, false],
   ]);
+  // Phase 21: the Anthropic alias resolves to Fable; Google has no alias, so its newest model.
+  expect(state.latest).toEqual([
+    { lab: 'anthropic', modelId: FABLE },
+    { lab: 'google', modelId: ARGON },
+  ]);
   // Only protocol fields go out.
   expect(Object.keys(state.catalog[0] ?? {}).sort()).toEqual(
     ['contextLength', 'id', 'name', 'price', 'reasoning', 'vision', 'zdr'].sort(),

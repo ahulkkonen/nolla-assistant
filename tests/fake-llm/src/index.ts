@@ -62,10 +62,12 @@ const catalogModel = (
   zdr: boolean,
   efforts: string[],
   defaultEffort: string,
+  created: number,
 ): FakeCatalogModel => ({
   id,
   name,
   zdr,
+  created,
   context_length: 1_048_576,
   pricing: { prompt: '0.000002', completion: '0.00001' },
   architecture: { input_modalities: ['text', 'image'], output_modalities: ['text'] },
@@ -78,7 +80,20 @@ const catalogModel = (
   },
 });
 
-/** The public catalog the server reads at start (phase-10 decision 8); Fable has no ZDR endpoint. */
+const fable = catalogModel(
+  'anthropic/claude-fable-5.1',
+  'Anthropic: Claude Fable 5.1',
+  false,
+  ['high', 'medium', 'low', 'none'],
+  'medium',
+  1_790_000_000,
+);
+
+/**
+ * The public catalog the server reads at start (phase-10 decision 8); Fable has no ZDR endpoint.
+ * "Uusimmat" (phase 21): the Anthropic alias points to Fable, Argon is Google's newest model, and
+ * Opus is in neither, so it stays in "Kaikki mallit".
+ */
 export const FAKE_CATALOG: FakeCatalogModel[] = [
   catalogModel(
     'google/gemini-4-argon',
@@ -86,6 +101,7 @@ export const FAKE_CATALOG: FakeCatalogModel[] = [
     true,
     ['high', 'medium', 'low'],
     'medium',
+    1_780_000_000,
   ),
   catalogModel(
     'anthropic/claude-opus-5.5',
@@ -93,14 +109,15 @@ export const FAKE_CATALOG: FakeCatalogModel[] = [
     true,
     ['max', 'xhigh', 'high', 'medium', 'low'],
     'high',
+    1_795_000_000,
   ),
-  catalogModel(
-    'anthropic/claude-fable-5.1',
-    'Anthropic: Claude Fable 5.1',
-    false,
-    ['high', 'medium', 'low', 'none'],
-    'medium',
-  ),
+  fable,
+  {
+    ...fable,
+    id: '~anthropic/claude-fable-latest',
+    name: 'Anthropic: Claude Fable Latest',
+    alias_target: { slug: fable.id, name: fable.name },
+  },
 ];
 export type FakeRequest = {
   path: string;

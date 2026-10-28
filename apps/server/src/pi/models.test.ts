@@ -17,6 +17,8 @@ import {
   AUTO_MODEL,
   fetchCatalog,
   isZdrRefusal,
+  labOf,
+  latestOf,
   type Model,
   modelCatalog,
   piEntry,
@@ -89,7 +91,7 @@ test('the catalog filter drops :variant, ~alias, openrouter/, non-text and tool-
     ],
     ['anthropic/claude-opus-5.5'],
   );
-  const models = await fetchCatalog('https://or.test/api/v1', fn);
+  const { models } = await fetchCatalog('https://or.test/api/v1', fn);
   expect(models.map((m) => [m.id, m.zdr])).toEqual([
     ['anthropic/claude-opus-5.5', true],
     ['anthropic/claude-fable-5.1', false],
@@ -123,9 +125,47 @@ test('a ZDR list that is empty or not a subset of the full list fails the fetch'
   await expect(
     fetchCatalog('https://or.test', fakeFetch([opus], [opus.id, 'acme/elsewhere']).fn),
   ).rejects.toThrow('not a subset');
-  await expect(fetchCatalog('https://or.test', fakeFetch([opus], [opus.id]).fn)).resolves.toEqual([
-    expect.objectContaining({ id: opus.id, zdr: true }),
+  await expect(
+    fetchCatalog('https://or.test', fakeFetch([opus], [opus.id]).fn),
+  ).resolves.toMatchObject({ models: [{ id: opus.id, zdr: true }] });
+});
+
+test('latest: per lab the newest alias target in the list, else the newest model by created', async () => {
+  const alias = (id: string, slug: string) => raw(id, { alias_target: { slug, name: slug } });
+  const all = [
+    raw('anthropic/claude-opus-5.5', { created: 300 }),
+    raw('anthropic/claude-sonnet-5.5', { created: 200 }),
+    // Newer, but no alias points to it: aliases win over `created`.
+    raw('anthropic/claude-opus-5.5-preview', { created: 900 }),
+    alias('~anthropic/claude-sonnet-latest', 'anthropic/claude-sonnet-5.5'),
+    alias('~anthropic/claude-opus-latest', 'anthropic/claude-opus-5.5'),
+    // A target outside the list (here a `:variant`) does not count; `created` decides.
+    raw('openai/gpt-6', { created: 100 }),
+    raw('openai/gpt-6-mini', { created: 150 }),
+    raw('openai/gpt-6-mini:free', { created: 999 }),
+    alias('~openai/gpt-latest', 'openai/gpt-6-mini:free'),
+    // Before `deepseek` in the lab order, though listed after it.
+    raw('deepseek/deepseek-v5', { created: 50 }),
+    raw('google/gemini-4-argon', { created: 10 }),
+    // Not a lab of the section.
+    raw('acme/model-9', { created: 5000 }),
+    alias('~acme/model-latest', 'acme/model-9'),
+  ];
+  const { models, latest } = await fetchCatalog(
+    'https://or.test',
+    fakeFetch(all, ['google/gemini-4-argon']).fn,
+  );
+  expect(models.map((m) => m.id)).not.toContain('~anthropic/claude-opus-latest');
+  expect(latest).toEqual([
+    { lab: 'anthropic', modelId: 'anthropic/claude-opus-5.5' },
+    { lab: 'openai', modelId: 'openai/gpt-6-mini' },
+    { lab: 'google', modelId: 'google/gemini-4-argon' },
+    { lab: 'deepseek', modelId: 'deepseek/deepseek-v5' },
   ]);
+  // A lab with neither an alias nor a model is left out; an empty catalog has no list.
+  expect(latestOf([alias('~x-ai/grok-latest', 'x-ai/grok-9')], new Map())).toEqual([]);
+  expect(labOf('~meta-llama/llama-latest')).toBe('meta-llama');
+  expect(labOf('mistralai/mistral-large')).toBe('mistralai');
 });
 
 test('a mandatory model maps off to null; efforts map to themselves', () => {
@@ -255,6 +295,10 @@ test('a failed fetch uses the cache; off never fetches; a good fetch rewrites th
   const cachePath = join(dataDir, 'openrouter', 'catalog.json');
   const cached = readFileSync(cachePath, 'utf8');
   expect(seen).toEqual([[], [opus.id]]);
+  // "Uusimmat" lives in the cache file next to the models.
+  const latest = [{ lab: 'anthropic', modelId: opus.id }];
+  expect(first.latest()).toEqual(latest);
+  expect(JSON.parse(cached).latest).toEqual(latest);
 
   // The network fails: the cache serves, the cache file stays, the failure is logged.
   const down = (async () => {
@@ -276,6 +320,15 @@ test('a failed fetch uses the cache; off never fetches; a good fetch rewrites th
   await third.refresh();
   expect(off.calls).toEqual([]);
   expect(third.get(opus.id)).toBeDefined();
+  expect(third.latest()).toEqual(latest);
+
+  // A cache from before phase 21 (no `latest`) still loads.
+  const { latest: _, ...old } = JSON.parse(cached);
+  writeFileSync(cachePath, JSON.stringify(old));
+  const older = make('off', off.fn);
+  await older.start();
+  expect(older.get(opus.id)).toBeDefined();
+  expect(older.latest()).toEqual([]);
 
   // A corrupt cache is ignored with a warning.
   writeFileSync(cachePath, '{"nope":');

@@ -355,7 +355,8 @@ function Choices({
 }
 
 /**
- * "Kaikki mallit" (phase-10 UI): search, favourites first, a star per row. A plain list, not
+ * "Kaikki mallit" (phase-10 UI): search, favourites first, then each lab's newest model ("Uusimmat",
+ * phase-21 decision 3), a star per row. Each model is listed once. A plain list, not
  * cmdk: a star button inside a cmdk option would nest interactive controls (axe). The list is one
  * tab stop: ↑↓ move between rows, ←→ between a row and its star.
  */
@@ -377,11 +378,20 @@ function CatalogDialog({
     (m) => !needle || m.name.toLowerCase().includes(needle) || m.id.includes(needle),
   );
   const favorites = shown.filter((m) => favs.has(m.id));
-  const others = shown.filter((m) => !favs.has(m.id));
-  const order = [...favorites, ...others].map((m) => m.id);
+  // In the server's lab order; a favourite stays in Suosikit.
+  const latest = (models?.latest ?? []).flatMap(
+    ({ modelId }) => shown.find((m) => m.id === modelId && !favs.has(m.id)) ?? [],
+  );
+  const others = shown.filter((m) => !favs.has(m.id) && !latest.includes(m));
+  const sections = [
+    { id: 'models-favorites', title: 'Suosikit', rows: favorites },
+    { id: 'models-latest', title: 'Uusimmat', rows: latest },
+    { id: 'models-all', title: 'Kaikki mallit', rows: others },
+  ].filter((s) => s.rows.length);
+  const order = sections.flatMap((s) => s.rows.map((m) => m.id));
   const [cursor, setCursor] = useState<string | null>(null);
   const list = useRef<HTMLDivElement>(null);
-  /** The star to focus again once its row has moved to the other section. */
+  /** The star to focus again once its row has moved to another section. */
   const refocus = useRef<string | null>(null);
 
   // Cells are `<id>:pick` and `<id>:star` (ids never hold a colon). One of them is the tab stop.
@@ -544,25 +554,14 @@ function CatalogDialog({
                 <span className={COL_CTX}>Konteksti</span>
                 <span className={COL_PRICE}>$ / M sisään / ulos</span>
               </div>
-              {favorites.length > 0 && (
-                <section aria-labelledby="models-favorites">
-                  <h3
-                    id="models-favorites"
-                    className="px-3 pt-2 pb-1 text-micro text-muted-foreground"
-                  >
-                    Suosikit
+              {sections.map((s) => (
+                <section key={s.id} aria-labelledby={s.id}>
+                  <h3 id={s.id} className="px-3 pt-2 pb-1 text-micro text-muted-foreground">
+                    {s.title}
                   </h3>
-                  <ul>{favorites.map(row)}</ul>
+                  <ul>{s.rows.map(row)}</ul>
                 </section>
-              )}
-              {others.length > 0 && (
-                <section aria-labelledby="models-all">
-                  <h3 id="models-all" className="px-3 pt-2 pb-1 text-micro text-muted-foreground">
-                    Kaikki mallit
-                  </h3>
-                  <ul>{others.map(row)}</ul>
-                </section>
-              )}
+              ))}
             </>
           )}
         </div>

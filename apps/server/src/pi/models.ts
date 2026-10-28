@@ -1,6 +1,13 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { CatalogModel, type DataPolicy, ModelId, ModelPolicy, ReasoningEffort } from '@pa/protocol';
+import {
+  CatalogModel,
+  type DataPolicy,
+  LatestModel,
+  ModelId,
+  ModelPolicy,
+  ReasoningEffort,
+} from '@pa/protocol';
 import { z } from 'zod';
 
 /** What "Auto" routes to (phase-10 decision 6). Chats store 'auto', so a change moves them all. */
@@ -28,7 +35,12 @@ export const Model = CatalogModel.extend({
   cacheWrite: z.number().min(0),
 });
 export type Model = z.infer<typeof Model>;
-const Cache = z.object({ fetchedAt: z.iso.datetime(), models: z.array(Model) });
+const Cache = z.object({
+  fetchedAt: z.iso.datetime(),
+  models: z.array(Model),
+  // A cache from before phase 21 has no list; the next fetch fills it.
+  latest: z.array(LatestModel).default([]),
+});
 type Cache = z.infer<typeof Cache>;
 
 /** Pi thinking level: OpenRouter effort `none` is Pi's `off`. */
@@ -66,6 +78,10 @@ const Raw = z.object({
     output_modalities: z.array(z.string()),
   }),
   supported_parameters: z.array(z.string()),
+  /** Unix seconds. */
+  created: z.number().nullish(),
+  /** Only on a `~vendor/family-latest` alias: the model it points to now. */
+  alias_target: z.object({ slug: z.string() }).nullish(),
   top_provider: z.object({ max_completion_tokens: z.number().positive().nullish() }).nullish(),
   reasoning: z
     .object({
@@ -122,6 +138,32 @@ export function toModel(raw: unknown, zdrIds: Set<string>): Model | undefined {
   return model.success ? model.data : undefined;
 }
 
+/** The lab of an OpenRouter id: the part before `/`, without an alias's `~`. */
+export const labOf = (id: string) => id.replace(/^~|\/.*$/g, '');
+
+const Meta = Raw.pick({ id: true, created: true, alias_target: true });
+
+/**
+ * Phase-21 decision 3, "Uusimmat" in `LatestModel` lab order: per lab, the newest (by `created`)
+ * of its alias targets in `models`, else its newest model in `models`. A lab with neither is left
+ * out, and an alias is never an id here.
+ */
+export function latestOf(all: unknown[], models: Map<string, Model>): LatestModel[] {
+  const meta = all.flatMap((raw) => Meta.safeParse(raw).data ?? []);
+  const created = new Map(meta.map((m) => [m.id, m.created ?? 0]));
+  return LatestModel.shape.lab.options.flatMap((lab) => {
+    const mine = meta.filter((m) => labOf(m.id) === lab);
+    const targets = mine.flatMap((m) =>
+      m.id.startsWith('~') && m.alias_target && models.has(m.alias_target.slug)
+        ? [m.alias_target.slug]
+        : [],
+    );
+    const pool = targets.length ? targets : mine.map((m) => m.id).filter((id) => models.has(id));
+    const modelId = pool.sort((a, b) => (created.get(b) ?? 0) - (created.get(a) ?? 0))[0];
+    return modelId ? [{ lab, modelId }] : [];
+  });
+}
+
 /**
  * Decision 8: the public catalog, twice (all tool models, then the ZDR subset). No key, no user
  * data: only these two fixed GETs.
@@ -130,7 +172,7 @@ export async function fetchCatalog(
   base: string,
   fetchFn: typeof fetch = fetch,
   timeoutMs = 20_000,
-): Promise<Model[]> {
+): Promise<{ models: Model[]; latest: LatestModel[] }> {
   const get = async (query: string) => {
     const res = await fetchFn(`${base}/models?supported_parameters=tools${query}`, {
       headers: { accept: 'application/json' },
@@ -154,7 +196,7 @@ export async function fetchCatalog(
     if (m && !models.has(m.id)) models.set(m.id, m);
   }
   if (!models.size) throw new Error('catalog has no usable model');
-  return [...models.values()];
+  return { models: [...models.values()], latest: latestOf(all, models) };
 }
 
 /** One Pi model entry (phase-10 "Pi model entries"). Never sets `compat.openRouterRouting`. */
@@ -309,7 +351,7 @@ export function modelCatalog(opts: {
     try {
       const next: Cache = {
         fetchedAt: new Date().toISOString(),
-        models: await fetchCatalog(opts.source, opts.fetch, timeoutMs),
+        ...(await fetchCatalog(opts.source, opts.fetch, timeoutMs)),
       };
       mkdirSync(join(opts.dataDir, 'openrouter'), { recursive: true });
       writeFileSync(`${path}.tmp`, JSON.stringify(next));
@@ -345,6 +387,7 @@ export function modelCatalog(opts: {
   return {
     get: (id: string) => byId.get(id),
     list: () => state?.models ?? [],
+    latest: () => state?.latest ?? [],
     fetchedAt: () => state?.fetchedAt ?? null,
     refresh,
     /** Applies the cache, then fetches: awaited only without a cache, so a first boot has models. */

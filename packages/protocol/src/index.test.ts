@@ -115,9 +115,25 @@ describe('model messages (phase-10)', () => {
         auto: 'google/gemini-4-argon',
         favorites: [],
         catalog: [model, { ...model, id: 'acme/plain', reasoning: null }],
+        latest: [{ lab: 'google', modelId: model.id }],
         fetchedAt: null,
       }).success,
     ).toBe(true);
+    // Phase 21: an alias is never a `latest` id, and the labs are a fixed list.
+    for (const latest of [
+      [{ lab: 'anthropic', modelId: '~anthropic/claude-opus-latest' }],
+      [{ lab: 'acme', modelId: 'acme/plain' }],
+    ])
+      expect(
+        ServerMessage.safeParse({
+          type: 'models.state',
+          auto: model.id,
+          favorites: [],
+          catalog: [model],
+          latest,
+          fetchedAt: null,
+        }).success,
+      ).toBe(false);
     const chat = {
       id: 'c1',
       title: null,

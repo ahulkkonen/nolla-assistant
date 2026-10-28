@@ -445,6 +445,7 @@ for (const scheme of ['light', 'dark'] as const) {
         const catalog = page.getByRole('dialog', { name: 'Kaikki mallit' });
         await catalog.getByRole('button', { name: 'Lisää suosikkeihin: Claude Fable 5.1' }).click();
         await expect(catalog.getByRole('heading', { name: 'Suosikit' })).toBeVisible();
+        await expect(catalog.getByRole('heading', { name: 'Uusimmat' })).toBeVisible();
         await page.mouse.move(vp.width - 8, vp.height - 8);
         // The first row holds the roving tab stop: it reads as the row Enter picks.
         await catalog.locator('[data-cell]').first().focus();

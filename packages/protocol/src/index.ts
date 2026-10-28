@@ -73,6 +73,13 @@ export const CatalogModel = z.object({
 });
 export type CatalogModel = z.infer<typeof CatalogModel>;
 
+/** A lab's newest model for "Uusimmat" (phase-21 decision 3). The enum order is the section order. */
+export const LatestModel = z.object({
+  lab: z.enum(['anthropic', 'openai', 'google', 'x-ai', 'deepseek', 'meta-llama', 'mistralai']),
+  modelId: ModelId,
+});
+export type LatestModel = z.infer<typeof LatestModel>;
+
 /** One model call (phase-13 decision 12). `costUsd` is what OpenRouter billed unless `estimated`. */
 export const CallUsage = z.object({
   /** The model id LiteLLM got, e.g. 'zdr/google/gemini-4-argon' or 'zdr/strong'. */
@@ -901,6 +908,8 @@ export const ServerMessage = z.discriminatedUnion('type', [
     /** In `createdAt` order. */
     favorites: z.array(ModelId),
     catalog: z.array(CatalogModel),
+    /** "Uusimmat" in lab order; every id is in `catalog`. */
+    latest: z.array(LatestModel),
     /** Null: no catalog yet. */
     fetchedAt: z.iso.datetime().nullable(),
   }),
