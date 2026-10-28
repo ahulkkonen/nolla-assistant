@@ -173,3 +173,4 @@ Status on 2026-10-25. The plan, section 13, defines each gate.
 | 18 | Search backend (Brave direct, Exa deep): researched in `docs/decisions/0007-memory-and-search-research.md`, deferred by the user; OpenRouter Exa stays | deferred |
 | 19 | Viz: `vega-lite` block with the injected theme, Mermaid retheme, design kit for HTML artifacts with Plot and D3, SVG/PNG export, sandbox page (`docs/decisions/phase-19-viz.md`) | done |
 | 20 | Thread figures: charts and diagrams inline with light PNG export, one artifact whitelist, streaming card, panel per chat, message queue and model change during a run, figure fonts and colour roles, Mermaid header strips (`docs/decisions/phase-20-thread.md`) | done |
+| 21 | Polish: "Sarake" diagram look, export typography, "Uusimmat" models per lab, confidence trial (`⟦N⟧` markers), tool-row icons, per-chat auto-approve (`docs/decisions/phase-21-polish.md`) | done |
