@@ -1,5 +1,15 @@
 import type { CatalogModel, ModelChoice } from '@pa/protocol';
-import { Check, ChevronDown, Search, ShieldCheck, ShieldOff, Star } from 'lucide-react';
+import {
+  Check,
+  ChevronDown,
+  Gauge,
+  Search,
+  Shield,
+  ShieldAlert,
+  ShieldCheck,
+  ShieldOff,
+  Star,
+} from 'lucide-react';
 import {
   type KeyboardEvent,
   type ReactElement,
@@ -30,6 +40,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet';
+import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
 import { useMobile } from '../media.ts';
 import { useStore } from '../store.ts';
@@ -70,6 +81,34 @@ export const NextTurnTip = ({
     {children}
   </Tip>
 );
+
+/**
+ * Phase-21 decision 4: the chat's confidence trial. The composer chip (≥ 768) and the phone
+ * sheet's switch share it.
+ */
+export function useConfidence(chatId: string) {
+  const on = useStore(
+    (s) => !!(s.summaries[chatId] ?? s.chats.find((c) => c.id === chatId))?.confidence,
+  );
+  return { on, toggle: () => send({ type: 'chat.setConfidence', chatId, on: !on }) };
+}
+
+/**
+ * "Hyväksy automaattisesti" for the chat (phase-21 decision 7), as `useConfidence`. The next tool
+ * call reads it, also during a reply. Null for an agent with no gated tool.
+ */
+export function useAutoApprove(chatId: string) {
+  const auto = useStore((s) => s.autoApprove[chatId]);
+  if (!auto?.tools.length) return null;
+  const { on, tools } = auto;
+  const which = `ilman hyväksyntää: ${tools.join(', ')}`;
+  return {
+    on,
+    which,
+    tip: on ? `Ajetaan ${which}` : `Kun päällä, ajetaan ${which}`,
+    toggle: () => send({ type: 'chat.setAutoApprove', chatId, on: !on }),
+  };
+}
 
 type Option = { value: string; title: string; meta?: string | undefined };
 
@@ -243,6 +282,7 @@ export function ModelPicker() {
                 </Button>
               </>
             )}
+            {chatId && <ChatSwitches chatId={chatId} />}
           </SheetContent>
         </Sheet>
       </>
@@ -359,6 +399,84 @@ function Choices({
         </button>
       ))}
     </div>
+  );
+}
+
+/**
+ * The chat's two switches in the phone sheet: next to the queue's two run buttons, their composer
+ * chips squeezed the model chip to its chevron.
+ */
+function ChatSwitches({ chatId }: { chatId: string }) {
+  const confidence = useConfidence(chatId);
+  const auto = useAutoApprove(chatId);
+  const id = useId();
+  return (
+    <div role="group" aria-labelledby={id} className="flex flex-col">
+      <p id={id} className="px-3 pt-2 pb-1 text-micro text-muted-foreground">
+        Tässä keskustelussa
+      </p>
+      <SwitchRow
+        icon={<Gauge size={16} className="shrink-0 text-muted-foreground" />}
+        label="Luottamus"
+        checked={confidence.on}
+        onToggle={confidence.toggle}
+      />
+      {auto && (
+        <SwitchRow
+          icon={
+            auto.on ? (
+              <ShieldAlert size={16} className="shrink-0 text-warning" />
+            ) : (
+              <Shield size={16} className="shrink-0 text-muted-foreground" />
+            )
+          }
+          label="Hyväksy automaattisesti"
+          helper={auto.tip}
+          checked={auto.on}
+          onToggle={auto.toggle}
+        />
+      )}
+    </div>
+  );
+}
+
+/** A 44 px sheet row: the whole row turns the switch; the switch is named by the label only. */
+function SwitchRow({
+  icon,
+  label,
+  helper,
+  checked,
+  onToggle,
+}: {
+  icon: ReactNode;
+  label: string;
+  helper?: string;
+  checked: boolean;
+  onToggle: () => void;
+}) {
+  const id = useId();
+  return (
+    <label
+      htmlFor={id}
+      className="flex min-h-11 items-center gap-3 rounded-md px-3 py-1 text-ui hover:bg-accent"
+    >
+      {icon}
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span id={`${id}-label`}>{label}</span>
+        {helper && (
+          <span id={`${id}-help`} className="text-meta text-muted-foreground">
+            {helper}
+          </span>
+        )}
+      </span>
+      <Switch
+        id={id}
+        checked={checked}
+        onCheckedChange={onToggle}
+        aria-labelledby={`${id}-label`}
+        {...(helper ? { 'aria-describedby': `${id}-help` } : {})}
+      />
+    </label>
   );
 }
 

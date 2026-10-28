@@ -5,10 +5,8 @@ import {
   Eye,
   FileText,
   FolderOpen,
-  Gauge,
   LoaderCircle,
   Paperclip,
-  Shield,
   ShieldAlert,
   Square,
   Upload,
@@ -34,12 +32,12 @@ import { uploadFiles } from '../api.ts';
 import { touch } from '../media.ts';
 import { useShortcuts } from '../shortcuts.ts';
 import { useStore } from '../store.ts';
-import { send, sendUserMessage, stopTurn } from '../ws.ts';
+import { sendUserMessage, stopTurn } from '../ws.ts';
 import { AgentPicker } from './AgentPicker.tsx';
 import { DropOverlay, useFileDrop } from './FileDrop.tsx';
 import { IconButton, Tip } from './IconButton.tsx';
 import { clock, MicButton, type MicState } from './MicButton.tsx';
-import { ModelPicker, NextTurnTip } from './ModelPicker.tsx';
+import { ModelPicker, NextTurnTip, useAutoApprove, useConfidence } from './ModelPicker.tsx';
 import { WorkPicker } from './TreeDialogs.tsx';
 
 type Chip = { key: string; name: string; preview?: string; ref?: AttachmentRef };
@@ -55,26 +53,24 @@ const refChips = (refs: AttachmentRef[]): Chip[] =>
 
 /**
  * Phase-21 decision 4: the open chat's confidence trial; outline, filled while on. Like the model
- * chip it works during a reply. A new chat gets it after its first message. Phones show an icon:
- * with the word, the queue's two run buttons squeeze the model chip to its chevron.
+ * chip it works during a reply. A new chat gets it after its first message. Not on phones: next
+ * to the queue's two run buttons it squeezed the model chip to its chevron; the model sheet holds
+ * the switch there.
  */
 function ConfidenceToggle({ chatId, running }: { chatId: string; running: boolean }) {
-  const on = useStore(
-    (s) => !!(s.summaries[chatId] ?? s.chats.find((c) => c.id === chatId))?.confidence,
-  );
+  const { on, toggle } = useConfidence(chatId);
   return (
     <NextTurnTip running={running}>
       <Button
         variant="outline"
         aria-pressed={on}
-        onClick={() => send({ type: 'chat.setConfidence', chatId, on: !on })}
+        onClick={toggle}
         className={cn(
-          'h-8 rounded-full px-3 font-normal max-md:size-11 max-md:px-0',
+          'h-8 rounded-full px-3 font-normal max-md:hidden',
           on ? 'border-input text-foreground' : 'text-muted-foreground hover:text-foreground',
         )}
       >
-        <Gauge size={16} className="md:hidden" />
-        <span className="max-md:sr-only">Luottamus</span>
+        Luottamus
       </Button>
     </NextTurnTip>
   );
@@ -82,36 +78,30 @@ function ConfidenceToggle({ chatId, running }: { chatId: string; running: boolea
 
 /**
  * "Hyväksy automaattisesti" (phase-21 decision 7): an outline chip, filled in the warning colour
- * while on; a 44 px shield on phones. Also during a reply: the next tool call reads it. None for an
- * agent with no gated tool.
+ * while on. Not on phones, as `ConfidenceToggle`.
  */
 function AutoApproveChip({ chatId }: { chatId: string }) {
-  const auto = useStore((s) => s.autoApprove[chatId]);
-  if (!auto?.tools.length) return null;
-  const { on, tools } = auto;
-  const which = `ilman hyväksyntää: ${tools.join(', ')}`;
+  const auto = useAutoApprove(chatId);
+  if (!auto) return null;
+  const { on, which, tip, toggle } = auto;
   return (
-    <Tip label={on ? `Ajetaan ${which}` : `Kun päällä, ajetaan ${which}`}>
+    <Tip label={tip}>
       <Button
         variant="outline"
         aria-pressed={on}
         onClick={() => {
-          send({ type: 'chat.setAutoApprove', chatId, on: !on });
+          toggle();
           // No tooltips on touch: the toast names the tools.
           if (!on && touch) useStore.getState().notify(`Ajetaan ${which}`);
         }}
         className={cn(
-          'h-8 rounded-full px-3 font-normal text-muted-foreground hover:text-foreground max-md:size-11 max-md:px-0',
+          'h-8 rounded-full px-3 font-normal text-muted-foreground hover:text-foreground max-md:hidden',
           on &&
             'border-warning-line bg-warning-subtle text-warning hover:bg-warning-subtle hover:text-warning aria-pressed:bg-warning-subtle',
         )}
       >
-        {on ? (
-          <ShieldAlert size={16} aria-hidden="true" />
-        ) : (
-          <Shield size={16} aria-hidden="true" className="md:hidden" />
-        )}
-        <span className="max-md:sr-only">Hyväksy automaattisesti</span>
+        {on && <ShieldAlert size={16} aria-hidden="true" />}
+        Hyväksy automaattisesti
       </Button>
     </Tip>
   );

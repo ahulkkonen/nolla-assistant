@@ -14,6 +14,7 @@ import {
   deviceRows,
   editAgent,
   expect,
+  flip,
   HTML_REPLY,
   holdAt,
   KIT_REPLY,
@@ -366,11 +367,17 @@ for (const scheme of ['light', 'dark'] as const) {
         // Text again: the two run buttons, Pysäytä and Lisää jonoon.
         await page.getByLabel('Viesti').fill('Lisää myös lähteet.');
         await expect(page.getByRole('button', { name: 'Lisää jonoon' })).toBeVisible();
+        // The model chip keeps its whole name next to the two run buttons.
+        const name = page.getByRole('button', { name: /^Malli: / }).locator('span.truncate');
+        expect(
+          await name.evaluate((el) => el.clientWidth > 0 && el.scrollWidth <= el.clientWidth),
+        ).toBe(true);
         await shot(page, 'composer-queue', vp.width, scheme);
         hold.release();
       });
 
-      // Phase-21 decision 4: three confidence levels and the chip turned on; 390 and 1280.
+      // Phase-21 decision 4: three confidence levels and the chip turned on (on phones the model
+      // sheet's switch); 390 and 1280.
       test('chat-confidence', async ({ app, page }) => {
         test.skip(vp.width === 1024, 'Shot at 390 and 1280.');
         const w = vp.width === 390 ? 390 : 1280;
@@ -380,9 +387,7 @@ for (const scheme of ['light', 'dark'] as const) {
         await sendMessage(page, 'Kerro Tampereesta');
         await expect(page.locator('.md').last()).toHaveText(CONFIDENCE_PLAIN);
         await expect(page.locator('.md span.conf')).toHaveCount(3);
-        const toggle = page.getByRole('button', { name: 'Luottamus', exact: true });
-        await toggle.click();
-        await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+        await flip(page, 'Luottamus', true);
         await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
         await page.mouse.move(w - 8, 8);
         await shot(page, 'chat-confidence', w, scheme);
@@ -983,15 +988,14 @@ for (const scheme of ['light', 'dark'] as const) {
         await shot(page, 'tool-expanded', vp.width, scheme);
       });
 
-      // Phase-21 decision 7: the chip on, in the warning colour (a shield on phones, with a toast).
+      // Phase-21 decision 7: the chip on, in the warning colour; on phones the model sheet's row.
       test('auto-approve-on', async ({ app, page }) => {
         app.llm.push({ text: 'Hei.' });
         await app.login(page);
         await sendMessage(page, 'Moi');
         await expect(page.locator('.md').last()).toHaveText('Hei.');
-        const chip = page.getByRole('button', { name: 'Hyväksy automaattisesti' });
-        await chip.click();
-        await expect(chip).toHaveAttribute('aria-pressed', 'true');
+        await flip(page, 'Hyväksy automaattisesti', true);
+        if (vp.width < 768) await modelMenu(page);
         await page.mouse.move(0, 0);
         await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
         await shot(page, 'auto-approve-on', vp.width, scheme);
