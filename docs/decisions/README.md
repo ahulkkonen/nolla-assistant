@@ -25,4 +25,5 @@ The build plan is `docs/plan.md`. Section numbers in records refer to it.
 - `phase-17-memory.md`: memory 2: claims and evidence in SQLite, one masked extraction call per chat, per-turn claims block after the cached prefix, MEMORY.md from claims, review tab, Finnish memory eval.
 - `0007-memory-and-search-research.md`, `0008-viz-research.md`: deep research on memory and search, and on charts and diagrams.
 - `phase-19-viz.md`: the `vega-lite` chart block, the Mermaid theme, the design kit for HTML artifacts, SVG and PNG export, the sandbox page.
+- `phase-20-thread.md`: inline chart and diagram figures with light PNG export, one artifact whitelist, the streaming card, the panel per chat, the message queue and model change during a run, figure fonts and colour roles.
 - `phase-21-polish.md`: the "Sarake" flowchart look and wrapped export text, the "Uusimmat" catalog section from OpenRouter `~latest` aliases, the confidence-marker trial, tool-row icons, the per-chat auto-approve toggle and the skill-runner image note.
