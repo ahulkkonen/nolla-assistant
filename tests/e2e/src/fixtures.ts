@@ -500,6 +500,12 @@ export const holdAt = async (page: Page, text: string) => {
   };
 };
 
+/** Phase-21 decision 4: a reply with confidence markers at three levels (9, 5, 1). */
+export const CONFIDENCE_REPLY =
+  'Tampere on Suomen kolmanneksi suurin kaupunki.⟦9⟧ Sen väkiluku kasvaa ensi vuonna noin prosentin.⟦5⟧ Raitiotie jatkunee Hiedanrantaan vuonna 2031.⟦1⟧';
+export const CONFIDENCE_PLAIN =
+  'Tampere on Suomen kolmanneksi suurin kaupunki. Sen väkiluku kasvaa ensi vuonna noin prosentin. Raitiotie jatkunee Hiedanrantaan vuonna 2031.';
+
 /** Phase 20: an HTML page written in a reply, with a title the writing card can show. */
 export const PAGE_REPLY = `Tässä sivu:\n\n${block(
   'html',

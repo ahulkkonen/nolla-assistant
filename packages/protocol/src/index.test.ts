@@ -8,6 +8,7 @@ import {
   artifactTitle,
   type CatalogModel,
   ClientMessage,
+  CONFIDENCE_MARK,
   cronToSchedule,
   decryptCommand,
   ExportStart,
@@ -18,6 +19,7 @@ import {
   SEARCH_MAX_RESULTS,
   ServerMessage,
   scheduleToCron,
+  stripConfidence,
   ToolRow,
   ToolSearch,
   TreeMove,
@@ -141,6 +143,7 @@ describe('model messages (phase-10)', () => {
       agentId: 'assistant',
       pinned: false,
       archived: false,
+      confidence: false,
       updatedAt: new Date().toISOString(),
     };
     const policy = { modelId: null, reasoning: 'auto', dataPolicy: 'zdr' };
@@ -149,6 +152,25 @@ describe('model messages (phase-10)', () => {
       ServerMessage.safeParse({ type: 'chat.updated', chat: { ...chat, modelPolicy: policy } })
         .success,
     ).toBe(true);
+  });
+});
+
+describe('confidence markers', () => {
+  it('strips every marker and nothing else', () => {
+    expect(stripConfidence('Varma.⟦9⟧ Ehkä.⟦3⟧\n\n- **Kohta.⟦5⟧**')).toBe(
+      'Varma. Ehkä.\n\n- **Kohta.**',
+    );
+    // Only a digit 1 to 9 between the brackets is a marker.
+    expect(stripConfidence('⟦0⟧ ⟦10⟧ ⟦x⟧ [5] ⟦5')).toBe('⟦0⟧ ⟦10⟧ ⟦x⟧ [5] ⟦5');
+    expect(CONFIDENCE_MARK.exec('Lause.⟦7⟧')?.[1]).toBe('7');
+  });
+  it('parses chat.setConfidence', () => {
+    expect(
+      ClientMessage.safeParse({ type: 'chat.setConfidence', chatId: 'c1', on: true }).success,
+    ).toBe(true);
+    expect(ClientMessage.safeParse({ type: 'chat.setConfidence', chatId: 'c1' }).success).toBe(
+      false,
+    );
   });
 });
 

@@ -140,11 +140,19 @@ export const ChatSummary = z.object({
   /** True after a manual rename: automatic titling no longer changes the title. */
   titleLocked: z.boolean().optional(),
   modelPolicy: ModelPolicy,
+  /** Phase-21 decision 4: the model marks each sentence with `⟦N⟧`. */
+  confidence: z.boolean(),
   /** The server always sets it; optional for older fixtures. */
   usage: ChatUsage.optional(),
   updatedAt: z.iso.datetime(),
 });
 export type ChatSummary = z.infer<typeof ChatSummary>;
+
+/** Phase-21 decision 4: one confidence marker `⟦N⟧`, N from 1 (a guess) to 9 (certain). */
+export const CONFIDENCE_MARK = /⟦([1-9])⟧/;
+const CONFIDENCE_MARKS = new RegExp(CONFIDENCE_MARK.source, 'g');
+/** The text without its confidence markers: what leaves the thread (copy, export, search, titles). */
+export const stripConfidence = (text: string) => text.replace(CONFIDENCE_MARKS, '');
 
 export const ToolStatus = z.enum(['running', 'ok', 'error', 'denied']);
 export type ToolStatus = z.infer<typeof ToolStatus>;
@@ -764,6 +772,8 @@ export const ClientMessage = z.discriminatedUnion('type', [
   z.object({ type: z.literal('chat.setModel'), chatId: id64, ...ModelChoice.shape }),
   /** `open` only after a recorded ZDR refusal for the chat's model (phase-10 decision 9). */
   z.object({ type: z.literal('chat.setDataPolicy'), chatId: id64, dataPolicy: DataPolicy }),
+  /** Phase-21 decision 4; like `chat.setModel`, it applies to the next turn. */
+  z.object({ type: z.literal('chat.setConfidence'), chatId: id64, on: z.boolean() }),
   z.object({ type: z.literal('models.list') }),
   z.object({ type: z.literal('models.favorite'), modelId: ModelId, favorite: z.boolean() }),
   z.object({ type: z.literal('chat.open'), chatId: id64 }),

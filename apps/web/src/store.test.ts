@@ -13,6 +13,7 @@ const chat = (id: string, pinned: boolean, updatedAt: string): ChatSummary => ({
   pinned,
   archived: false,
   modelPolicy: { modelId: 'auto', reasoning: 'auto', dataPolicy: 'zdr' },
+  confidence: false,
   updatedAt,
 });
 

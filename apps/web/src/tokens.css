@@ -421,6 +421,11 @@
   animation: blink 1s step-end infinite;
 }
 
+/* Phase-21 decision 4: a sentence's confidence as its contrast; --conf 100 is --foreground. */
+.md .conf {
+  color: color-mix(in oklch, var(--foreground) calc(var(--conf) * 1%), var(--muted-foreground));
+}
+
 /* Assistant prose (7.2): serif, markdown without a typography plugin. */
 .md {
   font-family: var(--font-serif);

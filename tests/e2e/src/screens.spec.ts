@@ -9,6 +9,8 @@ import {
   acceptProposal,
   CHART_REPLY,
   COLLIDING,
+  CONFIDENCE_PLAIN,
+  CONFIDENCE_REPLY,
   deviceRows,
   editAgent,
   expect,
@@ -366,6 +368,24 @@ for (const scheme of ['light', 'dark'] as const) {
         await expect(page.getByRole('button', { name: 'Lisää jonoon' })).toBeVisible();
         await shot(page, 'composer-queue', vp.width, scheme);
         hold.release();
+      });
+
+      // Phase-21 decision 4: three confidence levels and the chip turned on; 390 and 1280.
+      test('chat-confidence', async ({ app, page }) => {
+        test.skip(vp.width === 1024, 'Shot at 390 and 1280.');
+        const w = vp.width === 390 ? 390 : 1280;
+        if (w === 1280) await page.setViewportSize({ width: 1280, height: 800 });
+        app.llm.push({ text: CONFIDENCE_REPLY });
+        await app.login(page);
+        await sendMessage(page, 'Kerro Tampereesta');
+        await expect(page.locator('.md').last()).toHaveText(CONFIDENCE_PLAIN);
+        await expect(page.locator('.md span.conf')).toHaveCount(3);
+        const toggle = page.getByRole('button', { name: 'Luottamus', exact: true });
+        await toggle.click();
+        await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+        await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+        await page.mouse.move(w - 8, 8);
+        await shot(page, 'chat-confidence', w, scheme);
       });
 
       test('palette', async ({ app, page }) => {

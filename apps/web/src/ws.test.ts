@@ -59,6 +59,7 @@ function chat(messages: Message[] = [USER]) {
     pinned: false,
     archived: false,
     modelPolicy: { ...policy, dataPolicy },
+    confidence: false,
     updatedAt: '2026-01-01T00:00:00.000Z',
   });
   const frame = (msg: unknown) => sock.onmessage?.({ data: JSON.stringify(msg) });

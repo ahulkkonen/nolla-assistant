@@ -1,0 +1,1 @@
+ALTER TABLE `chats` ADD `confidence` integer DEFAULT false NOT NULL;

@@ -6,6 +6,7 @@ import {
   ExportQuery,
   formatCost,
   formatTokens,
+  stripConfidence,
   TOOL_STATUS_WORD,
 } from '@pa/protocol';
 import { and, eq } from 'drizzle-orm';
@@ -90,6 +91,7 @@ export async function chatExport(
     },
     fx: fx.get(),
     messages: messages.map((m) => {
+      const text = stripConfidence(m.text);
       // Masked: the document names the model saw, only when their count matches; never image names.
       const names = blocks.get(m.id) ?? [];
       const docs = m.attachments.filter((a) => a.kind === 'document').length;
@@ -97,7 +99,7 @@ export async function chatExport(
       return {
         role: m.role,
         createdAt: m.createdAt,
-        text: m.text,
+        text,
         attachments: m.attachments.map(({ id: _, ...a }) => ({
           ...a,
           name: unmask
@@ -108,7 +110,7 @@ export async function chatExport(
         })),
         tools: m.tools.map(({ name, status }) => ({ name, status })),
         artifacts:
-          m.role === 'assistant' ? extractArtifacts(m.id, m.text).map(({ id: _, ...a }) => a) : [],
+          m.role === 'assistant' ? extractArtifacts(m.id, text).map(({ id: _, ...a }) => a) : [],
         ...(m.usage ? { usage: m.usage } : {}),
       };
     }),
