@@ -84,11 +84,12 @@ describe('model messages (phase-10)', () => {
       }).success,
     ).toBe(false);
   });
-  it('parses chat.setModel, chat.setDataPolicy, models.list and models.favorite', () => {
+  it('parses chat.setModel, chat.setDataPolicy, chat.setAutoApprove, models.list and models.favorite', () => {
     for (const m of [
       { type: 'chat.setModel', chatId: 'c1', modelId: 'auto', reasoning: 'auto' },
       { type: 'chat.setModel', chatId: 'c1', modelId: 'openai/gpt-5.5', reasoning: 'none' },
       { type: 'chat.setDataPolicy', chatId: 'c1', dataPolicy: 'open' },
+      { type: 'chat.setAutoApprove', chatId: 'c1', on: true },
       { type: 'models.list' },
       { type: 'models.favorite', modelId: 'openai/gpt-5.5', favorite: true },
     ])

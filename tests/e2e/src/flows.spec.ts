@@ -458,6 +458,48 @@ test.describe('approval', () => {
   });
 });
 
+test.describe('auto-approve', () => {
+  // Phase-21 decision 7: the fake broker gives the chat a `bash` tool (in `approval.always`).
+  test.use({ broker: true });
+
+  test('Hyväksy automaattisesti: bash runs without a card; off, the card is back', async ({
+    app,
+    page,
+  }) => {
+    app.llm.push({ text: 'Hei.', match: 'Moi' });
+    for (const [match, command] of [
+      ['Aja komento', 'echo valmis'],
+      ['Toinen komento', 'echo taas'],
+    ] as const) {
+      app.llm.push({ toolCalls: [{ name: 'bash', args: { command } }], match });
+      app.llm.push({ text: 'Ajettu.', match });
+    }
+    await app.login(page);
+    await send(page, 'Moi');
+    await expect(page.locator('.md').last()).toHaveText('Hei.');
+    const chip = page.getByRole('button', { name: 'Hyväksy automaattisesti' });
+    await expect(chip).toHaveAttribute('aria-pressed', 'false');
+    await chip.hover();
+    await expect(page.getByRole('tooltip')).toContainText('write, edit, bash');
+    await chip.click();
+    await expect(chip).toHaveAttribute('aria-pressed', 'true');
+
+    await send(page, 'Aja komento');
+    await expect(page.getByRole('button', { name: /^bash valmis/ })).toBeVisible();
+    await expect(page.locator('.md').last()).toHaveText('Ajettu.');
+    await expect(page.getByRole('heading', { name: /Hyväksytäänkö työkalu/ })).toHaveCount(0);
+
+    // Off: the gate asks again.
+    await chip.click();
+    await expect(chip).toHaveAttribute('aria-pressed', 'false');
+    await send(page, 'Toinen komento');
+    const card = page.getByRole('region', { name: /Hyväksytäänkö työkalu bash/ });
+    await expect(card).toContainText('echo taas');
+    await card.getByRole('button', { name: 'Hyväksy' }).click();
+    await expect(page.getByRole('button', { name: /^bash valmis/ })).toHaveCount(2);
+  });
+});
+
 test.describe('export', () => {
   test.use({ pseudo: 'full' });
 

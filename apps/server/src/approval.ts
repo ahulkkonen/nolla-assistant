@@ -31,8 +31,8 @@ export const approvalGate =
   }: {
     chatId: string;
     policy: AgentProfile['approval'];
-    /** `unattended` (see `approvals`): chats with no one to ask. */
-    ask: Ask & { unattended?: Map<string, string[]> };
+    /** `unattended` (see `approvals`): chats with no one to ask; `autoApprove`: the chat's toggle. */
+    ask: Ask & { unattended?: Map<string, string[]>; autoApprove?: Map<string, string[]> };
     timeoutMs?: number | undefined;
     /** Calls the user already approved on an earlier card (the web search guard): no second card. */
     approved?: Set<string> | undefined;
@@ -42,6 +42,7 @@ export const approvalGate =
       const tool = event.toolName;
       if (policy.never.includes(tool) || !policy.always.includes(tool)) return;
       if (approved?.has(event.toolCallId)) return;
+      if (ask.autoApprove?.get(chatId)?.includes(tool)) return;
       const auto = ask.unattended?.get(chatId);
       if (auto) return auto.includes(tool) ? undefined : { block: true, reason: UNATTENDED_REASON };
       return confirm(ask, {
@@ -90,7 +91,12 @@ export function approvals(send: (chatId: string, msg: ServerMessage) => void) {
   const resolved = new Map<string, string>();
   /** chatId to the tools that run without asking; the gate denies any other gated tool at once. */
   const unattended = new Map<string, string[]>();
-  const ask: Ask & { unattended: typeof unattended } = Object.assign(
+  /**
+   * chatId to the tools that run without asking while "Hyväksy automaattisesti" is on (phase-21
+   * decision 7). Other gated tools still ask. In memory: a restart turns it off.
+   */
+  const autoApprove = new Map<string, string[]>();
+  const ask = Object.assign(
     (req: AskInput, signal: AbortSignal) =>
       new Promise<boolean>((resolve) => {
         if (signal.aborted) return resolve(false);
@@ -110,11 +116,12 @@ export function approvals(send: (chatId: string, msg: ServerMessage) => void) {
         // Real values go to the room only, never to the log.
         send(req.chatId, request);
       }),
-    { unattended },
+    { unattended, autoApprove },
   );
   return {
     ask,
     unattended,
+    autoApprove,
     /** Returns false when the request is unknown or already resolved. */
     respond(requestId: string, approve: boolean): boolean {
       const p = pending.get(requestId);

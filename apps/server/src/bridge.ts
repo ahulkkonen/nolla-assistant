@@ -177,7 +177,8 @@ export function thinkingOf(m: AgentMessage): string {
   if (m.role !== 'assistant') return '';
   return m.content
     .flatMap((b) => (b.type === 'thinking' && !b.redacted && b.thinking.trim() ? [b.thinking] : []))
-    .join('\n\n');
+    .join('\n\n')
+    .trim();
 }
 
 /** `thinking.get` cuts at most here, before the restore. */
@@ -757,6 +758,12 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
     return undefined;
   };
 
+  /** "Hyväksy automaattisesti" of a chat (phase-21 decision 7); `tools` also while it is off. */
+  const autoApproveOf = (r: ChatRow) => {
+    const tools = approvals.autoApprove.get(r.id);
+    return { on: !!tools, tools: tools ?? registry.autoApproveTools(r.agentId) };
+  };
+
   /** `chat.state` of a chat and its session (`chat.open`, `chat.fork`). */
   const chatState = async (r: ChatRow, session: AgentSession): Promise<ServerMessage> => {
     const restore = restorer(pseudo, () => send(socket, errorMsg('pseudo_down', r.id)));
@@ -768,6 +775,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
       messages,
       artifacts: messageArtifacts(messages),
       running: registry.running(r.id),
+      autoApprove: autoApproveOf(r),
       ...(link ? { forkedFrom: link } : {}),
       ...(memory.claims ? { claims: memory.claims.chips(r.id) } : {}),
     };
@@ -951,7 +959,9 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
           .returning()
           .get();
         join(id, session);
-        return send(socket, { type: 'chat.created', chat: summary(r) });
+        send(socket, { type: 'chat.created', chat: summary(r) });
+        // No `chat.state` follows for a new chat: the composer chip needs the tool list.
+        return send(socket, { type: 'chat.autoApprove', chatId: id, ...autoApproveOf(r) });
       }
       case 'chat.list': {
         const rows = db
@@ -1038,6 +1048,16 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
         update(msg.chatId, { confidence: msg.on });
         await registry.evict(msg.chatId);
         return;
+      // Also during a run: the next tool call reads it; an open card stays open.
+      case 'chat.setAutoApprove': {
+        const r = owned(msg.chatId);
+        // A running automation keeps its own `autoApprove` list (phase-14 decision 9).
+        if (approvals.unattended.has(msg.chatId))
+          return send(socket, errorMsg('bad_message', msg.chatId));
+        if (msg.on) approvals.autoApprove.set(msg.chatId, registry.autoApproveTools(r.agentId));
+        else approvals.autoApprove.delete(msg.chatId);
+        return notify(msg.chatId, { type: 'chat.autoApprove', chatId: r.id, ...autoApproveOf(r) });
+      }
       case 'chat.setDataPolicy': {
         const r = owned(msg.chatId);
         if (

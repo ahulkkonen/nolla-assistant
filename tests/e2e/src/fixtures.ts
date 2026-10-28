@@ -7,6 +7,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { deflateSync } from 'node:zlib';
 import { type FakeTurn, startFakeLlm } from '@pa/fake-llm';
 import { startFakeSidecar } from '@pa/pi-ext-pseudo/fake-sidecar';
+import { startFakeBroker } from '@pa/pi-ext-sandbox/fake-broker';
 import { hashPassword } from '@pa/server/src/auth/password.ts';
 import { loadConfig } from '@pa/server/src/config.ts';
 import { start } from '@pa/server/src/main.ts';
@@ -384,6 +385,7 @@ export const test = base.extend<{
   approvalTimeoutMs: number;
   memoryUser: string;
   workFiles: boolean;
+  broker: boolean;
 }>({
   // Starts the fake sidecar and sets PSEUDO_URL: `full` has DICT plus one pending item;
   // `collision` has DICT, and typing COLLIDING holds the message (phase 12).
@@ -396,7 +398,9 @@ export const test = base.extend<{
   memoryUser: ['', { option: true }],
   // Seeds DATA_DIR/work/aleksi with WORK_FILES.
   workFiles: [false, { option: true }],
-  app: async ({ pseudo, automation, approvalTimeoutMs, memoryUser, workFiles }, use) => {
+  // The fake sandbox broker (runs `bash` on the host, in the work dir): the `bash` tool exists.
+  broker: [false, { option: true }],
+  app: async ({ pseudo, automation, approvalTimeoutMs, memoryUser, workFiles, broker }, use) => {
     const llm = await startFakeLlm([]);
     const sidecar =
       pseudo === 'off'
@@ -411,6 +415,9 @@ export const test = base.extend<{
     const dataDir = mkdtempSync(join(tmpdir(), 'pa-e2e-'));
     mkdirSync(join(dataDir, 'work/aleksi'), { recursive: true });
     if (workFiles) seedWork(join(dataDir, 'work/aleksi'));
+    const fakeBroker = broker
+      ? await startFakeBroker({ token: 'broker-e2e', root: join(dataDir, 'work/aleksi') })
+      : undefined;
     mkdirSync(join(dataDir, 'automations'));
     // The repository's agents plus a second profile for the picker and editor tests.
     seedAgents(join(dataDir, 'agents'));
@@ -447,6 +454,7 @@ export const test = base.extend<{
         PUSH_ALLOW_ANY_HOST: '1',
         ...(approvalTimeoutMs ? { APPROVAL_TIMEOUT_MS: String(approvalTimeoutMs) } : {}),
         ...(sidecar ? { PSEUDO_URL: sidecar.url } : {}),
+        ...(fakeBroker ? { BROKER_URL: fakeBroker.url, BROKER_TOKEN: 'broker-e2e' } : {}),
       }),
     );
     const url = `http://127.0.0.1:${port}`;
@@ -460,6 +468,7 @@ export const test = base.extend<{
     await srv.close();
     await llm.close();
     await sidecar?.close();
+    await fakeBroker?.close();
     rmSync(dataDir, { recursive: true, force: true });
   },
   baseURL: async ({ app }, use) => use(app.url),

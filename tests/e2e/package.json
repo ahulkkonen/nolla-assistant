@@ -10,6 +10,7 @@
     "@axe-core/playwright": "4.14.0",
     "@pa/fake-llm": "workspace:*",
     "@pa/pi-ext-pseudo": "workspace:*",
+    "@pa/pi-ext-sandbox": "workspace:*",
     "@pa/server": "workspace:*",
     "@playwright/test": "1.64.1",
     "@types/node": "26.6.5",

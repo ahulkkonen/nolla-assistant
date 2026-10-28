@@ -8,6 +8,8 @@ import {
   Gauge,
   LoaderCircle,
   Paperclip,
+  Shield,
+  ShieldAlert,
   Square,
   Upload,
   X,
@@ -35,7 +37,7 @@ import { useStore } from '../store.ts';
 import { send, sendUserMessage, stopTurn } from '../ws.ts';
 import { AgentPicker } from './AgentPicker.tsx';
 import { DropOverlay, useFileDrop } from './FileDrop.tsx';
-import { IconButton } from './IconButton.tsx';
+import { IconButton, Tip } from './IconButton.tsx';
 import { clock, MicButton, type MicState } from './MicButton.tsx';
 import { ModelPicker, NextTurnTip } from './ModelPicker.tsx';
 import { WorkPicker } from './TreeDialogs.tsx';
@@ -75,6 +77,43 @@ function ConfidenceToggle({ chatId, running }: { chatId: string; running: boolea
         <span className="max-md:sr-only">Luottamus</span>
       </Button>
     </NextTurnTip>
+  );
+}
+
+/**
+ * "Hyväksy automaattisesti" (phase-21 decision 7): an outline chip, filled in the warning colour
+ * while on; a 44 px shield on phones. Also during a reply: the next tool call reads it. None for an
+ * agent with no gated tool.
+ */
+function AutoApproveChip({ chatId }: { chatId: string }) {
+  const auto = useStore((s) => s.autoApprove[chatId]);
+  if (!auto?.tools.length) return null;
+  const { on, tools } = auto;
+  const which = `ilman hyväksyntää: ${tools.join(', ')}`;
+  return (
+    <Tip label={on ? `Ajetaan ${which}` : `Kun päällä, ajetaan ${which}`}>
+      <Button
+        variant="outline"
+        aria-pressed={on}
+        onClick={() => {
+          send({ type: 'chat.setAutoApprove', chatId, on: !on });
+          // No tooltips on touch: the toast names the tools.
+          if (!on && touch) useStore.getState().notify(`Ajetaan ${which}`);
+        }}
+        className={cn(
+          'h-8 rounded-full px-3 font-normal text-muted-foreground hover:text-foreground max-md:size-11 max-md:px-0',
+          on &&
+            'border-warning-line bg-warning-subtle text-warning hover:bg-warning-subtle hover:text-warning aria-pressed:bg-warning-subtle',
+        )}
+      >
+        {on ? (
+          <ShieldAlert size={16} aria-hidden="true" />
+        ) : (
+          <Shield size={16} aria-hidden="true" className="md:hidden" />
+        )}
+        <span className="max-md:sr-only">Hyväksy automaattisesti</span>
+      </Button>
+    </Tip>
   );
 }
 
@@ -406,6 +445,7 @@ export function Composer() {
           <AgentPicker />
           <ModelPicker />
           {chatId && <ConfidenceToggle chatId={chatId} running={running} />}
+          {chatId && <AutoApproveChip chatId={chatId} />}
           <div className="ml-auto flex shrink-0 items-center gap-2">
             <MicButton onText={insertTranscript} onState={setMic} meter={meter} />
             {running && chatId && canSend ? (
