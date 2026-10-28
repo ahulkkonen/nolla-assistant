@@ -2,6 +2,7 @@ import type {
   Annotation,
   Artifact,
   AttachmentRef,
+  AutoApprove,
   ChatSummary,
   ExportJob,
   FileRoot,
@@ -185,6 +186,8 @@ type State = {
   modelMenuOpen: boolean;
   /** Open approval requests of every chat, oldest first. */
   approvals: Approval[];
+  /** "Hyväksy automaattisesti" per chat (`chat.state`, `chat.autoApprove`; phase-21 decision 7). */
+  autoApprove: Record<string, AutoApprove>;
   /** Live subagent children per chat; cleared when the chat goes idle. */
   subagents: Record<string, SubagentChild[]>;
   /** Last `automations.state`; null until the first one arrives. */
@@ -466,6 +469,7 @@ export const useStore = create<State>()((set, get) => {
     zdrRefused: {},
     modelMenuOpen: false,
     approvals: [],
+    autoApprove: {},
     subagents: {},
     automations: null,
     memory: null,
@@ -562,6 +566,10 @@ export const useStore = create<State>()((set, get) => {
               ...(policyChanged ? { zdrRefused: omit(st.zdrRefused, msg.chat.id) } : {}),
             };
           });
+        case 'chat.autoApprove': {
+          const { type: _, chatId, ...auto } = msg;
+          return set((st) => ({ autoApprove: { ...st.autoApprove, [chatId]: auto } }));
+        }
         case 'chat.titled':
           return set((st) => ({
             chats: st.chats.map((c) =>
@@ -611,6 +619,9 @@ export const useStore = create<State>()((set, get) => {
               claimChips: { ...st.claimChips, [msg.chat.id]: msg.claims ?? [] },
               policies: { ...st.policies, [msg.chat.id]: msg.chat.modelPolicy },
               forkedFrom: { ...st.forkedFrom, [msg.chat.id]: msg.forkedFrom ?? null },
+              ...(msg.autoApprove
+                ? { autoApprove: { ...st.autoApprove, [msg.chat.id]: msg.autoApprove } }
+                : {}),
               ...(mine ? { pendingFork: null, activeChatId: msg.chat.id, screen: 'chat' } : {}),
               ...(msg.artifacts ? mergeArtifacts(st, msg.chat.id, msg.artifacts) : {}),
               // Phase 20: an `agent.status` missed while offline (the run ended meanwhile).

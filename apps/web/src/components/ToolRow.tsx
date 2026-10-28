@@ -1,5 +1,21 @@
 import { TOOL_STATUS_WORD, type ToolSearch, WEB_SEARCH_TOOL } from '@pa/protocol';
-import { Ban, Check, ChevronRight, Clock, Loader2, TimerOff, X } from 'lucide-react';
+import {
+  Ban,
+  Brain,
+  Check,
+  ChevronRight,
+  Clock,
+  FilePen,
+  FileText,
+  Globe,
+  Loader2,
+  type LucideIcon,
+  Plug,
+  Terminal,
+  TimerOff,
+  Wrench,
+  X,
+} from 'lucide-react';
 import { Collapsible } from 'radix-ui';
 import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
@@ -15,6 +31,17 @@ const ICON = {
   // Decided by time, not by anyone: quiet, unlike the waiting clock.
   expired: { Icon: TimerOff, className: 'text-muted-foreground' },
 } as const;
+
+/** What the tool does, before its name (phase-21 decision 5); MCP tools `Plug`, others `Wrench`. */
+const TOOL_ICON = new Map<string, LucideIcon>([
+  ['recall', Brain],
+  ['memory', Brain],
+  ['read', FileText],
+  ['write', FilePen],
+  ['edit', FilePen],
+  ['bash', Terminal],
+  [WEB_SEARCH_TOOL, Globe],
+]);
 
 const toolTrigger =
   'group flex max-w-full items-center gap-2 rounded-md text-meta text-muted-foreground hover:text-foreground h-8 max-md:min-h-11 [@media(pointer:coarse)]:min-h-11';
@@ -144,6 +171,7 @@ export function ToolRow({ tool }: { tool: ToolView }) {
         : gate
           ? ICON.waiting
           : ICON[tool.status];
+  const ToolIcon = TOOL_ICON.get(tool.name) ?? (tool.name.startsWith('mcp__') ? Plug : Wrench);
   const search = tool.name === WEB_SEARCH_TOOL;
   const word =
     gate === 'waiting'
@@ -168,6 +196,7 @@ export function ToolRow({ tool }: { tool: ToolView }) {
       icon={<Icon size={16} className={cn('shrink-0', className)} />}
       label={
         <>
+          <ToolIcon size={16} aria-hidden="true" className="shrink-0 text-muted-foreground" />
           <span className="truncate font-mono">{tool.name}</span> <span aria-hidden="true">·</span>{' '}
           <span className="shrink-0">{word}</span>
         </>

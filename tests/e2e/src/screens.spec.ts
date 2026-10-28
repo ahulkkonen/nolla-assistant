@@ -962,6 +962,20 @@ for (const scheme of ['light', 'dark'] as const) {
         await shot(page, 'tool-expanded', vp.width, scheme);
       });
 
+      // Phase-21 decision 7: the chip on, in the warning colour (a shield on phones, with a toast).
+      test('auto-approve-on', async ({ app, page }) => {
+        app.llm.push({ text: 'Hei.' });
+        await app.login(page);
+        await sendMessage(page, 'Moi');
+        await expect(page.locator('.md').last()).toHaveText('Hei.');
+        const chip = page.getByRole('button', { name: 'Hyväksy automaattisesti' });
+        await chip.click();
+        await expect(chip).toHaveAttribute('aria-pressed', 'true');
+        await page.mouse.move(0, 0);
+        await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+        await shot(page, 'auto-approve-on', vp.width, scheme);
+      });
+
       if (vp.width !== 1024) {
         test.describe('collision', () => {
           test.use({ pseudo: 'collision' });

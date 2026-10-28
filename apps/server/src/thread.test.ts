@@ -6,7 +6,7 @@ import { startFakeSidecar } from '@pa/pi-ext-pseudo/fake-sidecar';
 import type { ChatExport } from '@pa/protocol';
 import { eq } from 'drizzle-orm';
 import { afterEach, expect, test } from 'vitest';
-import { cutText, threadFiles } from './bridge.ts';
+import { cutText, thinkingOf, threadFiles } from './bridge.ts';
 import {
   api,
   bootChat,
@@ -394,6 +394,18 @@ test('threadFiles walks the fork chain, each source cut at the edited message', 
   };
   expect(ids('R')).toEqual(['g1', 's1', 'r1']);
   expect(ids('S')).toEqual(['g1', 's1', 's2']);
+});
+
+test('thinkingOf trims the joined text: no empty last line (phase-21 decision 6)', () => {
+  const m = {
+    role: 'assistant',
+    content: [
+      { type: 'thinking', thinking: '  Mietin.' },
+      { type: 'text', text: 'Vastaus.' },
+      { type: 'thinking', thinking: 'Vielä.\n' },
+    ],
+  } as Parameters<typeof thinkingOf>[0];
+  expect(thinkingOf(m)).toBe('Mietin.\n\nVielä.');
 });
 
 test('cutText cuts at a paragraph or a space, never inside a surrogate pair', () => {

@@ -161,3 +161,88 @@ test('registry: a chat whose agent profile is gone opens with the default agent'
   expect(body(llm, 0)).toContain('henkilökohtainen avustaja');
   expect(srv.db.select().from(usage).get()?.agentId).toBe('assistant');
 });
+
+test('auto-approve: an open card stays open, then the gated tool runs without a card', {
+  timeout: 30_000,
+}, async () => {
+  const { c, chat, srv } = await bootChat([
+    ...WRITE,
+    { toolCalls: [{ name: 'write', args: { path: 'toinen.txt', content: 'x' } }] },
+    { text: 'Taas.' },
+  ]);
+  // `chat.create` tells the new chat's state: off.
+  expect((await c.next('chat.autoApprove')).on).toBe(false);
+  c.send({ type: 'user.message', chatId: chat.id, text: 'Kirjoita' });
+  const req = await c.next('approval.request');
+  c.send({ type: 'chat.setAutoApprove', chatId: chat.id, on: true });
+  expect(await c.next('chat.autoApprove')).toEqual({
+    type: 'chat.autoApprove',
+    chatId: chat.id,
+    on: true,
+    tools: ['write', 'edit', 'bash'],
+  });
+  expect(srv.approvals.list(chat.id)).toEqual([req]);
+  c.send({ type: 'approval.respond', requestId: req.requestId, approve: true });
+  await c.idle();
+  c.send({ type: 'user.message', chatId: chat.id, text: 'Kirjoita taas' });
+  await c.idle();
+  expect(existsSync(join(srv.registry.cwd, 'toinen.txt'))).toBe(true);
+  expect(c.inbox.some((m) => m.type === 'approval.request')).toBe(false);
+  c.send({ type: 'chat.open', chatId: chat.id });
+  expect((await c.next('chat.state')).autoApprove?.on).toBe(true);
+});
+
+test('auto-approve: always minus MCP writes and web_search; a running automation refuses', {
+  timeout: 30_000,
+}, async () => {
+  const dir = tempDir('pa-auto-');
+  seedAgents(join(dir, 'agents'));
+  writeFileSync(
+    join(dir, 'agents', 'tyokalut.yaml'),
+    [
+      'id: tyokalut',
+      'name: Työkalut',
+      'model: zdr/strong',
+      'prompt: prompts/kirjoittaja.md',
+      'tools:',
+      '  allow: [read, write, web_search]',
+      '  mcp: [ws]',
+      'approval:',
+      '  always: [write, web_search, mcp__ws__send]',
+      '',
+    ].join('\n'),
+  );
+  writeFileSync(
+    join(dir, 'mcp.yaml'),
+    [
+      'servers:',
+      '  ws:',
+      '    url: http://127.0.0.1:9/mcp',
+      '    tools:',
+      '      - { name: send, write: true }',
+      '',
+    ].join('\n'),
+  );
+  const { config, run } = await boot([], {
+    AGENTS_DIR: join(dir, 'agents'),
+    MCP_CONFIG: join(dir, 'mcp.yaml'),
+  });
+  const srv = await run();
+  const c = await connect(config.port);
+  c.send({ type: 'chat.create', agentId: 'tyokalut' });
+  const { chat } = await c.next('chat.created');
+  expect(await c.next('chat.autoApprove')).toMatchObject({ on: false, tools: ['write'] });
+  c.send({ type: 'chat.open', chatId: chat.id });
+  expect((await c.next('chat.state')).autoApprove).toEqual({ on: false, tools: ['write'] });
+  c.send({ type: 'chat.setAutoApprove', chatId: chat.id, on: true });
+  expect(await c.next('chat.autoApprove')).toMatchObject({ on: true, tools: ['write'] });
+  expect(srv.approvals.autoApprove.get(chat.id)).toEqual(['write']);
+  c.send({ type: 'chat.setAutoApprove', chatId: chat.id, on: false });
+  expect(await c.next('chat.autoApprove')).toMatchObject({ on: false, tools: ['write'] });
+  expect(srv.approvals.autoApprove.has(chat.id)).toBe(false);
+  // A running automation owns its chat's list.
+  srv.approvals.unattended.set(chat.id, []);
+  c.send({ type: 'chat.setAutoApprove', chatId: chat.id, on: true });
+  await expect(c.next('chat.autoApprove')).rejects.toThrow('bad_message');
+  expect(srv.approvals.autoApprove.has(chat.id)).toBe(false);
+});

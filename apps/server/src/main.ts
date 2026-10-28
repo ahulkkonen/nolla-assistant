@@ -349,7 +349,7 @@ export async function start(
     await indexIdle();
     sqlite.close();
   };
-  return { app, registry, db, close };
+  return { app, registry, db, approvals, close };
 }
 
 /**

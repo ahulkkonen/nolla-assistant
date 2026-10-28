@@ -139,6 +139,13 @@ export const ChatSummary = z.object({
 });
 export type ChatSummary = z.infer<typeof ChatSummary>;
 
+/**
+ * "Hyväksy automaattisesti" of a chat (phase-21 decision 7): while `on`, `tools` run without an
+ * approval card. In server memory only: a restart turns it off.
+ */
+export const AutoApprove = z.object({ on: z.boolean(), tools: z.array(z.string()) });
+export type AutoApprove = z.infer<typeof AutoApprove>;
+
 export const ToolStatus = z.enum(['running', 'ok', 'error', 'denied']);
 export type ToolStatus = z.infer<typeof ToolStatus>;
 /** A tool status as a Finnish word: tool rows, announcements and the Markdown export. */
@@ -757,6 +764,7 @@ export const ClientMessage = z.discriminatedUnion('type', [
   z.object({ type: z.literal('chat.setModel'), chatId: id64, ...ModelChoice.shape }),
   /** `open` only after a recorded ZDR refusal for the chat's model (phase-10 decision 9). */
   z.object({ type: z.literal('chat.setDataPolicy'), chatId: id64, dataPolicy: DataPolicy }),
+  z.object({ type: z.literal('chat.setAutoApprove'), chatId: id64, on: z.boolean() }),
   z.object({ type: z.literal('models.list') }),
   z.object({ type: z.literal('models.favorite'), modelId: ModelId, favorite: z.boolean() }),
   z.object({ type: z.literal('chat.open'), chatId: id64 }),
@@ -915,6 +923,7 @@ export const ServerMessage = z.discriminatedUnion('type', [
     forkedFrom: ForkLink.nullable().optional(),
     /** Phase 17: claims this chat activated at once in the last 7 days (the chip). */
     claims: z.array(ClaimChip).optional(),
+    autoApprove: AutoApprove.optional(),
   }),
   z.object({ type: z.literal('chat.list'), chats: z.array(ChatSummary) }),
   z.object({ type: z.literal('chat.created'), chat: ChatSummary }),
@@ -925,6 +934,8 @@ export const ServerMessage = z.discriminatedUnion('type', [
     topicId: id64.nullable(),
   }),
   z.object({ type: z.literal('chat.updated'), chat: ChatSummary }),
+  /** The answer to `chat.setAutoApprove`, to the chat's room. */
+  z.object({ type: z.literal('chat.autoApprove'), chatId: id64, ...AutoApprove.shape }),
   z.object({ type: z.literal('chat.deleted'), chatId: id64 }),
   z.object({
     type: z.literal('chat.related'),

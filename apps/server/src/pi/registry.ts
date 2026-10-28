@@ -285,6 +285,21 @@ export class SessionRegistry {
     return agents.get(liveAgentId(agents, agentId));
   }
 
+  private mcpOf(profile: AgentProfile) {
+    return [...new Set(profile.tools.mcp)].flatMap((n) => this.opts.mcp?.get(n) ?? []);
+  }
+
+  /**
+   * The tools "Hyväksy automaattisesti" lets run in a chat of this agent (phase-21 decision 7):
+   * `approval.always` minus MCP writes and `web_search`, which still ask.
+   */
+  autoApproveTools(agentId: string): string[] {
+    const profile = this.profileOf(agentId);
+    if (!profile) return [];
+    const writes = this.mcpOf(profile).flatMap(writeTools);
+    return profile.approval.always.filter((t) => t !== WEB_SEARCH_TOOL && !writes.includes(t));
+  }
+
   /**
    * The chat's session entries without building a session (the export, phase-15 decision 15): the
    * open session's manager, else the JSONL file opened once, else an empty manager.
@@ -388,7 +403,7 @@ export class SessionRegistry {
     // Pi's built-in `bash` is never enabled (invariant 8): `bash` stays only with the broker tool.
     const tools = profile.tools.allow.filter((t) => t !== 'bash' || broker);
     const skills = new Set(profile.skills);
-    const mcp = [...new Set(profile.tools.mcp)].flatMap((n) => this.opts.mcp?.get(n) ?? []);
+    const mcp = this.mcpOf(profile);
     const mcpTools = mcp.flatMap(allowedToolNames);
     // MCP writes always ask (decision 0005); `never` cannot remove them.
     const mcpWrites = mcp.flatMap(writeTools);
