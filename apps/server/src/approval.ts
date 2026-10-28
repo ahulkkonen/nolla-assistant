@@ -28,11 +28,14 @@ export const approvalGate =
     ask,
     timeoutMs,
     approved,
+    autoTools,
   }: {
     chatId: string;
     policy: AgentProfile['approval'];
-    /** `unattended` (see `approvals`): chats with no one to ask; `autoApprove`: the chat's toggle. */
-    ask: Ask & { unattended?: Map<string, string[]>; autoApprove?: Map<string, string[]> };
+    /** `unattended` (see `approvals`): chats with no one to ask; `autoApprove`: chats whose toggle is on. */
+    ask: Ask & { unattended?: Map<string, string[]>; autoApprove?: Set<string> };
+    /** The tools the toggle lets run (phase-21 decision 7), from the profile this gate was built with. */
+    autoTools?: string[] | undefined;
     timeoutMs?: number | undefined;
     /** Calls the user already approved on an earlier card (the web search guard): no second card. */
     approved?: Set<string> | undefined;
@@ -42,9 +45,9 @@ export const approvalGate =
       const tool = event.toolName;
       if (policy.never.includes(tool) || !policy.always.includes(tool)) return;
       if (approved?.has(event.toolCallId)) return;
-      if (ask.autoApprove?.get(chatId)?.includes(tool)) return;
       const auto = ask.unattended?.get(chatId);
       if (auto) return auto.includes(tool) ? undefined : { block: true, reason: UNATTENDED_REASON };
+      if (ask.autoApprove?.has(chatId) && autoTools?.includes(tool)) return;
       return confirm(ask, {
         chatId,
         callId: event.toolCallId,
@@ -95,7 +98,7 @@ export function approvals(send: (chatId: string, msg: ServerMessage) => void) {
    * chatId to the tools that run without asking while "Hyväksy automaattisesti" is on (phase-21
    * decision 7). Other gated tools still ask. In memory: a restart turns it off.
    */
-  const autoApprove = new Map<string, string[]>();
+  const autoApprove = new Set<string>();
   const ask = Object.assign(
     (req: AskInput, signal: AbortSignal) =>
       new Promise<boolean>((resolve) => {

@@ -760,8 +760,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
 
   /** "Hyväksy automaattisesti" of a chat (phase-21 decision 7); `tools` also while it is off. */
   const autoApproveOf = (r: ChatRow) => {
-    const tools = approvals.autoApprove.get(r.id);
-    return { on: !!tools, tools: tools ?? registry.autoApproveTools(r.agentId) };
+    return { on: approvals.autoApprove.has(r.id), tools: registry.autoApproveTools(r.agentId) };
   };
 
   /** `chat.state` of a chat and its session (`chat.open`, `chat.fork`). */
@@ -1054,7 +1053,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
         // A running automation keeps its own `autoApprove` list (phase-14 decision 9).
         if (approvals.unattended.has(msg.chatId))
           return send(socket, errorMsg('bad_message', msg.chatId));
-        if (msg.on) approvals.autoApprove.set(msg.chatId, registry.autoApproveTools(r.agentId));
+        if (msg.on) approvals.autoApprove.add(msg.chatId);
         else approvals.autoApprove.delete(msg.chatId);
         return notify(msg.chatId, { type: 'chat.autoApprove', chatId: r.id, ...autoApproveOf(r) });
       }
@@ -1088,6 +1087,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
       case 'chat.delete': {
         const { chatId } = msg;
         const deleted = owned(chatId);
+        approvals.autoApprove.delete(chatId);
         // Row first: a concurrent `registry.get` then fails instead of reviving the chat.
         const paths = db.transaction((tx) => {
           const own = and(eq(files.chatId, chatId), eq(files.userId, userId));

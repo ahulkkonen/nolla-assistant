@@ -478,6 +478,7 @@ export class SessionRegistry {
           ask: this.opts.approval.ask,
           timeoutMs: this.opts.approval.timeoutMs,
           approved: searchApproved,
+          autoTools: this.autoApproveTools(agentId),
         }),
         ...(broker && tools.includes('bash')
           ? [

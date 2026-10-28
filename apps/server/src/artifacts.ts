@@ -1,5 +1,11 @@
 import { createHash } from 'node:crypto';
-import { type Artifact, artifactKind, artifactTitle, type Message } from '@pa/protocol';
+import {
+  type Artifact,
+  artifactKind,
+  artifactTitle,
+  type Message,
+  stripConfidence,
+} from '@pa/protocol';
 
 const MAX_INPUT = 200_000;
 const OPEN = /^ {0,3}(`{3,}|~{3,})(.*)$/;
@@ -32,7 +38,8 @@ function fencedBlocks(text: string) {
 /** Artifacts in an assistant text: `html`, `jsx`/`tsx`, `mermaid` and `vega-lite` blocks. */
 export function extractArtifacts(messageId: string, text: string): Artifact[] {
   const out: Artifact[] = [];
-  for (const { lang, content } of fencedBlocks(text)) {
+  // Phase-21 decision 4: a marker the model wrote inside a fence never reaches the renderer.
+  for (const { lang, content } of fencedBlocks(stripConfidence(text))) {
     const kind = artifactKind(lang);
     if (!kind) continue;
     const index = out.length;

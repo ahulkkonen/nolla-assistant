@@ -755,6 +755,19 @@ export function framedSvg(inner: string, lifted: Lifted, t: Tokens, fonts: strin
       if (!(node.getAttribute(attr) ?? '#').startsWith('#')) node.removeAttribute(attr);
   for (const node of el.querySelectorAll('[style]'))
     node.setAttribute('style', safeCss(node.getAttribute('style') ?? ''));
+  // Presentation attributes can hold `url(…)` too.
+  for (const attr of [
+    'fill',
+    'stroke',
+    'filter',
+    'mask',
+    'clip-path',
+    'marker-start',
+    'marker-mid',
+    'marker-end',
+  ])
+    for (const node of el.querySelectorAll(`[${attr}]`))
+      node.setAttribute(attr, safeCss(node.getAttribute(attr) ?? ''));
   const box = el
     .getAttribute('viewBox')
     ?.split(/[\s,]+/)
@@ -860,10 +873,18 @@ export async function pngBlob(svg: string, width: number, height: number): Promi
  * diamond from its label's box, so it dwarfs the other nodes. The source in Koodi is unchanged.
  */
 export const roundDecisions = (src: string) =>
-  /^\s*(flowchart|graph)\b/m.test(src.replace(/^---[\s\S]*?---/, '').trimStart())
+  /^(flowchart|graph)\b/.test(header(src))
     ? src.replace(/(\b[\w-]+)\{(?!\{)([^{}\n]+)\}(?!\})/g, '$1([$2])')
     : src;
 
+/** The diagram's first line after front matter and `%%` comments: its type. */
+const header = (src: string) =>
+  src
+    .replace(/^---[\s\S]*?---/, '')
+    .split('\n')
+    .map((l) => l.trim())
+    .find((l) => l && !l.startsWith('%%')) ?? '';
+
 /** A top-to-bottom flowchart: the one the column pass of phase-21 decision 1 lays out. */
 export const columnar = (src: string) =>
-  /^\s*(flowchart|graph)([ \t]+(TB|TD))?[ \t]*(;|$)/m.test(src.replace(/^---[\s\S]*?---/, ''));
+  /^(flowchart|graph)([ \t]+(TB|TD))?[ \t]*(;|$)/.test(header(src));

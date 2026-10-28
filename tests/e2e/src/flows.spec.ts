@@ -1483,9 +1483,9 @@ test('confidence: the toggle reaches the next turn; each sentence shows its leve
   await expect(spans.nth(0)).toHaveAttribute('title', 'Luottamus 9/9');
   await expect(spans.nth(1)).toHaveAttribute('title', 'Luottamus 5/9');
   await expect(spans.nth(2)).toHaveAttribute('title', 'Luottamus 1/9');
-  // The contrast follows N: 100 is the text colour, 35 is near the muted one.
+  // The contrast follows N: 100 is the text colour, 0 is the muted one.
   await expect(spans.nth(0)).toHaveAttribute('style', '--conf: 100;');
-  await expect(spans.nth(2)).toHaveAttribute('style', '--conf: 35;');
+  await expect(spans.nth(2)).toHaveAttribute('style', '--conf: 0;');
   const color = (i: number) => spans.nth(i).evaluate((el) => getComputedStyle(el).color);
   expect(await color(2)).not.toBe(await color(0));
 

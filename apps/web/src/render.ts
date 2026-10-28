@@ -474,12 +474,10 @@ function columns(svg: SVGSVGElement, o: Sarake, strip: number) {
   for (const l of root.querySelectorAll(':scope > .edgeLabels > .edgeLabel'))
     if (!l.textContent?.trim()) l.remove();
   for (const p of root.querySelectorAll<SVGPathElement>(':scope > .edgePaths > path')) {
-    const id = /^L_(.+)_\d+$/.exec(p.dataset.id ?? '')?.[1] ?? '';
-    const from = [...nodes.keys()].find(
-      (key) => id.startsWith(`${key}_`) && nodes.has(id.slice(key.length + 1)),
-    );
-    const s = from === undefined ? undefined : nodes.get(from);
-    const t = from === undefined ? undefined : nodes.get(id.slice(from.length + 1));
+    // Mermaid classes each edge `LS-<from> LE-<to>`; the id joins them with `_`, which an id may hold.
+    const cls = [...p.classList];
+    const s = nodes.get(cls.find((c) => c.startsWith('LS-'))?.slice(3) ?? '');
+    const t = nodes.get(cls.find((c) => c.startsWith('LE-'))?.slice(3) ?? '');
     if (!s || !t) continue;
     const label = root
       .querySelector(`:scope > .edgeLabels .label[data-id="${CSS.escape(p.dataset.id ?? '')}"]`)

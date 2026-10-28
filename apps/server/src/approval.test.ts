@@ -236,7 +236,7 @@ test('auto-approve: always minus MCP writes and web_search; a running automation
   expect((await c.next('chat.state')).autoApprove).toEqual({ on: false, tools: ['write'] });
   c.send({ type: 'chat.setAutoApprove', chatId: chat.id, on: true });
   expect(await c.next('chat.autoApprove')).toMatchObject({ on: true, tools: ['write'] });
-  expect(srv.approvals.autoApprove.get(chat.id)).toEqual(['write']);
+  expect(srv.approvals.autoApprove.has(chat.id)).toBe(true);
   c.send({ type: 'chat.setAutoApprove', chatId: chat.id, on: false });
   expect(await c.next('chat.autoApprove')).toMatchObject({ on: false, tools: ['write'] });
   expect(srv.approvals.autoApprove.has(chat.id)).toBe(false);
