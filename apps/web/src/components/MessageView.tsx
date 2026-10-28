@@ -314,7 +314,7 @@ const rehypeAnnotate = (pairs: [string, string][]) => () => (tree: HNode) => {
 
 const MARKS = new RegExp(CONFIDENCE_MARK, 'g');
 /** `--conf` of the lowest confidence (N=1); 9 is 100 (phase-21 decision 4). */
-const CONF_FLOOR = 35;
+const CONF_FLOOR = 0;
 
 /**
  * Rehype plugin (phase-21 decision 4): each confidence marker `⟦N⟧` goes, and the text before it

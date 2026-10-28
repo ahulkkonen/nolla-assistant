@@ -29,11 +29,11 @@ pages of diagram styles and a written discussion.
    `⟦N⟧`, N from 1 (guess) to 9 (certain); never inside code blocks or tables. Pi's stored text keeps
    the markers (the model sees its own markers in later turns). The web renders them: a rehype
    plugin wraps the sentence before each marker in a span with `--conf`, colour
-   `color-mix(in oklch, var(--foreground) P%, var(--muted-foreground))` where P runs from 35 (N=1) to
+   `color-mix(in oklch, var(--foreground) P%, var(--muted-foreground))` where P runs from 0 (N=1) to
    100 (N=9), tooltip "Luottamus N/9". Copy, export and search strip the markers with one shared
    protocol helper `stripConfidence`. A marker that is still streaming (`⟦` without `⟧`) is hidden.
-   Final floor: P = 35. At N=1 the text reaches 9.1:1 on `--background` (light) and 8.5:1 (dark),
-   so axe passes and the floor stays.
+   Final floor: P = 0, so N=1 is `--muted-foreground` (5.5:1 light, 6.6:1 dark); a floor of 35
+   left every level between 9:1 and 17.5:1 and the steps were hard to see.
 5. **Tool row icons.** The row shows a tool icon before the name: recall and memory `Brain`,
    read `FileText`, write and edit `FilePen`, bash `Terminal`, web_search `Globe`, MCP tools
    `Plug`, others `Wrench`. The status icon stays where it is.
