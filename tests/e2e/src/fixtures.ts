@@ -274,13 +274,14 @@ export const MERMAID_REPLY = `Suunnitelma:\n\n${block(
 )}`;
 /**
  * Phase 20: a flowchart with the user's subgraph title, two edges into the subgraph from above,
- * and every colour class (no classDef): `ok` on the subgraph band, `muted` outside it.
+ * and every colour class (no classDef): `ok` on the subgraph band, `muted` outside it. Phase 21:
+ * an emoji first in a label, and an edge that skips a row (A to C).
  */
 export const NWP_REPLY = `Ennuste syntyy näin:\n\n${block(
   'mermaid',
   `flowchart TD
   accTitle: Sääennusteen tuotanto
-  A["Havainnot"]:::cool --> B
+  A["🛰️ Havainnot"]:::cool --> B
   A --> C
   subgraph NWP["3. Numeerinen sääennustus (NWP)"]
     B["Data-assimilaatio"] --> C["Malliajo"]:::ok

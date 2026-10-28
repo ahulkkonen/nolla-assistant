@@ -1595,7 +1595,8 @@ test('export: chart and diagram download as SVG with inlined fonts, and as PNG',
   expect(text).toContain("@font-face{font-family:'Inter Variable'");
   expect(text).toContain('data:font/woff2;base64,');
   // The lifted title and caption are in the file, the chart's marks too.
-  expect(text).toContain('Sähkönkulutus kuukausittain 2025</text>');
+  // Phase 21: wrapped into tspan lines.
+  expect(text).toContain('Sähkönkulutus kuukausittain 2025</tspan>');
   expect(text).toContain('yhteensä 3 370 kWh');
   expect(text).toContain('mark-rect');
   const png = await save('Lataa PNG');
@@ -1614,7 +1615,11 @@ test('export: chart and diagram download as SVG with inlined fonts, and as PNG',
     .click();
   await expect(frame.contentFrame().locator('.diagram svg')).toBeVisible();
   const diagram = await save('Lataa SVG');
-  expect(diagram.body.toString('utf8')).toContain('Lomasuunnitelma</text>');
+  const exported = diagram.body.toString('utf8');
+  expect(exported).toContain('Lomasuunnitelma</tspan>');
+  // Phase 21: the arrowheads stay (`url(#…)` is kept), the sheet is at least 560 px wide.
+  expect(exported).toMatch(/marker-end="url\(#m[^"]*pointEnd\)"/);
+  expect(Number(/width="(\d+)"/.exec(exported)?.[1])).toBeGreaterThanOrEqual(560);
 });
 
 /** RGBA of a PNG's first pixel: no filter changes it (every filter adds zeros there). */
@@ -1724,19 +1729,30 @@ test('diagram: a model directive keeps our font; subgraph titles paint over the 
       Array.from(root.children, (c) => c.getAttribute('class')?.split(' ')[0] ?? c.tagName),
     );
   expect(order.indexOf('cluster-label')).toBeGreaterThan(order.indexOf('edgePaths'));
-  // Decision 24: `:::alert` without a classDef fills with --destructive-subtle.
-  const want = await page.evaluate(() => {
-    const probe = document.body.appendChild(document.createElement('i'));
-    probe.style.color = 'var(--destructive-subtle)';
-    const c = getComputedStyle(probe).color;
-    probe.remove();
-    return c;
-  });
-  const fill = await doc
-    .locator('.diagram svg .node.alert :is(rect, path, polygon)')
-    .first()
-    .evaluate((el) => getComputedStyle(el).fill);
-  expect(fill).toBe(want);
+  // Decision 24, phase 21: `:::alert` without a classDef gets a red tint and dark red text.
+  const rgb = (c: string) => c.match(/\d+/g)?.map(Number) ?? [];
+  const alert = doc.locator('.diagram svg .node.alert');
+  const [r = 0, g = 0, b = 0] = rgb(
+    await alert
+      .locator('rect')
+      .first()
+      .evaluate((el) => getComputedStyle(el).fill),
+  );
+  expect(r).toBeGreaterThan(g);
+  expect(r).toBeGreaterThan(b);
+  expect(g).toBeGreaterThan(200);
+  const [tr = 0, tg = 0] = rgb(
+    await alert
+      .locator('text')
+      .first()
+      .evaluate((el) => getComputedStyle(el).fill),
+  );
+  expect(tr).toBeLessThan(140);
+  expect(tr).toBeGreaterThan(tg);
+  // Phase 21: the decision is a box with a dashed hairline; every node box is 212 px wide.
+  const decision = doc.locator('.diagram svg .node.decision > rect');
+  expect(await decision.evaluate((el) => getComputedStyle(el).strokeDasharray)).toBe('4px, 3px');
+  expect(await decision.evaluate((el) => (el as SVGRectElement).getBBox().width)).toBe(211);
 });
 
 test('vega-lite: a spec with a url falls back to its data as a table (R6)', async ({

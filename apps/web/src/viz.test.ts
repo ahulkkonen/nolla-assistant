@@ -2,8 +2,10 @@ import { parse, View } from 'vega';
 import { compile } from 'vega-lite';
 import { describe, expect, it } from 'vitest';
 import {
+  balance,
   type Chart,
   clean,
+  columnar,
   framedSvg,
   inlineHtml,
   liftTitle,
@@ -12,11 +14,15 @@ import {
   nbsp,
   prepareChart,
   type Refused,
+  richWords,
+  roleColours,
   roles,
   roundDecisions,
+  safeCss,
   type Tokens,
   tokenSheet,
   vegaConfig,
+  wrap,
 } from './viz.ts';
 
 const T = {
@@ -383,8 +389,12 @@ describe('colour (phase 20)', () => {
 
   it('colours the Mermaid node classes without a classDef', () => {
     const css = mermaidConfig(T, false, 14).themeCSS ?? '';
+    const alert = roleColours(T, false).alert;
     expect(css).toContain('.node.alert rect, .node.alert polygon');
-    expect(css).toContain('{ fill: #fbe7e4 !important; stroke: #b42318 !important; }');
+    expect(css).toContain(
+      `{ fill: ${alert?.tint} !important; stroke: ${alert?.line} !important; }`,
+    );
+    expect(css).toContain(`.node.alert text { fill: ${alert?.text} !important; }`);
     for (const c of ['warm', 'cool', 'alert', 'ok', 'muted'])
       expect(css).toContain(`.node.${c} rect`);
   });
@@ -447,13 +457,18 @@ describe('UI review (phase 20)', () => {
     });
     // A style, so the encoding wins over the theme's 2 px.
     expect(vegaConfig(T)).toMatchObject({ style: { line: { strokeWidth: 2 } } });
-    expect(mermaidConfig(T, false, 14).themeCSS).toContain('.node rect, .node polygon');
-    expect(mermaidConfig(T, false, 14).themeCSS).toContain('{ stroke-width: 2px !important; }');
+    // Phase 21: nodes are 1 px hairlines.
+    expect(mermaidConfig(T, false, 14).themeCSS).toContain(
+      '.node rect, .node polygon, .node path, .node circle, .node ellipse { stroke-width: 1px !important; }',
+    );
   });
 
   it('fills nodes with --card, edge labels on an opaque background', () => {
     const c = mermaidConfig(T, false, 14);
-    expect(c.themeVariables).toMatchObject({ mainBkg: T.card, primaryBorderColor: T.input });
+    expect(c.themeVariables).toMatchObject({
+      mainBkg: T.card,
+      primaryBorderColor: T['chart-faint'],
+    });
     expect(c.themeCSS).toContain(`.edgeLabel .background { fill: ${T.card} !important; opacity: 1`);
   });
 });
@@ -476,5 +491,113 @@ describe('y unit', () => {
     const { spec: out } = prepareChart(spec, T) as Chart;
     expect(out.title).toMatchObject({ text: 'Kulutus (kWh)', anchor: 'start', frame: 'bounds' });
     expect((out.encoding as { y: { axis: unknown } }).y.axis).toEqual({ title: null });
+  });
+});
+
+/** Dark values of tokens.css that the diagram roles read. */
+const DARK = {
+  ...T,
+  foreground: '#ecebe4',
+  card: '#30302e',
+  'muted-foreground': '#aeaca3',
+  destructive: '#f28b82',
+  success: '#86c98a',
+  'chart-1': '#e3936b',
+  'chart-3': '#8fb6f5',
+  'chart-faint': '#7f7d75',
+} satisfies Tokens;
+/** WCAG contrast of two `#rrggbb` colours. */
+const contrast = (a: string, b: string) => {
+  const lum = (hex: string) => {
+    const [r = 0, g = 0, b = 0] = [1, 3, 5].map((i) => {
+      const c = Number.parseInt(hex.slice(i, i + 2), 16) / 255;
+      return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  const [x, y] = [lum(a), lum(b)].sort((m, n) => n - m) as [number, number];
+  return (x + 0.05) / (y + 0.05);
+};
+
+describe('diagram look "Sarake" (phase 21)', () => {
+  it('derives each role from its token: label text on the tint at least 4.5:1 in both themes', () => {
+    for (const [t, dark] of [
+      [T, false],
+      [DARK, true],
+    ] as const) {
+      const r = roleColours(t, dark);
+      expect(Object.keys(r)).toEqual(['warm', 'cool', 'alert', 'ok', 'muted']);
+      for (const [name, { tint, line, text }] of Object.entries(r)) {
+        for (const c of [tint, line, text]) expect(c, name).toMatch(/^#[0-9a-f]{6}$/);
+        expect(contrast(text, tint), `${name} ${dark ? 'dark' : 'light'}`).toBeGreaterThanOrEqual(
+          4.5,
+        );
+      }
+    }
+    // The hue follows the token: warm is red-dominant, cool blue-dominant.
+    const { warm, cool } = roleColours(T, false);
+    expect(Number.parseInt(warm?.text.slice(1, 3) ?? '', 16)).toBeGreaterThan(
+      Number.parseInt(warm?.text.slice(5, 7) ?? '', 16),
+    );
+    expect(Number.parseInt(cool?.text.slice(5, 7) ?? '', 16)).toBeGreaterThan(
+      Number.parseInt(cool?.text.slice(1, 3) ?? '', 16),
+    );
+  });
+
+  it('draws decision nodes with a dashed neutral hairline and edge labels in small capitals', () => {
+    const css = mermaidConfig(T, false, 13).themeCSS ?? '';
+    expect(css).toContain(
+      `.node.decision > rect, .node.decision > g.outer-path > path { fill: ${T.card} !important; stroke: ${T['chart-faint']} !important; stroke-dasharray: 4 3; }`,
+    );
+    expect(css).toContain(
+      '.edgeLabel > text { font-size: 11px; font-weight: 600; letter-spacing: 0.06em;',
+    );
+    expect(css).toContain('.node > text { font-size: 13px;');
+  });
+
+  it('wraps greedily, and evenly at the narrowest measure that keeps the line count', () => {
+    // Widths 10 each, space 2: three words fit 34.
+    expect(wrap([10, 10, 10, 10], 2, 34)).toEqual([[0, 1, 2], [3]]);
+    expect(balance([10, 10, 10, 10], 2, 34)).toEqual([
+      [0, 1],
+      [2, 3],
+    ]);
+    // `first` reserves room on line 1 (an emoji).
+    expect(wrap([10, 10, 10], 2, 30, 10)).toEqual([[0], [1, 2]]);
+    expect(balance([10], 2, 30)).toEqual([[0]]);
+    // A word wider than the measure gets a line of its own.
+    expect(wrap([50, 10], 2, 30)).toEqual([[0], [1]]);
+  });
+
+  it('splits rich text into words of bold and plain runs, never at a no-break space', () => {
+    expect(richWords('Yhteensä **3\u00a0370 kWh** vuonna')).toEqual([
+      [{ text: 'Yhteensä', bold: false }],
+      [{ text: '3\u00a0370', bold: true }],
+      [{ text: 'kWh', bold: true }],
+      [{ text: 'vuonna', bold: false }],
+    ]);
+    expect(richWords('**a**b')).toEqual([
+      [
+        { text: 'a', bold: true },
+        { text: 'b', bold: false },
+      ],
+    ]);
+  });
+
+  it('keeps url(#id) fragments in the export and removes every other url() and @import', () => {
+    expect(
+      safeCss(
+        "@import url(https://x.test/a.css); .a { marker-end: url(#m1); fill: url( '#g' ); background: url(https://x.test/i.png); src: url(data:font/woff2;base64,AA) }",
+      ),
+    ).toBe(" .a { marker-end: url(#m1); fill: url( '#g' ); background: none; src: none }");
+    expect(safeCss('a { b: url( https://x.test/#frag) }')).toBe('a { b: none }');
+  });
+
+  it('lays out only top-to-bottom flowcharts in columns', () => {
+    expect(columnar('flowchart TD\nA --> B')).toBe(true);
+    expect(columnar('---\ntitle: x\n---\ngraph TB;A-->B')).toBe(true);
+    expect(columnar('%%{init: {}}%%\nflowchart\nA --> B')).toBe(true);
+    expect(columnar('flowchart LR\nA --> B')).toBe(false);
+    expect(columnar('sequenceDiagram\nA->>B: x')).toBe(false);
   });
 });

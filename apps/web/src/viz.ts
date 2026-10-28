@@ -164,7 +164,8 @@ export const mermaidTheme = (t: Tokens, dark: boolean, fontSize = 14) => ({
   mainBkg: t.card,
   primaryColor: t.card,
   primaryTextColor: t.foreground,
-  primaryBorderColor: t.input,
+  // A plain node's hairline: the neutral of the edges and the decision node (phase 21).
+  primaryBorderColor: t['chart-faint'],
   secondaryColor: t['chart-accent-soft'],
   secondaryTextColor: t.foreground,
   secondaryBorderColor: t['chart-1'],
@@ -216,40 +217,127 @@ const SECURE = [
   'layout',
 ];
 
+const lin = (c: number) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+const gamma = (c: number) => (c <= 0.0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - 0.055);
+/** The OKLCH hue (radians) of a `#rrggbb` token (Björn Ottosson's OKLab matrices). */
+function hue(hex: string) {
+  const [r = 0, g = 0, b = 0] = [1, 3, 5].map((i) =>
+    lin(Number.parseInt(hex.slice(i, i + 2), 16) / 255),
+  );
+  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+  const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+  const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+  return Math.atan2(
+    0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s,
+    1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s,
+  );
+}
+/** `#rrggbb` of an OKLCH colour. ponytail: clips to sRGB per channel; fine at these chromas. */
+function oklch([L, C]: Step, h: number) {
+  const [a, b] = [C * Math.cos(h), C * Math.sin(h)];
+  const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3;
+  const m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3;
+  const s = (L - 0.0894841775 * a - 1.291485548 * b) ** 3;
+  return `#${[
+    4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+    -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+    -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s,
+  ]
+    .map((c) =>
+      Math.round(Math.min(1, Math.max(0, gamma(c))) * 255)
+        .toString(16)
+        .padStart(2, '0'),
+    )
+    .join('')}`;
+}
+
+type Step = [lightness: number, chroma: number];
 /**
- * A node class the model writes as `A:::warm` (phase-20 decision 24): Mermaid adds the class also
- * without a `classDef`. Text stays --foreground.
+ * Phase-21 decision 1: every role's tint, hairline and text share lightness and chroma; the hue is
+ * the role token's (warm `--chart-1`, cool `--chart-3`, alert `--destructive`, ok `--success`,
+ * muted `--chart-faint`), so the dark theme follows the tokens. Light steps from the designer's
+ * variant B.
  */
-const nodeClass = (name: string, fill: string, stroke: string) =>
-  ['rect', 'polygon', 'path', 'circle', 'ellipse']
-    .map((shape) => `.node.${name} ${shape}`)
-    .join(', ') + ` { fill: ${fill} !important; stroke: ${stroke} !important; }`;
-/** Node shapes; a 2 px border keeps a full-colour pixel at 1x (a 1 px one blurs over two). */
-const NODE_SHAPES = ['rect', 'polygon', 'path', 'circle', 'ellipse']
-  .map((s) => `.node ${s}`)
-  .join(', ');
+const STEPS = {
+  light: {
+    tint: [0.958, 0.018],
+    line: [0.8, 0.07],
+    text: [0.4, 0.1],
+    mutedTint: [0.97, 0.004],
+    mutedLine: [0.88, 0.008],
+  },
+  dark: {
+    tint: [0.36, 0.03],
+    line: [0.56, 0.07],
+    text: [0.88, 0.06],
+    mutedTint: [0.34, 0.004],
+    mutedLine: [0.46, 0.008],
+  },
+} satisfies Record<string, Record<string, Step>>;
+const ROLE_TOKEN = {
+  warm: 'chart-1',
+  cool: 'chart-3',
+  alert: 'destructive',
+  ok: 'success',
+} as const;
+export type Role = { tint: string; line: string; text: string };
+/** The node classes the model writes as `A:::warm` (phase-20 decision 24), in this theme. */
+export function roleColours(t: Tokens, dark: boolean): Record<string, Role> {
+  const s = STEPS[dark ? 'dark' : 'light'];
+  const faint = hue(t['chart-faint']);
+  return {
+    ...Object.fromEntries(
+      Object.entries(ROLE_TOKEN).map(([role, token]) => {
+        const h = hue(t[token]);
+        return [role, { tint: oklch(s.tint, h), line: oklch(s.line, h), text: oklch(s.text, h) }];
+      }),
+    ),
+    muted: {
+      tint: oklch(s.mutedTint, faint),
+      line: oklch(s.mutedLine, faint),
+      text: t['muted-foreground'],
+    },
+  };
+}
+
+const SHAPES = ['rect', 'polygon', 'path', 'circle', 'ellipse'];
+/** Mermaid adds the class of `A:::warm` also without a `classDef`. */
+const nodeClass = (name: string, { tint, line, text }: Role) =>
+  `${SHAPES.map((shape) => `.node.${name} ${shape}`).join(', ')} { fill: ${tint} !important; stroke: ${line} !important; }
+.node.${name} text { fill: ${text} !important; }`;
 
 /**
- * The diagram rules of the view and the export alike (decision 21), as literal token values;
- * Mermaid scopes them to the diagram's id, so they win over its own id rules. Edges are
- * --muted-foreground at 1.5 px whatever the scale; nodes have radius 8; the node classes
- * (decision 24). The subgraph title strip is drawn after render (render.ts). No `:is()`:
- * Mermaid's scoper splits at every comma.
+ * The diagram rules of the view and the export alike (phase-20 decision 21), as literal token
+ * values; Mermaid scopes them to the diagram's id, so they win over its own id rules. Phase 21:
+ * nodes are 1 px hairlines with radius 10; flowchart edges and the dashed decision node are
+ * --chart-faint; the column pass (render.ts) sets node text (`.node > text`) and edge labels
+ * (`.edgeLabel > text`) in the sizes here. Other diagram kinds keep --muted-foreground edges.
+ * No `:is()`: Mermaid's scoper splits at every comma.
  */
-const diagramCss = (t: Tokens) => {
+const diagramCss = (t: Tokens, dark: boolean, size: number) => {
   const line = t['muted-foreground'];
-  return `.flowchart-link, .transition, .relation, [class^="messageLine"], .edge-pattern-solid, .edge-pattern-dashed { stroke: ${line} !important; stroke-width: 1.5px !important; vector-effect: non-scaling-stroke; }
+  const faint = t['chart-faint'];
+  return `.transition, .relation, [class^="messageLine"], .edge-pattern-solid, .edge-pattern-dashed { stroke: ${line} !important; stroke-width: 1.5px !important; vector-effect: non-scaling-stroke; }
 marker path { fill: ${line} !important; stroke: ${line} !important; }
-.node rect, .statediagram-state rect, .actor rect { rx: 8px; ry: 8px; }
-${NODE_SHAPES} { stroke-width: 2px !important; }
+path.flowchart-link { stroke: ${faint} !important; stroke-width: 1.25px !important; fill: none; }
+path.flowchart-link.edge-thickness-thick { stroke-width: 2.5px !important; }
+path.flowchart-link.edge-pattern-dotted { stroke-dasharray: 0.1 3.75; stroke-linecap: round; }
+marker.flowchart-v2 path, marker.flowchart-v2 circle { fill: ${faint} !important; stroke: ${faint} !important; }
+.node rect, .statediagram-state rect, .actor rect { rx: 10px; ry: 10px; }
+${SHAPES.map((s) => `.node ${s}`).join(', ')} { stroke-width: 1px !important; }
+.node > text { font-size: ${size}px; font-weight: ${dark ? 480 : 500}; letter-spacing: -0.006em; fill: ${t.foreground}; }
+.node > text .emo { font-size: ${size + 1}px; letter-spacing: 0; }
+.node.decision > rect, .node.decision > g.outer-path > path { fill: ${t.card} !important; stroke: ${faint} !important; stroke-dasharray: 4 3; }
 .edgeLabel .background { fill: ${t.card} !important; opacity: 1 !important; }
-${nodeClass('warm', t['chart-accent-soft'], t['chart-1'])}
-${nodeClass('cool', t['info-subtle'], t['chart-3'])}
-${nodeClass('alert', t['destructive-subtle'], t.destructive)}
-${nodeClass('ok', t['success-subtle'], t.success)}
-${nodeClass('muted', t.muted, t['chart-faint'])}
-.node.muted text { fill: ${t['muted-foreground']} !important; }`;
+.edgeLabel > text { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; fill: ${line}; }
+${Object.entries(roleColours(t, dark))
+  .map(([name, role]) => nodeClass(name, role))
+  .join('\n')}
+.node.muted .emo { opacity: 0.55; }`;
 };
+
+/** Mermaid's label wrapping width in a flowchart (the column pass reads its line breaks). */
+export const WRAP = 200;
 
 /** Mermaid's options (decisions 9, 21, 26 of phase 20, decision 9 of phase 19). */
 export const mermaidConfig = (
@@ -270,7 +358,7 @@ export const mermaidConfig = (
     // leaves a wide band under a subgraph (phase-20 UI review).
     layout: 'dagre',
     themeVariables: mermaidTheme(t, dark, fontSize),
-    themeCSS: diagramCss(t),
+    themeCSS: diagramCss(t, dark, fontSize),
     // Mermaid measures text with these: the faces the CSS paints (T4).
     fontFamily: font,
     sequence: { actorFontFamily: font, messageFontFamily: font, noteFontFamily: font },
@@ -286,7 +374,7 @@ export const mermaidConfig = (
       // for the title strip and 22 px under it, and 12 px of edge into the subgraph.
       rankSpacing: 46,
       // Mermaid's own default wraps a 20-letter label ("Hälytys päivystäjälle").
-      wrappingWidth: 200,
+      wrappingWidth: WRAP,
       // Room for the title strip (render.ts) and 22 px or more between it and the first node.
       subGraphTitleMargin: { top: strip + 4, bottom: 0 },
     },
@@ -593,65 +681,145 @@ export function fontFaces() {
 const xml = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
+/** Greedy line breaking of word widths; `first` reserves room on line 1. Word indices per line. */
+export function wrap(widths: number[], space: number, max: number, first = 0): number[][] {
+  const lines: number[][] = [];
+  let line: number[] = [];
+  let w = first;
+  widths.forEach((x, i) => {
+    const add = line.length ? space + x : x;
+    if (line.length && w + add > max) {
+      lines.push(line);
+      line = [i];
+      w = x;
+    } else {
+      line.push(i);
+      w += add;
+    }
+  });
+  lines.push(line);
+  return lines;
+}
+
+/** Even lines: the narrowest measure that keeps the greedy line count (phase-21 decision 1). */
+export function balance(widths: number[], space: number, max: number, first = 0) {
+  const n = wrap(widths, space, max, first).length;
+  if (n === 1) return wrap(widths, space, max, first);
+  let [lo, hi] = [Math.max(...widths), max];
+  for (let k = 0; k < 20; k++) {
+    const mid = (lo + hi) / 2;
+    if (wrap(widths, space, mid, first).length > n) lo = mid;
+    else hi = mid;
+  }
+  return wrap(widths, space, hi, first);
+}
+
+export type Run = { text: string; bold: boolean };
+/** The words of `s` (no break at a no-break space), each as runs of `**bold**` and plain text. */
+export const richWords = (s: string): Run[][] => {
+  let bold = false;
+  return s
+    .split(/[ \t\n]+/)
+    .map((word) =>
+      word.split('**').flatMap((text, i) => {
+        if (i) bold = !bold;
+        return text ? [{ text, bold }] : [];
+      }),
+    )
+    .filter((runs) => runs.length);
+};
+
 /**
- * Decision 12: the renderer's SVG with the lifted title, subtitle and caption as SVG text, the
- * page colour and the inlined fonts, so the file looks the same outside the app.
+ * A Mermaid `themeCSS` directive is model-written: the exported file loads nothing. `@import`
+ * goes; a `url(…)` stays only as a fragment of the file itself (`url(#id)`, a marker or gradient).
+ */
+export const safeCss = (css: string) =>
+  css.replace(/@import[^;]*;?/gi, '').replace(/url\((?!\s*['"]?#)[^)]*\)/gi, 'none');
+
+const M = 24;
+/**
+ * Decision 12 of phase 19 and decision 2 of phase 21: the renderer's SVG on a sheet at least
+ * 560 px wide with a 24 px margin, the lifted title (Inter 600 17/24), subtitle (14/20) and
+ * caption (13/18) as SVG text wrapped into lines of at most 68ch, measured with the page's loaded
+ * fonts; the page colour and the inlined fonts, so the file looks the same outside the app.
  */
 export function framedSvg(inner: string, lifted: Lifted, t: Tokens, fonts: string) {
   const doc = new DOMParser().parseFromString(inner, 'image/svg+xml');
   if (doc.querySelector('parsererror')) throw new Error('SVG ei ole kelvollinen');
   const el = doc.documentElement;
-  // A Mermaid `themeCSS` directive is model-written: no external resource in the file. Links
-  // and images may point inside the file (`#id`) only; inline styles lose `url(…)`.
+  // Links and images may point inside the file (`#id`) only.
   for (const style of el.querySelectorAll('style'))
-    style.textContent = (style.textContent ?? '')
-      .replace(/@import[^;]*;?/gi, '')
-      .replace(/url\([^)]*\)/gi, 'none');
+    style.textContent = safeCss(style.textContent ?? '');
   for (const node of el.querySelectorAll('image, a, use'))
     for (const attr of ['href', 'xlink:href'])
       if (!(node.getAttribute(attr) ?? '#').startsWith('#')) node.removeAttribute(attr);
   for (const node of el.querySelectorAll('[style]'))
-    node.setAttribute(
-      'style',
-      (node.getAttribute('style') ?? '').replace(/url\([^)]*\)/gi, 'none'),
-    );
+    node.setAttribute('style', safeCss(node.getAttribute('style') ?? ''));
   const box = el
     .getAttribute('viewBox')
     ?.split(/[\s,]+/)
     .map(Number);
   const w = box?.[2] ?? Number.parseFloat(el.getAttribute('width') ?? '0');
   const h = box?.[3] ?? Number.parseFloat(el.getAttribute('height') ?? '0');
-  const P = 16;
-  const text = (y: number, size: number, fill: string, body: string, serif = false) =>
-    `<text x="${P}" y="${y}" font-family="${xml(t[serif ? 'font-serif' : 'font-sans'])}" font-size="${size}"${serif ? ' font-weight="600"' : ''} fill="${fill}">${body}</text>`;
-  // `**bold**` becomes a semibold tspan, like the <strong> in the panel.
-  const rich = (s: string) =>
-    xml(s).replace(/\*\*(.+?)\*\*/g, `<tspan font-weight="600" fill="${t.foreground}">$1</tspan>`);
+  const width = Math.max(560, Math.ceil(w + 2 * M));
+  const ctx = document.createElement('canvas').getContext('2d');
+  if (!ctx) throw new Error('canvas');
+  const sans = t['font-sans'];
   const parts: string[] = [];
-  let y = P;
-  if (lifted.title) {
-    y += 22;
-    parts.push(text(y, 20, t.foreground, rich(lifted.title), true));
-    y += 8;
-  }
-  if (lifted.subtitle) {
-    y += 16;
-    parts.push(text(y, 14, t['muted-foreground'], rich(lifted.subtitle)));
-    y += 8;
-  }
-  if (parts.length) y += 8;
-  el.setAttribute('x', String(P));
+  /** One wrapped text block from `top`; `**bold**` runs are semibold --foreground tspans. */
+  const block = (
+    s: string,
+    top: number,
+    [size, lh, weight, fill]: [number, number, number, string],
+    tracking = 0,
+    even = false,
+  ) => {
+    const ls = tracking * size;
+    const measure = (text: string, bold = false) => {
+      ctx.font = `${bold ? 600 : weight} ${size}px ${sans}`;
+      return ctx.measureText(text).width + [...text].length * ls;
+    };
+    const words = richWords(s);
+    const lines = (even ? balance : wrap)(
+      words.map((runs) => runs.reduce((n, r) => n + measure(r.text, r.bold), 0)),
+      measure(' '),
+      Math.min(68 * measure('0'), width - 2 * M),
+    );
+    // The line box centres the cap height (Inter's is 0.727 em).
+    const base = top + (lh + 0.727 * size) / 2;
+    const tspans = lines.map(
+      (line, k) =>
+        `<tspan x="${M}" y="${(base + k * lh).toFixed(2)}">${line
+          .map((i) =>
+            (words[i] ?? [])
+              .map((r) =>
+                r.bold && weight < 600
+                  ? `<tspan font-weight="600" fill="${t.foreground}">${xml(r.text)}</tspan>`
+                  : xml(r.text),
+              )
+              .join(''),
+          )
+          .join(' ')}</tspan>`,
+    );
+    parts.push(
+      `<text font-family="${xml(sans)}" font-size="${size}" font-weight="${weight}" fill="${fill}"${ls ? ` letter-spacing="${ls.toFixed(3)}"` : ''}>${tspans.join('')}</text>`,
+    );
+    return top + lines.length * lh;
+  };
+  let y = M;
+  if (lifted.title) y = block(lifted.title, y, [17, 24, 600, t.foreground], -0.012, true);
+  if (lifted.subtitle)
+    y = block(lifted.subtitle, y + (lifted.title ? 4 : 0), [14, 20, 400, t['muted-foreground']]);
+  if (parts.length) y += 16;
+  // A narrow figure sits in the middle of the sheet, as in the view.
+  el.setAttribute('x', String(Math.round((width - w) / 2)));
   el.setAttribute('y', String(y));
   el.setAttribute('width', String(w));
   el.setAttribute('height', String(h));
   el.removeAttribute('style');
   y += h;
-  if (lifted.caption) {
-    y += 20;
-    parts.push(text(y, 12, t['muted-foreground'], rich(lifted.caption)));
-  }
-  const width = Math.ceil(w + 2 * P);
-  const height = Math.ceil(y + P);
+  if (lifted.caption) y = block(lifted.caption, y + 12, [13, 18, 400, t['muted-foreground']]);
+  const height = Math.ceil(y + M);
   const body = `<rect width="100%" height="100%" fill="${t.card}"/>${parts.join('')}${new XMLSerializer().serializeToString(el)}`;
   // Only the families the file uses.
   const used = fonts
@@ -695,3 +863,7 @@ export const roundDecisions = (src: string) =>
   /^\s*(flowchart|graph)\b/m.test(src.replace(/^---[\s\S]*?---/, '').trimStart())
     ? src.replace(/(\b[\w-]+)\{(?!\{)([^{}\n]+)\}(?!\})/g, '$1([$2])')
     : src;
+
+/** A top-to-bottom flowchart: the one the column pass of phase-21 decision 1 lays out. */
+export const columnar = (src: string) =>
+  /^\s*(flowchart|graph)([ \t]+(TB|TD))?[ \t]*(;|$)/m.test(src.replace(/^---[\s\S]*?---/, ''));
