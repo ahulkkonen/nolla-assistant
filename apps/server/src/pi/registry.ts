@@ -53,13 +53,18 @@ export const PROFILE_TOOLS = [
   WEB_SEARCH_TOOL,
 ];
 
-/** The chat row fields a session build reads: its agent and its model policy (phase-10). */
+/** The chat row fields a session build reads: agent, model policy (phase-10), confidence trial. */
 export type ChatModel = {
   agentId: string;
   modelId: string | null;
   reasoning: string;
   dataPolicy: string;
+  confidence: boolean;
 };
+
+/** Phase-21 decision 4: the prompt paragraph of a chat with `confidence` on. */
+export const CONFIDENCE_PROMPT =
+  'Luottamusmerkinnät: kirjoita jokaisen proosavirkkeen perään merkintä ⟦N⟧, jossa N on luku 1–9 sen mukaan, kuinka varma olet virkkeen sisällöstä: 1 on arvaus ja 9 on varma. Kirjoita merkintä heti virkkeen päättävän välimerkin perään, esimerkiksi: Helsinki on Suomen pääkaupunki.⟦9⟧ Älä koskaan kirjoita merkintää koodilohkoon, taulukkoon, otsikkoon tai luettelomerkin (`-`, `1.`) perään. Muuten vastaa täsmälleen niin kuin ilman merkintöjä.';
 
 type RegistryOptions = {
   dataDir: string;
@@ -126,7 +131,8 @@ const samePolicy = (a: ChatModel, b: ChatModel) =>
   a.agentId === b.agentId &&
   a.modelId === b.modelId &&
   a.reasoning === b.reasoning &&
-  a.dataPolicy === b.dataPolicy;
+  a.dataPolicy === b.dataPolicy &&
+  a.confidence === b.confidence;
 
 async function stop(e: Entry) {
   e.unsubscribe?.();
@@ -176,6 +182,7 @@ export class SessionRegistry {
         modelId: null,
         reasoning: 'auto',
         dataPolicy: 'zdr',
+        confidence: false,
       };
       const session = await this.track(chatId, chat, () => {
         const path = SessionManager.findById(this.cwd, chatId, this.sessionDir);
@@ -413,7 +420,7 @@ export class SessionRegistry {
     const resourceLoader = new DefaultResourceLoader({
       cwd: this.cwd,
       agentDir: this.agentDir,
-      systemPrompt: profile.prompt,
+      systemPrompt: chat.confidence ? `${profile.prompt}\n\n${CONFIDENCE_PROMPT}` : profile.prompt,
       noContextFiles: true,
       noExtensions: true,
       noSkills: skills.size === 0,

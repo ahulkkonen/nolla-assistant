@@ -23,6 +23,7 @@ import {
   type Message,
   type ModelChoice,
   type ServerMessage,
+  stripConfidence,
   type ToolRow,
   ToolSearch,
   type ToolStatus,
@@ -147,17 +148,21 @@ export const summary = (r: ChatRow): ChatSummary => ({
   archived: r.archived,
   titleLocked: r.titleLocked,
   modelPolicy: policyOf(r),
+  confidence: r.confidence,
   usage: chatUsage(r),
   updatedAt: r.updatedAt,
 });
 
-/** Masked user and assistant texts of the session branch, in order. */
+/**
+ * Masked user and assistant texts of the session branch, in order, without confidence markers:
+ * the search index, the title job and the claims sweep read them.
+ */
 export const transcript = (session: Pick<AgentSession, 'sessionManager'>) =>
   session.sessionManager
     .getBranch()
     .flatMap((e) =>
       e.type === 'message' && (e.message.role === 'user' || e.message.role === 'assistant')
-        ? [{ id: e.id, role: e.message.role, text: textOf(e.message) }]
+        ? [{ id: e.id, role: e.message.role, text: stripConfidence(textOf(e.message)) }]
         : [],
     );
 
@@ -869,6 +874,8 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
           reasoning: src.reasoning,
           // Consent for `open` was for the source chat only (phase-10 proof 1).
           dataPolicy: 'zdr',
+          // The copied replies hold markers: the trial goes on in the fork.
+          confidence: src.confidence,
           sessionPath: src.sessionPath,
           forkedFromChatId: src.id,
           forkedFromMessageId: edited.id,
@@ -919,7 +926,12 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
             : choice;
         const id = randomUUID();
         // Never from the client: every new chat starts ZDR-only (phase-10 proof 1).
-        const chat = { agentId: msg.agentId, ...model, dataPolicy: 'zdr' } as const;
+        const chat = {
+          agentId: msg.agentId,
+          ...model,
+          dataPolicy: 'zdr',
+          confidence: false,
+        } as const;
         // Session first: a failed build leaves no chat row behind.
         const session = await registry.create(id, chat);
         const now = new Date().toISOString();
@@ -1019,6 +1031,12 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
         await registry.evict(msg.chatId);
         return;
       }
+      // Phase-21 decision 4: as `chat.setModel`, also during a run; the next turn has the prompt.
+      case 'chat.setConfidence':
+        owned(msg.chatId);
+        update(msg.chatId, { confidence: msg.on });
+        await registry.evict(msg.chatId);
+        return;
       case 'chat.setDataPolicy': {
         const r = owned(msg.chatId);
         if (

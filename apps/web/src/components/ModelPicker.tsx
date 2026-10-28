@@ -58,6 +58,19 @@ const COL_PRICE = 'w-28 shrink-0 text-right tabular-nums';
 
 const ALIAS = '__alias__';
 
+/** Phase-20 decision 15: a chip that works during a reply; the change applies to the next one. */
+export const NextTurnTip = ({
+  running,
+  children,
+}: {
+  running: boolean;
+  children: ReactElement;
+}) => (
+  <Tip label="Muutos koskee seuraavaa vastausta" {...(running ? {} : { open: false })}>
+    {children}
+  </Tip>
+);
+
 type Option = { value: string; title: string; meta?: string | undefined };
 
 /** Composer chip and menu (phase-10 UI): Auto, favourites, thinking level, the open policy. */
@@ -146,12 +159,7 @@ export function ModelPicker() {
     </DropdownMenuRadioItem>
   );
 
-  // Phase-20 decision 15: the chip works during a reply; the change applies to the next one.
-  const tip = (trigger: ReactElement) => (
-    <Tip label="Muutos koskee seuraavaa vastausta" {...(running ? {} : { open: false })}>
-      {trigger}
-    </Tip>
-  );
+  const tip = (trigger: ReactElement) => <NextTurnTip running={running}>{trigger}</NextTurnTip>;
   let control: ReactNode;
   if (mobile)
     // Phones: a bottom sheet, so every level fits without a scroll inside a menu.

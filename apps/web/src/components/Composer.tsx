@@ -5,6 +5,7 @@ import {
   Eye,
   FileText,
   FolderOpen,
+  Gauge,
   LoaderCircle,
   Paperclip,
   Square,
@@ -31,12 +32,12 @@ import { uploadFiles } from '../api.ts';
 import { touch } from '../media.ts';
 import { useShortcuts } from '../shortcuts.ts';
 import { useStore } from '../store.ts';
-import { sendUserMessage, stopTurn } from '../ws.ts';
+import { send, sendUserMessage, stopTurn } from '../ws.ts';
 import { AgentPicker } from './AgentPicker.tsx';
 import { DropOverlay, useFileDrop } from './FileDrop.tsx';
 import { IconButton } from './IconButton.tsx';
 import { clock, MicButton, type MicState } from './MicButton.tsx';
-import { ModelPicker } from './ModelPicker.tsx';
+import { ModelPicker, NextTurnTip } from './ModelPicker.tsx';
 import { WorkPicker } from './TreeDialogs.tsx';
 
 type Chip = { key: string; name: string; preview?: string; ref?: AttachmentRef };
@@ -49,6 +50,33 @@ const refChips = (refs: AttachmentRef[]): Chip[] =>
     ref,
     ...(ref.kind === 'image' ? { preview: `/api/files/${encodeURIComponent(ref.id)}` } : {}),
   }));
+
+/**
+ * Phase-21 decision 4: the open chat's confidence trial; outline, filled while on. Like the model
+ * chip it works during a reply. A new chat gets it after its first message. Phones show an icon:
+ * with the word, the queue's two run buttons squeeze the model chip to its chevron.
+ */
+function ConfidenceToggle({ chatId, running }: { chatId: string; running: boolean }) {
+  const on = useStore(
+    (s) => !!(s.summaries[chatId] ?? s.chats.find((c) => c.id === chatId))?.confidence,
+  );
+  return (
+    <NextTurnTip running={running}>
+      <Button
+        variant="outline"
+        aria-pressed={on}
+        onClick={() => send({ type: 'chat.setConfidence', chatId, on: !on })}
+        className={cn(
+          'h-8 rounded-full px-3 font-normal max-md:size-11 max-md:px-0',
+          on ? 'border-input text-foreground' : 'text-muted-foreground hover:text-foreground',
+        )}
+      >
+        <Gauge size={16} className="md:hidden" />
+        <span className="max-md:sr-only">Luottamus</span>
+      </Button>
+    </NextTurnTip>
+  );
+}
 
 /** The textarea grows to min(40dvh, 320px), then scrolls (brief 7.5). */
 const maxHeight = () => Math.min(window.innerHeight * 0.4, 320);
@@ -377,6 +405,7 @@ export function Composer() {
           />
           <AgentPicker />
           <ModelPicker />
+          {chatId && <ConfidenceToggle chatId={chatId} running={running} />}
           <div className="ml-auto flex shrink-0 items-center gap-2">
             <MicButton onText={insertTranscript} onState={setMic} meter={meter} />
             {running && chatId && canSend ? (

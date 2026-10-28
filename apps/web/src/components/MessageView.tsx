@@ -6,6 +6,8 @@ import {
   artifactKind,
   artifactTitle,
   type CallUsage,
+  CONFIDENCE_MARK,
+  stripConfidence,
 } from '@pa/protocol';
 import {
   AppWindow,
@@ -310,6 +312,52 @@ const rehypeAnnotate = (pairs: [string, string][]) => () => (tree: HNode) => {
   walk(tree);
 };
 
+const MARKS = new RegExp(CONFIDENCE_MARK, 'g');
+/** `--conf` of the lowest confidence (N=1); 9 is 100 (phase-21 decision 4). */
+const CONF_FLOOR = 35;
+
+/**
+ * Rehype plugin (phase-21 decision 4): each confidence marker `⟦N⟧` goes, and the text before it
+ * (from the previous marker or the start of the text node) gets a span whose `--conf` runs from
+ * CONF_FLOOR (N=1) to 100 (N=9). Code stays as written. An unterminated marker at the end of the
+ * last text node (a reply still streaming) is hidden.
+ */
+export const rehypeConfidence = () => (tree: HNode) => {
+  let last: HNode | undefined;
+  for (let n: HNode | undefined = tree; n; n = n.children?.at(-1)) if (n.type === 'text') last = n;
+  if (last?.value) last.value = last.value.replace(/⟦[1-9]?$/, '');
+  const split = (value: string): HNode[] => {
+    const out: HNode[] = [];
+    let at = 0;
+    for (const m of value.matchAll(MARKS)) {
+      const n = Number(m[1]);
+      if (m.index > at)
+        out.push({
+          type: 'element',
+          tagName: 'span',
+          properties: {
+            className: ['conf'],
+            style: `--conf:${Math.round(CONF_FLOOR + ((n - 1) * (100 - CONF_FLOOR)) / 8)}`,
+            title: `Luottamus ${n}/9`,
+          },
+          children: [{ type: 'text', value: value.slice(at, m.index) }],
+        });
+      at = m.index + m[0].length;
+    }
+    if (at < value.length) out.push({ type: 'text', value: value.slice(at) });
+    return out;
+  };
+  const walk = (n: HNode) => {
+    if (!n.children || n.tagName === 'code') return;
+    n.children = n.children.flatMap((c) => {
+      if (c.type === 'text') return split(c.value ?? '');
+      walk(c);
+      return [c];
+    });
+  };
+  walk(tree);
+};
+
 /** Rehype plugin: the streaming caret after the last character (brief 7.5). */
 const rehypeCaret = () => (tree: HNode) => {
   let parent: HNode | undefined;
@@ -385,9 +433,10 @@ export const MarkdownText = memo(function MarkdownText({
   }
   const open = live && endsInFence(blocks.at(-1) ?? '');
   // The base plugins depend on the annotations only: finished blocks keep the same array.
+  // Confidence first: an annotated name inside a marked sentence keeps the sentence's colour.
   const rehype = useMemo(() => {
     const pairs = JSON.parse(key) as [string, string][];
-    return pairs.length ? [rehypeAnnotate(pairs)] : [];
+    return [rehypeConfidence, ...(pairs.length ? [rehypeAnnotate(pairs)] : [])];
   }, [key]);
   const rehypeLast = useMemo(
     () => (live ? [...rehype, ...(open ? [rehypeOpenFence] : []), rehypeCaret] : rehype),
@@ -558,7 +607,7 @@ export function MessageView({
     if (editing && !canFork) onNeedIds?.();
   }, [editing]);
 
-  const copy = () => void navigator.clipboard.writeText(text);
+  const copy = () => void navigator.clipboard.writeText(stripConfidence(text));
   const actions = !live && !editing && text;
   return (
     <SawContext.Provider value={saw}>
@@ -634,7 +683,7 @@ export function MessageView({
             {actions && (
               <>
                 {user && meta && <MessageMeta createdAt={meta.createdAt} />}
-                <CopyButton text={() => text} className={small} />
+                <CopyButton text={() => stripConfidence(text)} className={small} />
                 {user && onEdit && (
                   <IconButton label="Muokkaa" className={small} onClick={() => setEditing(true)}>
                     <Pencil size={16} />
@@ -674,7 +723,9 @@ export function MessageView({
             className="gap-1 rounded-t-xl px-2 pt-2 pb-[max(env(safe-area-inset-bottom),8px)]"
           >
             <SheetTitle className="sr-only">Viestin toiminnot</SheetTitle>
-            <SheetDescription className="sr-only">{text.slice(0, 80)}</SheetDescription>
+            <SheetDescription className="sr-only">
+              {stripConfidence(text).slice(0, 80)}
+            </SheetDescription>
             {meta && (
               <p className="px-3 pb-1 text-meta text-muted-foreground tabular-nums">
                 {metaText(meta.createdAt, user ? undefined : meta.usage, fx)}
