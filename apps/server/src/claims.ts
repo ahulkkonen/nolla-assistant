@@ -36,6 +36,15 @@ export type Result = 'ok' | 'not_found' | 'invalid';
 
 export type ChatMsg = { id: string; role: 'user' | 'assistant'; text: string };
 
+/**
+ * Phase-24 decision 17: the index in `messages` (the shown branch) of the last one on `path`
+ * (`getBranch` of the read marker), so an edit or a switch is read from the branch point; -1: none.
+ */
+export const branchPoint = (messages: ChatMsg[], path: { id: string }[]) => {
+  const read = new Set(path.map((e) => e.id));
+  return messages.findLastIndex((m) => read.has(m.id));
+};
+
 /** Phase-17 decision 11: a chat with no new turn for this long is at its end. */
 export const IDLE_MS = 20 * 60_000;
 const SWEEP_MAX = 10;
@@ -506,15 +515,15 @@ export function claimStore(deps: {
   };
 
   /**
-   * Phase-17 decisions 10 to 21: masked `zdr/task-small` calls over the messages after `through`
-   * (the branch in order, masked), in windows of NEW_CHARS from the tail back to `through`. Each
+   * Phase-17 decisions 10 to 21: masked `zdr/task-small` calls over the messages after index `at`
+   * (the branch in order, masked; `branchPoint`), in windows of NEW_CHARS from the tail back. Each
    * window writes its claims, confirms, supersede proposals and the read marker in one
    * transaction. Returns the claims activated at once (the chip).
    */
   const extract = async (
     chatId: string,
     messages: ChatMsg[],
-    opts: { through: string | null; tainted: boolean; date: string; seenAt?: string },
+    opts: { at: number; tainted: boolean; date: string; seenAt?: string },
   ): Promise<{ activated: Activated[]; written: number }> => {
     const done: { activated: Activated[]; written: number } = { activated: [], written: 0 };
     if (!pseudo || !deps.ask) return done;
@@ -526,13 +535,7 @@ export function claimStore(deps: {
         .where(eq(chats.id, chatId))
         .run();
     const last = messages.at(-1)?.id ?? null;
-    let at = opts.through ? messages.findIndex((m) => m.id === opts.through) : -1;
-    if (opts.through && at < 0) {
-      // The branch changed (an edit or a retry): the old marker is gone, so read up to the end.
-      warn('claims marker not on branch: marked read', { chatId });
-      markRead(db, last);
-      return done;
-    }
+    let { at } = opts;
     // Windows of NEW_CHARS from the tail back to the marker; the oldest ones past MAX_WINDOWS go.
     const windows: ChatMsg[][] = [];
     let cur: ChatMsg[] = [];
@@ -777,11 +780,15 @@ export function claimStore(deps: {
 
   /**
    * Decision 11: extracts the chats idle for IDLE_MS with turns after the last extraction, oldest
-   * first, at most SWEEP_MAX per run, one at a time. `messagesOf` gives the branch, or undefined
-   * when the chat is busy. A failed chat waits RETRY_MS.
+   * first, at most SWEEP_MAX per run, one at a time. `messagesOf` gives the branch and the index of
+   * the last message read (`branchPoint` of `through`), or undefined when the chat is busy. A
+   * failed chat waits RETRY_MS.
    */
   const sweep = async (
-    messagesOf: (chatId: string) => Promise<ChatMsg[] | undefined>,
+    messagesOf: (
+      chatId: string,
+      through: string | null,
+    ) => Promise<{ messages: ChatMsg[]; at: number } | undefined>,
     onActivated: (chatId: string, activated: Activated[]) => void,
     at = Date.now(),
   ) => {
@@ -804,11 +811,11 @@ export function claimStore(deps: {
       .all();
     for (const chat of due) {
       try {
-        const messages = await messagesOf(chat.id);
-        if (!messages) continue;
+        const read = await messagesOf(chat.id, chat.claimsThrough);
+        if (!read) continue;
         // The chat's `updatedAt` now: a message sent during the call makes it due again.
-        const r = await extract(chat.id, messages, {
-          through: chat.claimsThrough,
+        const r = await extract(chat.id, read.messages, {
+          at: read.at,
           tainted: chat.tainted,
           date: chat.updatedAt.slice(0, 10),
           seenAt: chat.updatedAt,

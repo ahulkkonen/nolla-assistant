@@ -178,3 +178,40 @@ test('export: real names need a sidecar (503); over the message cap answers 413'
   expect(big.status).toBe(413);
   expect(await big.json()).toEqual({ error: 'too_large' });
 });
+
+test('export: the shown branch, with the version of an edited message (phase 24)', {
+  timeout: 30_000,
+}, async () => {
+  const { c, chat, config, srv } = await bootChat([
+    { text: 'Vastaus yksi.' },
+    { text: 'Vastaus kaksi.' },
+    { text: 'Vastaus kolme.' },
+  ]);
+  const edit = async (messageId: string, text: string) => {
+    c.send({ type: 'chat.edit', chatId: chat.id, messageId, text, localId: text });
+    const { messageId: id } = await c.next('message.accepted');
+    await c.idle();
+    return id;
+  };
+  c.send({ type: 'user.message', chatId: chat.id, text: 'Yksi' });
+  await c.idle();
+  const first = (await openFirst(c, chat.id))?.id ?? '';
+  const third = await edit(await edit(first, 'Kaksi'), 'Kolme');
+  c.send({ type: 'chat.version', chatId: chat.id, messageId: third, index: 2 });
+  await c.next('chat.state');
+  // The reader opens the file: its `pa-leaf` mark gives the shown branch.
+  await srv.registry.evictIdle(-1);
+  const { cookie } = await login(config.port);
+  const get = (format: string) =>
+    api(config.port, `/api/chats/${chat.id}/export?format=${format}&unmask=0`, {
+      headers: { cookie },
+    });
+  const json = ChatExport.parse(await (await get('json')).json());
+  expect(json.messages.map((m) => [m.text, m.version])).toEqual([
+    ['Kaksi', { index: 2, count: 3 }],
+    ['Vastaus kaksi.', undefined],
+  ]);
+  const md = await (await get('md')).text();
+  expect(md).toMatch(/## Sinä · .* \(versio 2\/3\)\n\n> Kaksi\n/);
+  expect(md).not.toContain('Kolme');
+});

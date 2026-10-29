@@ -7,7 +7,7 @@ import { startFakeSidecar } from '@pa/pi-ext-pseudo/fake-sidecar';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, expect, test } from 'vitest';
 import { loadModel } from './embeddings.ts';
-import { indexChat, related, search, split } from './search.ts';
+import { indexChat, indexIdle, related, search, split } from './search.ts';
 import { boot, connect, runCleanups } from './test-utils.ts';
 
 afterEach(runCleanups);
@@ -354,3 +354,41 @@ test.skipIf(!modelOk)('search.query and chat.related over the socket', async () 
     related: [],
   });
 });
+
+test.skipIf(!modelOk)(
+  'a version switch reindexes the chat to the shown branch (phase 24)',
+  {
+    timeout: 60_000,
+  },
+  async () => {
+    const b = await boot([{ text: 'Juoksen maratonin.' }, { text: 'Leivon hapanjuurella.' }]);
+    const srv = await b.run();
+    const c = await connect(b.config.port);
+    c.send({ type: 'chat.create' });
+    const { chat } = await c.next('chat.created');
+    c.send({ type: 'user.message', chatId: chat.id, text: 'Kerro juoksusta' });
+    await c.idle();
+    c.send({ type: 'chat.open', chatId: chat.id });
+    const [user] = (await c.next('chat.state')).messages;
+    c.send({
+      type: 'chat.edit',
+      chatId: chat.id,
+      messageId: user?.id ?? '',
+      text: 'Kerro leivästä',
+      localId: 'l1',
+    });
+    const { messageId } = await c.next('message.accepted');
+    await c.idle();
+    const transcript = async () => {
+      await indexIdle();
+      return srv.db.$client
+        .prepare("SELECT text FROM chunks WHERE chatId = ? AND kind = 'transcript' ORDER BY seq")
+        .all(chat.id)
+        .map((r) => (r as { text: string }).text);
+    };
+    expect(await transcript()).toEqual(['Kerro leivästä', 'Leivon hapanjuurella.']);
+    c.send({ type: 'chat.version', chatId: chat.id, messageId, index: 1 });
+    await c.next('chat.state');
+    expect(await transcript()).toEqual(['Kerro juoksusta', 'Juoksen maratonin.']);
+  },
+);

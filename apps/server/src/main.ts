@@ -24,7 +24,7 @@ import {
   transcript,
   vaultState,
 } from './bridge.ts';
-import { claimStore } from './claims.ts';
+import { branchPoint, claimStore } from './claims.ts';
 import { collisionWaits } from './collisions.ts';
 import { BUNDLED_AGENTS, BUNDLED_AUTOMATIONS, type Config, loadConfig } from './config.ts';
 import { fxRates } from './fx.ts';
@@ -331,9 +331,12 @@ export async function start(
   const claimsTask = claimsDb.schedule(() =>
     claimsDb
       .sweep(
-        async (chatId) => {
+        async (chatId, through) => {
           const session = await registry.get(chatId);
-          return session.isIdle ? transcript(session) : undefined;
+          if (!session.isIdle) return undefined;
+          const messages = transcript(session);
+          const path = through ? session.sessionManager.getBranch(through) : [];
+          return { messages, at: branchPoint(messages, path) };
         },
         (chatId, activated) =>
           broadcast(rooms, chatId, { type: 'claims.activated', chatId, claims: activated }),

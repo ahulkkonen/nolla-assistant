@@ -166,7 +166,7 @@ const ingest = async (c: Chat) => {
     }
     return;
   }
-  await store.extract(c.id, msgs, { through: null, tainted: false, date: at.slice(0, 10) });
+  await store.extract(c.id, msgs, { at: -1, tainted: false, date: at.slice(0, 10) });
   // Eval mode: every proposal is accepted (a supersede closes the old claims).
   const proposed = db.select().from(claims).where(eq(claims.status, 'proposed')).all();
   for (const p of proposed.sort((a, b) => a.id - b.id)) await store.review(p.id, 'accept');

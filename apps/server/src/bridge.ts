@@ -55,6 +55,7 @@ import { indexChat, related, search } from './search.ts';
 import { SEARCH_DENIED, SEARCH_UNATTENDED } from './search-tool.ts';
 import { topicState } from './topics.ts';
 import { chatUsage, messageUsage, type PaMeta, usageMonth } from './usage.ts';
+import { childrenOf, LEAF_MARK, newestLeaf, versionsOf } from './versions.ts';
 
 export type Socket = {
   send(data: string): void;
@@ -99,6 +100,11 @@ type AgentMessage = AgentSession['messages'][number];
 type Entry = ReturnType<AgentSession['sessionManager']['getBranch']>[number];
 type UserEntry = Extract<Entry, { type: 'message' }> & { message: { role: 'user' } };
 type ChatRow = typeof chats.$inferSelect;
+/** A prompt to send: real text (the input hook masks it) and images. */
+type Sent = {
+  text: string;
+  images: Extract<Extract<UserEntry['message']['content'], unknown[]>[number], { type: 'image' }>[];
+};
 
 /** Fixed client-facing text per error code; details stay in the server log. */
 const ERRORS = {
@@ -116,6 +122,8 @@ const ERRORS = {
   invalid: 'Invalid value',
   zdr_unavailable: 'No zero-data-retention endpoint for this model',
 } as const;
+
+type Code = keyof typeof ERRORS;
 
 class NotFound extends Error {}
 /** A model or policy change while the chat runs (phase-10 decision 14); answers `failed`. */
@@ -176,6 +184,16 @@ export const transcript = (session: Pick<AgentSession, 'sessionManager'>) =>
         ? [{ id: e.id, role: e.message.role, text: stripConfidence(textOf(e.message)) }]
         : [],
     );
+
+/** Reindexes the chat's shown branch in the background (embedding must not hold the caller). */
+const reindex = (
+  { db, userId, log }: Pick<BridgeDeps, 'db' | 'userId' | 'log'>,
+  chatId: string,
+  session: Pick<AgentSession, 'sessionManager'>,
+) =>
+  void indexChat(db, userId, chatId, transcript(session)).catch((err: unknown) =>
+    log.warn({ chatId, error: err instanceof Error ? err.message : 'unknown' }, 'index failed'),
+  );
 
 export function textOf(m: AgentMessage): string {
   if (!('content' in m)) return '';
@@ -658,28 +676,90 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
     send(socket, await vaultState(pseudo));
   };
 
+  /** Runs `fn` with the chat held: `running` is true, so no policy change starts meanwhile. */
+  const holding = async <T>(chatId: string, fn: () => Promise<T>): Promise<T> => {
+    let release = () => {};
+    registry.hold(chatId, new Promise<void>((r) => (release = r)));
+    try {
+      return await fn();
+    } finally {
+      release();
+    }
+  };
+
   /**
    * `user.retry` (phase-10): the chat's last turn failed (an error reply without tool calls, or
    * no reply yet), so its user message runs again in place, with the same text and images. The
    * thread and the model then hold that message once. Returns the refusal code, if any.
    */
-  const retry = async (
-    chatId: string,
-    localId?: string,
-  ): Promise<keyof typeof ERRORS | undefined> => {
+  const retry = async (chatId: string, localId?: string): Promise<Code | undefined> => {
     owned(chatId);
     const session = await registry.get(chatId);
     // Synchronous from this check to the hold: no prompt or policy change starts in between.
     if (registry.running(chatId)) return 'failed';
     const last = failedTurn(session);
     if (!last) return 'bad_message';
-    let release = () => {};
-    registry.hold(chatId, new Promise<void>((r) => (release = r)));
-    try {
-      return await rerun(chatId, session, last, localId);
-    } finally {
-      release();
-    }
+    return holding(chatId, () => rerun(chatId, session, last, localId));
+  };
+
+  /** The user entry `messageId` on the chat's shown branch, its index there and the branch. */
+  const userOnBranch = (session: AgentSession, messageId: string) => {
+    const branch = session.sessionManager.getBranch();
+    const at = branch.findIndex((e) => e.id === messageId);
+    const e = branch[at];
+    return e?.type === 'message' && e.message.role === 'user'
+      ? { branch, at, edited: e as UserEntry }
+      : undefined;
+  };
+
+  /**
+   * "Lähetä" in the edit box (phase-24 decisions 5 to 7): a new version of the user message in the
+   * same session. The old version stays as a sibling; the edited text masks and runs as a retry.
+   */
+  const edit = async (msg: Extract<ClientMessage, { type: 'chat.edit' }>) => {
+    const src = owned(msg.chatId);
+    const session = await registry.get(msg.chatId);
+    // Synchronous from this check to the hold.
+    if (registry.running(msg.chatId)) return 'failed';
+    const found = userOnBranch(session, msg.messageId);
+    if (!found) return 'bad_message';
+    const { branch, at, edited } = found;
+    const leaf = session.sessionManager.getLeafId();
+    return holding(msg.chatId, async () => {
+      const sent = await editedPrompt(src, branch, at, edited, msg.text);
+      if (sent === 'pseudo_down') return sent;
+      return rewindAndPrompt(msg.chatId, session, edited, sent, leaf, msg.localId);
+    });
+  };
+
+  /**
+   * "‹ ›" (phase-24 decision 9): shows the newest branch of another version, marks it in the file
+   * (`pa-leaf`) and sends `chat.state` with `switched` to every tab of the chat.
+   */
+  const version = async (
+    msg: Extract<ClientMessage, { type: 'chat.version' }>,
+  ): Promise<Code | undefined> => {
+    const r = owned(msg.chatId);
+    const session = await registry.get(msg.chatId);
+    if (registry.running(msg.chatId)) return 'failed';
+    const sm = session.sessionManager;
+    const target = versionsOf(sm).get(msg.messageId)?.ids[msg.index - 1];
+    if (!target) return 'bad_message';
+    const leaf = newestLeaf(childrenOf(sm.getEntries()), target);
+    // A version without a stored reply: navigation would land on its parent (P2).
+    const end = sm.getEntry(leaf);
+    if (!end || (end.type === 'message' && end.message.role === 'user')) return 'bad_message';
+    const moved = await holding(msg.chatId, async () => {
+      const nav = await session.navigateTree(leaf).catch(() => ({ cancelled: true }));
+      if (nav.cancelled) return false;
+      sm.appendCustomEntry(LEAF_MARK, {});
+      return true;
+    });
+    if (!moved) return 'failed';
+    join(msg.chatId, session);
+    notify(msg.chatId, await chatState(r, session, true));
+    reindex(deps, msg.chatId, session);
+    return undefined;
   };
 
   /**
@@ -703,12 +783,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
    * Prompts `sent` in `chatId`; a failure tells the room `prompt_failed` and resolves false. The
    * stored entry goes to this socket as `localId` (`message.accepted`).
    */
-  const promptOrFail = (
-    chatId: string,
-    session: AgentSession,
-    sent: NonNullable<Awaited<ReturnType<typeof resend>>>,
-    localId?: string,
-  ) => {
+  const promptOrFail = (chatId: string, session: AgentSession, sent: Sent, localId?: string) => {
     const { preflightResult, failed } = accept(chatId, session, localId);
     return session.prompt(sent.text, { images: sent.images, preflightResult }).then(
       () => true,
@@ -741,10 +816,25 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
     last: UserEntry,
     localId?: string,
   ) => {
-    const sm = session.sessionManager;
-    const leaf = sm.getLeafId();
+    const leaf = session.sessionManager.getLeafId();
     const sent = await resend(last);
     if (!sent) return 'pseudo_down';
+    return rewindAndPrompt(chatId, session, last, sent, leaf, localId);
+  };
+
+  /**
+   * Rewinds the branch to before `last` and prompts `sent` there (`user.retry`, `chat.edit`, under
+   * the caller's hold). `leaf` is the leaf before the caller's await.
+   */
+  const rewindAndPrompt = async (
+    chatId: string,
+    session: AgentSession,
+    last: UserEntry,
+    sent: Sent,
+    leaf: string | null,
+    localId?: string,
+  ): Promise<Code | undefined> => {
+    const sm = session.sessionManager;
     // After the await: a message sent meanwhile moved the leaf or started a run.
     if (sm.getLeafId() !== leaf || !session.isIdle) return 'failed';
     // No reply yet: the leaf is the user entry, and navigating to it is a no-op. Its parent
@@ -779,8 +869,12 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
     return { on: approvals.autoApprove.has(r.id), tools: registry.autoApproveTools(r.agentId) };
   };
 
-  /** `chat.state` of a chat and its session (`chat.open`, `chat.fork`). */
-  const chatState = async (r: ChatRow, session: AgentSession): Promise<ServerMessage> => {
+  /** `chat.state` of a chat and its session (`chat.open`, `chat.fork`, `chat.version`). */
+  const chatState = async (
+    r: ChatRow,
+    session: AgentSession,
+    switched = false,
+  ): Promise<ServerMessage> => {
     const restore = restorer(pseudo, () => send(socket, errorMsg('pseudo_down', r.id)));
     const messages = ownUsage(await history(session, threadFiles(db, userId, r), restore), r);
     const link = forkLink(db, userId, r);
@@ -793,6 +887,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
       autoApprove: autoApproveOf(r),
       ...(link ? { forkedFrom: link } : {}),
       ...(memory.claims ? { claims: memory.claims.chips(r.id) } : {}),
+      ...(switched ? { switched } : {}),
     };
   };
 
@@ -806,27 +901,40 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
     const session = await registry.get(msg.chatId);
     // Synchronous from this check to the hold.
     if (registry.running(msg.chatId)) return send(socket, errorMsg('failed', msg.chatId));
-    const branch = session.sessionManager.getBranch();
-    const at = branch.findIndex((e) => e.id === msg.messageId);
-    const edited = branch[at];
-    if (edited?.type !== 'message' || edited.message.role !== 'user')
-      return send(socket, errorMsg('bad_message', msg.chatId));
-    let release = () => {};
-    registry.hold(msg.chatId, new Promise<void>((r) => (release = r)));
-    try {
-      const code = await forkFrom(
-        src,
-        session,
-        branch,
-        at,
-        edited as UserEntry,
-        msg.text,
-        msg.localId,
-      );
-      if (code) send(socket, errorMsg(code, msg.chatId));
-    } finally {
-      release();
-    }
+    const found = userOnBranch(session, msg.messageId);
+    if (!found) return send(socket, errorMsg('bad_message', msg.chatId));
+    const { branch, at, edited } = found;
+    const code = await holding(msg.chatId, () =>
+      forkFrom(src, session, branch, at, edited, msg.text, msg.localId),
+    );
+    if (code) send(socket, errorMsg(code, msg.chatId));
+  };
+
+  /**
+   * The edited text to prompt for the user entry at `branch[at]` (`chat.fork`, `chat.edit`): `text`
+   * plus the entry's document blocks, with its images (phase-13 decision 6). `pseudo_down` while
+   * the sidecar cannot restore the entry.
+   */
+  const editedPrompt = async (
+    src: ChatRow,
+    branch: Entry[],
+    at: number,
+    edited: UserEntry,
+    text: string,
+  ): Promise<Sent | 'pseudo_down'> => {
+    const sent = await resend(edited);
+    if (!sent) return 'pseudo_down';
+    const before = branch
+      .slice(0, at)
+      .findLast((e) => e.type === 'message' && e.message.role === 'user');
+    const docs = filesOf(
+      threadFiles(db, userId, src),
+      before?.type === 'message' ? new Date(before.message.timestamp).toISOString() : '',
+      new Date(edited.message.timestamp).toISOString(),
+    )
+      .filter((f) => f.kind === 'document')
+      .map((f) => f.name);
+    return { ...sent, text: text + sent.text.slice(splitBlocks(sent.text, docs).own.length) };
   };
 
   const forkFrom = async (
@@ -837,7 +945,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
     edited: UserEntry,
     text: string,
     localId?: string,
-  ): Promise<keyof typeof ERRORS | undefined> => {
+  ): Promise<Code | undefined> => {
     const sm = session.sessionManager;
     const leaf = sm.getLeafId();
     // Before the edited entry, past its own `pseudo-spans` entry (pi-ext-pseudo's input hook).
@@ -847,24 +955,12 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
     const talk = (e: Entry | undefined) =>
       e?.type === 'message' && (e.message.role === 'user' || e.message.role === 'assistant');
     const point = branch.slice(0, pointAt + 1).some(talk) ? branch[pointAt] : undefined;
-    const sent = await resend(edited);
-    if (!sent) return 'pseudo_down';
+    const sent = await editedPrompt(src, branch, at, edited, text);
+    if (sent === 'pseudo_down') return sent;
     // After the await: a message sent meanwhile moved the leaf or started a run.
     if (sm.getLeafId() !== leaf || !session.isIdle) return 'failed';
     // The edited message's time: the fork shows the source's files up to it (decision 7).
     const editedAt = new Date(edited.message.timestamp).toISOString();
-    const before = branch
-      .slice(0, at)
-      .findLast((e) => e.type === 'message' && e.message.role === 'user');
-    const docs = filesOf(
-      threadFiles(db, userId, src),
-      before?.type === 'message' ? new Date(before.message.timestamp).toISOString() : '',
-      editedAt,
-    )
-      .filter((f) => f.kind === 'document')
-      .map((f) => f.name);
-    // Its document blocks go with the edited text (decision 6).
-    const blocks = sent.text.slice(splitBlocks(sent.text, docs).own.length);
 
     let id: string = randomUUID();
     let inserted = false;
@@ -917,7 +1013,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
       send(socket, { type: 'chat.created', chat: summary(r) });
       send(socket, await chatState(r, forked));
       join(id, forked);
-      registry.hold(id, promptOrFail(id, forked, { ...sent, text: text + blocks }, localId));
+      registry.hold(id, promptOrFail(id, forked, sent, localId));
       return undefined;
     } catch (err) {
       // Nothing of a half-made fork stays: its row, its file, its sidecar scope.
@@ -1202,12 +1298,20 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
         );
         return;
       }
-      case 'user.retry': {
+      case 'user.retry':
+      case 'chat.edit':
+      case 'chat.version': {
         if (collisions.held(msg.chatId)) return send(socket, errorMsg('held', msg.chatId));
+        const run =
+          msg.type === 'user.retry'
+            ? retry(msg.chatId, msg.localId)
+            : msg.type === 'chat.edit'
+              ? edit(msg)
+              : version(msg);
         // Every refusal names the chat: the client then keeps its thread as it was.
-        const code = await retry(msg.chatId, msg.localId).catch((err: unknown) => {
+        const code = await run.catch((err: unknown) => {
           if (err instanceof NotFound || err instanceof ChatNotFound) return 'not_found' as const;
-          log.warn({ chatId: msg.chatId, err }, 'retry failed');
+          log.warn({ chatId: msg.chatId, err }, `${msg.type} failed`);
           return 'failed' as const;
         });
         if (code) send(socket, errorMsg(code, msg.chatId));
@@ -1545,14 +1649,7 @@ function forward(
         if (r) emit({ type: 'chat.updated', chat: summary(r) });
         emit({ type: 'agent.status', chatId, state: 'idle' });
         if (!e.aborted) void push.notify(chatId, 'settled');
-        // Background: embedding takes a moment and must not hold the event chain.
-        indexChat(db, userId, chatId, transcript(session)).catch((err: unknown) =>
-          log.warn(
-            { chatId, error: err instanceof Error ? err.message : 'unknown' },
-            'index failed',
-          ),
-        );
-        return;
+        return reindex({ db, userId, log }, chatId, session);
       }
     }
   };
@@ -1700,6 +1797,7 @@ export async function history(
       if (found) searches.set(r.toolCallId, found);
     }
   }
+  const versions = versionsOf(session.sessionManager);
   let prev = '';
   const messages = entries.flatMap((e) => {
     if (e.type !== 'message' || (e.message.role !== 'user' && e.message.role !== 'assistant'))
@@ -1708,6 +1806,8 @@ export async function history(
     if (m.role === 'user') {
       m.attachments = filesOf(files, prev, m.createdAt);
       prev = m.createdAt;
+      const v = versions.get(e.id);
+      if (v) m.versions = { index: v.index, count: v.count };
     }
     return [m];
   });
