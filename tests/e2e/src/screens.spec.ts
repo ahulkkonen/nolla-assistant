@@ -169,6 +169,10 @@ const REFUSAL = {
   error: { status: 404, message: 'No endpoints found matching your data policy' },
 };
 
+/** An OpenRouter 400 as the provider words it (phase 22: the "Näytä tiedot" dialog). */
+const CONTEXT_ERROR =
+  'This endpoint\'s maximum context length is 131072 tokens. However, you requested about 140213 tokens (139189 of text input, 1024 in the output). Please reduce the length of either one, or use the "middle-out" transform to compress your prompt automatically.';
+
 const send = async (page: Page, text: string) => {
   await page.getByLabel('Viesti').fill(text);
   await page.getByLabel('Viesti').press('ControlOrMeta+Enter');
@@ -945,7 +949,7 @@ for (const scheme of ['light', 'dark'] as const) {
             await page.getByRole('menuitem', { name: 'Liitä keskusteluun' }).click();
             await expect(page.getByText('Tätä tiedostotyyppiä ei voi liittää.')).toBeVisible();
             await expect(page.getByRole('button', { name: 'Sulje' }).last()).toBeVisible();
-            // Focus went back to ⋯ and its tooltip shows: a click on empty canvas clears both.
+            // Focus went back to ⋯: a click on empty canvas clears it.
             if (!phone) await page.mouse.click(vp.width / 2, vp.height - 60);
             await expect(page.getByRole('tooltip')).toHaveCount(0);
             await shot(page, 'toast-error', vp.width, scheme);
@@ -1102,8 +1106,15 @@ for (const scheme of ['light', 'dark'] as const) {
                 page.getByRole('dialog').getByText('Malli näki: Pekka Laaksonen'),
               ).toBeVisible();
             } else {
+              // Keyboard focus shows the tooltip (a focus from code does not, phase 22).
               await masked.focus();
-              await expect(page.getByRole('tooltip')).toHaveText('Malli näki: Pekka Laaksonen');
+              await page.keyboard.press('Tab');
+              await page.keyboard.press('Shift+Tab');
+              await expect(
+                page.getByRole('tooltip', { name: 'Malli näki: Pekka Laaksonen' }),
+              ).toBeVisible();
+              // The hetu's tooltip from the Tab has faded.
+              await expect(page.getByRole('tooltip')).toHaveCount(1);
             }
             await shot(page, 'chat-annotated', vp.width, scheme);
             await page.keyboard.press('Escape');
@@ -1111,7 +1122,7 @@ for (const scheme of ['light', 'dark'] as const) {
             if (await menu.isVisible()) await menu.click();
             await page.getByRole('button', { name: 'Asetukset' }).click();
             await page.getByLabel('Näytä mitä malli näki').check();
-            // Settings, then (under 768 px) the drawer; the gear's focus tooltip eats one Escape.
+            // Settings, then (under 768 px) the drawer.
             await expect(async () => {
               await page.keyboard.press('Escape');
               await expect(page.getByRole('dialog')).toHaveCount(0, { timeout: 500 });
@@ -1120,7 +1131,7 @@ for (const scheme of ['light', 'dark'] as const) {
               'Hei Pekka Laaksonen! Hetu 010190-900B on tallessa.',
             );
             await expect(page.getByText('Näytetään mitä malli näki')).toBeVisible();
-            // Focus returns to the gear and opens its tooltip; it is not part of this screen.
+            // Focus returns to the gear; its ring is not part of this screen.
             await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
             await shot(page, 'chat-annotated-modelsaw', vp.width, scheme);
           });
@@ -1497,6 +1508,28 @@ for (const scheme of ['light', 'dark'] as const) {
             timeout: 30_000,
           });
           await shot(page, 'error-toast', vp.width, scheme);
+        });
+
+        test('model-error-detail', async ({ app, page }) => {
+          // Phase-22 decision 1: the provider's status and message, fixed for a stable shot.
+          app.llm.push({ match: /^Hei$/, error: { status: 400, message: 'context length' } });
+          await page.routeWebSocket(/\/ws$/, (ws) => {
+            const server = ws.connectToServer();
+            server.onMessage((m) => {
+              const msg = typeof m === 'string' ? JSON.parse(m) : undefined;
+              if (msg?.type !== 'error' || msg.code !== 'llm_failed') return ws.send(m);
+              ws.send(JSON.stringify({ ...msg, status: 400, detail: CONTEXT_ERROR }));
+            });
+          });
+          await app.login(page);
+          await send(page, 'Hei');
+          const alert = page.getByRole('alert');
+          await expect(alert.getByText('Mallikutsu epäonnistui (400)')).toBeVisible();
+          await alert.getByRole('button', { name: 'Näytä tiedot' }).click();
+          await expect(
+            page.getByRole('dialog', { name: 'Mallikutsu epäonnistui (400)' }),
+          ).toBeVisible();
+          await shot(page, 'model-error-detail', vp.width, scheme);
         });
 
         test('composer-attachments', async ({ app, page }) => {

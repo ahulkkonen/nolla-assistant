@@ -1,6 +1,7 @@
 import type { Artifact, ChatSummary, Message } from '@pa/protocol';
+import { toast } from 'sonner';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { serverIdOf, useStore } from './store.ts';
+import { failedText, serverIdOf, useStore } from './store.ts';
 
 const initial = useStore.getState();
 afterEach(() => useStore.setState(initial, true));
@@ -77,7 +78,7 @@ describe('store reducers', () => {
     expect(useStore.getState().errorCount).toBe(before + 1);
     useStore.getState().setActive('c1');
     useStore.getState().apply({ type: 'error', code: 'llm_failed', message: 'x', chatId: 'c1' });
-    expect(useStore.getState().failed.c1).toBe('llm_failed');
+    expect(useStore.getState().failed.c1).toEqual({ code: 'llm_failed' });
     useStore.getState().addLocalMessage('c1', {
       id: 'm1',
       role: 'user',
@@ -88,6 +89,35 @@ describe('store reducers', () => {
       tools: [],
     } as never);
     expect(useStore.getState().failed.c1).toBeUndefined();
+  });
+
+  it('a failed model call: the status in the text, the detail behind "Näytä tiedot"', () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const toastError = vi.spyOn(toast, 'error');
+    const msg = {
+      type: 'error' as const,
+      code: 'llm_failed',
+      message: 'Model call failed',
+      status: 404,
+      detail: 'No endpoints found',
+    };
+    useStore.getState().setActive('c1');
+    useStore.getState().apply({ ...msg, chatId: 'c1' });
+    const failure = { code: 'llm_failed', status: 404, detail: 'No endpoints found' } as const;
+    expect(useStore.getState().failed.c1).toEqual(failure);
+    expect(failedText(failure)).toBe('Mallikutsu epäonnistui (404)');
+    expect(failedText({ code: 'llm_failed' })).toBe('Mallin kutsu epäonnistui.');
+    expect(error).toHaveBeenCalledWith('model call failed', { ...msg, chatId: 'c1' });
+    // A chat in the background: a toast whose action opens the detail.
+    useStore.getState().apply({ ...msg, chatId: 'c2' });
+    const [text, opts] = toastError.mock.calls.at(-1) ?? [];
+    expect(text).toBe('Mallikutsu epäonnistui (404)');
+    const action = (opts as { action: { label: string; onClick: () => void } }).action;
+    expect(action.label).toBe('Näytä tiedot');
+    action.onClick();
+    expect(useStore.getState().errorDetail).toEqual(failure);
+    error.mockRestore();
+    toastError.mockRestore();
   });
 
   it('a held message: marked while held, its text back in the composer when dropped', () => {

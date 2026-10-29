@@ -1,5 +1,15 @@
 import { Menu, SquarePen } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet';
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -28,7 +38,7 @@ import { USAGE_TITLE, UsageScreen } from './components/UsageScreen.tsx';
 import { VAULT_TITLE, VaultScreen } from './components/VaultScreen.tsx';
 import { useMedia, useMobile } from './media.ts';
 import { resyncPush } from './push.ts';
-import { firstUserLine, shownArtifact, useStore } from './store.ts';
+import { failedText, firstUserLine, shownArtifact, useStore } from './store.ts';
 import { connect, openChat, reportFocus } from './ws.ts';
 
 const SCREEN_TITLE = {
@@ -70,6 +80,36 @@ function ChatTitle({ title }: { title: string }) {
         {title}
       </h1>
     </Tip>
+  );
+}
+
+/** "Näytä tiedot" of a failed model call (phase-22 decision 1): the provider's own message. */
+function ErrorDetailDialog() {
+  const failure = useStore((s) => s.errorDetail);
+  // The text stays while the dialog fades out.
+  const shown = useRef(failure);
+  if (failure) shown.current = failure;
+  const f = shown.current;
+  return (
+    <Dialog open={!!failure} onOpenChange={(o) => !o && useStore.setState({ errorDetail: null })}>
+      <DialogContent showCloseButton={false} className="sm:max-w-[480px]">
+        <DialogHeader>
+          <DialogTitle>{f && failedText(f)}</DialogTitle>
+          <DialogDescription>Palveluntarjoajan vastaus:</DialogDescription>
+        </DialogHeader>
+        <pre
+          translate="no"
+          className="rounded-md bg-muted p-3 font-mono text-[13px]/5 whitespace-pre-wrap select-text [overflow-wrap:anywhere]"
+        >
+          {f?.detail}
+        </pre>
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="outline">Sulje</Button>
+          </DialogClose>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -278,6 +318,7 @@ function Shell() {
       <CommandPalette />
       <ExportDialog />
       <ExportAllDialog />
+      <ErrorDetailDialog />
     </div>
   );
 }

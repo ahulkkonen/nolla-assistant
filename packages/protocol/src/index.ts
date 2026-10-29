@@ -139,8 +139,8 @@ export const ChatSummary = z.object({
   archived: z.boolean(),
   /** True after a manual rename: automatic titling no longer changes the title. */
   titleLocked: z.boolean().optional(),
-  /** Phase-22 decision 3: the source chat's id for a chat that "Haarauta" started (the mark). */
-  forkedFrom: id64.optional(),
+  /** Phase-22 decision 3: the chat "Haarauta" started this one from; the sidebar marks it. */
+  forkedFrom: id64.nullable().optional(),
   modelPolicy: ModelPolicy,
   /** Phase-21 decision 4: the model marks each sentence with `⟦N⟧`. */
   confidence: z.boolean(),

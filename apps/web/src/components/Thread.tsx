@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { announce } from '../announce.ts';
-import { FAILED_TEXT, serverIdOf, type UiMessage, useStore } from '../store.ts';
+import { failedText, serverIdOf, type UiMessage, useStore } from '../store.ts';
 import { Follow, replyUsage, threadKey } from '../thread.ts';
 import { useModel } from '../useModel.ts';
 import { forkChat, openChat, retryTurn, send, sendUserMessage, setDataPolicy } from '../ws.ts';
@@ -400,8 +400,27 @@ export function Thread() {
               className="flex flex-wrap items-center gap-3 rounded-lg bg-destructive-subtle px-4 py-3 text-body text-foreground"
             >
               <AlertCircle size={16} className="shrink-0 text-destructive" />
-              <span className="min-w-0 flex-1">{FAILED_TEXT[failed]}</span>
-              <Button variant="outline" size="sm" onClick={() => chatId && retryTurn(chatId)}>
+              {/* Phones: with "Näytä tiedot" the actions wrap under the text. */}
+              <span
+                className={cn('min-w-0 flex-1', failed.detail && 'max-md:basis-[calc(100%-28px)]')}
+              >
+                {failedText(failed)}
+              </span>
+              {failed.detail && (
+                <Button
+                  variant="link"
+                  className="max-md:ml-7 max-md:min-h-11"
+                  onClick={() => useStore.setState({ errorDetail: failed })}
+                >
+                  Näytä tiedot
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                className="ml-auto"
+                onClick={() => chatId && retryTurn(chatId)}
+              >
                 Yritä uudelleen
               </Button>
             </div>

@@ -98,7 +98,9 @@ type State = {
   /** Counts error toasts: screens that wait for a server echo also stop waiting on an error. */
   errorCount: number;
   /** A failed reply per chat, shown inline in the thread until the next message. */
-  failed: Record<string, FailedCode>;
+  failed: Record<string, Failure>;
+  /** The provider's message of a failed model call in the "Näytä tiedot" dialog (phase 22). */
+  errorDetail: Failure | null;
   /** A user message to open in edit mode (↑ in an empty composer). */
   editMessageId: string | null;
   sidebarOpen: boolean;
@@ -217,6 +219,8 @@ type State = {
   paletteOpen: boolean;
   settingsOpen: boolean;
   shortcutsOpen: boolean;
+  /** The composer holds text, files or a recording (phase-22 decision 5: no reload then). */
+  composing: boolean;
   /** The chat the export dialog is open for ("Vie…"); closed when null. */
   exportChatId: string | null;
   integrations: Of<'integrations.state'>['google'] | null;
@@ -269,7 +273,7 @@ type State = {
   rewind(chatId: string, keep: number): void;
   /** A message sent again: its new local id, and no entry id until `message.accepted`. */
   relocal(chatId: string, id: string, localId: string): void;
-  pushError(message: string): void;
+  pushError(message: string, action?: { label: string; onClick: () => void }): void;
   notify(message: string, action?: { label: string; onClick: () => void }): void;
   setSidebarOpen(open: boolean): void;
   setTheme(theme: Theme): void;
@@ -407,6 +411,11 @@ export const FAILED_TEXT = {
   prompt_failed: 'Viestin lähetys epäonnistui.',
 };
 type FailedCode = keyof typeof FAILED_TEXT;
+/** A failed reply; a failed model call can carry the provider's status and detail (phase 22). */
+export type Failure = { code: FailedCode; status?: number; detail?: string };
+/** "Mallikutsu epäonnistui (404)" when the provider gave a status, else the code's own text. */
+export const failedText = (f: Failure) =>
+  f.status === undefined ? FAILED_TEXT[f.code] : `Mallikutsu epäonnistui (${f.status})`;
 
 /** What a new turn ends in a chat: decided approvals, the memory chip and both inline alerts. */
 const endTurn = (st: State, chatId: string) => ({
@@ -484,6 +493,7 @@ export const useStore = create<State>()((set, get) => {
     paletteOpen: false,
     settingsOpen: false,
     shortcutsOpen: false,
+    composing: false,
     exportChatId: null,
     integrations: null,
     ...loadStt(),
@@ -502,6 +512,7 @@ export const useStore = create<State>()((set, get) => {
     agentStatus: {},
     errorCount: 0,
     failed: {},
+    errorDetail: null,
     editMessageId: null,
     // Docked from 1024 px (brief 7.4); below, the rail or the drawer starts closed.
     sidebarOpen: globalThis.matchMedia?.('(min-width: 1024px)').matches ?? false,
@@ -892,6 +903,8 @@ export const useStore = create<State>()((set, get) => {
           return set({ models });
         }
         case 'error': {
+          // Phase-22 decision 1: devtools shows the whole message of a failed model call.
+          if (msg.code === 'llm_failed') console.error('model call failed', msg);
           // A failed reply: its queued message goes back to the composer, not into a new turn.
           if (msg.chatId && ['llm_failed', 'prompt_failed', 'zdr_unavailable'].includes(msg.code))
             set((st) => giveBack(st, msg.chatId as string));
@@ -973,16 +986,21 @@ export const useStore = create<State>()((set, get) => {
               return get().pushError(ERROR_TEXT.zdr_unavailable ?? msg.message);
             return set((st) => ({ errorCount: st.errorCount + 1 }));
           }
-          // A failed reply in the open chat is an inline alert with a retry (brief 7.5).
-          if (
-            (msg.code === 'llm_failed' || msg.code === 'prompt_failed') &&
-            msg.chatId &&
-            msg.chatId === get().activeChatId
-          )
-            return set((st) => ({
-              failed: { ...st.failed, [msg.chatId as string]: msg.code as FailedCode },
-              errorCount: st.errorCount + 1,
-            }));
+          if (msg.code === 'llm_failed' || msg.code === 'prompt_failed') {
+            const failure: Failure = {
+              code: msg.code,
+              ...(msg.status === undefined ? {} : { status: msg.status }),
+              ...(msg.detail ? { detail: msg.detail } : {}),
+            };
+            // A failed reply in the open chat is an inline alert with a retry (brief 7.5).
+            if (msg.chatId && msg.chatId === get().activeChatId)
+              return set((st) => ({
+                failed: { ...st.failed, [msg.chatId as string]: failure },
+                errorCount: st.errorCount + 1,
+              }));
+            const detail = { label: 'Näytä tiedot', onClick: () => set({ errorDetail: failure }) };
+            return get().pushError(failedText(failure), failure.detail ? detail : undefined);
+          }
           return get().pushError(ERROR_TEXT[msg.code] ?? msg.message);
         }
         default:
@@ -1074,8 +1092,8 @@ export const useStore = create<State>()((set, get) => {
         ),
       })),
     // Toasts (brief 7.5): 4 s, errors 6 s with a close button.
-    pushError(message) {
-      toast.error(message, { duration: 6000, closeButton: true });
+    pushError(message, action) {
+      toast.error(message, { duration: 6000, closeButton: true, ...(action ? { action } : {}) });
       set((st) => ({ errorCount: st.errorCount + 1 }));
     },
     notify: (message, action) => void toast.success(message, action ? { action } : {}),

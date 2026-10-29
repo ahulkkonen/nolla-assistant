@@ -5,6 +5,7 @@ import {
   ChevronRight,
   FileDown,
   FolderOpen,
+  GitFork,
   Keyboard,
   Lightbulb,
   Lock,
@@ -70,6 +71,12 @@ function ChatRow({
   const [confirming, setConfirming] = useState(false);
   const [menu, setMenu] = useState(false);
   const fx = useStore((s) => s.fx);
+  // Phase-22 decision 3: a fork's source title, '' when unknown; undefined: not a fork.
+  const forkTitle = useStore((s) => {
+    const link = s.forkedFrom[chat.id];
+    const from = chat.forkedFrom ?? link?.chatId;
+    return from ? (link?.title ?? s.chats.find((c) => c.id === from)?.title ?? '') : undefined;
+  });
   // Enter and the following blur must not both rename.
   const done = useRef(false);
   const press = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -126,6 +133,14 @@ function ChatRow({
     { label: 'Poista', Icon: Trash2, run: () => setConfirming(true) },
   ];
   const name = label ?? UNTITLED;
+  // The row end's marks: a fork, then the lock of a renamed chat.
+  const marks = [
+    forkTitle !== undefined && {
+      label: forkTitle ? `Haarautettu keskustelusta ”${forkTitle}”` : 'Haarautettu keskustelusta',
+      Icon: GitFork,
+    },
+    !!chat.titleLocked && { label: 'Nimi lukittu', Icon: Lock },
+  ].filter((m) => m !== false);
   // The chat's cost at the end of its menu (phase 13); none before the first tokens.
   const note = chat.usage?.tokens ? withRate(chatTotal(chat.usage, fx), chat.usage) : undefined;
 
@@ -151,24 +166,32 @@ function ChatRow({
         aria-current={active ? 'page' : undefined}
         className={cn(
           'h-9 min-w-0 flex-1 truncate rounded-md px-3 text-left text-ui text-sidebar-foreground',
-          drawer ? 'h-11 pr-12' : 'group-focus-within:pr-16 group-hover:pr-16',
+          drawer
+            ? cn('h-11', marks.length ? 'pr-2' : 'pr-12')
+            : 'group-focus-within:pr-16 group-hover:pr-16',
           active && 'font-medium',
           !label && !active && 'text-muted-foreground',
         )}
       >
         {name}
       </button>
-      {chat.titleLocked && (
-        <Tip label="Nimi lukittu">
-          <span
-            role="img"
-            aria-label="Nimi lukittu"
-            tabIndex={-1}
-            className={cn('mr-3 text-muted-foreground', !drawer && 'group-hover:hidden')}
-          >
-            <Lock size={16} />
-          </span>
-        </Tip>
+      {marks.length > 0 && (
+        // Desktop: the hover actions take their place; the drawer keeps them left of ⋯.
+        <span
+          className={cn(
+            'flex shrink-0 items-center gap-2 text-muted-foreground',
+            drawer ? 'mr-12' : 'mr-3 group-focus-within:hidden group-hover:hidden',
+            !drawer && menu && 'hidden',
+          )}
+        >
+          {marks.map(({ label, Icon }) => (
+            <Tip key={label} label={label}>
+              <span role="img" aria-label={label} tabIndex={-1}>
+                <Icon size={16} />
+              </span>
+            </Tip>
+          ))}
+        </span>
       )}
       {drawer ? (
         <div className="absolute right-1">

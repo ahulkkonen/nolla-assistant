@@ -541,7 +541,11 @@ function EditBox({
         rows={Math.min(8, value.split('\n').length + 1)}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === 'Escape') onCancel();
+          if (e.key === 'Escape') {
+            // The edit only: the global Esc must not also stop a run.
+            e.preventDefault();
+            onCancel();
+          }
           if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && ready) {
             e.stopPropagation();
             onSend(value.trim());
