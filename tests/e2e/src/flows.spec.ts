@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { inflateSync } from 'node:zlib';
 import { SEARCH_DENIED } from '@pa/server/src/search-tool.ts';
-import type { Page } from '@playwright/test';
+import { devices, type Page } from '@playwright/test';
 import {
   type App,
   acceptProposal,
@@ -161,6 +161,78 @@ test('waiting line: steps with the real events; the first token takes its place 
   await page.reload();
   await page.locator('nav li > button').first().click();
   await expect(receipt).toBeVisible();
+});
+
+test.describe('android keyboard', () => {
+  // Phase 26: Pixel 7 (412 x 839, touch). `resizes-content` shrinks the layout viewport, so the
+  // keyboard is a 330 px smaller viewport here (the method of the mobile composer audit).
+  const { defaultBrowserType: _, ...pixel } = devices['Pixel 7'];
+  test.use(pixel);
+
+  test("keyboard: the thread keeps its bottom or the reader's place, no pill; a send keeps the keyboard", async ({
+    app,
+    page,
+  }) => {
+    const long = Array.from({ length: 30 }, (_, i) => `Kappale ${i + 1}: pitkä vastaus.`).join(
+      '\n\n',
+    );
+    app.llm.push({ text: long });
+    app.llm.push({ text: long });
+    await app.login(page);
+    for (const q of ['Ensimmäinen kysymys', 'Toinen kysymys']) {
+      await page.getByLabel('Viesti').fill(q);
+      await page.getByLabel('Viesti').press('ControlOrMeta+Enter');
+      await expect(page.locator('.md').last()).toContainText('Kappale 30');
+      await expect(page.getByRole('button', { name: 'Pysäytä' })).toHaveCount(0);
+    }
+    const region = thread(page);
+    const view = page.viewportSize() ?? { width: 412, height: 839 };
+    /** Two frames: the resize observer and a scroll event of the resize have run by then. */
+    const frames = () =>
+      page.evaluate(
+        () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))),
+      );
+    const keyboard = async (open: boolean) => {
+      await page.setViewportSize({ ...view, height: view.height - (open ? 330 : 0) });
+      await frames();
+    };
+    /** How far the last message's end sits below the thread's bottom edge (> 0: hidden). */
+    const hidden = () =>
+      region.evaluate((el) => {
+        const last = Array.from(el.querySelectorAll('[data-message-id]')).at(-1);
+        return (last?.getBoundingClientRect().bottom ?? 0) - el.getBoundingClientRect().bottom;
+      });
+    const gap = () => region.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight);
+    const pill = page.getByRole('button', { name: /^Uusimpaan/ });
+
+    await page.getByLabel('Viesti').tap();
+    await keyboard(true);
+    await expect.poll(hidden).toBeLessThanOrEqual(0);
+    await page.getByLabel('Viesti').fill('Kolmas kysymys\nrivi 2\nrivi 3');
+    await expect.poll(hidden).toBeLessThanOrEqual(0);
+    await frames();
+    await expect(pill).toHaveCount(0);
+
+    // Scrolled up 400 px: the keyboard keeps the reader's distance to the bottom.
+    await page.getByLabel('Viesti').fill('');
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    await keyboard(false);
+    await expect.poll(gap).toBeLessThanOrEqual(1);
+    await region.evaluate((el) => el.scrollBy(0, -400));
+    await expect(pill).toBeVisible();
+    await page.getByLabel('Viesti').tap();
+    await keyboard(true);
+    await expect.poll(async () => Math.abs((await gap()) - 400)).toBeLessThanOrEqual(1);
+
+    // "Lähetä" keeps the textarea's focus, so the keyboard stays open.
+    app.llm.push({ text: 'Lyhyt vastaus.' });
+    await page.getByLabel('Viesti').fill('Kolmas kysymys');
+    await page.getByRole('button', { name: 'Lähetä', exact: true }).tap();
+    await expect(page.locator('.md').last()).toHaveText('Lyhyt vastaus.');
+    expect(await page.evaluate(() => document.activeElement?.getAttribute('aria-label'))).toBe(
+      'Viesti',
+    );
+  });
 });
 
 /** About 2,000 lines of mixed Markdown: headings, paragraphs, lists, tables and code fences. */

@@ -15,6 +15,7 @@ import {
 import {
   type ClipboardEvent,
   type KeyboardEvent,
+  type PointerEvent,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -224,6 +225,11 @@ export function Composer() {
     requestAnimationFrame(resize);
     if (running && chatId) useStore.getState().enqueue(chatId, body, refs);
     else await sendUserMessage(body, refs);
+  };
+
+  /** Phase 26: a tap on send keeps the textarea's focus, so a touch keyboard stays open. */
+  const keepFocus = (e: PointerEvent) => {
+    if (document.activeElement === area.current) e.preventDefault();
   };
 
   useShortcuts(
@@ -453,6 +459,7 @@ export function Composer() {
                   label="Lisää jonoon"
                   variant="primary"
                   className="rounded-full border-0"
+                  onPointerDown={keepFocus}
                   onClick={() => void submit()}
                 >
                   <ArrowUp size={16} />
@@ -474,6 +481,7 @@ export function Composer() {
                 variant="primary"
                 className="rounded-full border-0"
                 disabled={!canSend}
+                onPointerDown={keepFocus}
                 onClick={() => void submit()}
               >
                 <ArrowUp size={16} />

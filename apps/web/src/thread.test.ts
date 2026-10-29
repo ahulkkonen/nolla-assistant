@@ -452,6 +452,24 @@ describe('Follow', () => {
     expect(f.sync(el(100))).toBe(true);
     expect(f.pinned).toBe(false);
   });
+  it('resized: pinned keeps the bottom, scrolled up keeps the distance, no pill (phase 26)', () => {
+    const f = new Follow();
+    const e = el(600);
+    f.follow(e);
+    // A keyboard takes 330 px of the thread.
+    e.clientHeight = 70;
+    f.resized(e, 330);
+    expect(e.scrollHeight - e.scrollTop - e.clientHeight).toBe(0);
+    expect(f.scrolled(e)).toBe(false);
+    const up = el(200);
+    expect(f.sync(up)).toBe(true);
+    up.clientHeight = 70;
+    f.resized(up, 330);
+    expect(up.scrollHeight - up.scrollTop - up.clientHeight).toBe(400);
+    // Its own scroll: the state stays (scrolled up, pill shown), nothing pins.
+    expect(f.scrolled(up)).toBeUndefined();
+    expect(f.pinned).toBe(false);
+  });
   it('reset pins and ends a jump', () => {
     const f = new Follow();
     f.jump(el(0), true);

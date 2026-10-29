@@ -132,6 +132,21 @@ export function Thread() {
     if (scroller.current) follow.follow(scroller.current);
   }, [messages, stream?.text, stream?.tools, live, thinkingLive, allApprovals, subagents, failed]);
 
+  // Phase 26: the thread's own height changes (an Android keyboard, the composer growing): the
+  // bottom stays while pinned, else the reader's distance to it.
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el) return;
+    let height = el.clientHeight;
+    const ro = new ResizeObserver(() => {
+      const delta = height - el.clientHeight;
+      height = el.clientHeight;
+      if (delta) follow.resized(el, delta);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   // A search hit opens at its message once the chat's messages are in.
   useEffect(() => {
     if (!scrollTo) return;
@@ -274,7 +289,9 @@ export function Thread() {
           e.preventDefault();
           jump();
         }}
-        className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-4 outline-none"
+        // No scroll anchoring: it moved the thread 40 px on a keyboard open and unpinned the
+        // follow; `Follow.resized` keeps the place in every engine (Safari has no anchoring).
+        className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-4 outline-none [overflow-anchor:none]"
       >
         {/* Bottom 64: at the end the latest action row sits above the composer's fade. */}
         <div className="mx-auto flex w-full max-w-(--thread-max) flex-col gap-6 pt-6 pb-16">

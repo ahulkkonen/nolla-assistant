@@ -525,6 +525,17 @@ export class Follow {
     this.set = Number.NaN;
   }
 
+  /**
+   * The thread itself changed height (phase 26: an Android keyboard, a taller composer); `delta`
+   * is the old height minus the new one. Pinned, it keeps the bottom; scrolled up, it keeps the
+   * reader's distance to the bottom. Either scroll is the follow's own, so no pill comes.
+   */
+  resized(el: Scroller, delta: number) {
+    if (this.pinned) return this.follow(el);
+    el.scrollTop += delta;
+    this.set = el.scrollTop;
+  }
+
   /** The pill or End: to the bottom, and the follow resumes. */
   jump(el: Scroller, smooth: boolean) {
     this.pinned = this.jumping = true;
