@@ -133,7 +133,8 @@ function ChatRow({
     { label: 'Poista', Icon: Trash2, run: () => setConfirming(true) },
   ];
   const name = label ?? UNTITLED;
-  // The row end's marks: a fork, then the lock of a renamed chat.
+  // The marks: a fork, then the lock of a renamed chat. Desktop: at the row end. The drawer:
+  // right after the title, 14 px, so only ⋯ is at the row end (UI review 3).
   const marks = [
     forkTitle !== undefined && {
       label: forkTitle ? `Haarautettu keskustelusta ”${forkTitle}”` : 'Haarautettu keskustelusta',
@@ -167,7 +168,11 @@ function ChatRow({
         className={cn(
           'h-9 min-w-0 flex-1 truncate rounded-md px-3 text-left text-ui text-sidebar-foreground',
           drawer
-            ? cn('h-11', marks.length ? 'pr-2' : 'pr-12')
+            ? marks.length
+              ? // As wide as the title, so the marks follow it; `::after` keeps the whole row
+                // the target, and the focus ring is the row's.
+                'h-11 flex-initial pr-1.5 after:absolute after:inset-0 after:rounded-md focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-offset-2 focus-visible:after:outline-ring focus-visible:after:outline-solid'
+              : 'h-11 pr-12'
             : 'group-focus-within:pr-16 group-hover:pr-16',
           active && 'font-medium',
           !label && !active && 'text-muted-foreground',
@@ -176,18 +181,20 @@ function ChatRow({
         {name}
       </button>
       {marks.length > 0 && (
-        // Desktop: the hover actions take their place; the drawer keeps them left of ⋯.
+        // Desktop: the hover actions take their place. The drawer: 8 px clear of ⋯ (right-1, 44).
         <span
           className={cn(
-            'flex shrink-0 items-center gap-2 text-muted-foreground',
-            drawer ? 'mr-12' : 'mr-3 group-focus-within:hidden group-hover:hidden',
+            'flex shrink-0 items-center text-muted-foreground',
+            drawer
+              ? 'pointer-events-none mr-14 gap-1.5'
+              : 'mr-3 gap-2 group-focus-within:hidden group-hover:hidden',
             !drawer && menu && 'hidden',
           )}
         >
           {marks.map(({ label, Icon }) => (
             <Tip key={label} label={label}>
               <span role="img" aria-label={label} tabIndex={-1}>
-                <Icon size={16} />
+                <Icon size={drawer ? 14 : 16} />
               </span>
             </Tip>
           ))}

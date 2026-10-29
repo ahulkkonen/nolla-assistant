@@ -1,9 +1,10 @@
 import {
+  CircleAlertIcon,
   CircleCheckIcon,
   InfoIcon,
   Loader2Icon,
-  OctagonXIcon,
   TriangleAlertIcon,
+  XIcon,
 } from 'lucide-react';
 import { Toaster as Sonner, type ToasterProps } from 'sonner';
 import { useMobile } from '@/media';
@@ -33,8 +34,10 @@ const Toaster = ({ ...props }: ToasterProps) => {
         success: <CircleCheckIcon className="size-4 text-success" />,
         info: <InfoIcon className="size-4 text-info" />,
         warning: <TriangleAlertIcon className="size-4 text-warning" />,
-        error: <OctagonXIcon className="size-4 text-destructive" />,
+        // The inline alert's icon (brief 7.5): one sign for an error.
+        error: <CircleAlertIcon className="size-4 text-destructive" />,
         loading: <Loader2Icon className="size-4 animate-spin" />,
+        close: <XIcon className="size-4" />,
       }}
       style={
         {
@@ -43,20 +46,17 @@ const Toaster = ({ ...props }: ToasterProps) => {
           '--normal-border': 'var(--border)',
           '--border-radius': 'var(--radius)',
           '--width': '360px',
-          // Errors' close button on the right corner, not over the icon.
-          '--toast-close-button-start': 'unset',
-          '--toast-close-button-end': '0',
-          '--toast-close-button-transform': 'translate(35%, -35%)',
         } as React.CSSProperties
       }
       toastOptions={{
         closeButtonAriaLabel: 'Sulje',
         classNames: {
           toast: 'font-sans shadow-md!',
-          // Phones: a 44 px close button inside the error toast at the right, not a corner dot.
-          error: 'max-md:pr-14!',
+          // Errors' close button: a 28 px ghost icon button inside the toast, 16 px from its right
+          // edge, not a corner dot (UI review 3); a 44 px target on phones.
+          error: 'pr-13! max-md:pr-14!',
           closeButton:
-            'max-md:top-1/2! max-md:right-1! max-md:left-auto! max-md:size-11! max-md:-translate-y-1/2! max-md:transform-none! max-md:rounded-md! max-md:border-0! max-md:bg-transparent!',
+            'top-1/2! right-4! left-auto! size-7! -translate-y-1/2! transform-none! rounded-md! border-0! bg-transparent! text-muted-foreground! hover:bg-accent! hover:text-foreground! max-md:right-1! max-md:size-11!',
           title: 'text-ui! font-medium!',
           description: 'text-meta! text-muted-foreground!',
           actionButton:

@@ -42,7 +42,13 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
-import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet';
+import {
+  Sheet,
+  SheetCloseButton,
+  SheetContent,
+  SheetDescription,
+  SheetTitle,
+} from '@/components/ui/sheet';
 import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
 import { useMobile } from '../media.ts';
@@ -353,20 +359,25 @@ export function ModelPicker() {
           <SheetContent
             side="bottom"
             showCloseButton={false}
-            className="max-h-[85dvh] gap-1 overflow-y-auto rounded-t-xl px-2 pt-2 pb-[max(env(safe-area-inset-bottom),8px)]"
+            className="max-h-[85dvh] gap-1 overflow-y-auto rounded-t-xl px-2 pt-4 pb-[max(env(safe-area-inset-bottom),8px)]"
           >
             <SheetTitle className="sr-only">Mallin valinta</SheetTitle>
-            {/* A started chat keeps its agent, so the sheet names it read-only (the composer has no
-                agent chip on phones then). */}
-            {chatId ? (
-              <SheetDescription className="px-3 pt-2 pb-1 text-meta text-muted-foreground">
-                Agentti: <span className="text-foreground">{agent}</span>
-              </SheetDescription>
-            ) : (
-              <SheetDescription className="sr-only">
-                Valitse keskustelun malli ja ajattelun taso
-              </SheetDescription>
-            )}
+            {/* The receipt sheet's header (UI review 3): Sulje's 44 px target centred on the first
+                meta line (−13 px = (44 − 18) / 2). */}
+            <div className="flex items-start gap-2 pl-3">
+              {/* A started chat keeps its agent, so the sheet names it read-only (the composer has
+                  no agent chip on phones then). */}
+              {chatId ? (
+                <SheetDescription className="min-w-0 flex-1 pb-1 text-meta text-muted-foreground">
+                  Agentti: <span className="text-foreground">{agent}</span>
+                </SheetDescription>
+              ) : (
+                <SheetDescription className="sr-only">
+                  Valitse keskustelun malli ja ajattelun taso
+                </SheetDescription>
+              )}
+              <SheetCloseButton className="-my-[13px] ml-auto" />
+            </div>
             <Choices
               label="Malli"
               options={modelOptions}

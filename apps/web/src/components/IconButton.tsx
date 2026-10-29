@@ -9,6 +9,8 @@ type TipProps = {
   children: ReactElement;
   side?: 'top' | 'right' | 'bottom' | 'left';
   align?: 'start' | 'center' | 'end';
+  /** Gap to the trigger; 4 px by default. */
+  sideOffset?: number;
   /** The text screen readers get instead of `label` (a label with layout elements). */
   ariaLabel?: string;
   className?: string;
@@ -22,7 +24,16 @@ globalThis.addEventListener?.('keydown', (e) => (focusKey = /^(Tab|Arrow)/.test(
 globalThis.addEventListener?.('pointerdown', () => (focusKey = false), true);
 
 /** Kit tooltip around one trigger element; none on touch screens (brief 7.5). */
-export function Tip({ label, children, side, align, ariaLabel, className, open }: TipProps) {
+export function Tip({
+  label,
+  children,
+  side,
+  align,
+  sideOffset = 4,
+  ariaLabel,
+  className,
+  open,
+}: TipProps) {
   if (touch && open === undefined) return children;
   return (
     <Tooltip {...(open === undefined ? {} : { open })}>
@@ -35,7 +46,7 @@ export function Tip({ label, children, side, align, ariaLabel, className, open }
         {children}
       </TooltipTrigger>
       <TooltipContent
-        sideOffset={4}
+        sideOffset={sideOffset}
         collisionPadding={8}
         {...(side ? { side } : {})}
         {...(align ? { align } : {})}

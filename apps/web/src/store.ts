@@ -446,11 +446,14 @@ export const FAILED_TEXT = {
 type FailedCode = keyof typeof FAILED_TEXT;
 /** A failed reply; a failed model call can carry the provider's status and detail (phase 22). */
 export type Failure = { code: FailedCode; status?: number; detail?: string };
-/** "Mallikutsu epäonnistui (404)" when the provider gave a status, else the code's own text. */
+/**
+ * "Mallikutsu epäonnistui (404)" when the provider gave a status, else the code's own text. A
+ * no-break space keeps the status with the last word (UI review 3: the toast at 390).
+ */
 export const failedText = (f: Failure) =>
   f.status === undefined
     ? FAILED_TEXT[f.code]
-    : `${FAILED_TEXT.llm_failed.slice(0, -1)} (${f.status})`;
+    : `${FAILED_TEXT.llm_failed.slice(0, -1)}\u00a0(${f.status})`;
 
 /** What a new turn ends in a chat: decided approvals, the memory chip and both inline alerts. */
 const endTurn = (st: State, chatId: string) => ({

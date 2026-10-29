@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { TabsContent } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
+import { cn } from '@/lib/utils';
 import { HttpError, modeDelete, modeSave } from '../api.ts';
 import { useStore } from '../store.ts';
 import { ActionMenu } from './Actions.tsx';
@@ -203,10 +204,16 @@ export function ModesSection({
       {list.modes.length ? (
         <ul className="flex flex-col divide-y divide-border border-y">
           {list.modes.map((d) => (
-            <li key={d.id} className="flex min-h-14 items-center gap-3 py-2">
+            <li key={d.id} className="flex min-h-14 items-center gap-3 py-1.5">
               <div className="min-w-0 flex-1">
                 <div className="truncate font-medium">{nameOf(d)}</div>
-                <div className="line-clamp-2 text-meta text-muted-foreground">
+                {/* One meta line: the 56 px pitch (UI review 3); an error keeps two. */}
+                <div
+                  className={cn(
+                    'text-meta text-muted-foreground',
+                    d.file ? 'truncate' : 'line-clamp-2',
+                  )}
+                >
                   {d.file ? d.file.description || d.id : d.error}
                 </div>
               </div>

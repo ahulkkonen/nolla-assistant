@@ -434,21 +434,25 @@ export function AgentsScreen() {
         {list && !list.agents.length && <EmptyState Icon={Bot} title="Ei agentteja" />}
         <ul className="flex flex-col divide-y divide-border border-y empty:hidden">
           {list?.agents.map((d) => (
-            <li key={d.id} className="flex min-h-14 items-center gap-3 py-2">
-              <div className="min-w-0 flex-1">
-                <div className="truncate font-medium">{nameOf(d)}</div>
-                <div className="truncate font-mono text-meta text-muted-foreground">
-                  {d.id}
-                  {d.profile && ` · ${d.profile.model}`}
+            // Brief 7.5: 56 px rows. Phones: the badge under the meta line, so the model id
+            // shows in full (UI review 3).
+            <li key={d.id} className="flex min-h-14 items-center gap-3 py-1.5">
+              <div className="flex min-w-0 flex-1 items-center gap-3 max-md:flex-col max-md:items-start max-md:gap-1">
+                <div className="min-w-0 max-md:self-stretch md:flex-1">
+                  <div className="truncate font-medium">{nameOf(d)}</div>
+                  <div className="truncate font-mono text-meta text-muted-foreground">
+                    {d.id}
+                    {d.profile && ` · ${d.profile.model}`}
+                  </div>
                 </div>
+                {!d.profile ? (
+                  <Badge variant="destructive">Virheellinen</Badge>
+                ) : (
+                  <Badge variant={d.profile.subagents ? 'info' : 'secondary'}>
+                    {d.profile.subagents ? 'Aliagentit käytössä' : 'Ei aliagentteja'}
+                  </Badge>
+                )}
               </div>
-              {!d.profile ? (
-                <Badge variant="destructive">Virheellinen</Badge>
-              ) : (
-                <Badge variant={d.profile.subagents ? 'info' : 'secondary'}>
-                  {d.profile.subagents ? 'Aliagentit käytössä' : 'Ei aliagentteja'}
-                </Badge>
-              )}
               <ActionMenu
                 label={`Toiminnot: ${nameOf(d)}`}
                 small

@@ -348,3 +348,44 @@ The second blind UI review, 2026-10-29. Measured with Playwright Chromium at 390
     gives the toast with "Näytä tiedot".
 18. `waiting-queue`, `streaming` and `composer-queue` hold the client's clock. `streaming` and
     `composer-queue` show the active step without the highlight.
+
+## UI review 3
+
+The third blind UI review, 2026-10-29. Measured with Playwright Chromium at 390, 1024 and 1440 px.
+
+1. **Turn spacing on touch.** Each turn except the latest keeps the room of its action row, also
+   an older reply (40 px, 48 px under 768 px). Touch shows the row only under the latest turns. In
+   `fork-link` at 390 px, the gap from a user bubble to the next reply text is 55 px, and the gap
+   from an older reply to the next bubble is 51 px (before: 55 px and 27 px). `chat` has no older
+   reply, so its gaps do not change.
+2. **Legend at 390 px.** "Luottamus" and the scale are on line 1, "Näytä luvut" is on line 2.
+3. **Segmented control.** The kit `TabsTrigger` shows the selected item in `--card` with
+   `--shadow-sm` in light, and in `--card` in dark. The agent editor (Lomake/YAML), the mode
+   editor (Lomake/Markdown), Muisti and the artifact panel use this one component.
+4. **Row pitch.** The agents list and the modes list have 56 px rows. A mode description has one
+   line with an ellipsis. An error keeps two lines.
+5. **Agents list at 390 px.** The badge is under the meta line, so `zdr/strong` shows in full. The
+   row is 80 px high.
+6. **`waiting-queue`.** The test holds each server frame after the `sent` phase until after the
+   shot. All four shots show "jonossa 12 s".
+7. **Receipt sheet.** `SEP` (" ·" and a no-break space) joins the meta items, also in `withRate`.
+   No line ends in "·".
+8. **`message-meta`.** The 1024 px shot also hovers the cost, so the tooltip shows.
+9. **Cost tooltip.** Under the latest reply, the tooltip opens below the action row
+   (`side="bottom"`, `sideOffset` 8).
+10. **Toast.** A no-break space joins "epäonnistui" and the status, so "(400)" stays on the line of
+    its word. The close button is a 28 px ghost icon button 16 px from the right edge, inside the
+    toast (a 44 px target on phones). The error icon is `CircleAlert` 16 in `--destructive`, as in
+    the inline alert. In the 360 px toast the title now has two lines, because the close button
+    takes room inside the toast.
+11. **Drawer row.** The fork and lock marks follow the title (6 px from the text) at 14 px, muted.
+    Only ⋯ is at the row end, and the marks stay 8 px or more from it. The button's `::after`
+    keeps the full row as the target, and the focus ring goes around the row. The docked sidebar
+    does not change.
+12. **Model sheet.** The header has the 44 px "Sulje" × of the receipt sheet (`SheetCloseButton`,
+    also the kit sheet's own close button).
+
+Not changed, decided before:
+
+- Tool rows keep the type icon next to the status icon (phase-21 decision 5, the user's ask).
+- The phone error alert keeps two equal outline buttons (decision of UI review round 1).

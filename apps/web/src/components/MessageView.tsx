@@ -20,7 +20,6 @@ import {
   PanelRight,
   Pencil,
   RotateCcw,
-  X,
 } from 'lucide-react';
 import { Popover } from 'radix-ui';
 import {
@@ -43,7 +42,7 @@ import remarkGfm from 'remark-gfm';
 import { Button } from '@/components/ui/button';
 import {
   Sheet,
-  SheetClose,
+  SheetCloseButton,
   SheetContent,
   SheetDescription,
   SheetTitle,
@@ -447,15 +446,16 @@ const toggleN = (e: ReactMouseEvent) => {
 
 /**
  * Phase-23 decision 9: the scale under a reply with markers (micro, muted) and "Näytä luvut", which
- * puts every N in the text (`pa.confN`). One 28 px row; phones: "Luottamus" and the button, then
- * the scale. The button's 44 px target reaches 8 px past its 28 px pill, so the gaps stay 8 px.
+ * puts every N in the text (`pa.confN`). One 28 px row; phones: "Luottamus" and the scale, then
+ * the button (UI review 3). The button's 44 px target reaches 8 px past its 28 px pill, so the gaps
+ * stay 8 px.
  */
 function ConfidenceLegend() {
   const on = useStore((s) => s.showConfN);
   return (
     <div className="flex h-7 items-center gap-3 text-micro text-muted-foreground max-md:h-auto max-md:flex-wrap max-md:gap-y-2">
       <span>Luottamus</span>
-      <span className="flex items-center gap-2 tabular-nums max-md:order-last max-md:basis-full">
+      <span className="flex items-center gap-2 tabular-nums">
         <span>1 arvaus</span>
         <span aria-hidden="true" className="flex gap-1">
           {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
@@ -904,11 +904,7 @@ export function MessageView({
                 )}
                 {receipt}
               </div>
-              <SheetClose asChild>
-                <Button variant="ghost" size="icon-sm" aria-label="Sulje" className="-my-[13px]">
-                  <X />
-                </Button>
-              </SheetClose>
+              <SheetCloseButton className="-my-[13px]" />
             </div>
             {[
               { label: 'Kopioi', Icon: Copy, run: copy },

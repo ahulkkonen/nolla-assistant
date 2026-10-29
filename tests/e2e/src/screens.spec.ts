@@ -659,11 +659,15 @@ for (const scheme of ['light', 'dark'] as const) {
 
         test('waiting-queue', async ({ app, page }) => {
           test.skip(vp.width === 1024, 'Shot at 390 and 1440.');
-          // The provider holds the headers: the line counts the queue on the client's clock.
+          // The provider holds the headers: the line counts the queue on the client's clock. No
+          // frame after the request's `sent` reaches the page before the shot, so nothing can
+          // restart the count once the clock moved (UI review 3: a 390 shot showed 1 s).
           app.llm.push({ ...THINKING_TURN, queueMs: 60_000 });
+          const hold = await holdAfter(page, 'message.phase');
           await at(page, 0);
           await app.login(page);
           await sendMessage(page, 'Milloin kasvimaa kannattaa aloittaa?');
+          await hold.reached;
           await expect(
             thread(page)
               .getByText(/^jonossa \d+ s$/)
@@ -672,6 +676,7 @@ for (const scheme of ['light', 'dark'] as const) {
           await at(page, 12);
           await expect(thread(page).getByText('jonossa 12 s').first()).toBeVisible();
           await shot(page, 'waiting-queue', vp.width, scheme);
+          hold.release();
         });
 
         test('waiting-thinking', async ({ app, page }) => {
@@ -741,8 +746,8 @@ for (const scheme of ['light', 'dark'] as const) {
           await thinkingChat(app, page);
           const reply = thread(page).locator('[data-message-id]').last();
           await expect(reply.getByText('0,012 €')).toBeVisible();
-          // Desktop: the cost's tooltip with the model and the token parts.
-          if (vp.width === 1440) {
+          // Desktop (1024 and 1440): the cost's tooltip with the model and the token parts.
+          if (!phone) {
             await reply.getByText('0,012 €').hover();
             await expect(page.getByRole('tooltip')).toContainText('Malli: Gemini 4 Argon');
           } else await blur(page);

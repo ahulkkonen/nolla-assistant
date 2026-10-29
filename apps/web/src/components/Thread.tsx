@@ -340,16 +340,16 @@ export function Thread() {
               <Fragment key={t.key}>
                 {t.live && !joinLive && standalone}
                 <article
-                  // After a user turn 40 px (48 on phones): its action row sits in the gap. The
-                  // latest user turn shows its 44 px row on touch, so 24 px stay below the row.
+                  // After a user turn and an older reply 40 px (48 on phones): the action row sits
+                  // in the gap. Touch shows the row only under the latest turns, but every turn
+                  // keeps its room, so the gaps match (UI review 3). The latest user turn shows its
+                  // 44 px row on touch, so 24 px stay below the row.
                   className={cn(
                     'flex flex-col gap-2',
                     // Messages from elsewhere (a reload, another device) fade in; a reply that
                     // streamed here stays as it is when its final message takes its place.
                     !bornLive.has(t.key) && 'animate-fade-in',
-                    t.role === 'user' && 'mb-4 max-md:mb-6',
-                    // An older reply's action row sits in the gap below it, as a user turn's does.
-                    t.role === 'assistant' && !last && '[@media(hover:hover)]:mb-4',
+                    (t.role === 'user' || !last) && 'mb-4 max-md:mb-6',
                     // Under 620 px its receipt line (4 + 18 px) needs a wider gap.
                     t.role === 'assistant' &&
                       !last &&

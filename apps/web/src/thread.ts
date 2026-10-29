@@ -51,13 +51,16 @@ export function cacheRate(u: CacheCounts | undefined) {
   return (rate < 0.01 || rate > 0.99 ? finePercent : wholePercent).format(rate);
 }
 
+/** " · " with a no-break space after the dot: a wrapped line never ends in "·" (UI review 3). */
+export const SEP = ' ·\u00a0';
+
 /**
- * `text` + " · välimuisti 82 %" when the counts give a rate (meta, menu, header, Käyttö); a
- * no-break space keeps the word and the rate on one line.
+ * `text` + " · välimuisti 82 %" when the counts give a rate (meta, menu, header, Käyttö); no-break
+ * spaces keep the "·", the word and the rate on one line (`SEP`).
  */
 export const withRate = (text: string, u: CacheCounts | undefined) => {
   const rate = cacheRate(u);
-  return rate ? `${text} · välimuisti\u00a0${rate}` : text;
+  return rate ? `${text}${SEP}välimuisti\u00a0${rate}` : text;
 };
 
 /** Tokens of a call: input, output and both cache parts, as Pi's `totalTokens`. */

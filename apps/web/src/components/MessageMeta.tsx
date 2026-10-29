@@ -6,7 +6,7 @@ import {
   formatTokens,
 } from '@pa/protocol';
 import { useStore } from '../store.ts';
-import { cacheRate, fullTime, messageTime, tokensOf, withRate } from '../thread.ts';
+import { cacheRate, fullTime, messageTime, SEP, tokensOf, withRate } from '../thread.ts';
 import { modelLabel } from '../useModel.ts';
 import { Tip } from './IconButton.tsx';
 
@@ -20,7 +20,7 @@ export function metaText(createdAt: string, usage: CallUsage | undefined, fx: Fx
   const time = messageTime(createdAt);
   if (!usage) return time;
   const cost = formatCost(usage.costUsd, fx, { reply: true, estimated: usage.estimated });
-  return `${time} · ${cost} · ${tokenText(usage)}`;
+  return [time, cost, tokenText(usage)].join(SEP);
 }
 
 /**
@@ -62,6 +62,8 @@ export function MessageMeta({
               // outside every landmark (axe `region`). One token part per line, in a block box (the
               // kit's tooltip is a flex row): no orphan word.
               className="block"
+              // Latest reply: below the action row, not over the reply text (UI review 3).
+              {...(focusable ? { side: 'bottom' as const, sideOffset: 8 } : {})}
               label={
                 <>
                   Malli: {modelLabel(catalog, usage.model)}

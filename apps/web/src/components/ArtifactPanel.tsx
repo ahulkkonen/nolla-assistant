@@ -32,7 +32,6 @@ import { postWhenReady, SANDBOX_URL, SandboxFrame } from './Sandbox.tsx';
 import { SidePanel } from './SidePanel.tsx';
 
 const EMPTY: Artifact[] = [];
-const TAB = 'data-active:bg-card data-active:shadow-sm dark:data-active:bg-card';
 
 function download(a: Artifact) {
   saveFile(new Blob([a.content], { type: 'text/plain' }), `${stem(a)}.${artifactExt(a)}`);
@@ -142,13 +141,8 @@ export function ArtifactPanel() {
             )}
           </h2>
           <TabsList className="order-last mb-2 w-full max-md:h-11!">
-            {/* Selected: --card with --shadow-sm (brief 7.5), not the canvas colour. */}
-            <TabsTrigger value="preview" className={TAB}>
-              Esikatselu
-            </TabsTrigger>
-            <TabsTrigger value="code" className={TAB}>
-              Koodi
-            </TabsTrigger>
+            <TabsTrigger value="preview">Esikatselu</TabsTrigger>
+            <TabsTrigger value="code">Koodi</TabsTrigger>
           </TabsList>
           {/* Phones: Kopioi is in the Lataa menu and the 44 px targets keep 8 px apart. */}
           {/* 32 px buttons 4 apart (44 px and 8 apart on phones): one pitch for all. */}

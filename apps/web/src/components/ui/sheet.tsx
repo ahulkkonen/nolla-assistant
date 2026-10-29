@@ -60,16 +60,20 @@ function SheetContent({
         {...props}
       >
         {children}
-        {showCloseButton && (
-          <SheetPrimitive.Close data-slot="sheet-close" asChild>
-            <Button variant="ghost" className="absolute top-4 right-4" size="icon-sm">
-              <XIcon />
-              <span className="sr-only">Sulje</span>
-            </Button>
-          </SheetPrimitive.Close>
-        )}
+        {showCloseButton && <SheetCloseButton className="absolute top-4 right-4" />}
       </SheetPrimitive.Content>
     </SheetPortal>
+  );
+}
+
+/** A sheet's "Sulje" ×: a ghost icon button, 32 px (44 px under 768 px). */
+function SheetCloseButton({ className }: { className?: string }) {
+  return (
+    <SheetPrimitive.Close data-slot="sheet-close" asChild>
+      <Button variant="ghost" size="icon-sm" aria-label="Sulje" className={className}>
+        <XIcon />
+      </Button>
+    </SheetPrimitive.Close>
   );
 }
 
@@ -119,6 +123,7 @@ function SheetDescription({
 export {
   Sheet,
   SheetClose,
+  SheetCloseButton,
   SheetContent,
   SheetDescription,
   SheetFooter,

@@ -159,13 +159,13 @@ describe('store reducers', () => {
     useStore.getState().apply({ ...msg, chatId: 'c1' });
     const failure = { code: 'llm_failed', status: 404, detail: 'No endpoints found' } as const;
     expect(useStore.getState().failed.c1).toEqual(failure);
-    expect(failedText(failure)).toBe('Mallikutsu epäonnistui (404)');
+    expect(failedText(failure)).toBe('Mallikutsu epäonnistui\u00a0(404)');
     expect(failedText({ code: 'llm_failed' })).toBe('Mallikutsu epäonnistui.');
     expect(error).toHaveBeenCalledWith('model call failed', { ...msg, chatId: 'c1' });
     // A chat in the background: a toast whose action opens the detail.
     useStore.getState().apply({ ...msg, chatId: 'c2' });
     const [text, opts] = toastError.mock.calls.at(-1) ?? [];
-    expect(text).toBe('Mallikutsu epäonnistui (404)');
+    expect(text).toBe('Mallikutsu epäonnistui\u00a0(404)');
     const action = (opts as { action: { label: string; onClick: () => void } }).action;
     expect(action.label).toBe('Näytä tiedot');
     action.onClick();
