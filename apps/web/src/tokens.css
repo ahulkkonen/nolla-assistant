@@ -405,10 +405,28 @@
   }
 }
 
-/* Streaming caret (7.5): a 0.5em × 1em block, on half of each second (7.6). */
-@keyframes blink {
+/*
+ * Streaming caret (7.5): a 0.5em × 1em block. Phase 27 (7.6): solid while text arrives; 400 ms
+ * after the last text it breathes, 1.4 s from opacity 1 to 0.2 and back. New text flips the live
+ * `.md`'s `data-tick`, which swaps two equal keyframes: the animation and its 400 ms wait restart.
+ * Reduced motion: the global rule leaves it solid.
+ */
+@keyframes breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
   50% {
-    opacity: 0;
+    opacity: 0.2;
+  }
+}
+@keyframes breathe-b {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.2;
   }
 }
 .md .caret {
@@ -417,8 +435,12 @@
   height: 1em;
   margin-left: 2px;
   vertical-align: -0.125em;
+  border-radius: 1px;
   background: var(--foreground);
-  animation: blink 1s step-end infinite;
+  animation: breathe 1.4s ease-in-out 400ms infinite;
+}
+.md[data-tick="1"] .caret {
+  animation-name: breathe-b;
 }
 
 /*

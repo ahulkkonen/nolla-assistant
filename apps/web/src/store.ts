@@ -502,18 +502,15 @@ const status = (st: State, chatId: string, state: 'idle' | 'running'): Partial<S
 });
 
 /** Delta annotations are chunk-relative; `offset` is the chunk's start in the message. */
-const shift = (annotations: Annotation[], offset: number) =>
+export const shift = (annotations: Annotation[], offset: number) =>
   annotations.map((a) => ({ ...a, start: a.start + offset, end: a.end + offset }));
+
+const NO_STREAM: Streaming = { messageId: '', text: '', annotations: [], tools: [] };
 
 export const useStore = create<State>()((set, get) => {
   const patchStream = (chatId: string, fn: (s: Streaming) => Streaming) =>
     set((st) => ({
-      streaming: {
-        ...st.streaming,
-        [chatId]: fn(
-          st.streaming[chatId] ?? { messageId: '', text: '', annotations: [], tools: [] },
-        ),
-      },
+      streaming: { ...st.streaming, [chatId]: fn(st.streaming[chatId] ?? NO_STREAM) },
     }));
   const patchTool = (chatId: string, callId: string, patch: Partial<ToolView>) =>
     patchStream(chatId, (s) => ({
@@ -815,21 +812,33 @@ export const useStore = create<State>()((set, get) => {
         case 'integrations.state':
           return set({ integrations: msg.google });
         case 'message.delta':
-          // Phase 26: the round's first text token: the line moves to "kirjoittaa". Later tokens
-          // skip this set: one store notification per token, not two.
-          if (get().waits[msg.chatId]?.writing === undefined)
-            set((st) =>
-              patchWait(st, msg.chatId, (w, now) => ({ writing: now, ...enter(w, 3, now) })),
-            );
-          return patchStream(msg.chatId, (s) =>
-            s.messageId === msg.messageId
-              ? {
-                  ...s,
-                  text: s.text + msg.text,
-                  annotations: [...s.annotations, ...shift(msg.annotations, s.text.length)],
-                }
-              : { ...s, messageId: msg.messageId, text: msg.text, annotations: msg.annotations },
-          );
+          // One update per delta (phase 27: ws.ts sends one per frame).
+          return set((st) => {
+            const s = st.streaming[msg.chatId] ?? NO_STREAM;
+            return {
+              // Phase 26: the round's first text token: the line moves to "kirjoittaa".
+              // Later tokens leave the wait object as it is: one notification, same reference.
+              ...(st.waits[msg.chatId]?.writing === undefined
+                ? patchWait(st, msg.chatId, (w, now) => ({ writing: now, ...enter(w, 3, now) }))
+                : {}),
+              streaming: {
+                ...st.streaming,
+                [msg.chatId]:
+                  s.messageId === msg.messageId
+                    ? {
+                        ...s,
+                        text: s.text + msg.text,
+                        annotations: [...s.annotations, ...shift(msg.annotations, s.text.length)],
+                      }
+                    : {
+                        ...s,
+                        messageId: msg.messageId,
+                        text: msg.text,
+                        annotations: msg.annotations,
+                      },
+              },
+            };
+          });
         case 'message.final':
           return set((st) => {
             const streamed = st.streaming[msg.chatId]?.tools ?? [];

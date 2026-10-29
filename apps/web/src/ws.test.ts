@@ -92,6 +92,42 @@ describe('ws client', () => {
     sock.onmessage?.({ data: JSON.stringify({ type: 'pong' }) });
     expect(apply).toHaveBeenCalledOnce();
   });
+  it('deltas wait for the next frame: one store update, nothing lost; a final flushes first', () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => frames.push(cb));
+    vi.stubGlobal('cancelAnimationFrame', () => {});
+    const { frame } = chat();
+    const updates = vi.fn();
+    const off = useStore.subscribe(updates);
+    const anno = { start: 0, end: 5, entityId: 1, modelSaw: 'Matti' };
+    const delta = (text: string, annotations = [anno], messageId = 's1') =>
+      frame({ type: 'message.delta', chatId: 'c1', messageId, text, annotations });
+    delta('Pekka ');
+    delta('Pekka');
+    delta('?', []);
+    expect([updates.mock.calls.length, frames.length]).toEqual([0, 1]);
+    frames.shift()?.(0);
+    expect(updates).toHaveBeenCalledOnce();
+    expect(useStore.getState().streaming.c1).toMatchObject({
+      text: 'Pekka Pekka?',
+      annotations: [anno, { ...anno, start: 6, end: 11 }],
+    });
+    // A new message id starts its own text; the final applies after the delta before it.
+    delta('Uusi', [], 's2');
+    frame({
+      type: 'message.final',
+      chatId: 'c1',
+      message: { ...USER, id: 'a1', role: 'assistant', text: 'Uusi' },
+    });
+    expect(useStore.getState().streaming.c1).toBeUndefined();
+    expect(useStore.getState().messages.c1?.at(-1)?.text).toBe('Uusi');
+    frames.shift()?.(0);
+    expect(useStore.getState().streaming.c1).toBeUndefined();
+    off();
+    vi.unstubAllGlobals();
+    vi.stubGlobal('WebSocket', FakeWebSocket);
+  });
+
   it('the consent retries once, in place, on its chat.updated; a chat switch drops it', () => {
     const { frame, summary, sent } = chat();
     setDataPolicy('c1', 'open');

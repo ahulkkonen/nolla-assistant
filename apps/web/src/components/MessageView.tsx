@@ -371,22 +371,41 @@ export const rehypeConfidence = () => (tree: HNode) => {
   walk(tree);
 };
 
-/** Rehype plugin: the streaming caret after the last character (brief 7.5). */
-const rehypeCaret = () => (tree: HNode) => {
-  let parent: HNode | undefined;
+/**
+ * Rehype plugin: the streaming caret right after the last visible character (brief 7.5; phase
+ * 27). Whitespace-only text (the "\n" between list items and table rows) does not count, and the
+ * newline at the end of a code block stays after the caret, so the caret never takes a line of
+ * its own. An empty code block at the end takes it in its `code`; an empty tree at its end.
+ */
+export const rehypeCaret = () => (tree: HNode) => {
+  let at: { parent: HNode; i?: number } = { parent: tree };
   const walk = (n: HNode) => {
-    const last = n.children?.at(-1);
-    if (!last) return;
-    if (last.type === 'text') parent = n;
-    else walk(last);
+    const code = n.tagName === 'pre' && n.children?.find((c) => c.tagName === 'code');
+    if (code) at = { parent: code };
+    n.children?.forEach((c, i) => {
+      if (c.type === 'text' && /\S/.test(c.value ?? '')) at = { parent: n, i };
+      else walk(c);
+    });
   };
   walk(tree);
-  (parent ?? tree).children?.push({
+  const caret = {
     type: 'element',
     tagName: 'span',
     properties: { className: ['caret'], ariaHidden: 'true' },
     children: [],
-  });
+  };
+  const kids = (at.parent.children ??= []);
+  if (at.i === undefined) return void kids.push(caret);
+  const value = kids[at.i]?.value ?? '';
+  const end = value.trimEnd().length;
+  const rest = value.slice(end);
+  kids.splice(
+    at.i,
+    1,
+    { type: 'text', value: value.slice(0, end) },
+    caret,
+    ...(rest ? [{ type: 'text', value: rest }] : []),
+  );
 };
 
 /** Rehype plugin: the live tail ends inside a fence; its block is the last `pre` (decision 8). */
@@ -505,9 +524,14 @@ export const MarkdownText = memo(function MarkdownText({
     [rehype, live, open],
   );
   const confN = useStore((s) => s.showConfN);
+  // Phase 27: new text flips it, which restarts the caret's wait before it breathes (tokens.css).
+  // A ref, not state: one render per change.
+  const tick = useRef({ text, n: 0 });
+  if (tick.current.text !== text) tick.current = { text, n: tick.current.n ^ 1 };
   return (
     <div
       className="md break-words"
+      data-tick={live ? tick.current.n : undefined}
       {...(confN ? { 'data-conf-n': '' } : {})}
       {...(touch ? { onClick: toggleN } : {})}
     >
@@ -551,8 +575,11 @@ type Props = {
   annotations?: Annotation[];
   attachments?: AttachmentRef[];
   tools?: ToolView[];
-  /** Still streaming: the caret shows and the action row is only reserved. */
-  live?: boolean;
+  /**
+   * Still streaming: the chat whose stream gives the text and the caret; the action row is only
+   * reserved. Phase 27: this view reads the stream itself, so the thread does not render per delta.
+   */
+  live?: string | undefined;
   /** While live, keep the empty action row (default); off when an approval card follows. */
   reserve?: boolean;
   /** Rendered after the text and before the action row, at the 8 px in-turn gap. */
@@ -648,8 +675,8 @@ function EditBox({
 export function MessageView({
   id,
   role,
-  text,
-  annotations = NONE,
+  text: given,
+  annotations: givenAnnotations = NONE,
   attachments = [],
   tools = [],
   live,
@@ -667,6 +694,9 @@ export function MessageView({
   receipt,
   onRetry,
 }: Props) {
+  const streamed = useStore((s) => (live ? s.streaming[live] : undefined));
+  const text = live ? (streamed?.text ?? '') : given;
+  const annotations = live ? (streamed?.annotations ?? NONE) : givenAnnotations;
   const fx = useStore((s) => s.fx);
   const user = role === 'user';
   const [saw, setSaw] = useState(false);
@@ -739,29 +769,31 @@ export function MessageView({
               {annotate(text, annotations)}
             </div>
           )
-        ) : live ? (
-          // Phase 26: the waiting line holds the first line (28 px, one line of prose); the first
-          // token fades in at its place while the line fades out, so nothing moves.
-          (text || waiting) && (
-            <div className="relative min-h-7">
+        ) : (
+          // Phase 26: while live, the waiting line holds the first line (one line of prose: 28 px,
+          // 26 on phones); the first token fades in at its place while the line fades out, so
+          // nothing moves. Phase 27: one tree for the live and the final reply: the final swaps
+          // the text in place.
+          (text || (live && waiting)) && (
+            <div className="relative min-h-(--text-prose--line-height)">
               {text && (
-                <div className="animate-fade-in">
-                  <MarkdownText text={text} annotations={annotations} live />
+                <div className={cn(live && 'animate-fade-in')}>
+                  <MarkdownText text={text} annotations={annotations} live={!!live} />
                 </div>
               )}
-              <div
-                aria-hidden="true"
-                className={cn(
-                  'absolute inset-x-0 top-0 flex h-7 items-center overflow-hidden transition-[opacity,visibility] duration-150 ease-out',
-                  text && 'invisible opacity-0',
-                )}
-              >
-                {waiting}
-              </div>
+              {live && (
+                <div
+                  aria-hidden="true"
+                  className={cn(
+                    'absolute inset-x-0 top-0 flex h-(--text-prose--line-height) items-center overflow-hidden transition-[opacity,visibility] duration-150 ease-out',
+                    text && 'invisible opacity-0',
+                  )}
+                >
+                  {waiting}
+                </div>
+              )}
             </div>
           )
-        ) : (
-          text && <MarkdownText text={text} annotations={annotations} />
         )}
         {!user && CONFIDENCE_MARK.test(text) && <ConfidenceLegend />}
         {/* Turn extras (the memory chip) sit in the turn, above its action row. */}
