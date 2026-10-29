@@ -5,7 +5,7 @@ import {
   type ModelPolicy,
   ServerMessage,
 } from '@pa/protocol';
-import { type ClaimChip, shift, thinkingKey, useStore } from './store.ts';
+import { type ClaimChip, serverIdOf, shift, thinkingKey, useStore } from './store.ts';
 
 let ws: WebSocket | null = null;
 let url = '';
@@ -21,8 +21,21 @@ let forkTimer: ReturnType<typeof setTimeout> | undefined;
  * `turnId` is the refused turn's user message: the consent retries that turn and no newer one.
  */
 let policyIntent: { chatId: string; dataPolicy: DataPolicy; turnId?: string } | null = null;
-/** A `user.retry` sent, until the rerun starts (the local thread rewinds then) or is refused. */
-let retryIntent: { chatId: string; turnId: string } | null = null;
+/**
+ * A `user.retry` or a `chat.edit` (phase-24 decision 8) sent, until the run starts (the local
+ * thread rewinds then) or is refused. `turnId`: the message run again or edited. `edit`: the new
+ * version's local id, text and the edited message's version count.
+ */
+let retryIntent: {
+  chatId: string;
+  turnId: string;
+  edit?: { localId: string; text: string; count: number };
+} | null = null;
+/** The pending retry or edit is over: its edit box stops waiting. */
+const endRetry = () => {
+  retryIntent = null;
+  if (useStore.getState().pendingEdit) useStore.setState({ pendingEdit: null });
+};
 // A chat switch drops the consent: its retry runs only in the chat on screen.
 useStore.subscribe((s, prev) => {
   // A fork that settled (its state, an error, a switch, a close): its timeout goes too.
@@ -53,7 +66,7 @@ export function connect(to = defaultUrl()) {
 export function disconnect() {
   stopped = true;
   policyIntent = null;
-  retryIntent = null;
+  endRetry();
   clearTimeout(retryTimer);
   clearInterval(pingTimer);
   queue = [];
@@ -145,7 +158,7 @@ export async function sendUserMessage(
   const id = chatId ?? (await createChat());
   // A new turn ends a pending consent or retry of its chat: neither may act on it.
   if (policyIntent?.chatId === id) policyIntent = null;
-  if (retryIntent?.chatId === id) retryIntent = null;
+  if (retryIntent?.chatId === id) endRetry();
   const localId = `local-${crypto.randomUUID()}`;
   useStore.getState().addLocalMessage(id, {
     id: localId,
@@ -228,6 +241,28 @@ export function forkChat(chatId: string, messageId: string, text: string) {
   }, FORK_TIMEOUT_MS);
 }
 
+/**
+ * "Lähetä" in the edit box (phase-24 decision 8): a new version of the user message `messageId`
+ * (its entry id) in this chat. The box waits; the thread rewinds when the run starts, and a
+ * refusal keeps the box with its text.
+ */
+export function editMessage(chatId: string, messageId: string, text: string) {
+  const st = useStore.getState();
+  const m = st.messages[chatId]?.find((x) => serverIdOf(x) === messageId);
+  if (st.pendingEdit || !m) return;
+  const localId = `local-${crypto.randomUUID()}`;
+  retryIntent = { chatId, turnId: m.id, edit: { localId, text, count: m.versions?.count ?? 1 } };
+  useStore.setState({ pendingEdit: { chatId, text } });
+  send({ type: 'chat.edit', chatId, messageId, text, localId });
+}
+
+/** "‹ ›" (phase-24 decision 9): shows version `index` of the user message `messageId` (entry id). */
+export function switchVersion(chatId: string, messageId: string, index: number) {
+  if (useStore.getState().pendingVersion) return;
+  useStore.setState({ pendingVersion: { chatId, messageId } });
+  send({ type: 'chat.version', chatId, messageId, index });
+}
+
 /** Thinking rows of `chatId` (or all) that still load: they show the error, a new open asks again. */
 function failThinking(chatId?: string) {
   useStore.setState((s) => ({
@@ -256,17 +291,38 @@ export function loadThinking(chatId: string, messageId: string) {
   }, THINKING_TIMEOUT_MS);
 }
 
-/** Rewinds the thread on the rerun's first event; a refusal (an error for the chat) keeps it. */
+/**
+ * Rewinds the thread on the rerun's first event; a refusal (an error for the chat) keeps it. An
+ * edit rewinds to before its message and adds the new version (phase-24 decision 8); equal text
+ * is the same version (decision 1).
+ */
 function settleRetry(msg: ServerMessage) {
   const intent = retryIntent;
   if (!intent || !('chatId' in msg) || msg.chatId !== intent.chatId) return;
-  if (msg.type === 'error') retryIntent = null;
+  // A held edit that the user dropped never runs (its box keeps the text).
+  if (msg.type === 'error' || (msg.type === 'chat.released' && msg.outcome === 'dropped'))
+    endRetry();
   if (msg.type !== 'agent.status' || msg.state !== 'running') return;
-  retryIntent = null;
-  const at = (useStore.getState().messages[intent.chatId] ?? []).findIndex(
-    (m) => m.id === intent.turnId,
-  );
-  if (at >= 0) useStore.getState().rewind(intent.chatId, at + 1);
+  endRetry();
+  const st = useStore.getState();
+  const at = (st.messages[intent.chatId] ?? []).findIndex((m) => m.id === intent.turnId);
+  const old = st.messages[intent.chatId]?.[at];
+  if (!old) return;
+  if (!intent.edit) return st.rewind(intent.chatId, at + 1);
+  const { localId, text, count } = intent.edit;
+  const versions = text === old.text ? old.versions : { index: count + 1, count: count + 1 };
+  st.rewind(intent.chatId, at);
+  st.addLocalMessage(intent.chatId, {
+    id: localId,
+    role: 'user',
+    text,
+    annotations: [],
+    // The edited turn keeps the original images and documents (server `editedPrompt`).
+    attachments: old.attachments,
+    tools: [],
+    createdAt: new Date().toISOString(),
+    ...(versions ? { versions } : {}),
+  });
 }
 
 /** The consent ("open", then the retry) or "Palauta ZDR"; both act on the server's confirmation. */
@@ -390,11 +446,12 @@ function open() {
     clearInterval(pingTimer);
     // 4401: this device's session was revoked (Laitteet, phase 15): signed out, no reconnect.
     if (e.code === 4401) return signedOut();
-    // The answer to a pending consent, retry, fork or thinking text may never come; a reconnect
-    // starts clean.
+    // The answer to a pending consent, retry, edit, switch, fork or thinking text may never come;
+    // a reconnect starts clean.
     policyIntent = null;
-    retryIntent = null;
+    endRetry();
     if (useStore.getState().pendingFork) useStore.setState({ pendingFork: null });
+    if (useStore.getState().pendingVersion) useStore.setState({ pendingVersion: null });
     failThinking();
     if (ws !== sock || stopped) return;
     ws = null;

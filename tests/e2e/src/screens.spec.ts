@@ -831,29 +831,100 @@ for (const scheme of ['light', 'dark'] as const) {
             await shot(page, 'sidebar-lock-fork', vp.width, scheme);
           });
 
-        if (vp.width !== 1024)
-          test('message-edit-fork', async ({ app, page }) => {
-            app.llm.push({ text: 'Kevät on hyvä aika.' });
-            await app.login(page);
-            await sendMessage(page, 'Milloin kasvimaa kannattaa aloittaa?');
-            await expect(page.locator('.md').last()).toHaveText('Kevät on hyvä aika.');
-            if (phone) await page.getByLabel('Viesti').press('ArrowUp');
-            else {
-              const first = thread(page).locator('[data-message-id]').first();
-              await first.hover();
-              await first.getByRole('button', { name: 'Muokkaa' }).click();
-            }
-            await page
-              .getByLabel('Muokattava viesti')
-              .fill('Milloin kasvimaa kannattaa aloittaa syksyllä?');
-            await expect(
-              page.getByText(
-                'Muokattu viesti aloittaa uuden keskustelun. Tämä keskustelu ei muutu.',
-              ),
-            ).toBeVisible();
-            if (!phone) await page.mouse.move(vp.width / 2, vp.height - 200);
-            await shot(page, 'message-edit-fork', vp.width, scheme);
+        // Phase 24: the edit box with its three buttons, and an edited message at 2/2 above a
+        // later turn (its row shows without hover). Both measure the P1 checks.
+        const box = (l: Locator) => l.evaluate((el) => el.getBoundingClientRect().toJSON());
+        /** Opens the edit box of the first and only user message (↑ on the phone) with `text`. */
+        const editFirst = async (page: Page, text: string) => {
+          if (phone) await page.getByLabel('Viesti').press('ArrowUp');
+          else {
+            const first = thread(page).locator('[data-message-id]').first();
+            await first.hover();
+            await first.getByRole('button', { name: 'Muokkaa' }).click();
+          }
+          await page.getByLabel('Muokattava viesti').fill(text);
+        };
+
+        test('edit-box', async ({ app, page }) => {
+          app.llm.push({ text: 'Kevät on hyvä aika.' });
+          await app.login(page);
+          await sendMessage(page, 'Milloin kasvimaa kannattaa aloittaa?');
+          await expect(page.locator('.md').last()).toHaveText('Kevät on hyvä aika.');
+          await editFirst(page, 'Milloin kasvimaa kannattaa aloittaa syksyllä?');
+          await expect(
+            page.getByText(
+              'Lähetä tekee viestistä uuden version tähän keskusteluun. Haarauta aloittaa uuden keskustelun.',
+            ),
+          ).toBeVisible();
+          // P1: 36 px buttons (44 under 768), 8 px apart, at the box's right edge.
+          // The composer's send button is also "Lähetä", without text.
+          const [cancel, fork, sendButton] = await Promise.all(
+            ['Peruuta', 'Haarauta', 'Lähetä'].map((name) =>
+              box(page.getByRole('button', { name, exact: true }).filter({ hasText: name })),
+            ),
+          );
+          const field = await box(page.getByLabel('Muokattava viesti'));
+          const h = phone ? 44 : 36;
+          expect([cancel?.height, fork?.height, sendButton?.height]).toEqual([h, h, h]);
+          expect([
+            (fork?.left ?? 0) - (cancel?.right ?? 0),
+            (sendButton?.left ?? 0) - (fork?.right ?? 0),
+          ]).toEqual([8, 8]);
+          expect(sendButton?.right).toBe(field.right);
+          if (!phone) await page.mouse.move(vp.width / 2, vp.height - 200);
+          await shot(page, 'edit-box', vp.width, scheme);
+        });
+
+        test('version-switcher', async ({ app, page }) => {
+          app.llm.push({ text: 'Kevät on hyvä aika.', match: 'aloittaa?' });
+          app.llm.push({
+            ...titleTurn('Kasvimaa', 'Käyttäjä kysyi kasvimaasta.'),
+            match: 'Aiheet:',
           });
+          app.llm.push({ text: 'Syksy sopii myös, jos maa on kuohkea.', match: 'syksyllä' });
+          app.llm.push({ text: 'Perunat ja sipulit ovat helppoja.', match: 'kylvää' });
+          await app.login(page);
+          await sendMessage(page, 'Milloin kasvimaa kannattaa aloittaa?');
+          await expect(page.locator('.md').last()).toHaveText('Kevät on hyvä aika.');
+          await editFirst(page, 'Entä jos aloitan syksyllä?');
+          await page
+            .getByRole('button', { name: 'Lähetä', exact: true })
+            .filter({ hasText: 'Lähetä' })
+            .click();
+          await expect(page.locator('.md').last()).toHaveText(
+            'Syksy sopii myös, jos maa on kuohkea.',
+          );
+          await sendMessage(page, 'Mitä kannattaa kylvää ensin?');
+          await expect(page.locator('.md').last()).toHaveText('Perunat ja sipulit ovat helppoja.');
+          if (!phone) await page.mouse.move(vp.width / 2, 8);
+          await blur(page);
+          const group = thread(page).getByRole('group', { name: 'Versio 2/2' });
+          await expect(group.locator('..')).toHaveCSS('opacity', '1');
+          // P1: 32 px buttons (44 under 768), 4 px apart (8), "2/2" centred on the row.
+          const [prev, count, next] = await Promise.all(
+            [
+              group.getByRole('button', { name: 'Edellinen versio' }),
+              group.getByText('2/2', { exact: true }),
+              group.getByRole('button', { name: 'Seuraava versio' }),
+            ].map(box),
+          );
+          const s = phone ? 44 : 32;
+          expect([prev?.width, prev?.height, next?.width, next?.height]).toEqual([s, s, s, s]);
+          expect([
+            (count?.left ?? 0) - (prev?.right ?? 0),
+            (next?.left ?? 0) - (count?.right ?? 0),
+          ]).toEqual(phone ? [8, 8] : [4, 4]);
+          const mid = (b?: DOMRect) => (b?.top ?? 0) + (b?.height ?? 0) / 2;
+          expect(mid(count)).toBe(mid(prev));
+          // The user turn keeps its 40 px gap (48 on phones) with the row in it.
+          const turns = thread(page).locator('article');
+          const [user, reply] = [await box(turns.nth(0)), await box(turns.nth(1))];
+          const row = await box(group.locator('..'));
+          expect(reply.top - user.bottom).toBe(phone ? 48 : 40);
+          expect(row.top - user.bottom).toBe(4);
+          expect(row.bottom).toBeLessThanOrEqual(reply.top);
+          await shot(page, 'version-switcher', vp.width, scheme);
+        });
 
         test('find-bar', async ({ app, page }) => {
           app.llm.push({ text: 'Omena on hedelmä, ja omenapuu kukkii keväällä.' });

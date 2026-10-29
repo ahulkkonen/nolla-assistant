@@ -4,6 +4,7 @@ import { useStore } from './store.ts';
 import {
   connect,
   disconnect,
+  editMessage,
   retryTurn,
   send,
   sendUserMessage,
@@ -187,6 +188,53 @@ describe('ws client', () => {
     expect(kept.map((m) => m.text)).toEqual([USER.text]);
     expect(kept[0]?.id).toMatch(/^local-/);
     expect(kept[0]?.serverId).toBeUndefined();
+  });
+
+  it('phase 24: an edit waits, rewinds to before its message on the run, and adds the new version', () => {
+    const file = { id: 'f1', name: 'kuva.png', mime: 'image/png', size: 1, kind: 'image' as const };
+    const { frame, sent } = chat([
+      { ...USER, attachments: [file] },
+      { ...USER, id: 'a1', role: 'assistant', text: 'Vastaus' },
+    ]);
+    editMessage('c1', 'u1', 'Hei taas');
+    expect(sent('chat.edit')).toMatchObject([{ chatId: 'c1', messageId: 'u1', text: 'Hei taas' }]);
+    expect(useStore.getState().pendingEdit).toEqual({ chatId: 'c1', text: 'Hei taas' });
+    // One at a time; a refusal keeps the thread and ends the wait.
+    editMessage('c1', 'u1', 'Hei taas');
+    expect(sent('chat.edit')).toHaveLength(1);
+    frame({ type: 'error', code: 'failed', message: 'x', chatId: 'c1' });
+    frame({ type: 'agent.status', chatId: 'c1', state: 'running' });
+    expect(useStore.getState().pendingEdit).toBeNull();
+    expect(useStore.getState().messages.c1).toHaveLength(2);
+    frame({ type: 'agent.status', chatId: 'c1', state: 'idle' });
+
+    editMessage('c1', 'u1', 'Hei taas');
+    frame({ type: 'agent.status', chatId: 'c1', state: 'running' });
+    const [m, ...rest] = useStore.getState().messages.c1 ?? [];
+    expect(rest).toEqual([]);
+    expect(m).toMatchObject({
+      text: 'Hei taas',
+      attachments: [file],
+      versions: { index: 2, count: 2 },
+    });
+    const localId = sent('chat.edit')[1]?.localId;
+    expect(m?.id).toBe(localId);
+    frame({ type: 'message.accepted', chatId: 'c1', localId, messageId: 'u2' });
+    expect(useStore.getState().messages.c1?.[0]?.serverId).toBe('u2');
+    expect(useStore.getState().pendingEdit).toBeNull();
+  });
+
+  it('phase 24: a held edit waits with its text; dropped, its box stops waiting', () => {
+    const { frame } = chat([USER, { ...USER, id: 'a1', role: 'assistant', text: 'Vastaus' }]);
+    editMessage('c1', 'u1', 'Hei Pekka');
+    frame({ type: 'chat.held', chatId: 'c1', pendingIds: [1] });
+    expect(useStore.getState().held.c1).toBe('Hei Pekka');
+    frame({ type: 'chat.released', chatId: 'c1', outcome: 'dropped' });
+    const st = useStore.getState();
+    expect(st.pendingEdit).toBeNull();
+    expect(st.draft).toMatchObject({ chatId: 'c1', text: 'Hei Pekka' });
+    expect(st.messages.c1).toHaveLength(2);
+    useStore.setState({ draft: null });
   });
 
   it('a turn with tool rows, or a message that never arrived, goes again as a new message', () => {

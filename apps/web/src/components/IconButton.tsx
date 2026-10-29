@@ -63,12 +63,14 @@ type Props = ComponentProps<'button'> & {
   label: string;
   variant?: 'ghost' | 'primary';
   tipSide?: TipProps['side'];
+  /** The tooltip instead of `label`: why an `aria-disabled` button waits. */
+  tip?: string | undefined;
 };
 
 /** An icon-only button: a Finnish `aria-label` and a desktop tooltip with the same text. */
-export function IconButton({ label, variant = 'ghost', tipSide, className, ...rest }: Props) {
+export function IconButton({ label, variant = 'ghost', tipSide, tip, className, ...rest }: Props) {
   return (
-    <Tip label={label} {...(tipSide ? { side: tipSide } : {})}>
+    <Tip label={tip ?? label} {...(tipSide ? { side: tipSide } : {})}>
       <Button
         type="button"
         size="icon"
@@ -77,6 +79,7 @@ export function IconButton({ label, variant = 'ghost', tipSide, className, ...re
         className={cn(
           variant === 'ghost' && 'text-muted-foreground hover:text-foreground',
           rest['aria-disabled'] && 'cursor-not-allowed opacity-50 hover:bg-transparent',
+          rest['aria-disabled'] && variant === 'ghost' && 'hover:text-muted-foreground',
           className,
         )}
         {...rest}

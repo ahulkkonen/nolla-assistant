@@ -1,6 +1,6 @@
 import { TOOL_STATUS_WORD, WEB_SEARCH_TOOL } from '@pa/protocol';
 import { AlertCircle, ArrowDown, GitFork, MessageSquare, ShieldAlert } from 'lucide-react';
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { announce } from '../announce.ts';
@@ -8,11 +8,20 @@ import { useMobile } from '../media.ts';
 import { failedText, serverIdOf, type UiMessage, useStore } from '../store.ts';
 import { Follow, replyTiming, replyUsage, threadKey } from '../thread.ts';
 import { useModel } from '../useModel.ts';
-import { forkChat, openChat, retryTurn, send, sendUserMessage, setDataPolicy } from '../ws.ts';
+import {
+  editMessage,
+  forkChat,
+  openChat,
+  retryTurn,
+  send,
+  sendUserMessage,
+  setDataPolicy,
+  switchVersion,
+} from '../ws.ts';
 import { ApprovalCard } from './ApprovalCard.tsx';
 import { FindBar } from './FindBar.tsx';
 import { ClaimChipRow, MemoryChipRow } from './MemoryChipRow.tsx';
-import { MessageView } from './MessageView.tsx';
+import { MessageView, VersionSwitcher } from './MessageView.tsx';
 import { UNTITLED } from './Sidebar.tsx';
 import { SubagentRow } from './SubagentRow.tsx';
 import { ThinkingRow, ThoughtRow } from './ThinkingRow.tsx';
@@ -99,6 +108,10 @@ export function Thread() {
   const ended = useStore((s) => (chatId ? s.waits[chatId]?.ended : false));
   const live = streaming || (running && !ended);
   const forking = useStore((s) => s.pendingFork);
+  const editPending = useStore((s) => !!chatId && s.pendingEdit?.chatId === chatId);
+  const switching = useStore((s) =>
+    s.pendingVersion?.chatId === chatId ? s.pendingVersion : null,
+  );
   const refusal = useStore((s) => (chatId ? s.zdrRefused[chatId] : undefined));
   const { name: modelName, policy } = useModel();
   const mobile = useMobile();
@@ -123,10 +136,29 @@ export function Thread() {
   const seen = useRef(messages.length);
   useAnnouncements(chatId);
   const lastUserId = messages.findLast((m) => m.role === 'user')?.id;
+  // Phase-24 decision 10: a version switch keeps the switched message (its place in the thread)
+  // where it was on screen; the last user message it brings does not pin the follow. The message
+  // remounts (another entry): a focused switcher button gets the focus back.
+  const keep = useRef<{ index: number; top: number; focus: string | null } | null>(null);
+  const kept = useRef<string | undefined>(undefined);
 
   useEffect(() => {
     if (!away) seen.current = messages.length;
   }, [away, messages.length]);
+
+  useLayoutEffect(() => {
+    const k = keep.current;
+    const el = scroller.current;
+    if (!k || !el || switching) return;
+    keep.current = null;
+    const id = messages[k.index]?.id;
+    const node = id && el.querySelector(`[data-message-id="${CSS.escape(id)}"]`);
+    if (node) el.scrollTop += node.getBoundingClientRect().top - k.top;
+    if (node && k.focus)
+      node.querySelector<HTMLElement>(`[aria-label="${k.focus}"]`)?.focus({ preventScroll: true });
+    kept.current = lastUserId;
+    setAway(follow.sync(el));
+  }, [messages, switching]);
 
   // Another chat starts at its bottom, with no pill and nothing unread. The follow runs now: a
   // cached chat of the same height gives no resize.
@@ -139,6 +171,7 @@ export function Thread() {
 
   // A sent message follows the bottom again, at once.
   useEffect(() => {
+    if (kept.current === lastUserId) return;
     follow.pinned = true;
     if (scroller.current) follow.follow(scroller.current);
   }, [lastUserId]);
@@ -397,16 +430,45 @@ export function Thread() {
                             : {})}
                           {...(i === chipAt ? { footer: chip } : {})}
                           {...(held && i === lastUser ? { footer: heldNote } : {})}
-                          // "Muokkaa" forks (phase 13); not while a reply streams.
+                          // "Muokkaa" edits in place or forks (phases 24, 13); not while a reply
+                          // streams.
                           {...(m.role === 'user' && chatId && !streaming && !running
                             ? {
                                 // Without its entry id (sent before `message.accepted` existed,
                                 // or the answer never came) the edit box asks for a reopen.
                                 onEdit: (text: string) =>
+                                  serverId && editMessage(chatId, serverId, text),
+                                onFork: (text: string) =>
                                   serverId && forkChat(chatId, serverId, text),
-                                canFork: !!serverId,
-                                forking: !!forking,
+                                canSend: !!serverId,
+                                busy: !!forking || editPending,
                                 onNeedIds: () => send({ type: 'chat.open', chatId }),
+                              }
+                            : {})}
+                          {...(m.role === 'user' && m.versions && chatId
+                            ? {
+                                switcher: (
+                                  <VersionSwitcher
+                                    versions={m.versions}
+                                    wait={streaming || running || !serverId}
+                                    busy={!!serverId && switching?.messageId === serverId}
+                                    onPick={(index) => {
+                                      if (!serverId) return;
+                                      const at = scroller.current?.querySelector(
+                                        `[data-message-id="${CSS.escape(m.id)}"]`,
+                                      );
+                                      const active = document.activeElement;
+                                      keep.current = {
+                                        index: i,
+                                        top: at?.getBoundingClientRect().top ?? 0,
+                                        focus: at?.contains(active)
+                                          ? (active?.getAttribute('aria-label') ?? null)
+                                          : null,
+                                      };
+                                      switchVersion(chatId, serverId, index);
+                                    }}
+                                  />
+                                ),
                               }
                             : {})}
                           {...(prev

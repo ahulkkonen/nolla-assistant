@@ -8,10 +8,13 @@ import {
   type CallUsage,
   CONFIDENCE_MARK,
   stripConfidence,
+  type Versions,
 } from '@pa/protocol';
 import {
   AppWindow,
   Check,
+  ChevronLeft,
+  ChevronRight,
   Copy,
   Eye,
   EyeOff,
@@ -608,14 +611,18 @@ type Props = {
   latest?: boolean;
   /** Live children of a `subagent` call: that tool's row becomes the subagent row. */
   subagents?: SubagentChild[];
-  /** User message: "Haarauta" starts a new chat from the edited text (phase 13). */
+  /** User message: "Lähetä" makes the edited text a new version in this chat (phase 24). */
   onEdit?: (text: string) => void;
-  /** A fork is on its way: "Haarauta" waits for its answer. */
-  forking?: boolean;
-  /** False while the message has no entry id yet: "Haarauta" asks for a reopen. */
-  canFork?: boolean;
+  /** User message: "Haarauta" starts a new chat from the edited text (phase 13). */
+  onFork?: (text: string) => void;
+  /** An edit or a fork is on its way: both wait for its answer. */
+  busy?: boolean;
+  /** False while the message has no entry id yet: the edit box asks for a reopen. */
+  canSend?: boolean;
   /** Asks the server for the chat's entry ids (an edit of a message without one). */
   onNeedIds?: () => void;
+  /** User message with versions: the switcher, first in its action row, which then always shows. */
+  switcher?: ReactNode;
   /** The thinking row, above the tool rows and the text (phase 13). */
   thinking?: ReactNode;
   /** The action row meta: the time, and a reply's cost and tokens (phase 13). */
@@ -637,21 +644,67 @@ type Props = {
 // 32 px icons in the action row; 44 px touch targets on phones.
 const small = 'size-8';
 
+/**
+ * Phase-24 decision 10: "‹ 1/2 ›". The ends and a running reply (`wait`) disable the buttons;
+ * `busy` while the switch is on its way.
+ */
+export function VersionSwitcher({
+  versions: { index, count },
+  wait,
+  busy,
+  onPick,
+}: {
+  versions: Versions;
+  wait: boolean;
+  busy: boolean;
+  onPick: (index: number) => void;
+}) {
+  const step = (to: number, label: string, icon: ReactNode) => (
+    <IconButton
+      label={label}
+      tip={wait ? 'Odota, että vastaus valmistuu' : undefined}
+      className={small}
+      // `aria-disabled`, not `disabled`: focus stays on the button at the end, the tooltip works.
+      {...(wait || to < 1 || to > count
+        ? { 'aria-disabled': true }
+        : { onClick: () => onPick(to) })}
+    >
+      {icon}
+    </IconButton>
+  );
+  return (
+    <div
+      role="group"
+      aria-label={`Versio ${index}/${count}`}
+      aria-busy={busy || undefined}
+      className="flex items-center gap-1 max-md:gap-2"
+    >
+      {step(index - 1, 'Edellinen versio', <ChevronLeft size={16} />)}
+      <span aria-hidden="true" className="text-meta text-muted-foreground tabular-nums">
+        {index}/{count}
+      </span>
+      {step(index + 1, 'Seuraava versio', <ChevronRight size={16} />)}
+    </div>
+  );
+}
+
 function EditBox({
   text,
   busy,
-  canFork,
+  canSend,
   onSend,
+  onFork,
   onCancel,
 }: {
   text: string;
   busy: boolean;
-  canFork: boolean;
+  canSend: boolean;
   onSend: (t: string) => void;
+  onFork: (t: string) => void;
   onCancel: () => void;
 }) {
   const [value, setValue] = useState(text);
-  const ready = !!value.trim() && !busy && canFork;
+  const ready = !!value.trim() && !busy && canSend;
   const hint = useId();
   return (
     <div className="flex w-full max-w-[80%] flex-col gap-2 max-md:max-w-full">
@@ -676,16 +729,19 @@ function EditBox({
         className="field-sizing-fixed resize-y rounded-xl px-4"
       />
       <p id={hint} className="text-meta text-muted-foreground">
-        {canFork
-          ? 'Muokattu viesti aloittaa uuden keskustelun. Tämä keskustelu ei muutu.'
-          : 'Avaa keskustelu uudelleen, niin voit haarauttaa tämän viestin.'}
+        {canSend
+          ? 'Lähetä tekee viestistä uuden version tähän keskusteluun. Haarauta aloittaa uuden keskustelun.'
+          : 'Avaa keskustelu uudelleen, niin voit muokata tätä viestiä.'}
       </p>
       <div className="flex justify-end gap-2">
-        <Button variant="outline" onClick={onCancel}>
+        <Button variant="ghost" onClick={onCancel}>
           Peruuta
         </Button>
-        <Button disabled={!ready} onClick={() => onSend(value.trim())}>
+        <Button variant="outline" disabled={!ready} onClick={() => onFork(value.trim())}>
           Haarauta
+        </Button>
+        <Button disabled={!ready} onClick={() => onSend(value.trim())}>
+          Lähetä
         </Button>
       </div>
     </div>
@@ -705,9 +761,11 @@ export function MessageView({
   latest,
   subagents = [],
   onEdit,
-  forking = false,
-  canFork = true,
+  onFork,
+  busy = false,
+  canSend = true,
   onNeedIds,
+  switcher,
   thinking,
   meta,
   waiting,
@@ -734,7 +792,7 @@ export function MessageView({
 
   // An edit of a message without its entry id: the chat's ids come first (`chat.open`).
   useEffect(() => {
-    if (editing && !canFork) onNeedIds?.();
+    if (editing && !canSend) onNeedIds?.();
   }, [editing]);
 
   const copy = () => void navigator.clipboard.writeText(stripConfidence(text));
@@ -771,14 +829,15 @@ export function MessageView({
             )}
           </div>
         )}
-        {user && editing && onEdit ? (
-          // Stays open while the fork is on its way: a failure keeps the text for a retry.
+        {user && editing && onEdit && onFork ? (
+          // Stays open while the edit or the fork is on its way: a failure keeps the text.
           <EditBox
             text={text}
-            busy={forking}
-            canFork={canFork}
+            busy={busy}
+            canSend={canSend}
             onCancel={() => setEditing(false)}
             onSend={onEdit}
+            onFork={onFork}
           />
         ) : user ? (
           text && (
@@ -831,15 +890,18 @@ export function MessageView({
               // A reply's row spans the column: its receipt sits at the end. Phones: the outer
               // 44 px target moves out by its 14 px inset, so its glyph meets the text edge.
               user ? 'right-0 max-md:-mr-3.5' : 'inset-x-0 max-md:-ml-3.5',
-              // Hover devices: on hover or focus, except under the latest assistant turn.
+              // Hover devices: on hover or focus, except under the latest assistant turn and with
+              // the version switcher (phase-24 decision 10).
               !(latest && !user) &&
+                !switcher &&
                 '[@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:focus-within:opacity-100',
-              // Touch: only under the latest user and the latest assistant turn.
-              !latest && '[@media(hover:none)]:hidden',
+              // Touch: under the latest user and the latest assistant turn, or with the switcher.
+              !latest && !switcher && '[@media(hover:none)]:hidden',
             )}
           >
             {actions && (
               <>
+                {switcher}
                 {user && meta && <MessageMeta createdAt={meta.createdAt} />}
                 <CopyButton text={() => stripConfidence(text)} className={small} />
                 {user && onEdit && (
