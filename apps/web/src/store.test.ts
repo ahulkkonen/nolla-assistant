@@ -1,6 +1,6 @@
 import type { Artifact, ChatSummary, Message } from '@pa/protocol';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { serverIdOf, useStore } from './store.ts';
+import { effectiveModes, serverIdOf, useStore } from './store.ts';
 
 const initial = useStore.getState();
 afterEach(() => useStore.setState(initial, true));
@@ -365,5 +365,73 @@ describe('artifact panel (phase 20)', () => {
     expect(open()).toBeNull();
     apply({ type: 'artifact.upsert', chatId: 'c1', artifact: art('p1') });
     expect(open()).toEqual({ chatId: 'c1', id: 'p1' });
+  });
+});
+
+describe('output modes (phase-23 decision 7)', () => {
+  const modes = (chatId: string | null) => effectiveModes(useStore.getState(), chatId);
+  const agentsState = () =>
+    useStore.getState().apply({
+      type: 'agents.state',
+      agents: [
+        {
+          id: 'assistant',
+          name: 'Avustaja',
+          model: 'zdr/strong',
+          subagents: true,
+          modes: ['suora'],
+        },
+        {
+          id: 'kirjoittaja',
+          name: 'Kirjoittaja',
+          model: 'zdr/strong',
+          subagents: false,
+          modes: [],
+        },
+      ],
+      modes: [
+        { id: 'confidence', name: 'Luottamus', description: '', renderer: 'confidence' },
+        { id: 'suora', name: 'Suora', description: 'Tiivis' },
+      ],
+    });
+
+  it('a chat with null modes has its agent default; a list, also an empty one, overrides it', () => {
+    agentsState();
+    expect(useStore.getState().modes.map((m) => m.id)).toEqual(['confidence', 'suora']);
+    const { apply } = useStore.getState();
+    apply({
+      type: 'chat.list',
+      chats: [
+        chat('a', false, '2026-01-01T00:00:00.000Z'),
+        { ...chat('b', false, '2026-01-02T00:00:00.000Z'), modes: ['confidence'] },
+        { ...chat('c', false, '2026-01-03T00:00:00.000Z'), modes: [] },
+        { ...chat('d', false, '2026-01-04T00:00:00.000Z'), agentId: 'kirjoittaja' },
+      ],
+    });
+    expect(modes('a')).toEqual(['suora']);
+    expect(modes('b')).toEqual(['confidence']);
+    expect(modes('c')).toEqual([]);
+    expect(modes('d')).toEqual([]);
+    // The open chat's summary wins over the list.
+    apply({
+      type: 'chat.updated',
+      chat: { ...chat('a', false, '2026-01-05T00:00:00.000Z'), modes: ['confidence', 'suora'] },
+    });
+    expect(modes('a')).toEqual(['confidence', 'suora']);
+  });
+
+  it('a new chat has the picked agent default until a toggle; chat.created clears the toggle', () => {
+    agentsState();
+    expect(modes(null)).toEqual(['suora']);
+    useStore.getState().setPendingAgentId('kirjoittaja');
+    expect(modes(null)).toEqual([]);
+    useStore.setState({ pendingModes: ['confidence'] });
+    expect(modes(null)).toEqual(['confidence']);
+    useStore
+      .getState()
+      .apply({ type: 'chat.created', chat: chat('n', false, '2026-01-01T00:00:00.000Z') });
+    expect(useStore.getState().pendingModes).toBeNull();
+    // A stable reference for a selector: the same array on each read.
+    expect(modes('unknown')).toBe(modes('unknown'));
   });
 });

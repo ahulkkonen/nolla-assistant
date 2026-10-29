@@ -2,7 +2,6 @@ import type { CatalogModel, ModelChoice } from '@pa/protocol';
 import {
   Check,
   ChevronDown,
-  Gauge,
   Search,
   Shield,
   ShieldAlert,
@@ -26,6 +25,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
@@ -43,7 +43,7 @@ import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/
 import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
 import { useMobile } from '../media.ts';
-import { useStore } from '../store.ts';
+import { effectiveModes, useStore } from '../store.ts';
 import { aliasName, EFFORT_LABEL, shortName, useModel } from '../useModel.ts';
 import { send, setDataPolicy } from '../ws.ts';
 import { useAgent } from './AgentPicker.tsx';
@@ -83,18 +83,30 @@ export const NextTurnTip = ({
 );
 
 /**
- * Phase-21 decision 4: the chat's confidence trial. The composer chip (≥ 768) and the phone
- * sheet's switch share it.
+ * Phase-23 decision 8: the output modes of the chat, or of the new chat (null) until its
+ * `chat.create`. The Tila chip (≥ 768) and the phone sheet share it; like the model, a toggle
+ * applies to the next reply. `names`: the active modes in the server's order.
  */
-export function useConfidence(chatId: string) {
-  const on = useStore(
-    (s) => !!(s.summaries[chatId] ?? s.chats.find((c) => c.id === chatId))?.confidence,
-  );
-  return { on, toggle: () => send({ type: 'chat.setConfidence', chatId, on: !on }) };
+export function useModes(chatId: string | null) {
+  const all = useStore((s) => s.modes);
+  const active = useStore((s) => effectiveModes(s, chatId));
+  const names = all
+    .filter((m) => active.includes(m.id))
+    .map((m) => m.name)
+    .join(', ');
+  const toggle = (id: string) => {
+    // A deleted mode leaves the list: the server refuses an id it does not hold.
+    const next = all
+      .map((m) => m.id)
+      .filter((m) => (m === id ? !active.includes(id) : active.includes(m)));
+    if (chatId) send({ type: 'chat.setModes', chatId, modes: next });
+    else useStore.setState({ pendingModes: next });
+  };
+  return { all, active, names, toggle };
 }
 
 /**
- * "Hyväksy automaattisesti" for the chat (phase-21 decision 7), as `useConfidence`. The next tool
+ * "Hyväksy automaattisesti" for the chat (phase-21 decision 7), as `useModes`. The next tool
  * call reads it, also during a reply. Null for an agent with no gated tool.
  */
 export function useAutoApprove(chatId: string) {
@@ -111,6 +123,55 @@ export function useAutoApprove(chatId: string) {
 }
 
 type Option = { value: string; title: string; meta?: string | undefined };
+
+/**
+ * The composer chips that open a choice (model, Tila). They truncate: `shrink` beats the kit
+ * button's `shrink-0`. Ghost at rest like the agent chip; the accent fill only while the menu or
+ * sheet is open (`aria-expanded`).
+ */
+const CHIP =
+  'h-8 min-w-0 shrink rounded-full px-3 font-normal text-muted-foreground hover:text-foreground max-md:h-11';
+
+/**
+ * Phase-23 decision 8: the "Tila" chip (≥ 768; phones have the model sheet's rows). One check box
+ * per mode, and a toggle keeps the menu open. The label lists the active modes, or "Tila".
+ */
+export function ModesChip({ chatId, running }: { chatId: string | null; running: boolean }) {
+  const { all, active, names, toggle } = useModes(chatId);
+  if (!all.length) return null;
+  return (
+    <DropdownMenu modal={false}>
+      <NextTurnTip running={running}>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            aria-label={names ? `Tila: ${names}` : 'Tila'}
+            // It gives way first, down to 96 px: the model's name matters more than the mode list.
+            // A share of the shrink under 1/64 px leaves the model chip whole.
+            className={cn(CHIP, 'min-w-24 shrink-[10000] max-md:hidden')}
+          >
+            <span className="max-w-[200px] truncate">{names || 'Tila'}</span>
+            <ChevronDown size={16} className="shrink-0" />
+          </Button>
+        </DropdownMenuTrigger>
+      </NextTurnTip>
+      <DropdownMenuContent side="top" align="start" collisionPadding={8} className="w-[320px]">
+        <DropdownMenuLabel className="text-micro text-muted-foreground">Tila</DropdownMenuLabel>
+        {all.map((m) => (
+          <DropdownMenuCheckboxItem
+            key={m.id}
+            checked={active.includes(m.id)}
+            onCheckedChange={() => toggle(m.id)}
+            onSelect={(e) => e.preventDefault()}
+            className="min-h-10 py-2"
+          >
+            <OptionText o={{ value: m.id, title: m.name, meta: m.description || undefined }} />
+          </DropdownMenuCheckboxItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 
 /** Composer chip and menu (phase-10 UI): Auto, favourites, thinking level, the open policy. */
 export function ModelPicker() {
@@ -138,9 +199,6 @@ export function ModelPicker() {
   // The whole name as one label (sr-only parts inside a flex button gain stray spaces). It ends
   // with the badge's own text, so the name contains the visible label (axe).
   const ariaLabel = `Malli: ${name}${isOpen ? ', Ei ZDR' : ''}`;
-  // Truncates: `shrink` beats the kit button's `shrink-0`. Ghost at rest like the agent chip; the
-  // accent fill only while its menu or sheet is open (`aria-expanded`).
-  const chip = 'h-8 min-w-0 shrink rounded-full px-3 font-normal max-md:h-11';
 
   const catalog = models?.catalog ?? [];
   const favorites = (models?.favorites ?? []).filter((id) => id !== models?.auto);
@@ -211,7 +269,7 @@ export function ModelPicker() {
             aria-haspopup="dialog"
             aria-expanded={open}
             onClick={() => setOpen(true)}
-            className={cn(chip, 'text-muted-foreground hover:text-foreground')}
+            className={CHIP}
           >
             {label}
             {/* As on desktop and as the agent chip: the chip opens a choice. */}
@@ -282,7 +340,7 @@ export function ModelPicker() {
                 </Button>
               </>
             )}
-            {chatId && <ChatSwitches chatId={chatId} />}
+            <ChatSwitches chatId={chatId} />
           </SheetContent>
         </Sheet>
       </>
@@ -292,11 +350,7 @@ export function ModelPicker() {
       <DropdownMenu modal={false} open={open} onOpenChange={setOpen}>
         {tip(
           <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              aria-label={ariaLabel}
-              className={cn(chip, 'text-muted-foreground hover:text-foreground')}
-            >
+            <Button variant="ghost" aria-label={ariaLabel} className={CHIP}>
               {label}
               <ChevronDown size={16} className="shrink-0" />
             </Button>
@@ -403,24 +457,33 @@ function Choices({
 }
 
 /**
- * The chat's two switches in the phone sheet: next to the queue's two run buttons, their composer
- * chips squeezed the model chip to its chevron.
+ * The chat's switches in the phone sheet: next to the queue's two run buttons, their composer
+ * chips squeezed the model chip to its chevron. The Tila rows (phase-23 decision 8) work in a new
+ * chat too; auto-approve needs a started one.
  */
-function ChatSwitches({ chatId }: { chatId: string }) {
-  const confidence = useConfidence(chatId);
-  const auto = useAutoApprove(chatId);
+function ChatSwitches({ chatId }: { chatId: string | null }) {
+  const modes = useModes(chatId);
+  const auto = useAutoApprove(chatId ?? '');
   const id = useId();
+  if (!modes.all.length && !auto) return null;
   return (
     <div role="group" aria-labelledby={id} className="flex flex-col">
       <p id={id} className="px-3 pt-2 pb-1 text-micro text-muted-foreground">
         Tässä keskustelussa
       </p>
-      <SwitchRow
-        icon={<Gauge size={16} className="shrink-0 text-muted-foreground" />}
-        label="Luottamus"
-        checked={confidence.on}
-        onToggle={confidence.toggle}
-      />
+      {modes.all.length > 0 && (
+        <div role="group" aria-label="Tila" className="flex flex-col">
+          {modes.all.map((m) => (
+            <SwitchRow
+              key={m.id}
+              label={m.name}
+              {...(m.description ? { helper: m.description } : {})}
+              checked={modes.active.includes(m.id)}
+              onToggle={() => modes.toggle(m.id)}
+            />
+          ))}
+        </div>
+      )}
       {auto && (
         <SwitchRow
           icon={
@@ -448,7 +511,7 @@ function SwitchRow({
   checked,
   onToggle,
 }: {
-  icon: ReactNode;
+  icon?: ReactNode;
   label: string;
   helper?: string;
   checked: boolean;

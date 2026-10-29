@@ -9,6 +9,7 @@ import type {
   ForkLink,
   FxRate,
   Message,
+  ModeInfo,
   ModelChoice,
   ModelPolicy,
   ServerMessage,
@@ -170,6 +171,10 @@ type State = {
   pendingAgentId: string;
   /** Model and thinking level for the next `chat.create` (the empty chat's model chip). */
   pendingModel: ModelChoice;
+  /** Phase-23 decision 7: the loaded output modes (`agents.state`), without their prompts. */
+  modes: ModeInfo[];
+  /** Modes for the next `chat.create`; null: the agent's `modes.default` (phase-23 decision 8). */
+  pendingModes: string[] | null;
   /** Null until the first `models.state`. */
   models: ModelsState | null;
   /**
@@ -306,6 +311,19 @@ function loadStt(): Pick<State, 'sttAutoSend' | 'sttLanguage'> {
   } catch {
     return { sttAutoSend: false, sttLanguage: 'fi' };
   }
+}
+
+const NO_MODES: string[] = [];
+/**
+ * Phase-23 decision 7: the active mode ids of `chatId`, or of the new chat when null: the chat's
+ * own list, else its agent's `modes.default`. A stable reference, so it can be a selector.
+ */
+export function effectiveModes(st: State, chatId: string | null): string[] {
+  const chat = chatId ? (st.summaries[chatId] ?? st.chats.find((c) => c.id === chatId)) : undefined;
+  const own = chatId ? chat?.modes : st.pendingModes;
+  if (own) return own;
+  const agentId = chatId ? (chat?.agentId ?? 'assistant') : st.pendingAgentId;
+  return st.agents.find((a) => a.id === agentId)?.modes ?? NO_MODES;
 }
 
 /** First line of the first user message: the label for an untitled chat. */
@@ -464,6 +482,8 @@ export const useStore = create<State>()((set, get) => {
     agents: [],
     pendingAgentId: 'assistant',
     pendingModel: DEFAULT_MODEL,
+    modes: [],
+    pendingModes: null,
     models: null,
     policies: {},
     zdrRefused: {},
@@ -543,6 +563,7 @@ export const useStore = create<State>()((set, get) => {
             messages: { ...st.messages, [msg.chat.id]: st.messages[msg.chat.id] ?? [] },
             pendingAgentId: 'assistant',
             pendingModel: DEFAULT_MODEL,
+            pendingModes: null,
             policies: { ...st.policies, [msg.chat.id]: msg.chat.modelPolicy },
           }));
         case 'chat.updated':
@@ -776,7 +797,7 @@ export const useStore = create<State>()((set, get) => {
         case 'agent.status':
           return set((st) => status(st, msg.chatId, msg.state));
         case 'agents.state':
-          return set({ agents: msg.agents });
+          return set({ agents: msg.agents, modes: msg.modes });
         case 'approval.request':
           return set((st) => ({
             approvals: [...st.approvals.filter((a) => a.requestId !== msg.requestId), msg],

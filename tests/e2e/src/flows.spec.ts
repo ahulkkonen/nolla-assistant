@@ -17,6 +17,7 @@ import {
   editAgent,
   expect,
   flip,
+  flipMode,
   HTML_REPLY,
   holdAt,
   MERMAID_REPLY,
@@ -327,6 +328,7 @@ test('keyboard: [ toggles sidebar, Tab reaches send with focus ring', async ({ a
   await page.keyboard.press('Tab'); // attach
   await page.keyboard.press('Tab'); // agent picker (a new chat can still choose)
   await page.keyboard.press('Tab'); // model chip
+  await page.keyboard.press('Tab'); // Tila chip (phase 23)
   await page.keyboard.press('Tab'); // mic
   await page.keyboard.press('Tab'); // send
   const sendBtn = page.getByRole('button', { name: 'Lähetä', exact: true });
@@ -1479,7 +1481,7 @@ for (const viewport of VIEWPORTS)
       await app.login(page);
       await send(page, 'Moi');
       await expect(page.locator('.md').last()).toHaveText('Ensin ilman merkintöjä.');
-      await flip(page, 'Luottamus', true);
+      await flipMode(page, 'Luottamus', true);
 
       await send(page, 'Kerro Tampereesta');
       const reply = page.locator('.md').last();
@@ -1511,7 +1513,59 @@ for (const viewport of VIEWPORTS)
       if (viewport.width < 768) await page.getByRole('button', { name: 'Valikko' }).click();
       await page.locator('nav li > button').click({ position: { x: 16, y: 16 } });
       await expect(page.locator('.md').last()).toHaveText(CONFIDENCE_PLAIN);
-      await flip(page, 'Luottamus', false);
+      await flipMode(page, 'Luottamus', false);
+    });
+
+    test('Tila: a new chat sends the chosen modes; the label and the sheet follow the chat', async ({
+      app,
+      page,
+    }) => {
+      const phone = viewport.width < 768;
+      app.llm.push({ text: 'Hei.', match: 'Moi' });
+      await app.login(page);
+      // The profile default (assistant.yaml), in the server's order.
+      if (!phone)
+        await expect(page.getByRole('button', { name: /^Tila/ })).toHaveAccessibleName(
+          'Tila: Perusteellinen, Suora',
+        );
+      // A new chat: the choice waits in the store and goes with `chat.create`.
+      await flipMode(page, 'Perusteellinen', false);
+      await flipMode(page, 'Luottamus', true);
+      const chip = page.getByRole('button', { name: /^Tila/ });
+      if (!phone) {
+        await expect(chip).toHaveAccessibleName('Tila: Luottamus, Suora');
+        await expect(chip).toHaveText('Luottamus, Suora');
+      }
+      await send(page, 'Moi');
+      await expect(page.locator('.md').last()).toHaveText('Hei.');
+      const system = JSON.stringify(
+        app.llm.requests.find((r) => JSON.stringify(r.body.messages).includes('Moi'))?.body
+          .messages[0],
+      );
+      expect(system).toContain('Luottamusmerkinnät');
+      expect(system).toContain('high signal, low noise');
+      expect(system).not.toContain('Selvitä kysymykset perusteellisesti');
+
+      // Stored with the chat: after a reload the same three states.
+      await page.reload();
+      if (phone) await page.getByRole('button', { name: 'Valikko' }).click();
+      await page.locator('nav li > button').click({ position: { x: 16, y: 16 } });
+      await expect(page.locator('.md').last()).toHaveText('Hei.');
+      if (phone) await page.getByRole('button', { name: /^Malli: / }).click();
+      else await chip.click();
+      const control = (name: string) =>
+        phone
+          ? page.getByRole('switch', { name, exact: true })
+          : page.getByRole('menuitemcheckbox', { name: new RegExp(`^${name}`) });
+      await expect(control('Luottamus')).toHaveAttribute('aria-checked', 'true');
+      await expect(control('Perusteellinen')).toHaveAttribute('aria-checked', 'false');
+      await expect(control('Suora')).toHaveAttribute('aria-checked', 'true');
+      // The description is the row's second line.
+      if (phone)
+        await expect(control('Suora')).toHaveAccessibleDescription(
+          'Tiivis ja suora, ilman varauksia',
+        );
+      else await expect(control('Suora')).toContainText('Tiivis ja suora, ilman varauksia');
     });
   });
 

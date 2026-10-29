@@ -665,6 +665,23 @@ export const flip = async (page: Page, name: string, on: boolean) => {
   await expect(page.getByRole('dialog', { name: 'Mallin valinta' })).toHaveCount(0);
 };
 
+/**
+ * Turns the output mode `name` (phase-23 decision 8) to `on`: its check box in the Tila chip's
+ * menu ≥ 768, which stays open after the toggle and then closes; on phones its row in the model
+ * sheet (`flip`).
+ */
+export const flipMode = async (page: Page, name: string, on: boolean) => {
+  if ((page.viewportSize()?.width ?? 1280) < 768) return flip(page, name, on);
+  await page.getByRole('button', { name: /^Tila/ }).click();
+  const item = page.getByRole('menuitemcheckbox', { name: new RegExp(`^${name}`) });
+  await expect(item).toHaveAttribute('aria-checked', String(!on));
+  await item.click();
+  await expect(item).toHaveAttribute('aria-checked', String(on));
+  await expect(page.getByRole('menu')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('menu')).toHaveCount(0);
+};
+
 /** Accepts the first topic proposal. */
 export async function acceptProposal(page: Page) {
   const inbox = page.getByRole('region', { name: 'Ehdotukset' });

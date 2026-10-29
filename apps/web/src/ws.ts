@@ -109,12 +109,22 @@ export function openChat(chatId: string, messageId?: string | null) {
   send({ type: 'chat.open', chatId });
 }
 
-/** Sends `chat.create` with the picked agent; resolves with the id from the next `chat.created`. */
+/**
+ * Sends `chat.create` with the picked agent, model and modes (phase-23 decision 8: unset modes are
+ * the agent's default); resolves with the id from the next `chat.created`.
+ */
 export function createChat(): Promise<string> {
   return new Promise((resolve) => {
     createWaiters.push(resolve);
     const st = useStore.getState();
-    send({ type: 'chat.create', agentId: st.pendingAgentId, model: st.pendingModel });
+    // A mode deleted since the toggle would refuse the whole create.
+    const modes = st.pendingModes?.filter((id) => st.modes.some((m) => m.id === id));
+    send({
+      type: 'chat.create',
+      agentId: st.pendingAgentId,
+      model: st.pendingModel,
+      ...(modes ? { modes } : {}),
+    });
   });
 }
 

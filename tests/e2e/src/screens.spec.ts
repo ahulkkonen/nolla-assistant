@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import AxeBuilder from '@axe-core/playwright';
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import {
   type App,
   acceptProposal,
@@ -15,6 +15,7 @@ import {
   editAgent,
   expect,
   flip,
+  flipMode,
   HTML_REPLY,
   holdAt,
   KIT_REPLY,
@@ -383,8 +384,8 @@ for (const scheme of ['light', 'dark'] as const) {
         hold.release();
       });
 
-      // Phase-21 decision 4: three confidence levels and the chip turned on (on phones the model
-      // sheet's switch); 390 and 1280.
+      // Phase-21 decision 4: three confidence levels and Luottamus turned on in the Tila menu (on
+      // phones the model sheet's switch); 390 and 1280.
       test('chat-confidence', async ({ app, page }) => {
         test.skip(vp.width === 1024, 'Shot at 390 and 1280.');
         const w = vp.width === 390 ? 390 : 1280;
@@ -394,7 +395,7 @@ for (const scheme of ['light', 'dark'] as const) {
         await sendMessage(page, 'Kerro Tampereesta');
         await expect(page.locator('.md').last()).toHaveText(CONFIDENCE_PLAIN);
         await expect(page.locator('.md span.conf')).toHaveCount(3);
-        await flip(page, 'Luottamus', true);
+        await flipMode(page, 'Luottamus', true);
         await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
         await page.mouse.move(w - 8, 8);
         await shot(page, 'chat-confidence', w, scheme);
@@ -457,6 +458,46 @@ for (const scheme of ['light', 'dark'] as const) {
         await modelMenu(page);
         await expect(menuControl(page, vp.width, 'item', 'Kaikki mallit…')).toBeVisible();
         await shot(page, 'model-menu', vp.width, scheme);
+      });
+
+      // Phase-23 decision 8: the Tila chip's menu (≥ 768), the model sheet's Tila rows on phones.
+      test('mode-menu', async ({ app, page }) => {
+        app.llm.push({ text: 'Hei.' });
+        await app.login(page);
+        await sendMessage(page, 'Moi');
+        await expect(page.locator('.md').last()).toHaveText('Hei.');
+        const box = (l: Locator) => l.evaluate((el) => el.getBoundingClientRect().toJSON());
+        if (vp.width < 768) {
+          await modelMenu(page);
+          const row = page.getByRole('switch', { name: 'Luottamus', exact: true });
+          await row.click();
+          await expect(row).toBeChecked();
+          await row.scrollIntoViewIfNeeded();
+          // P1: the 44 px SwitchRow.
+          for (const r of await page.getByRole('group', { name: 'Tila' }).locator('label').all())
+            expect((await box(r)).height).toBeGreaterThanOrEqual(44);
+        } else {
+          const chip = page.getByRole('button', { name: /^Tila/ });
+          const model = page.getByRole('button', { name: /^Malli: / });
+          // P1: 32 px high, 12 px side padding, the model chip's type.
+          expect((await box(chip)).height).toBe(32);
+          const css = (l: Locator) =>
+            l.evaluate((el) => {
+              const s = getComputedStyle(el);
+              return [s.paddingLeft, s.fontSize, s.lineHeight, s.fontWeight, s.color].join(' ');
+            });
+          expect(await css(chip)).toBe(await css(model));
+          expect(await chip.evaluate((el) => getComputedStyle(el).paddingLeft)).toBe('12px');
+          await chip.click();
+          await page.getByRole('menuitemcheckbox', { name: /^Luottamus/ }).click();
+          await expect(chip).toHaveAccessibleName('Tila: Luottamus, Perusteellinen, Suora');
+          for (const r of await page.getByRole('menuitemcheckbox').all()) {
+            expect((await box(r)).height).toBeGreaterThanOrEqual(40);
+            expect(await r.evaluate((el) => getComputedStyle(el).paddingTop)).toBe('8px');
+          }
+          await page.mouse.move(vp.width - 8, 8);
+        }
+        await shot(page, 'mode-menu', vp.width, scheme);
       });
 
       test('model-thinking', async ({ app, page }) => {
