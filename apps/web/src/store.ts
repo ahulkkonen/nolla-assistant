@@ -153,6 +153,9 @@ type State = {
   /** "Näytä ajattelu" (localStorage, on by default): off hides every thinking row. */
   showThinking: boolean;
   setShowThinking(on: boolean): void;
+  /** "Näytä luvut" (phase-23 decision 9, localStorage, off by default): every N in the text. */
+  showConfN: boolean;
+  setShowConfN(on: boolean): void;
   /** The last `usage.state` (Käyttö); null until the first answer. */
   usage: Omit<Of<'usage.state'>, 'type'> | null;
   /** A query for the find bar to open with (a global search hit opens its chat with it). */
@@ -297,6 +300,15 @@ function loadShowThinking() {
     return globalThis.localStorage?.getItem(THINKING_KEY) !== 'off';
   } catch {
     return true;
+  }
+}
+
+const CONF_N_KEY = 'pa.confN';
+function loadShowConfN() {
+  try {
+    return globalThis.localStorage?.getItem(CONF_N_KEY) === 'on';
+  } catch {
+    return false;
   }
 }
 
@@ -535,6 +547,7 @@ export const useStore = create<State>()((set, get) => {
     thinkingLive: {},
     thinkingText: {},
     showThinking: loadShowThinking(),
+    showConfN: loadShowConfN(),
     usage: null,
     findQuery: null,
     showModelSaw: false,
@@ -1113,6 +1126,12 @@ export const useStore = create<State>()((set, get) => {
         localStorage.setItem(THINKING_KEY, showThinking ? 'on' : 'off');
       } catch {}
       set({ showThinking });
+    },
+    setShowConfN(showConfN) {
+      try {
+        localStorage.setItem(CONF_N_KEY, showConfN ? 'on' : 'off');
+      } catch {}
+      set({ showConfN });
     },
   };
 });

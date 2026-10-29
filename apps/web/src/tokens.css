@@ -422,8 +422,48 @@
 }
 
 /* Phase-21 decision 4: a sentence's confidence as its contrast; --conf 100 is --foreground. */
-.md .conf {
+.md .conf,
+.conf-swatch {
   color: color-mix(in oklch, var(--foreground) calc(var(--conf) * 1%), var(--muted-foreground));
+}
+.conf-swatch {
+  background: currentColor;
+}
+/* Phase-23 decision 9: each sentence's N. Hover (hover devices) or a tap (`data-show`) shows it
+   above the sentence's end in a box that advances 0 px (1 px wide, −1 px margin), so no glyph
+   moves; "Näytä luvut" (`data-conf-n`) puts it in the text, where a screen reader reads it. Not
+   `position: absolute`: Chrome puts the static position of an absolute child of a split inline
+   on the inline's first line. */
+.md .conf-n {
+  display: none;
+  width: 1px;
+  margin-right: -1px;
+  justify-content: center;
+  position: relative;
+  top: 0;
+  /* Over the full stop rather than the space after it. */
+  translate: -0.2em -0.75em;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  line-height: 1;
+  font-weight: var(--font-weight-medium);
+  font-variant-numeric: tabular-nums;
+  color: var(--muted-foreground);
+}
+@media (hover: hover) {
+  .md .conf:hover > .conf-n {
+    display: inline-flex;
+  }
+}
+.md .conf[data-show] > .conf-n {
+  display: inline-flex;
+}
+.md[data-conf-n] .conf > .conf-n {
+  display: inline;
+  width: auto;
+  top: -0.5em;
+  translate: none;
+  margin: 0 0 0 1px;
 }
 
 /* Assistant prose (7.2): serif, markdown without a typography plugin. */

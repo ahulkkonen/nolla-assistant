@@ -384,21 +384,45 @@ for (const scheme of ['light', 'dark'] as const) {
         hold.release();
       });
 
-      // Phase-21 decision 4: three confidence levels and Luottamus turned on in the Tila menu (on
-      // phones the model sheet's switch); 390 and 1280.
+      // Phase-21 decision 4 and phase-23 decision 9: three confidence levels with Luottamus on,
+      // the legend, and the second sentence's N (hover on a desktop, a tap on the phone).
       test('chat-confidence', async ({ app, page }) => {
-        test.skip(vp.width === 1024, 'Shot at 390 and 1280.');
-        const w = vp.width === 390 ? 390 : 1280;
-        if (w === 1280) await page.setViewportSize({ width: 1280, height: 800 });
         app.llm.push({ text: CONFIDENCE_REPLY });
         await app.login(page);
         await sendMessage(page, 'Kerro Tampereesta');
-        await expect(page.locator('.md').last()).toHaveText(CONFIDENCE_PLAIN);
+        const reply = page.locator('.md').last();
+        await expect(reply).toHaveText(CONFIDENCE_PLAIN, { useInnerText: true });
         await expect(page.locator('.md span.conf')).toHaveCount(3);
         await flipMode(page, 'Luottamus', true);
         await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
-        await page.mouse.move(w - 8, 8);
-        await shot(page, 'chat-confidence', w, scheme);
+        const box = (l: Locator) => l.evaluate((el) => el.getBoundingClientRect().toJSON());
+        // P1: the legend row is 16 px (44 on phones for its button), 4 px between 12 × 8 swatches.
+        const legend = page.getByRole('button', { name: 'Näytä luvut' }).locator('..');
+        expect((await box(legend)).height).toBe(vp.width < 768 ? 44 : 16);
+        const swatches = legend.locator('.conf-swatch');
+        await expect(swatches).toHaveCount(9);
+        const [a, b] = [await box(swatches.nth(0)), await box(swatches.nth(1))];
+        expect([a.width, a.height, b.x - a.right]).toEqual([12, 8, 4]);
+        const target = await box(page.getByRole('button', { name: 'Näytä luvut' }));
+        expect(target.height).toBe(16);
+        const sentence = reply.locator('span.conf').nth(1);
+        if (vp.width < 768) await sentence.tap();
+        else await sentence.hover();
+        await expect(sentence.locator('sup.conf-n')).toBeVisible();
+        await shot(page, 'chat-confidence', vp.width, scheme);
+      });
+
+      // Phase-23 decision 9: "Näytä luvut" on puts every N in the text (axe reads them).
+      test('chat-confidence-numbers', async ({ app, page }) => {
+        app.llm.push({ text: CONFIDENCE_REPLY });
+        await app.login(page);
+        await sendMessage(page, 'Kerro Tampereesta');
+        await expect(page.locator('.md span.conf')).toHaveCount(3);
+        await page.getByRole('button', { name: 'Näytä luvut' }).click();
+        await expect(page.locator('.md sup.conf-n').last()).toBeVisible();
+        await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+        await page.mouse.move(vp.width - 8, 8);
+        await shot(page, 'chat-confidence-numbers', vp.width, scheme);
       });
 
       test('palette', async ({ app, page }) => {

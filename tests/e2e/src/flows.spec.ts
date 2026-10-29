@@ -1485,7 +1485,8 @@ for (const viewport of VIEWPORTS)
 
       await send(page, 'Kerro Tampereesta');
       const reply = page.locator('.md').last();
-      await expect(reply).toHaveText(CONFIDENCE_PLAIN);
+      // The text a reader sees: each sentence's N (`sup.conf-n`) is hidden.
+      await expect(reply).toHaveText(CONFIDENCE_PLAIN, { useInnerText: true });
       const prompt = (text: string) =>
         JSON.stringify(
           app.llm.requests.find((r) => JSON.stringify(r.body.messages).includes(text))?.body
@@ -1512,7 +1513,9 @@ for (const viewport of VIEWPORTS)
       await page.reload();
       if (viewport.width < 768) await page.getByRole('button', { name: 'Valikko' }).click();
       await page.locator('nav li > button').click({ position: { x: 16, y: 16 } });
-      await expect(page.locator('.md').last()).toHaveText(CONFIDENCE_PLAIN);
+      await expect(page.locator('.md').last()).toHaveText(CONFIDENCE_PLAIN, {
+        useInnerText: true,
+      });
       await flipMode(page, 'Luottamus', false);
     });
 
@@ -1566,6 +1569,82 @@ for (const viewport of VIEWPORTS)
           'Tiivis ja suora, ilman varauksia',
         );
       else await expect(control('Suora')).toContainText('Tiivis ja suora, ilman varauksia');
+    });
+  });
+
+for (const viewport of VIEWPORTS)
+  test.describe(`confidence N ${viewport.width}`, () => {
+    // Phase-23 decision 9: hover on a desktop, a tap on a touch phone.
+    const phone = viewport.width < 768;
+    test.use({ viewport, ...(phone ? { hasTouch: true, isMobile: true } : {}) });
+
+    test('confidence N: hover or a tap shows one N without moving a glyph; Näytä luvut shows each N', async ({
+      app,
+      page,
+    }) => {
+      app.llm.push({ text: CONFIDENCE_REPLY });
+      await app.login(page);
+      await send(page, 'Kerro Tampereesta');
+      const reply = page.locator('.md').last();
+      await expect(reply).toHaveText(CONFIDENCE_PLAIN, { useInnerText: true });
+      const spans = reply.locator('span.conf');
+      const n = reply.locator('sup.conf-n');
+      await expect(n).toHaveText(['9', '5', '1']);
+      for (const i of [0, 1, 2]) await expect(n.nth(i)).toBeHidden();
+      const legend = page.getByRole('button', { name: 'Näytä luvut' });
+      await expect(legend).toHaveAttribute('aria-pressed', 'false');
+      /** The box of every glyph run of the reply's text, the N left out. */
+      const glyphs = () =>
+        reply.evaluate((el) => {
+          const out: string[] = [];
+          const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+          for (let t = walk.nextNode(); t; t = walk.nextNode()) {
+            if (t.parentElement?.closest('.conf-n')) continue;
+            const r = document.createRange();
+            r.selectNodeContents(t);
+            for (const b of Array.from(r.getClientRects()))
+              out.push(`${b.x},${b.y},${b.width},${b.height}`);
+          }
+          return out;
+        });
+      const before = await glyphs();
+
+      if (phone) await spans.nth(1).tap();
+      else await spans.nth(1).hover();
+      await expect(n.nth(1)).toBeVisible();
+      await expect(n.nth(0)).toBeHidden();
+      expect(await glyphs()).toEqual(before);
+      // Above the sentence's end, on its last line: the centre near the last glyph's right edge,
+      // the bottom in the upper half of that glyph's box.
+      const place = await spans.nth(1).evaluate((el) => {
+        const text = el.firstChild as Text;
+        const r = document.createRange();
+        r.setStart(text, text.length - 1);
+        r.setEnd(text, text.length);
+        const end = r.getBoundingClientRect();
+        const sup = (el.querySelector('.conf-n') as HTMLElement).getBoundingClientRect();
+        return {
+          dx: sup.x + sup.width / 2 - end.right,
+          bottom: (sup.bottom - end.top) / end.height,
+        };
+      });
+      expect(Math.abs(place.dx)).toBeLessThan(6);
+      expect(place.bottom).toBeGreaterThan(0);
+      expect(place.bottom).toBeLessThan(0.6);
+      if (phone) {
+        await spans.nth(1).tap();
+        await expect(n.nth(1)).toBeHidden();
+      }
+
+      // Every N in the text, kept on this device.
+      await legend.click();
+      await expect(legend).toHaveAttribute('aria-pressed', 'true');
+      for (const i of [0, 1, 2]) await expect(n.nth(i)).toBeVisible();
+      await expect(reply).toHaveText(
+        'Tampere on Suomen kolmanneksi suurin kaupunki.9 Sen väkiluku kasvaa ensi vuonna noin prosentin.5 Raitiotie jatkunee Hiedanrantaan vuonna 2031.1',
+        { useInnerText: true },
+      );
+      expect(await page.evaluate(() => localStorage.getItem('pa.confN'))).toBe('on');
     });
   });
 

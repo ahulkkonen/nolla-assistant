@@ -15,7 +15,10 @@ export function findRanges(root: HTMLElement, q: string): Range[] {
   for (const body of root.querySelectorAll(
     '[data-message-id] [data-find], [data-message-id] .md',
   )) {
-    const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+    // A sentence's hidden N (`sup.conf-n`, phase-23 decision 9) is not text to find.
+    const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT, (n) =>
+      n.parentElement?.closest('.conf-n') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT,
+    );
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {
       for (const i of findOffsets(node.nodeValue ?? '', q)) {
         const r = document.createRange();

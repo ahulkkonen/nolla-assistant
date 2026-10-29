@@ -63,7 +63,7 @@ export function disconnect() {
 
 /**
  * Signed out (Kirjaudu ulos, or this session revoked: socket close 4401): no socket and nothing of
- * the user left in memory. The device's own settings (theme, speech, thinking view) stay.
+ * the user left in memory. The device's own settings (theme, speech, thinking view, N) stay.
  */
 export function signedOut() {
   disconnect();
@@ -75,6 +75,7 @@ export function signedOut() {
     sttAutoSend: s.sttAutoSend,
     sttLanguage: s.sttLanguage,
     showThinking: s.showThinking,
+    showConfN: s.showConfN,
     sidebarOpen: s.sidebarOpen,
   });
 }
