@@ -456,24 +456,32 @@ describe('Follow', () => {
     f.up(el(600));
     expect(f.pinned).toBe(false);
   });
-  it('touch: unpins at once, then the scroll decides', () => {
-    const f = new Follow();
-    const e = el(600);
-    f.up(e);
-    expect(f.pinned).toBe(false);
-    e.scrollTop = 590;
-    expect(f.scrolled(e)).toBe(false);
-    expect(f.pinned).toBe(true);
-  });
-  it('a small wheel-up within the bottom zone keeps it pinned, no pill', () => {
+  it('a small scroll up stops the follow at once; the next delta leaves it (phase 27)', () => {
     const f = new Follow();
     const e = el(600);
     f.follow(e);
-    f.up(e, 20);
-    expect(f.pinned).toBe(true);
-    e.scrollTop = 580;
+    f.up(e);
+    e.scrollTop = 570;
     expect(f.scrolled(e)).toBe(false);
+    expect(f.pinned).toBe(false);
+    e.scrollHeight += 28;
+    expect(f.resized(e, 0)).toBe(false);
+    expect(e.scrollTop).toBe(570);
+    // The stream grows on: the pill shows once the reader is more than 80 px away.
+    e.scrollHeight += 60;
+    expect(f.resized(e, 0)).toBe(true);
+    expect(e.scrollTop).toBe(570);
+  });
+  it('back at the bottom, the reader pins it again', () => {
+    const f = new Follow();
+    const e = el(600);
+    f.up(e);
+    e.scrollTop = 599;
+    f.scrolled(e);
     expect(f.pinned).toBe(true);
+    e.scrollHeight += 100;
+    expect(f.resized(e, 0)).toBe(false);
+    expect(e.scrollTop).toBe(700);
   });
   it('sync takes the state from a search hit jump', () => {
     const f = new Follow();

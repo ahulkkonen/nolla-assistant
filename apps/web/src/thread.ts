@@ -498,9 +498,11 @@ type Scroller = {
   scrollTo(options: ScrollToOptions): void;
 };
 const gapOf = (el: Scroller) => el.scrollHeight - el.scrollTop - el.clientHeight;
-/** Pinned within this many px of the bottom; the pill shows past `AWAY`. */
+/** The follow's own scroll counts as at the bottom within this many px; the pill: past `AWAY`. */
 const NEAR = 48;
 const AWAY = 80;
+/** Phase 27: the reader's own scroll pins again only at the bottom (a fraction of a px apart). */
+const BOTTOM = 2;
 
 /**
  * Auto-follow of a streaming thread (brief 7.5). Only the reader unpins it (wheel, touch, keys or
@@ -538,18 +540,17 @@ export class Follow {
   sync(el: Scroller) {
     const gap = gapOf(el);
     this.set = Number.NaN;
-    this.pinned = gap < NEAR;
+    this.pinned = gap < BOTTOM;
     return gap > AWAY;
   }
 
   /**
-   * The reader scrolls up by `delta` px (wheel, keys; touch: unknown): the follow stops at once,
-   * unless the thread cannot scroll up or the move stays within the bottom zone.
+   * The reader scrolls up (wheel, touch, keys): the follow stops at once (brief 7.5; phase 27: also
+   * for a small move), unless the thread cannot scroll up. The bottom, the pill or End resume it.
    */
-  up(el: Scroller, delta = Number.POSITIVE_INFINITY) {
+  up(el: Scroller) {
     this.jumping = false;
     if (el.scrollHeight <= el.clientHeight || el.scrollTop <= 0) return;
-    if (gapOf(el) + delta < NEAR) return;
     this.pinned = false;
     this.set = Number.NaN;
   }

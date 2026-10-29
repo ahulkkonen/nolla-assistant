@@ -110,6 +110,7 @@ export function Thread() {
   const follow = useRef(new Follow()).current;
   // Reply turns that began live here: no fade-in when their final message takes the place.
   const bornLive = useRef(new Set<string>()).current;
+  const touchY = useRef(0);
   const [away, setAway] = useState(false);
   // Messages the reader has seen at the bottom; the rest count as new on the pill.
   const seen = useRef(messages.length);
@@ -292,18 +293,22 @@ export function Thread() {
         // back down; `onScroll` then sets it from the real position. It also ends a smooth jump.
         // Not inside a region that scrolls by itself (tool output, code): that scroll is not ours.
         onWheel={(e) => {
-          // Pixels, or lines and pages (deltaMode 1, 2) as "far".
-          if (e.deltaY < 0 && !inner(e.target))
-            follow.up(e.currentTarget, e.deltaMode ? Number.POSITIVE_INFINITY : -e.deltaY);
+          if (e.deltaY < 0 && !inner(e.target)) follow.up(e.currentTarget);
           else follow.jumping = false;
         }}
+        onTouchStart={(e) => {
+          touchY.current = e.touches[0]?.clientY ?? 0;
+        }}
+        // Phase 27: only a finger that moves down scrolls the thread up; one that pushes past the
+        // bottom does not stop the follow.
         onTouchMove={(e) => {
-          if (!inner(e.target)) follow.up(e.currentTarget);
+          const y = e.touches[0]?.clientY ?? 0;
+          if (y > touchY.current && !inner(e.target)) follow.up(e.currentTarget);
+          touchY.current = y;
         }}
         onKeyDown={(e) => {
           const key = threadKey(e);
-          if (key === 'up' && !inner(e.target))
-            follow.up(e.currentTarget, e.key === 'ArrowUp' ? 40 : Number.POSITIVE_INFINITY);
+          if (key === 'up' && !inner(e.target)) follow.up(e.currentTarget);
           if (key !== 'end') return;
           e.preventDefault();
           jump();
