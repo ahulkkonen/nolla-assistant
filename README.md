@@ -176,7 +176,7 @@ Status on 2026-10-25. The plan, section 13, defines each gate.
 | 21 | Polish: "Sarake" diagram look, export typography, "Uusimmat" models per lab, confidence trial (`⟦N⟧` markers), tool-row icons, per-chat auto-approve (`docs/decisions/phase-21-polish.md`) | done |
 | 22 | Quick wins: model error status and detail, ZDR refusal classifier, fork without title lock, topic dedupe and links, idle PWA auto-update, Escape audit, subagent auto-approve, plain http on the wifi, Pi 1.4.0, WebKit screens (`docs/decisions/phase-22-quick-wins.md`) | done |
 | 23 | Output modes (`agents/modes/*.md`, Tila chip, legend, mode editor) and the path router (`docs/decisions/phase-23-modes-router.md`) | done |
-| 24 | Edit in place with versions (`docs/decisions/phase-24-edit-in-place.md`) | planned |
-| 25 | Harness tools and `fetch_url` (`docs/decisions/phase-25-harness-tools.md`) | planned |
+| 24 | Edit in place with versions: sibling user entries in the Pi session tree, `pa-leaf`, the ‹ 1/2 › switcher, readers follow the shown branch (`docs/decisions/phase-24-edit-in-place.md`) | done |
+| 25 | Harness tools `profile_edit`, `automation_edit`, `chat_read` behind mandatory cards with diff and YAML views; `fetch_url` replaces `web-digest` (`docs/decisions/phase-25-harness-tools.md`) | done |
 | 26 | Waiting line "Vaiheet" with a receipt, Android keyboard follow and focus (`docs/decisions/phase-26-waiting-keyboard.md`) | done |
 | 27 | Streaming: per-frame deltas, in-place final, caret on the last character that breathes, table and emphasis hold-back (`docs/decisions/phase-27-streaming.md`) | done |
