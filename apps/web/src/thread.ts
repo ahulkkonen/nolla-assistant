@@ -178,6 +178,8 @@ export type Wait = {
   thinking?: number | undefined;
   /** A tool runs, since then. */
   tool?: number | undefined;
+  /** The `messageId` of the last `sent` phase: a `headers` phase of another request is stale. */
+  request?: string | undefined;
   /** The first text token of the current message came then. */
   writing?: number | undefined;
   /** A final without tool calls came: no round follows, the turn only settles. */

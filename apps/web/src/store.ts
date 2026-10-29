@@ -712,12 +712,19 @@ export const useStore = create<State>()((set, get) => {
         case 'export.state':
           return set({ exportJob: msg.job });
         case 'message.phase':
-          // Phase 26: the request is out (its queue clock starts), or its headers came.
+          // Phase 26: the request is out (its queue clock starts), or its headers came. Headers
+          // of another request than the last `sent` one are stale.
           return set((st) =>
             patchWait(st, msg.chatId, (w, now) =>
               msg.phase === 'sent'
-                ? { queued: w.queued ?? 0, ...enter(w, 1, now), ended: false, writing: undefined }
-                : w.step < 2
+                ? {
+                    queued: w.queued ?? 0,
+                    ...enter(w, 1, now),
+                    ended: false,
+                    writing: undefined,
+                    request: msg.messageId,
+                  }
+                : w.step < 2 && (w.request === undefined || w.request === msg.messageId)
                   ? enter(w, 2, now)
                   : {},
             ),
@@ -808,12 +815,12 @@ export const useStore = create<State>()((set, get) => {
         case 'integrations.state':
           return set({ integrations: msg.google });
         case 'message.delta':
-          // Phase 26: the round's first text token: the line moves to "kirjoittaa".
-          set((st) =>
-            patchWait(st, msg.chatId, (w, now) =>
-              w.writing === undefined ? { writing: now, ...enter(w, 3, now) } : {},
-            ),
-          );
+          // Phase 26: the round's first text token: the line moves to "kirjoittaa". Later tokens
+          // skip this set: one store notification per token, not two.
+          if (get().waits[msg.chatId]?.writing === undefined)
+            set((st) =>
+              patchWait(st, msg.chatId, (w, now) => ({ writing: now, ...enter(w, 3, now) })),
+            );
           return patchStream(msg.chatId, (s) =>
             s.messageId === msg.messageId
               ? {

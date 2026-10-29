@@ -59,6 +59,9 @@ describe('store reducers', () => {
     apply({ type: 'message.phase', chatId: 'c', messageId: 's', phase: 'sent', at: 1 });
     expect(w()).toMatchObject({ step: 1, since: 1000, queued: 0 });
     at(15_000);
+    // Headers of another request than the last `sent` one are stale.
+    apply({ type: 'message.phase', chatId: 'c', messageId: 'old', phase: 'headers', at: 2 });
+    expect(w()).toMatchObject({ step: 1, request: 's' });
     apply({ type: 'message.phase', chatId: 'c', messageId: 's', phase: 'headers', at: 2 });
     expect(w()).toMatchObject({ step: 2, queued: 14_000 });
     apply({ type: 'message.thinking', chatId: 'c', messageId: 's', active: true });
@@ -67,6 +70,10 @@ describe('store reducers', () => {
     expect(w()).toMatchObject({ thought: 3000, thinking: undefined });
     apply({ type: 'message.delta', chatId: 'c', messageId: 's', text: 'Hei', annotations: [] });
     expect(w()).toMatchObject({ step: 3, writing: 18_000 });
+    // Later tokens change no wait: the wait object stays the same.
+    const before = w();
+    apply({ type: 'message.delta', chatId: 'c', messageId: 's', text: '!', annotations: [] });
+    expect(w()).toBe(before);
     // A tool call after the text: the thinking slot says "työkalu" while it runs.
     apply({ type: 'tool.start', chatId: 'c', callId: 't', name: 'read', argsPreview: '' });
     expect(w()).toMatchObject({ step: 2, tool: 18_000 });

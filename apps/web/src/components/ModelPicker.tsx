@@ -89,16 +89,29 @@ export const NextTurnTip = ({
  */
 export function useModes(chatId: string | null) {
   const all = useStore((s) => s.modes);
-  const active = useStore((s) => effectiveModes(s, chatId));
+  const stored = useStore((s) => effectiveModes(s, chatId));
+  // The list of the last toggle until `chat.updated` brings it: a quick second toggle builds on
+  // the first. Ponytail: a refused `chat.setModes` keeps it until the chat changes.
+  const local = useRef<{ chatId: string | null; modes: string[] } | null>(null);
+  const [, setShown] = useState<string[]>();
+  const optimistic = local.current?.chatId === chatId ? local.current.modes : null;
+  const active = optimistic ?? stored;
+  useEffect(() => {
+    const key = (l: string[]) => [...l].sort().join('\n');
+    if (local.current && key(local.current.modes) === key(stored)) local.current = null;
+  }, [stored]);
   const names = all
     .filter((m) => active.includes(m.id))
     .map((m) => m.name)
     .join(', ');
   const toggle = (id: string) => {
     // A deleted mode leaves the list: the server refuses an id it does not hold.
+    const cur = (local.current?.chatId === chatId && local.current.modes) || active;
     const next = all
       .map((m) => m.id)
-      .filter((m) => (m === id ? !active.includes(id) : active.includes(m)));
+      .filter((m) => (m === id ? !cur.includes(id) : cur.includes(m)));
+    local.current = { chatId, modes: next };
+    setShown(next);
     if (chatId) send({ type: 'chat.setModes', chatId, modes: next });
     else useStore.setState({ pendingModes: next });
   };

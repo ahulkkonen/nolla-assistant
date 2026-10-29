@@ -66,6 +66,15 @@ class Bad extends Error {
     this.path = path;
   }
 }
+/** A YAML error in a raw mode file is the client's (`raw`), not a 500. */
+const rawMode = (raw: string) => {
+  try {
+    return parseFrontmatter(raw);
+  } catch (err) {
+    throw new Bad('raw', err instanceof Error ? err.message : String(err));
+  }
+};
+
 const fromZod = (err: ZodError) => {
   const issue = err.issues[0];
   return new Bad(issue?.path.join('.') ?? '', issue?.message ?? 'invalid');
@@ -391,8 +400,7 @@ export function adminWriters(deps: AdminDeps) {
     const body = ModeSave.parse(rawBody);
     if (id !== undefined && (!ModeId.safeParse(id).success || !existsSync(modeFile(id))))
       return notFound;
-    const parsed =
-      'raw' in body ? parseFrontmatter(body.raw) : { frontmatter: body.file, body: body.body };
+    const parsed = 'raw' in body ? rawMode(body.raw) : { frontmatter: body.file, body: body.body };
     const file = ModeFile.parse(parsed.frontmatter);
     const text = ModeBody.safeParse(parsed.body);
     if (!text.success) throw new Bad('body', 'the instruction must be 1 to 4000 characters');

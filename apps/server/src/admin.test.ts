@@ -502,6 +502,10 @@ test('modes: create, update, dry run, delete; a default mode is in use; errors n
   await bad('POST', '/api/modes', { file: { name: 'X', extra: 1 }, body: 'x' }, '');
   await bad('PUT', '/api/modes/lyhyt-aani', { raw: '---\nname: X\n---\n' }, 'body');
   await bad('PUT', '/api/modes/lyhyt-aani', { raw: 'ei frontmatteria' }, 'name');
+  // A YAML error is a 400 at `raw`, also on the dry run.
+  const broken = { raw: '---\nname: [x\n---\n\nTeksti.\n' };
+  await bad('PUT', '/api/modes/lyhyt-aani', broken, 'raw');
+  await bad('PUT', '/api/modes/lyhyt-aani?dry=1', broken, 'raw');
   expect(readFileSync(file('lyhyt-aani'), 'utf8')).toBe(raw);
   expect((await call('PUT', '/api/modes/ei-ole', { raw })).status).toBe(404);
   expect((await call('PUT', '/api/modes/..%2Fx', { raw })).status).toBe(404);

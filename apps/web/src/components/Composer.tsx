@@ -15,7 +15,7 @@ import {
 import {
   type ClipboardEvent,
   type KeyboardEvent,
-  type PointerEvent,
+  type MouseEvent,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -206,8 +206,12 @@ export function Composer() {
     else await sendUserMessage(body, refs);
   };
 
-  /** Phase 26: a tap on send keeps the textarea's focus, so a touch keyboard stays open. */
-  const keepFocus = (e: PointerEvent) => {
+  /**
+   * Phase 26: a tap on send keeps the textarea's focus, so a touch keyboard stays open. On
+   * `pointerdown` and `mousedown` both: some engines move focus on `mousedown`. Keyboard and
+   * screen-reader activation fire `click` only.
+   */
+  const keepFocus = (e: MouseEvent) => {
     if (document.activeElement === area.current) e.preventDefault();
   };
 
@@ -439,6 +443,7 @@ export function Composer() {
                   variant="primary"
                   className="rounded-full border-0"
                   onPointerDown={keepFocus}
+                  onMouseDown={keepFocus}
                   onClick={() => void submit()}
                 >
                   <ArrowUp size={16} />
@@ -461,6 +466,7 @@ export function Composer() {
                 className="rounded-full border-0"
                 disabled={!canSend}
                 onPointerDown={keepFocus}
+                onMouseDown={keepFocus}
                 onClick={() => void submit()}
               >
                 <ArrowUp size={16} />

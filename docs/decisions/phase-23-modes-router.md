@@ -295,3 +295,15 @@ at 390, 1024 and 1440 px, light and dark, against brief section 7 and decisions 
 - A user-edited production `assistant.md` keeps line 3 (decision 11).
 - The queue (phase 20) lives in one tab; the router adds no cross-tab sync.
 - `/settings` on load opens the dialog over an empty chat.
+
+## Status
+
+- **Delete of a mode.** `deleteMode` checks only the `modes.default` lists of the loaded profiles.
+  It does not look at the `modes` lists of chats. A chat that still lists the deleted id keeps
+  working, because the registry skips an unknown id (decision 5).
+- **The migration list.** Migration `0012` writes the same fixed list
+  `["suora", "perusteellinen", "confidence"]` to every migrated chat. It does not read the agent of
+  the chat, so a chat of another profile gets this list too.
+- **The `renderer` field.** Mode files keep the `renderer` field, and the mode editor shows it. The
+  web does not use the field to choose a renderer: it shows confidence shading when the reply text
+  holds the markers (decision 9).

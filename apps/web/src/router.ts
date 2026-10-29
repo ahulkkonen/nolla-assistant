@@ -40,8 +40,15 @@ const decode = (part: string) => {
 
 /** Set while `applyPath` changes the store: a back step never pushes. */
 let applying = false;
-/** A `history.back()` on its way: the store waits for its popstate. */
+/**
+ * A `history.back()` on its way: the store waits for its popstate, or `BACK_MS` when an engine
+ * drops it.
+ */
 let backing = false;
+let backTimer: ReturnType<typeof setTimeout> | undefined;
+const BACK_MS = 300;
+/** The protocol's `id64`: a longer chat id is an unknown path. */
+const ID_MAX = 64;
 
 /**
  * Sets the store from a URL (load, back, forward). What is already on screen is not opened
@@ -57,7 +64,7 @@ export function applyPath(url: string) {
     useStore.setState({ settingsOpen: pathname === '/settings' });
     if (pathname === '/settings') {
       // Over the current screen.
-    } else if (chat && !chat.includes('/')) {
+    } else if (chat && !chat.includes('/') && chat.length <= ID_MAX) {
       if (chat !== st.activeChatId || st.screen !== 'chat') openChat(chat);
     } else if (pathname === '/search' && q) {
       if (q === st.search?.q) st.setScreen('search');
@@ -106,8 +113,13 @@ function follow(s: State, prev: State) {
   if (prev.settingsOpen && !s.settingsOpen) {
     // Decision 18: back to the entry under `/settings` when the router pushed it.
     backing = history.state?.back === path;
-    if (backing) history.back();
-    else history.replaceState(null, '', path);
+    if (backing) {
+      history.back();
+      clearTimeout(backTimer);
+      backTimer = setTimeout(() => {
+        backing = false;
+      }, BACK_MS);
+    } else history.replaceState(null, '', path);
   } else if (path.split('?')[0] === location.pathname || replaces(s, prev)) {
     history.replaceState(null, '', path);
   } else {
@@ -127,7 +139,10 @@ export function startRouter() {
   applyPath(location.href);
   const onPop = () => {
     backing = false;
-    applyPath(location.href);
+    clearTimeout(backTimer);
+    // The store already shows the path (a back step that `follow` started): nothing to apply.
+    if (pathOf(useStore.getState()) !== location.pathname + location.search)
+      applyPath(location.href);
   };
   window.addEventListener('popstate', onPop);
   const stop = useStore.subscribe(follow);

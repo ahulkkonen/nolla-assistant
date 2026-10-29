@@ -90,13 +90,16 @@ describe('pathOf and applyPath (phase-23 decision 15)', () => {
     expect(pathOf({ ...initial, screen: 'vault', settingsOpen: true })).toBe('/settings');
   });
 
-  it.each(['/nope', '/c/', '/c/a/b', '/c/%E0', '/files/x'])('%s is replaced with /', (path) => {
-    load(path);
-    useStore.setState({ screen: 'files' });
-    applyPath(path);
-    expect(st()).toMatchObject({ screen: 'chat', activeChatId: null });
-    expect(urls()).toEqual(['/']);
-  });
+  it.each(['/nope', '/c/', '/c/a/b', '/c/%E0', '/files/x', `/c/${'a'.repeat(65)}`])(
+    '%s is replaced with /',
+    (path) => {
+      load(path);
+      useStore.setState({ screen: 'files' });
+      applyPath(path);
+      expect(st()).toMatchObject({ screen: 'chat', activeChatId: null });
+      expect(urls()).toEqual(['/']);
+    },
+  );
 
   it('a path closes settings; what is on screen is not opened again', () => {
     applyPath('/c/abc');
@@ -169,6 +172,26 @@ describe('startRouter (decisions 16 to 18)', () => {
     expect(st().settingsOpen).toBe(true);
     useStore.setState({ settingsOpen: false });
     expect(urls()).toEqual(['/']);
+  });
+
+  it('a back step whose popstate never comes stops blocking the store after 300 ms', () => {
+    vi.useFakeTimers();
+    try {
+      stop = startRouter();
+      openChat('a');
+      useStore.setState({ settingsOpen: true });
+      const back = vi.spyOn(history, 'back').mockImplementation(() => {});
+      useStore.setState({ settingsOpen: false });
+      expect(back).toHaveBeenCalledOnce();
+      openChat('b');
+      expect(here()).toBe('/settings');
+      vi.advanceTimersByTime(300);
+      openChat('c');
+      expect(here()).toBe('/c/c');
+      back.mockRestore();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('a chat created on / takes its entry; a deleted or missing open chat gives way to /', () => {
