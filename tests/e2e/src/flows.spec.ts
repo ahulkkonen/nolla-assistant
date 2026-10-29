@@ -1559,12 +1559,13 @@ test('sandbox: an artifact cannot read cookies, call the API or navigate its ope
 }) => {
   app.llm.push({ text: ESCAPE_REPLY });
   await app.login(page);
-  const url = page.url();
   await send(page, 'Tee sivu');
   const panel = page.getByRole('complementary', { name: 'Artefaktit' });
   await expect(panel.locator('iframe').contentFrame().locator('#r')).toHaveText(
     'cookie:estetty fetch:estetty',
   );
+  // The chat's path (phase-23 router).
+  const url = page.url();
   // "Avaa uudessa ikkunassa": the tab is sandboxed too, and its opener stays where it was.
   const [tab] = await Promise.all([
     context.waitForEvent('page'),
@@ -1876,4 +1877,108 @@ test('integrations row: status and connect round trip', async ({ app, page }) =>
   await expect(dialog.getByText('Ei yhdistetty')).toBeVisible();
   await dialog.getByRole('button', { name: 'Yhdistä' }).click();
   await expect(page.getByText('Google yhdistetty.')).toBeVisible();
+});
+
+test.describe('router', () => {
+  // Phase-23 decisions 15 to 19.
+  const pathOf = (page: Page) => new URL(page.url()).pathname;
+  const titled = (app: App, reply: string, title: string) => {
+    app.llm.push({ text: reply });
+    app.llm.push({ ...titleTurn(title, `${title}.`), match: 'Aiheet:' });
+  };
+
+  test('router: a reload on /c/<id> opens the chat, on /files the files; ?chat= and an unknown path redirect', async ({
+    app,
+    page,
+  }) => {
+    const errors: string[] = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    titled(app, 'Eka vastaus.', 'Ensimmäinen keskustelu');
+    await app.login(page);
+    await send(page, 'Eka');
+    await expect(page.locator('.md')).toHaveText('Eka vastaus.');
+    await expect(page).toHaveURL(/\/c\/[\w-]+$/);
+    await expect(page).toHaveTitle('Ensimmäinen keskustelu · Avustaja');
+    const chat = pathOf(page);
+    await page.reload();
+    await expect(thread(page).getByText('Eka', { exact: true })).toBeVisible();
+    await expect(page.locator('.md')).toHaveText('Eka vastaus.');
+
+    await openFiles(page);
+    await expect(page).toHaveURL(`${app.url}/files`);
+    await page.reload();
+    await expect(page.getByRole('group', { name: 'Näkymä' })).toBeVisible();
+
+    await page.goto(`/?chat=${chat.slice(3)}`);
+    await expect(page).toHaveURL(`${app.url}${chat}`);
+    await expect(page.locator('.md')).toHaveText('Eka vastaus.');
+
+    await page.goto('/nope');
+    await expect(page).toHaveURL(`${app.url}/`);
+    await expect(page.getByRole('heading', { name: 'Mitä tänään tehdään?' })).toBeVisible();
+    await expect(page.locator('[data-sonner-toast]')).toHaveCount(0);
+    expect(errors).toEqual([]);
+  });
+
+  test('router: back walks two chats and Tiedostot; Uusi keskustelu lands on /', async ({
+    app,
+    page,
+  }) => {
+    titled(app, 'Eka vastaus.', 'Ensimmäinen keskustelu');
+    titled(app, 'Toka vastaus.', 'Toinen keskustelu');
+    await app.login(page);
+    await send(page, 'Eka');
+    await expect(page.locator('nav li > button', { hasText: 'Ensimmäinen' })).toBeVisible();
+    const first = pathOf(page);
+    await newChat(page);
+    await expect(page).toHaveURL(`${app.url}/`);
+    await send(page, 'Toka');
+    await expect(page.locator('nav li > button', { hasText: 'Toinen' })).toBeVisible();
+    const second = pathOf(page);
+    expect(second).not.toBe(first);
+
+    await openFiles(page);
+    await page.goBack();
+    await expect(page).toHaveURL(`${app.url}${second}`);
+    await expect(page.locator('.md')).toHaveText('Toka vastaus.');
+    // The created chat took the entry of `/`: one step back is the first chat.
+    await page.goBack();
+    await expect(page).toHaveURL(`${app.url}${first}`);
+    await expect(page.locator('.md')).toHaveText('Eka vastaus.');
+    await page.goForward();
+    await expect(page.locator('.md')).toHaveText('Toka vastaus.');
+  });
+
+  test('router: Esc and back close /settings and return to the chat; a screen replaces it', async ({
+    app,
+    page,
+  }) => {
+    app.llm.push({ text: 'Eka vastaus.' });
+    await app.login(page);
+    await send(page, 'Eka');
+    await expect(page.locator('.md')).toHaveText('Eka vastaus.');
+    const chat = `${app.url}${pathOf(page)}`;
+    const dialog = page.getByRole('dialog', { name: 'Asetukset' });
+
+    await openSettings(page, 'Asetukset');
+    await expect(page).toHaveURL(`${app.url}/settings`);
+    // The focus tooltip of Sulje eats one Escape.
+    await expect(async () => {
+      await page.keyboard.press('Escape');
+      await expect(dialog).toHaveCount(0, { timeout: 500 });
+    }).toPass();
+    await expect(page).toHaveURL(chat);
+
+    await openSettings(page, 'Asetukset');
+    await expect(dialog).toBeVisible();
+    await page.goBack();
+    await expect(dialog).toHaveCount(0);
+    await expect(page).toHaveURL(chat);
+
+    await openSettings(page, 'Agentit');
+    await expect(page).toHaveURL(`${app.url}/agents`);
+    await page.goBack();
+    await expect(page).toHaveURL(chat);
+    await expect(page.locator('.md')).toHaveText('Eka vastaus.');
+  });
 });

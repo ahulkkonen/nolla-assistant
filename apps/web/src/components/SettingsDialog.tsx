@@ -265,15 +265,15 @@ export function SettingsDialog() {
     }
   };
 
-  /** Settings closes for a screen or a dialog; under 768 px the drawer would stay behind it. */
-  const leave = () => {
+  /**
+   * Settings closes for a screen or a dialog; under 768 px the drawer would stay behind it. The
+   * screen comes in the same update, so the router replaces `/settings` with its path instead of
+   * going back (phase-23 decision 18).
+   */
+  const leave = (screen?: (typeof SCREENS)[number][0]) => {
     leaving.current = true;
     if (matchMedia('(max-width: 767.98px)').matches) useStore.getState().setSidebarOpen(false);
-    useStore.setState({ settingsOpen: false });
-  };
-  const go = (screen: (typeof SCREENS)[number][0]) => {
-    leave();
-    useStore.getState().setScreen(screen);
+    useStore.setState({ settingsOpen: false, ...(screen ? { screen } : {}) });
   };
 
   return (
@@ -336,7 +336,7 @@ export function SettingsDialog() {
                   <li key={screen}>
                     <button
                       type="button"
-                      onClick={() => go(screen)}
+                      onClick={() => leave(screen)}
                       className="flex h-12 w-full items-center gap-3 px-4 text-left text-body transition-colors duration-100 hover:bg-accent"
                     >
                       <Icon size={16} className="text-muted-foreground" />
