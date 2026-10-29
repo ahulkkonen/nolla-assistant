@@ -28,3 +28,7 @@ The build plan is `docs/plan.md`. Section numbers in records refer to it.
 - `phase-19-viz.md`: the `vega-lite` chart block, the Mermaid theme, the design kit for HTML artifacts, SVG and PNG export, the sandbox page.
 - `phase-20-thread.md`: inline chart and diagram figures with light PNG export, one artifact whitelist, the streaming card, the panel per chat, the message queue and model change during a run, figure fonts and colour roles.
 - `phase-21-polish.md`: the "Sarake" flowchart look and wrapped export text, the "Uusimmat" catalog section from OpenRouter `~latest` aliases, the confidence-marker trial, tool-row icons, the per-chat auto-approve toggle and the skill-runner image note.
+- `phase-22-quick-wins.md`: model error status and detail, the ZDR refusal classifier, fork without title lock, topic dedupe and links, idle PWA auto-update, the Escape audit, auto-approve for subagent children, plain http on the wifi, Pi 1.4.0, the WebKit screens project.
+- `phase-23-modes-router.md`: per-chat output modes (`agents/modes/*.md`, `suora` and `perusteellinen` on by default, confidence as a mode), the mechanics-only assistant prompt, the mode editor and writers, the path router.
+- `phase-24-edit-in-place.md`: edit a user message in place as a version (sibling user entries in the Pi session tree, `pa-leaf`), the version switcher, what readers see.
+- `phase-25-harness-tools.md`: `profile_edit`, `automation_edit` and `chat_read` behind a mandatory card with a diff or YAML view, the audit trail, and `fetch_url` in place of the `web-digest` skill.
