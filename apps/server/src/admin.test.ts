@@ -2,7 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { automationRuns, chats } from '@pa/db';
-import type { AgentDoc, AgentList, DeviceSession } from '@pa/protocol';
+import type { AgentDoc, AgentList, DeviceSession, ModeDoc } from '@pa/protocol';
 import { eq } from 'drizzle-orm';
 import { afterEach, expect, test, vi } from 'vitest';
 import type WebSocket from 'ws';
@@ -443,4 +443,88 @@ test('sessions: list, revoke one, revoke all rotates the current token and close
   const ownClosed = closed(own.ws);
   await api(port, '/api/auth/logout', { method: 'POST', headers: { cookie: rotated } });
   expect(await ownClosed).toBe(4401);
+});
+
+test('modes: create, update, dry run, delete; a default mode is in use; errors name the field', {
+  timeout: 30_000,
+}, async () => {
+  const { call, c, agentsDir } = await bootAdmin();
+  const file = (id: string) => join(agentsDir, 'modes', `${id}.md`);
+  // Seeding copied the shipped mode files.
+  expect(existsSync(file('suora'))).toBe(true);
+  const list = (await (await call('GET', '/api/agents')).json()) as AgentList;
+  expect(list.options.modes).toEqual(['confidence', 'perusteellinen', 'suora']);
+  expect(list.modes.find((m) => m.id === 'confidence')).toMatchObject({
+    file: { name: 'Luottamus', renderer: 'confidence' },
+    error: null,
+  });
+  /** Each save reloads and sends `agents.state`: wait for one with this mode name. */
+  const stateWith = async (id: string, name: string) => {
+    for (;;) {
+      const { modes } = await c.next('agents.state');
+      if (modes.some((m) => m.id === id && m.name === name)) return;
+    }
+  };
+
+  // Create from the form: the id comes from the name.
+  const created = await call('POST', '/api/modes', {
+    file: { name: 'Lyhyt ÄänI', description: 'Kolme virkettä' },
+    body: 'Vastaa enintään kolmella virkkeellä.',
+  });
+  expect(created.status).toBe(201);
+  const doc = (await created.json()) as ModeDoc;
+  expect(doc).toMatchObject({ id: 'lyhyt-aani', body: 'Vastaa enintään kolmella virkkeellä.' });
+  expect(readFileSync(file('lyhyt-aani'), 'utf8')).toBe(doc.raw);
+  await stateWith('lyhyt-aani', 'Lyhyt ÄänI');
+
+  // Dry run: the answer, no write.
+  const raw = '---\nname: Lyhyt\n---\n\nVastaa yhdellä virkkeellä.\n';
+  const dry = await call('PUT', '/api/modes/lyhyt-aani?dry=1', { raw });
+  expect([dry.status, ((await dry.json()) as ModeDoc).file?.name]).toEqual([200, 'Lyhyt']);
+  expect(readFileSync(file('lyhyt-aani'), 'utf8')).toBe(doc.raw);
+  // Update with the raw text: written as sent.
+  expect((await call('PUT', '/api/modes/lyhyt-aani', { raw })).status).toBe(200);
+  expect(readFileSync(file('lyhyt-aani'), 'utf8')).toBe(raw);
+  await stateWith('lyhyt-aani', 'Lyhyt');
+
+  // Errors name the field; nothing is written.
+  const bad = async (method: string, path: string, body: object, field: string) => {
+    const res = await call(method, path, body);
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error: 'bad_message', path: field });
+  };
+  await bad(
+    'POST',
+    '/api/modes',
+    { file: { name: 'X', renderer: 'emoji' }, body: 'x' },
+    'renderer',
+  );
+  await bad('POST', '/api/modes', { file: { name: 'X', extra: 1 }, body: 'x' }, '');
+  await bad('PUT', '/api/modes/lyhyt-aani', { raw: '---\nname: X\n---\n' }, 'body');
+  await bad('PUT', '/api/modes/lyhyt-aani', { raw: 'ei frontmatteria' }, 'name');
+  expect(readFileSync(file('lyhyt-aani'), 'utf8')).toBe(raw);
+  expect((await call('PUT', '/api/modes/ei-ole', { raw })).status).toBe(404);
+  expect((await call('PUT', '/api/modes/..%2Fx', { raw })).status).toBe(404);
+
+  // A profile may name only a known mode.
+  const { agents } = (await (await call('GET', '/api/agents')).json()) as AgentList;
+  const a = agents[0] as AgentDoc;
+  await bad(
+    'PUT',
+    '/api/agents/assistant',
+    { profile: { ...a.profile, modes: { default: ['ei-ole'] } }, prompt: a.prompt },
+    'modes.default.0',
+  );
+
+  // A default mode stays; another one goes.
+  const inUse = await call('DELETE', '/api/modes/suora');
+  expect([inUse.status, await inUse.json()]).toEqual([
+    409,
+    { error: 'in_use', agents: ['assistant'] },
+  ]);
+  expect(existsSync(file('suora'))).toBe(true);
+  expect((await call('DELETE', '/api/modes/lyhyt-aani')).status).toBe(204);
+  expect(existsSync(file('lyhyt-aani'))).toBe(false);
+  expect((await call('DELETE', '/api/modes/lyhyt-aani')).status).toBe(404);
+  expect(gitLog(agentsDir)).toContain('mode lyhyt-aani deleted');
 });
