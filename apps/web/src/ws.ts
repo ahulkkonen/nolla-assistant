@@ -5,7 +5,14 @@ import {
   type ModelPolicy,
   ServerMessage,
 } from '@pa/protocol';
-import { type ClaimChip, serverIdOf, shift, thinkingKey, useStore } from './store.ts';
+import {
+  type ClaimChip,
+  serverIdOf,
+  shift,
+  thinkingKey,
+  useStore,
+  VERSION_FAILED,
+} from './store.ts';
 
 let ws: WebSocket | null = null;
 let url = '';
@@ -16,6 +23,7 @@ let pingTimer: ReturnType<typeof setInterval> | undefined;
 let retryTimer: ReturnType<typeof setTimeout> | undefined;
 let createWaiters: Array<(chatId: string) => void> = [];
 let forkTimer: ReturnType<typeof setTimeout> | undefined;
+let versionTimer: ReturnType<typeof setTimeout> | undefined;
 /**
  * A data-policy change sent from this client, until its `chat.updated` confirms it. For `open`,
  * `turnId` is the refused turn's user message: the consent retries that turn and no newer one.
@@ -31,6 +39,11 @@ let retryIntent: {
   turnId: string;
   edit?: { localId: string; text: string; count: number };
 } | null = null;
+/**
+ * Phase 24: the chat of an edit that ran. Its idle asks for the chat's state, so the versions
+ * shown are the server's and a version guessed here cannot stay.
+ */
+let editRefresh: string | null = null;
 /** The pending retry or edit is over: its edit box stops waiting. */
 const endRetry = () => {
   retryIntent = null;
@@ -40,6 +53,7 @@ const endRetry = () => {
 useStore.subscribe((s, prev) => {
   // A fork that settled (its state, an error, a switch, a close): its timeout goes too.
   if (prev.pendingFork && !s.pendingFork) clearTimeout(forkTimer);
+  if (prev.pendingVersion && !s.pendingVersion) clearTimeout(versionTimer);
   if (s.activeChatId === prev.activeChatId) return;
   policyIntent = null;
   // Another chat than the source or the new fork: the fork's answer has no screen to land on.
@@ -67,6 +81,7 @@ export function disconnect() {
   stopped = true;
   policyIntent = null;
   endRetry();
+  editRefresh = null;
   clearTimeout(retryTimer);
   clearInterval(pingTimer);
   queue = [];
@@ -148,13 +163,15 @@ export function createChat(): Promise<string> {
 
 /**
  * Shows the message at once (the server does not echo it) and sends it to `chatId`, else to the
- * open chat; creates the chat if needed.
+ * open chat; creates the chat if needed. Not while an edit of that chat is on its way (phase 24):
+ * the composer waits, and nothing is sent.
  */
 export async function sendUserMessage(
   text: string,
   attachments: AttachmentRef[] = [],
   chatId: string | null = useStore.getState().activeChatId,
 ) {
+  if (chatId && useStore.getState().pendingEdit?.chatId === chatId) return;
   const id = chatId ?? (await createChat());
   // A new turn ends a pending consent or retry of its chat: neither may act on it.
   if (policyIntent?.chatId === id) policyIntent = null;
@@ -202,7 +219,8 @@ function sendQueued(msg: ServerMessage) {
 export function retryTurn(chatId: string) {
   const st = useStore.getState();
   const { messages, i, last } = lastUser(chatId);
-  if (!last) return;
+  // An edit on its way owns the chat's next run (phase 24).
+  if (!last || st.pendingEdit?.chatId === chatId) return;
   const inPlace =
     st.failed[chatId]?.code !== 'prompt_failed' &&
     messages.slice(i + 1).every((m) => !m.tools.length);
@@ -256,11 +274,21 @@ export function editMessage(chatId: string, messageId: string, text: string) {
   send({ type: 'chat.edit', chatId, messageId, text, localId });
 }
 
-/** "‹ ›" (phase-24 decision 9): shows version `index` of the user message `messageId` (entry id). */
+/**
+ * "‹ ›" (phase-24 decision 9): shows version `index` of the user message `messageId` (entry id).
+ * A switch that never answers ends after 20 s with the error toast.
+ */
 export function switchVersion(chatId: string, messageId: string, index: number) {
   if (useStore.getState().pendingVersion) return;
-  useStore.setState({ pendingVersion: { chatId, messageId } });
+  const pending = { chatId, messageId };
+  useStore.setState({ pendingVersion: pending });
   send({ type: 'chat.version', chatId, messageId, index });
+  clearTimeout(versionTimer);
+  versionTimer = setTimeout(() => {
+    if (useStore.getState().pendingVersion !== pending) return;
+    useStore.setState({ pendingVersion: null });
+    useStore.getState().pushError(VERSION_FAILED);
+  }, FORK_TIMEOUT_MS);
 }
 
 /** Thinking rows of `chatId` (or all) that still load: they show the error, a new open asks again. */
@@ -294,9 +322,13 @@ export function loadThinking(chatId: string, messageId: string) {
 /**
  * Rewinds the thread on the rerun's first event; a refusal (an error for the chat) keeps it. An
  * edit rewinds to before its message and adds the new version (phase-24 decision 8); equal text
- * is the same version (decision 1).
+ * is the same version (decision 1). The edit's idle asks for the chat's state (`editRefresh`).
  */
 function settleRetry(msg: ServerMessage) {
+  if (msg.type === 'agent.status' && msg.state === 'idle' && msg.chatId === editRefresh) {
+    editRefresh = null;
+    send({ type: 'chat.open', chatId: msg.chatId });
+  }
   const intent = retryIntent;
   if (!intent || !('chatId' in msg) || msg.chatId !== intent.chatId) return;
   // A held edit that the user dropped never runs (its box keeps the text).
@@ -310,7 +342,9 @@ function settleRetry(msg: ServerMessage) {
   if (!old) return;
   if (!intent.edit) return st.rewind(intent.chatId, at + 1);
   const { localId, text, count } = intent.edit;
-  const versions = text === old.text ? old.versions : { index: count + 1, count: count + 1 };
+  editRefresh = intent.chatId;
+  const versions =
+    text.trim() === old.text.trim() ? old.versions : { index: count + 1, count: count + 1 };
   st.rewind(intent.chatId, at);
   st.addLocalMessage(intent.chatId, {
     id: localId,
@@ -323,6 +357,8 @@ function settleRetry(msg: ServerMessage) {
     createdAt: new Date().toISOString(),
     ...(versions ? { versions } : {}),
   });
+  // The edit box goes with the old message: the focus goes to the composer, as after a send.
+  globalThis.document?.getElementById('composer')?.focus();
 }
 
 /** The consent ("open", then the retry) or "Palauta ZDR"; both act on the server's confirmation. */
@@ -450,6 +486,7 @@ function open() {
     // a reconnect starts clean.
     policyIntent = null;
     endRetry();
+    editRefresh = null;
     if (useStore.getState().pendingFork) useStore.setState({ pendingFork: null });
     if (useStore.getState().pendingVersion) useStore.setState({ pendingVersion: null });
     failThinking();

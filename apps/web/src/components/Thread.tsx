@@ -146,6 +146,13 @@ export function Thread() {
     if (!away) seen.current = messages.length;
   }, [away, messages.length]);
 
+  // Another chat: a switch's place and its kept last message belong to the old thread. Before the
+  // layout effect below, which would apply them to the new one.
+  useLayoutEffect(() => {
+    keep.current = null;
+    kept.current = undefined;
+  }, [chatId]);
+
   useLayoutEffect(() => {
     const k = keep.current;
     const el = scroller.current;
@@ -376,7 +383,8 @@ export function Thread() {
                   // After a user turn and an older reply 40 px (48 on phones): the action row sits
                   // in the gap. Touch shows the row only under the latest turns, but every turn
                   // keeps its room, so the gaps match (UI review 3). The latest user turn shows its
-                  // 44 px row on touch, so 24 px stay below the row.
+                  // 44 px row on touch, so 24 px stay below the row; so does a user turn with the
+                  // always-visible version switcher (4 + 32 + 24 = 60 px, phones 4 + 44 + 24).
                   className={cn(
                     'flex flex-col gap-2',
                     // Messages from elsewhere (a reload, another device) fade in; a reply that
@@ -389,6 +397,7 @@ export function Thread() {
                       t.items.some(({ m }) => timingOf.has(m.id)) &&
                       'md:@max-[620px]/col:[@media(hover:hover)]:mb-9',
                     t.role === 'user' && t.items.some(({ i }) => i === lastUser) && 'max-md:mb-12',
+                    t.role === 'user' && t.items.some(({ m }) => m.versions) && 'mb-9 max-md:mb-12',
                     // Editing: the action row is gone, so is the room kept for it.
                     t.role === 'user' && 'has-[textarea]:mb-0',
                   )}
@@ -398,12 +407,26 @@ export function Thread() {
                   </h2>
                   {/* Keyed by place: the live reply's element stays for its final message. */}
                   {[...t.items, ...(t.live ? [undefined] : [])].map((item, j) => {
-                    if (!item) return <div key={j}>{liveView}</div>;
+                    // Brief 7.5: tool rows stack 4 px apart, also across the messages of a turn
+                    // (8 px in-turn gap less 4): a tool-only message, then one that starts with
+                    // its tool rows.
+                    const before = t.items[j - 1]?.m;
+                    const toolsFirst = item
+                      ? item.m.tools.length > 0 && !(showThinking && item.m.thinking)
+                      : streamTools.length > 0 && !liveThought;
+                    const stack =
+                      before?.tools.length && !before.text && toolsFirst ? '-mt-1' : undefined;
+                    if (!item)
+                      return (
+                        <div key={j} className={stack}>
+                          {liveView}
+                        </div>
+                      );
                     const { m, i } = item;
                     const prev = m.role === 'assistant' ? previousUser(messages, i) : undefined;
                     const serverId = serverIdOf(m);
                     return (
-                      <div key={j} data-message-id={m.id}>
+                      <div key={j} data-message-id={m.id} className={stack}>
                         <MessageView
                           id={m.id}
                           role={m.role}

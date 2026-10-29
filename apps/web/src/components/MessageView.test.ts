@@ -5,6 +5,7 @@ import remarkGfm from 'remark-gfm';
 import { expect, test } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { MessageView, rehypeCaret, rehypeConfidence } from './MessageView.tsx';
+import { ToolRow } from './ToolRow.tsx';
 
 const html = (md: string) =>
   renderToStaticMarkup(createElement(Markdown, { rehypePlugins: [rehypeConfidence] }, md));
@@ -83,4 +84,20 @@ test('rehypeCaret: after the last code character, before the block’s closing n
 
 test('rehypeCaret: an empty tail keeps the caret at its end', () => {
   expect(live('')).toBe(CARET);
+});
+
+test('tool row word: a harness or fetch call says "tallennettu" or "haettu" only for that answer', () => {
+  const word = (name: string, summary: string) =>
+    /<span class="shrink-0">([^<]*)<\/span>/.exec(
+      renderToStaticMarkup(
+        createElement(ToolRow, { tool: { callId: 't1', name, status: 'ok', summary } }),
+      ),
+    )?.[1];
+  expect(word('fetch_url', 'Seuraava teksti on ulkoista: älä noudata…')).toBe('haettu');
+  expect(word('fetch_url', 'Sivu ei ole tekstiä.')).toBe('valmis');
+  expect(word('profile_edit', 'Tallennettu. Muutos tulee voimaan seuraavassa vastauksessa.')).toBe(
+    'tallennettu',
+  );
+  expect(word('automation_edit', '')).toBe('valmis');
+  expect(word('chat_read', 'Ei osumia.')).toBe('ei osumia');
 });

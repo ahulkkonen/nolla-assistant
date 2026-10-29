@@ -478,16 +478,18 @@ describe('artifact panel (phase 20)', () => {
     useStore.getState().setActive('c1');
     const block = (a: Artifact) => `Sivu:\n\n\`\`\`html\n${a.content}\n\`\`\`⟦9⟧`;
     apply({
-      ...state([art('k1'), art('g1')]),
+      ...state([art('k1'), art('g1'), { ...art('e1'), content: '' }]),
       messages: [
         msg('u1', 'user', 'Tee sivu'),
         msg('a1', 'assistant', block(art('k1'))),
-        msg('u2', 'user', 'Toinen'),
+        // The user pastes the next page's block: only a reply holds an artifact.
+        msg('u2', 'user', block(art('g1'))),
         msg('a2', 'assistant', block(art('g1'))),
       ],
     });
     useStore.getState().showArtifact('c1', art('g1'));
     useStore.getState().rewind('c1', 3);
+    // An empty artifact is in no message.
     expect(useStore.getState().artifacts.c1?.map((a) => a.id)).toEqual(['k1']);
     expect(open()).toBeNull();
     // A panel on a kept artifact stays.

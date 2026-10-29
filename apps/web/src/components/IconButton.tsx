@@ -67,7 +67,10 @@ type Props = ComponentProps<'button'> & {
   tip?: string | undefined;
 };
 
-/** An icon-only button: a Finnish `aria-label` and a desktop tooltip with the same text. */
+/**
+ * An icon-only button: a Finnish `aria-label` and a desktop tooltip with the same text. Touch has
+ * no tooltip, so there `tip` is the button's `aria-description`.
+ */
 export function IconButton({ label, variant = 'ghost', tipSide, tip, className, ...rest }: Props) {
   return (
     <Tip label={tip ?? label} {...(tipSide ? { side: tipSide } : {})}>
@@ -76,10 +79,14 @@ export function IconButton({ label, variant = 'ghost', tipSide, tip, className, 
         size="icon"
         variant={variant === 'primary' ? 'default' : 'ghost'}
         aria-label={label}
+        {...(touch && tip ? { 'aria-description': tip } : {})}
         className={cn(
           variant === 'ghost' && 'text-muted-foreground hover:text-foreground',
-          rest['aria-disabled'] && 'cursor-not-allowed opacity-50 hover:bg-transparent',
-          rest['aria-disabled'] && variant === 'ghost' && 'hover:text-muted-foreground',
+          rest['aria-disabled'] && 'cursor-not-allowed opacity-50',
+          rest['aria-disabled'] &&
+            (variant === 'ghost'
+              ? 'hover:bg-transparent hover:text-muted-foreground'
+              : 'hover:bg-primary'),
           className,
         )}
         {...rest}

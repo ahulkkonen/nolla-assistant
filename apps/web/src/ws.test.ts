@@ -1,6 +1,6 @@
 import type { Message } from '@pa/protocol';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { useStore } from './store.ts';
+import { useStore, VERSION_FAILED } from './store.ts';
 import {
   connect,
   disconnect,
@@ -11,6 +11,7 @@ import {
   setDataPolicy,
   signedOut,
   stopTurn,
+  switchVersion,
 } from './ws.ts';
 
 class FakeWebSocket {
@@ -235,6 +236,40 @@ describe('ws client', () => {
     expect(st.draft).toMatchObject({ chatId: 'c1', text: 'Hei Pekka' });
     expect(st.messages.c1).toHaveLength(2);
     useStore.setState({ draft: null });
+  });
+
+  it('phase 24: while an edit is on its way, its chat sends and retries nothing; the edit still settles', async () => {
+    const { frame, sent } = chat([USER, { ...USER, id: 'a1', role: 'assistant', text: 'Vastaus' }]);
+    // Same text but for white space: the same version, not a new one.
+    editMessage('c1', 'u1', ' Hei ');
+    await sendUserMessage('Toinen');
+    retryTurn('c1');
+    expect([sent('user.message'), sent('user.retry')]).toEqual([[], []]);
+    expect(useStore.getState().messages.c1).toHaveLength(2);
+    expect(useStore.getState().pendingEdit).toEqual({ chatId: 'c1', text: ' Hei ' });
+    frame({ type: 'agent.status', chatId: 'c1', state: 'running' });
+    const [m, ...rest] = useStore.getState().messages.c1 ?? [];
+    expect([m?.text, m?.versions, rest]).toEqual([' Hei ', undefined, []]);
+    // The run's idle asks for the server's versions, once.
+    expect(sent('chat.open')).toEqual([]);
+    frame({ type: 'agent.status', chatId: 'c1', state: 'idle' });
+    frame({ type: 'agent.status', chatId: 'c1', state: 'idle' });
+    expect(sent('chat.open')).toEqual([{ type: 'chat.open', chatId: 'c1' }]);
+  });
+
+  it('phase 24: a switch that never answers ends after 20 s with the toast', () => {
+    vi.useFakeTimers();
+    chat();
+    const push = vi.spyOn(useStore.getState(), 'pushError').mockImplementation(() => {});
+    switchVersion('c1', 'u1', 1);
+    expect(useStore.getState().pendingVersion).toEqual({ chatId: 'c1', messageId: 'u1' });
+    vi.advanceTimersByTime(19_999);
+    expect(push).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(useStore.getState().pendingVersion).toBeNull();
+    expect(push).toHaveBeenCalledWith(VERSION_FAILED);
+    push.mockRestore();
+    vi.useRealTimers();
   });
 
   it('a turn with tool rows, or a message that never arrived, goes again as a new message', () => {

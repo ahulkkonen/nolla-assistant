@@ -77,7 +77,10 @@ the agent loop changes only its request identity. Card S0 proves the facts in `t
    `agent.status: running` of that chat, the store rewinds to before the edited message and adds
    the local message with `versions: { index: count + 1, count: count + 1 }` (`count` is the old
    `versions.count`, else 1). On an `error` of that chat, the box stays open with the text and the
-   toast shows. `message.accepted` gives the entry id.
+   toast shows. `message.accepted` gives the entry id. Texts equal after a trim are the same
+   version. The edited run's idle sends `chat.open`, so the versions shown are the server's. While
+   the edit is on its way, the composer's send waits ("Odota, että muokattu viesti lähtee") and
+   the chat sends and retries nothing; when the run starts, the focus goes to the composer.
 
 ### Switch
 
@@ -93,8 +96,11 @@ the agent loop changes only its request identity. Card S0 proves the facts in `t
     without hover. The ends disable the buttons. During a run in that chat both buttons are
     disabled with the tooltip "Odota, että vastaus valmistuu". After a click the group is
     `aria-busy` until the `chat.state`; the thread keeps its scroll position on the edited message.
+    A switch that never answers ends after 20 s with "Version vaihto epäonnistui. Yritä
+    uudelleen." On touch the wait tooltip is the button's `aria-description`.
 11. **The edit box.** Buttons: "Peruuta" (ghost), "Haarauta" (outline), "Lähetä" (primary).
-    Cmd/Ctrl+Enter sends. Hint: "Lähetä tekee viestistä uuden version tähän keskusteluun. Haarauta
+    Cmd/Ctrl+Enter sends. While the edit or the fork is on its way, "Peruuta" is disabled and Esc
+    does not close the box. Hint: "Lähetä tekee viestistä uuden version tähän keskusteluun. Haarauta
     aloittaa uuden keskustelun." Without an entry id both buttons wait, as today.
 
 ### A turn, the queue, artifacts and the panel
@@ -182,7 +188,9 @@ S0 lands first. Every card ends with `pnpm typecheck` and `pnpm lint`.
 
 P1 checks: the switcher buttons are 32 px (44 × 44 under 768) with 4 px gap (8 under 768); "1/2"
 sits on the 32 px row baseline; the edit box buttons are 36 px (44 under 768) with 8 px gap and
-right-aligned; the user turn keeps its 40 px gap (48 on phones) with the always-visible row.
+right-aligned; with the always-visible switcher row, 24 px stay from the row's bottom to the next
+turn's top (UI review 5: the turn gap is 60 px, 72 on phones; measured 24 px at 390, 1024 and
+1440).
 
 ## Test plan
 

@@ -916,13 +916,14 @@ for (const scheme of ['light', 'dark'] as const) {
           ]).toEqual(phone ? [8, 8] : [4, 4]);
           const mid = (b?: DOMRect) => (b?.top ?? 0) + (b?.height ?? 0) / 2;
           expect(mid(count)).toBe(mid(prev));
-          // The user turn keeps its 40 px gap (48 on phones) with the row in it.
+          // UI review 5: 24 px from the always-visible row to the next turn (60 px gap, 72 on
+          // phones).
           const turns = thread(page).locator('article');
           const [user, reply] = [await box(turns.nth(0)), await box(turns.nth(1))];
           const row = await box(group.locator('..'));
-          expect(reply.top - user.bottom).toBe(phone ? 48 : 40);
+          expect(reply.top - user.bottom).toBe(phone ? 72 : 60);
           expect(row.top - user.bottom).toBe(4);
-          expect(row.bottom).toBeLessThanOrEqual(reply.top);
+          expect(reply.top - row.bottom).toBe(24);
           await shot(page, 'version-switcher', vp.width, scheme);
         });
 
@@ -1315,6 +1316,7 @@ for (const scheme of ['light', 'dark'] as const) {
         test.use({ timezoneId: 'Europe/Helsinki' });
         const blur = (page: Page) =>
           page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+        const box = (l: Locator) => l.evaluate((el) => el.getBoundingClientRect().toJSON());
 
         // A web search first: the turn read outside text, so the card says so.
         test('approval-diff', async ({ app, page }) => {
@@ -1332,8 +1334,26 @@ for (const scheme of ['light', 'dark'] as const) {
           await app.login(page);
           await sendMessage(page, 'Hae vinkkejä ja paranna ohjettasi');
           const card = page.getByRole('region', { name: 'Muutetaanko avustajan ohjetta?' });
-          await expect(card.getByRole('button', { name: 'Näytä kaikki' })).toBeVisible();
+          await expect(card.getByRole('button', { name: 'Näytä lisää' })).toBeVisible();
           await expect(card).toContainText('ulkopuolista sisältöä');
+          // UI review 5: the lines wrap after a 24 px gutter (no sideways scroll); the tainted
+          // line sits under the title, 8 px from it and from the file line.
+          const lines = card.getByRole('region', { name: /^Muutos: / });
+          expect(
+            await lines.evaluate((el) => {
+              const row = el.querySelector('.pr-3');
+              const left = (e?: Element | null) => e?.getBoundingClientRect().left ?? 0;
+              return [left(row?.lastElementChild) - left(row), el.scrollWidth - el.clientWidth];
+            }),
+          ).toEqual([24, 0]);
+          const title = await box(card.getByRole('heading'));
+          const taint = await box(card.getByText(/^Tämä vuoro luki/).locator('..'));
+          const file = await box(card.getByText(/^Muutetaan tiedostoa/));
+          expect([taint.top - title.bottom, file.top - taint.bottom]).toEqual([8, 8]);
+          const link = await box(card.getByRole('button', { name: 'Näytä lisää' }));
+          const block = await lines.evaluate((el) => el.getBoundingClientRect().toJSON());
+          // The link's line box: 18 px, centred in its 44 px target on phones.
+          expect(link.top + (link.height - 18) / 2 - block.bottom).toBe(8);
           await blur(page);
           await shot(page, 'approval-diff', vp.width, scheme);
         });
@@ -1369,6 +1389,8 @@ for (const scheme of ['light', 'dark'] as const) {
           await expect(page.getByText('Kasvimaa', { exact: true }).first()).toBeVisible();
           const chatId = /\/c\/([^/?#]+)/.exec(page.url())?.[1];
           await page.getByRole('button', { name: 'Uusi keskustelu' }).first().click();
+          // The pointer leaves the sidebar: no hover on the chat row in the shot.
+          await page.mouse.move(vp.width / 2, vp.height / 2);
           app.llm.push({ toolCalls: [{ name: 'chat_read', args: { chatId } }] });
           await sendMessage(page, 'Mitä puhuimme kasvimaasta?');
           await expect(

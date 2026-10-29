@@ -29,17 +29,17 @@ const diff = (n: number) => ({
 });
 const rows = (html: string) => html.match(/Lisätty: |@@ -1/g)?.length ?? 0;
 
-test('diff: over 13 lines shows 13 with the fade and "Näytä kaikki"; 13 lines show all', () => {
+test('diff: over 16 lines shows 16 with the fade over the last four and "Näytä lisää"', () => {
   const long = card(diff(20));
   expect(rows(long)).toBe(CLAMP);
-  expect(long).toContain('mask-image:linear-gradient(to_bottom,black_240px,transparent)');
-  expect(long).toContain('Näytä kaikki');
-  expect(long).not.toContain('rivi 13<');
-  expect(long).toContain('rivi 12<');
+  expect(long).toContain('mask-image:linear-gradient(to_bottom,black_240px,transparent_320px)');
+  expect(long).toMatch(/aria-expanded="false"[^>]*>Näytä lisää/);
+  expect(long).not.toContain('rivi 16<');
+  expect(long).toContain('rivi 15<');
 
   const short = card(diff(CLAMP));
   expect(rows(short)).toBe(CLAMP);
-  expect(short).not.toContain('Näytä kaikki');
+  expect(short).not.toContain('Näytä lisää');
   expect(short).not.toContain('mask-image');
 });
 
@@ -98,4 +98,44 @@ test('mode, automation, chat and tainted cards', () => {
   expect(chat).toContain('Luetaanko keskustelu ”Kasvimaa”?');
   expect(chat).toContain('25.10.2026 · 1 viesti');
   expect(chat).toContain('jos pyysit lukemista itse.');
+});
+
+test('mode title: only the frontmatter or the file id name it, never a name: in the body', () => {
+  const mode = (content: string) =>
+    card(
+      { kind: 'diff', file: 'modes/lyhyt.md', created: false, diff: '@@ -1 +1 @@\n-a\n+b\n' },
+      { args: { file: 'mode', id: 'lyhyt', content } },
+    );
+  expect(mode('Lyhyesti.\n\nname: Huijaus\n')).toContain('Muutetaanko tilaa ”lyhyt”?');
+  expect(mode('---\ndescription: x\n---\n\nname: Huijaus\n')).toContain('tilaa ”lyhyt”?');
+  expect(mode('---\nname: "Lyhyt"\n---\n\nname: Huijaus\n')).toContain('tilaa ”Lyhyt”?');
+});
+
+test('fetch: only URL.host is bold; userinfo stays visible and muted; a bad URL is plain', () => {
+  const fetch = (url: string) =>
+    card({ kind: 'fetch', url }, { tool: 'fetch_url', reason: 'Osoite ei ole viestissäsi' });
+  const html = fetch('https://www.hs.fi@evil.com/x');
+  expect(html).toContain('<span class="font-semibold">evil.com</span>');
+  expect(html).not.toMatch(/font-semibold">[^<]*www\.hs\.fi/);
+  expect(html).toMatch(
+    /text-muted-foreground"><span class="sr-only">käyttäjätiedot <\/span>www\.hs\.fi@<\/span>/,
+  );
+  expect(fetch('https://www.hs.fi/uutiset')).toContain('font-semibold">www.hs.fi</span>');
+  expect(fetch('http://[::1')).not.toContain('font-semibold');
+});
+
+test('YAML rows hang under the value; diff text wraps after the 24 px gutter', () => {
+  const html = card({
+    kind: 'yaml',
+    file: 'automations/aamu.yaml',
+    created: true,
+    yaml: 'name: Aamu\nautoApprove:\n  - read\n',
+    nextRuns: [],
+  });
+  expect(html).toContain('padding-left:calc(0.75rem + 6ch);text-indent:-6ch">name: Aamu');
+  expect(html).toContain('padding-left:calc(0.75rem + 4ch);text-indent:-4ch">  - read');
+  expect(html).toContain(
+    '<div class="px-3 whitespace-pre-wrap [overflow-wrap:anywhere]">autoApprove:',
+  );
+  expect(card(diff(2))).toContain('min-w-0 whitespace-pre-wrap [overflow-wrap:anywhere]');
 });

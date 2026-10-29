@@ -13,6 +13,7 @@ import {
   type LucideIcon,
   MessageSquareText,
   Plug,
+  SlidersHorizontal,
   Terminal,
   TimerOff,
   Wrench,
@@ -44,7 +45,7 @@ const TOOL_ICON = new Map<string, LucideIcon>([
   ['bash', Terminal],
   [WEB_SEARCH_TOOL, Globe],
   [FETCH_URL_TOOL, Globe],
-  ['profile_edit', FilePen],
+  ['profile_edit', SlidersHorizontal],
   ['automation_edit', CalendarClock],
   ['chat_read', MessageSquareText],
 ]);
@@ -97,13 +98,15 @@ function searchWord(status: ToolView['status'], gate: string | null, s?: ToolSea
 }
 
 /**
- * The word of a finished harness or fetch call (phase 25): "tallennettu", "haettu", and for
- * `chat_read` "luettu", "3 osumaa" or "ei osumia" from its answer. A row from history has no
- * summary: "valmis".
+ * The word of a finished harness or fetch call (phase 25), from its answer: "tallennettu" for the
+ * server's `SAVED`, "haettu" for a page (the `UNTRUSTED_NOTE` block), and for `chat_read`
+ * "luettu", "3 osumaa" or "ei osumia". Any other answer, and a row from history (no summary),
+ * is "valmis".
  */
 function doneWord(name: string, summary: string) {
-  if (name === 'profile_edit' || name === 'automation_edit') return 'tallennettu';
-  if (name === FETCH_URL_TOOL) return 'haettu';
+  const edit = name === 'profile_edit' || name === 'automation_edit';
+  if (edit && summary.startsWith('Tallennettu.')) return 'tallennettu';
+  if (name === FETCH_URL_TOOL && summary.startsWith('Seuraava teksti on ulkoista')) return 'haettu';
   if (name !== 'chat_read' || !summary) return TOOL_STATUS_WORD.ok;
   const hits = /^(\d+) osumaa/.exec(summary)?.[1];
   return hits ? `${hits} osumaa` : summary.startsWith('Ei osumia') ? 'ei osumia' : 'luettu';

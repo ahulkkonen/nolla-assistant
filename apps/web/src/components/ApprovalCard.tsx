@@ -33,7 +33,12 @@ function Value({ text, children }: { text: string; children?: ReactNode }) {
         {children ?? text}
       </div>
       {(clamped || more) && (
-        <Button variant="link" className="text-meta max-md:min-h-11" onClick={() => setMore(!more)}>
+        <Button
+          variant="link"
+          aria-expanded={more}
+          className="text-meta max-md:min-h-11"
+          onClick={() => setMore(!more)}
+        >
           {more ? 'Näytä vähemmän' : 'Näytä lisää'}
         </Button>
       )}
@@ -41,12 +46,13 @@ function Value({ text, children }: { text: string; children?: ReactNode }) {
   );
 }
 
-/** Lines of a diff or YAML block before "Näytä kaikki" (phase 25). */
-export const CLAMP = 13;
+/** Lines of a diff or YAML block before "Näytä lisää" (phase-25 decision 25). */
+export const CLAMP = 16;
 
 /**
- * Mono 13/20 lines in a muted block that scrolls sideways, so a long line never widens the card.
- * Over 13 lines it shows 13, the last one fading out, and "Näytä kaikki".
+ * Mono 13/20 lines in a muted block. Lines wrap (UI review 5), so a long line never widens the
+ * card. Over 16 rows (16 lines, or fewer that wrap past 320 px) it shows 16, the last four
+ * fading out, and "Näytä lisää".
  */
 export function Lines({
   label,
@@ -58,32 +64,49 @@ export function Lines({
   line: (text: string) => ReactNode;
 }) {
   const [all, setAll] = useState(false);
-  const clamp = !all && lines.length > CLAMP;
+  const box = useRef<HTMLDivElement>(null);
+  // Wrapped rows: only the box knows its height, and it changes with the card's width.
+  const [tall, setTall] = useState(false);
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!el || all) return;
+    const fit = () => setTall(el.scrollHeight > el.clientHeight + 1);
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [lines, all]);
+  const over = lines.length > CLAMP || tall;
   return (
-    <div className="flex flex-col items-start">
+    // 8 px from the box to the link's line box (the link has a 1 px border).
+    <div className="flex flex-col items-start gap-[7px] max-md:gap-0">
       <div
         role="region"
         aria-label={label}
-        // A scrollable region must be focusable (brief 7.8).
-        tabIndex={0}
-        className="w-full overflow-x-auto rounded-md bg-muted py-2 font-mono text-[13px] leading-5 text-foreground"
+        className="w-full rounded-md bg-muted py-2 font-mono text-[13px] leading-5 text-foreground"
       >
-        {/* The widest line sets every row's width, so a tint spans the whole scroll. The fade
-            starts at the top of line 13: 12 lines × 20 px. */}
+        {/* 16 rows of 20 px; the fade runs from the top of row 13 to the bottom of row 16. */}
         <div
+          ref={box}
           className={cn(
-            'w-max min-w-full',
-            clamp && '[mask-image:linear-gradient(to_bottom,black_240px,transparent)]',
+            !all && 'max-h-80 overflow-hidden',
+            !all && over && '[mask-image:linear-gradient(to_bottom,black_240px,transparent_320px)]',
           )}
         >
-          {(clamp ? lines.slice(0, CLAMP) : lines).map((l, i) => (
+          {(all ? lines : lines.slice(0, CLAMP)).map((l, i) => (
             <div key={`${i}:${l}`}>{line(l)}</div>
           ))}
         </div>
       </div>
-      {lines.length > CLAMP && (
-        <Button variant="link" className="text-meta max-md:min-h-11" onClick={() => setAll(!all)}>
-          {all ? 'Näytä vähemmän' : 'Näytä kaikki'}
+      {over && (
+        <Button
+          variant="link"
+          aria-expanded={all}
+          // Phones: the 44 px target overlaps the box, so the text stays 8 px below it.
+          className="text-meta max-md:-mt-[5px] max-md:min-h-11"
+          onClick={() => setAll(!all)}
+        >
+          {all ? 'Näytä vähemmän' : 'Näytä lisää'}
         </Button>
       )}
     </div>
@@ -92,7 +115,8 @@ export function Lines({
 
 /**
  * One unified diff line: a 4 px sign column and the `DiffLine` tints (brief 7.5), the sign as a
- * glyph and an sr-only word; hunk lines (`@@`) muted. No wrap: the block scrolls.
+ * glyph and an sr-only word; hunk lines (`@@`) muted. The bar and the sign are a hanging gutter:
+ * the text starts 24 px in and wraps under itself.
  */
 function DiffRow({ line }: { line: string }) {
   const add = line[0] === '+';
@@ -121,7 +145,7 @@ function DiffRow({ line }: { line: string }) {
       >
         {add ? '+' : del ? '−' : ''}
       </span>
-      <span className="whitespace-pre">
+      <span className="min-w-0 whitespace-pre-wrap [overflow-wrap:anywhere]">
         {(add || del) && <span className="sr-only">{add ? 'Lisätty: ' : 'Poistettu: '}</span>}
         {(hunk ? line : line.slice(1)) || ' '}
       </span>
@@ -129,10 +153,32 @@ function DiffRow({ line }: { line: string }) {
   );
 }
 
-const yamlRow = (l: string) => <div className="px-3 whitespace-pre">{l || ' '}</div>;
+/**
+ * A YAML line that wraps with its continuation under the value: the indent, a list dash and a
+ * `key: ` hang (mono, so `ch` is exact).
+ */
+const yamlRow = (l: string) => {
+  const hang = /^ *(?:- )*(?:[\w-]+: )?/.exec(l)?.[0].length ?? 0;
+  return (
+    <div
+      className="px-3 whitespace-pre-wrap [overflow-wrap:anywhere]"
+      {...(hang
+        ? { style: { paddingLeft: `calc(0.75rem + ${hang}ch)`, textIndent: `-${hang}ch` } }
+        : {})}
+    >
+      {l || ' '}
+    </div>
+  );
+};
 const linesOf = (text: string) => text.replace(/\n$/, '').split('\n');
 /** The top-level `name:` of a YAML file or a mode's frontmatter, unquoted. */
 const nameIn = (text: string) => /^name:[ \t]*["']?(.*?)["']?[ \t]*$/m.exec(text)?.[1] || null;
+/** A mode file's frontmatter as Pi's `parseFrontmatter` cuts it; '' without one. */
+const frontmatter = (text: string) => {
+  const t = text.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
+  const end = t.startsWith('---') ? t.indexOf('\n---', 3) : -1;
+  return end < 0 ? '' : t.slice(4, end);
+};
 const quoted = (s: string) => `”${s}”`;
 type HarnessView = Exclude<ApprovalView, { kind: 'fetch' }>;
 
@@ -141,7 +187,8 @@ function heading(v: HarnessView, args: Record<string, unknown>) {
   if (v.kind === 'diff') {
     const id = /^modes\/(.+)\.md$/.exec(v.file)?.[1];
     if (!id) return 'Muutetaanko avustajan ohjetta?';
-    const name = quoted(nameIn(String(args.content ?? '')) ?? id);
+    // A `name:` in the body is prose, not the mode's name.
+    const name = quoted(nameIn(frontmatter(String(args.content ?? ''))) ?? id);
     return v.created ? `Lisätäänkö tila ${name}?` : `Muutetaanko tilaa ${name}?`;
   }
   if (v.kind === 'yaml') {
@@ -208,15 +255,31 @@ function ViewBody({ v }: { v: HarnessView }) {
   );
 }
 
-/** "https://www.hs.fi/x": the host in foreground and semibold, the rest muted. */
+/**
+ * "https://www.hs.fi/x": the host (`URL.host`, as the fetch sees it) in foreground and semibold,
+ * the rest muted. Userinfo before an `@` stays visible, muted and named for screen readers, so
+ * "https://www.hs.fi@evil.com" shows evil.com as the host. Text that does not parse stays plain.
+ */
 function Url({ url }: { url: string }) {
-  const [, scheme, host, rest] = /^(https?:\/\/)([^/?#]*)(.*)$/is.exec(url) ?? [];
-  if (host === undefined) return url;
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    return url;
+  }
+  if (!/^https?:$/.test(u.protocol) || !u.host) return url;
+  const user = u.username + (u.password ? `:${u.password}` : '');
   return (
     <>
-      <span className="text-muted-foreground">{scheme}</span>
-      <span className="font-semibold">{host}</span>
-      <span className="text-muted-foreground">{rest}</span>
+      <span className="text-muted-foreground">{u.protocol}//</span>
+      {user && (
+        <span className="text-muted-foreground">
+          <span className="sr-only">käyttäjätiedot </span>
+          {user}@
+        </span>
+      )}
+      <span className="font-semibold">{u.host}</span>
+      <span className="text-muted-foreground">{u.pathname + u.search + u.hash}</span>
     </>
   );
 }
@@ -292,6 +355,16 @@ export function ApprovalCard({ a }: { a: Approval }) {
           </span>
         )}
       </h2>
+      {a.tainted && (
+        // Under the title, before the body: 8 px above and below, the card's 12 px gap less 4.
+        <p className="-my-1 flex items-start gap-2 text-meta text-pretty text-warning">
+          <ShieldAlert size={16} className="mt-px shrink-0" />
+          <span>
+            Tämä vuoro luki ulkopuolista sisältöä. Hyväksy vain, jos pyysit{' '}
+            {a.tool === 'chat_read' ? 'lukemista' : 'muutosta'} itse.
+          </span>
+        </p>
+      )}
       {reason && <p className="text-meta text-muted-foreground">{reason}</p>}
       {guard ? (
         <>
@@ -314,16 +387,6 @@ export function ApprovalCard({ a }: { a: Approval }) {
             </div>
           ))}
         </dl>
-      )}
-      {a.tainted && (
-        // 8 px above and below: the card's 12 px gap less 4 (P1 check).
-        <p className="-my-1 flex items-start gap-2 text-meta text-pretty text-warning">
-          <ShieldAlert size={16} className="mt-px shrink-0" />
-          <span>
-            Tämä vuoro luki ulkopuolista sisältöä. Hyväksy vain, jos pyysit{' '}
-            {a.tool === 'chat_read' ? 'lukemista' : 'muutosta'} itse.
-          </span>
-        </p>
       )}
       <div className="flex flex-wrap items-center gap-2 max-md:grid max-md:grid-cols-2">
         <p className="mr-auto flex items-center gap-1.5 text-meta text-muted-foreground tabular-nums max-md:col-span-2">

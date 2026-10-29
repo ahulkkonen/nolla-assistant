@@ -206,7 +206,10 @@ Lines were read on 2026-10-29 at `d3263f1`.
     The diff uses `DiffLine` from `MemoryScreen.tsx`; hunk lines (`@@`) are muted. The diff and
     the YAML clamp at 16 lines with "Näytä lisää", as `Value` does. Tool row icons (phase-21
     decision 5): `fetch_url` `Globe`, `profile_edit` `SlidersHorizontal`, `automation_edit`
-    `CalendarClock`, `chat_read` `MessageSquare`.
+    `CalendarClock`, `chat_read` `MessageSquareText` (final: the lines in the bubble say "text
+    of a chat"). The row word of a finished call comes from its answer: "tallennettu" only for
+    `SAVED`, "haettu" only for a page (the `UNTRUSTED_NOTE` block), `chat_read` "luettu", "N
+    osumaa" or "ei osumia"; any other answer and a row from history say "valmis".
 
 ## Changes to earlier records
 
@@ -291,6 +294,33 @@ layout (two columns under 768); a 200-line diff does not widen the card past the
 - A title search can read a chat that the user did not mean; the card names the chat by id only
   when the model gave the id (decision 18).
 
+## UI review 5
+
+Blind review of `approval-*`, `edit-box` and `version-switcher` (2026-10-29, branch `p24-fix`).
+Measured in `screens.spec.ts` at 390, 1024 and 1440, light and dark.
+
+- Diff and YAML lines wrap (`white-space: pre-wrap`, `overflow-wrap: anywhere`); the block never
+  scrolls sideways, so it is no tab stop. A diff row keeps the 4 px bar and the sign as a hanging
+  gutter: the text starts at x + 24 (measured 24 px, horizontal overflow 0). A YAML row hangs its
+  continuation under the value (indent, list dash and `key: `, in `ch`).
+- The clamp is 16 rows of 20 px (16 lines, or fewer that wrap past 320 px): the fade runs over
+  rows 13 to 16, the link says "Näytä lisää" / "Näytä vähemmän" with `aria-expanded`, 8 px from
+  the box to the link's line box (measured 8 px; on phones the 44 px target overlaps the box).
+- The tainted line sits straight under the title row, before the file line: measured 8 px above
+  and 8 px below.
+- Tool rows stack 4 px apart also across the messages of one turn (a tool-only message, then one
+  that starts with its tool rows).
+- Edit box: the hint has `text-wrap: pretty`; the textarea does not resize by hand and grows with
+  its text up to 320 px.
+- `approval-chat`: the pointer leaves the sidebar before the shot.
+
+Amendments:
+
+1. Decisions 25 and the P1 checks: diff and YAML lines wrap with a hanging gutter. This replaces
+   the block that scrolled sideways; a long line still never widens the card.
+2. Phase-24 P1 check: with the always-visible switcher row, 24 px stay from the row's bottom to
+   the next turn's top (see `phase-24-edit-in-place.md`).
+
 ## Status
 
 Security review fixes (2026-10-29, branch `p25-fix`):
@@ -305,6 +335,10 @@ Security review fixes (2026-10-29, branch `p25-fix`):
 - `profile_edit` probes its content with the sidecar (decision 10).
 - `chat_read` answers fixed text when a read fails, and applies the 20,000-character cap after the
   restore. A call that ends without `execute` (denied, expired, failed) drops its stale-check stamp.
+- Web review fixes (2026-10-29, branch `p24-fix`): the fetch card bolds only `URL.host` and shows
+  userinfo muted (`https://www.hs.fi@evil.com` names `evil.com`); text that does not parse stays
+  plain. A mode card takes its name from the frontmatter or the file id, never from a `name:` in
+  the body. The row words follow the answer (decision 25).
 - Accepted for now: the manifests stage of `infra/Dockerfile.server` copies the broker's
   `package.json`, so the server image installs the broker's dependencies (`undici`, `fastify`,
   `yaml`, `zod`) although the server imports only `net.ts`, which needs none of them.

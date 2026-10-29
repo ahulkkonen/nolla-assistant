@@ -400,10 +400,17 @@ function adopt(st: State, chatId: string, list: Artifact[], first = false): Part
   return { artifacts };
 }
 
-/** Phase-24 decision 14: whether an artifact's content is in one of `messages`. */
-const inMessages = (messages: { text: string }[]) => {
-  const texts = messages.map((m) => stripConfidence(m.text));
-  return (a: Artifact) => texts.some((t) => t.includes(a.content.trimEnd()));
+/**
+ * Phase-24 decision 14: whether an artifact's content is in one of the replies of `messages`. A
+ * user message that quotes the block does not count, and empty content is in none. No message
+ * carries an artifact id (the server's is a hash of the entry id), so the content decides.
+ */
+const inMessages = (messages: Pick<Message, 'role' | 'text'>[]) => {
+  const texts = messages.flatMap((m) => (m.role === 'assistant' ? [stripConfidence(m.text)] : []));
+  return (a: Artifact) => {
+    const content = a.content.trimEnd();
+    return content !== '' && texts.some((t) => t.includes(content));
+  };
 };
 
 /**
@@ -415,7 +422,7 @@ function mergeArtifacts(
   st: State,
   chatId: string,
   server: Artifact[],
-  switched?: { text: string }[],
+  switched?: Pick<Message, 'role' | 'text'>[],
 ): Partial<State> {
   const shown = switched && inMessages(switched);
   const local = (st.artifacts[chatId] ?? []).filter(
@@ -470,6 +477,9 @@ const ERROR_TEXT: Record<string, string> = {
   memory_conflict: 'Teksti on muuttunut, lataa uudelleen.',
   zdr_unavailable: 'Mallilla ei ole ZDR-reittiä. Avaa keskustelu ja valitse toinen malli.',
 };
+
+/** The toast of a `chat.version` that failed or never answered (phase 24). */
+export const VERSION_FAILED = 'Version vaihto epäonnistui. Yritä uudelleen.';
 
 /** Inline failed-reply text; the alert's "Yritä uudelleen" button says what to do. */
 export const FAILED_TEXT = {
@@ -1126,9 +1136,7 @@ export const useStore = create<State>()((set, get) => {
           if (version) set({ pendingVersion: null });
           if ((edit || version) && ['bad_message', 'failed', 'not_found'].includes(msg.code))
             return get().pushError(
-              edit
-                ? 'Muokkaus epäonnistui. Yritä uudelleen.'
-                : 'Version vaihto epäonnistui. Yritä uudelleen.',
+              edit ? 'Muokkaus epäonnistui. Yritä uudelleen.' : VERSION_FAILED,
             );
           // A thinking text that could not load: its row says so, no toast. The answer names the
           // chat, not the message, so every pending row of that chat takes it.

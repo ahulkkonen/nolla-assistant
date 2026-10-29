@@ -36,6 +36,7 @@ import {
   useContext,
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -706,19 +707,30 @@ function EditBox({
   const [value, setValue] = useState(text);
   const ready = !!value.trim() && !busy && canSend;
   const hint = useId();
+  const area = useRef<HTMLTextAreaElement>(null);
+  // Grows with its text (wrapped lines too) up to 320 px, then scrolls; the border is outside
+  // `scrollHeight`.
+  useLayoutEffect(() => {
+    const el = area.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight + el.offsetHeight - el.clientHeight}px`;
+  }, [value]);
   return (
     <div className="flex w-full max-w-[80%] flex-col gap-2 max-md:max-w-full">
       <Textarea
+        ref={area}
         autoFocus
         aria-label="Muokattava viesti"
         value={value}
-        rows={Math.min(8, value.split('\n').length + 1)}
+        rows={1}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === 'Escape') {
-            // The edit only: the global Esc must not also stop a run.
+            // The edit only: the global Esc must not also stop a run. While the edit or the fork
+            // is on its way, the box stays.
             e.preventDefault();
-            onCancel();
+            if (!busy) onCancel();
           }
           if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && ready) {
             e.stopPropagation();
@@ -726,15 +738,15 @@ function EditBox({
           }
         }}
         aria-describedby={`${hint}`}
-        className="field-sizing-fixed resize-y rounded-xl px-4"
+        className="field-sizing-fixed max-h-80 resize-none rounded-xl px-4"
       />
-      <p id={hint} className="text-meta text-muted-foreground">
+      <p id={hint} className="text-meta text-pretty text-muted-foreground">
         {canSend
           ? 'Lähetä tekee viestistä uuden version tähän keskusteluun. Haarauta aloittaa uuden keskustelun.'
           : 'Avaa keskustelu uudelleen, niin voit muokata tätä viestiä.'}
       </p>
       <div className="flex justify-end gap-2">
-        <Button variant="ghost" onClick={onCancel}>
+        <Button variant="ghost" disabled={busy} onClick={onCancel}>
           Peruuta
         </Button>
         <Button variant="outline" disabled={!ready} onClick={() => onFork(value.trim())}>

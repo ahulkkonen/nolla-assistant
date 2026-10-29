@@ -199,6 +199,8 @@ export function Composer() {
   const queued = useStore((s) => (chatId ? s.queued[chatId] : undefined));
   // Phase 12: a message held by the vault, and the text of one that was dropped or given back.
   const held = useStore((s) => (chatId ? s.held[chatId] !== undefined : false));
+  // Phase 24: an edit of this chat is on its way; a send waits for its run (`sendUserMessage`).
+  const editing = useStore((s) => !!chatId && s.pendingEdit?.chatId === chatId);
   const draft = useStore((s) => s.draft);
   useEffect(() => {
     if (!draft || draft.chatId !== chatId) return;
@@ -295,7 +297,7 @@ export function Composer() {
 
   /** Sends, or while a reply runs adds to the chat's queue (phase-20 decision 17). */
   const submit = async () => {
-    if (!canSend) return;
+    if (!canSend || editing) return;
     const body = text.trim();
     const refs = chips.flatMap((c) => (c.ref ? [c.ref] : []));
     setText('');
@@ -343,7 +345,7 @@ export function Composer() {
     const before = text.slice(0, at);
     const sep = before && !/\s$/.test(before) ? ' ' : '';
     const next = `${before}${sep}${spoken}${text.slice(end)}`;
-    if (useStore.getState().sttAutoSend && !running && !uploading) {
+    if (useStore.getState().sttAutoSend && !running && !uploading && !editing) {
       const refs = chips.flatMap((c) => (c.ref ? [c.ref] : []));
       setText('');
       remove(chips.map((c) => c.key));
@@ -446,6 +448,8 @@ export function Composer() {
         )}
         <textarea
           ref={area}
+          // The edit box hands the focus back here (ws.ts `settleRetry`).
+          id="composer"
           rows={1}
           value={text}
           placeholder={held ? 'Odottaa Nimisuojaa' : 'Kirjoita viesti'}
@@ -566,7 +570,11 @@ export function Composer() {
                 label="Lähetä"
                 variant="primary"
                 className="rounded-full border-0"
-                disabled={!canSend}
+                disabled={!canSend && !editing}
+                // `aria-disabled`: the tooltip says why it waits.
+                {...(editing
+                  ? { 'aria-disabled': true, tip: 'Odota, että muokattu viesti lähtee' }
+                  : {})}
                 onPointerDown={keepFocus}
                 onMouseDown={keepFocus}
                 onClick={() => void submit()}
