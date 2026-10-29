@@ -1007,7 +1007,8 @@ test.describe('thread depth', () => {
     await expect(reply.getByText(/^klo \d{1,2}\.\d{2}$/)).toBeVisible();
     await expect(reply.getByText('0,012 €')).toBeVisible();
     // Phase 16: the prompt cache hit rate, here and in the menu.
-    await expect(reply.getByText('3,4 k tokenia · välimuisti 82 %')).toBeVisible();
+    await expect(reply.getByText('3,4 k tokenia')).toBeVisible();
+    await expect(reply.getByText('välimuisti 82 %')).toBeVisible();
     // The desktop header shows the chat's total (phase 16).
     await expect(page.locator('main header').getByText('0,012 € · 3,4 k tokenia')).toBeVisible();
     const row = page.locator('nav li', { hasText: 'Kasvimaa' });
@@ -1919,7 +1920,12 @@ for (const viewport of VIEWPORTS)
       await expect(n.nth(1)).toBeVisible();
       await expect(n.nth(0)).toBeHidden();
       expect(await glyphs()).toEqual(before);
-      /** The N's box against the full stop's: right after it, raised to the prose's cap height. */
+      /**
+       * The N's box against the full stop's and the next word's first glyph (UI review): `right`
+       * from the full stop's end to the N's right edge, `left` from it to the N's left edge,
+       * `clear` from the N to the next glyph, `rise` from the full stop's box bottom to the N's,
+       * and the anchor's width.
+       */
       const placeOf = (i: number) =>
         spans.nth(i).evaluate((el) => {
           const text = el.firstChild as Text;
@@ -1928,23 +1934,38 @@ for (const viewport of VIEWPORTS)
           r.setEnd(text, text.length);
           const end = r.getBoundingClientRect();
           const sup = (el.querySelector('.conf-n') as HTMLElement).getBoundingClientRect();
-          return { dx: sup.x - end.right, rise: end.bottom - sup.bottom };
+          const next = el.nextElementSibling?.firstChild as Text;
+          const at = next.data.search(/\S/);
+          r.setStart(next, at);
+          r.setEnd(next, at + 1);
+          return {
+            right: sup.right - end.right,
+            left: sup.x - end.right,
+            clear: r.getBoundingClientRect().x - sup.right,
+            rise: end.bottom - sup.bottom,
+            anchor: (el.querySelector('.conf-a') as HTMLElement).getBoundingClientRect().width,
+          };
         });
+      // Above the sentence's end: no width of its own, its right edge 1 px before the full stop's
+      // end, 4 px or more clear of the next word, its box above the prose's cap height.
       const place = await placeOf(1);
-      expect(place.dx).toBeCloseTo(0, 0);
-      // Unraised, an 11 px sans box ends about 2 px above the serif's box.
-      expect(place.rise).toBeGreaterThan(4);
+      expect(place.anchor).toBe(0);
+      expect(place.right).toBeCloseTo(-1, 0);
+      expect(place.clear).toBeGreaterThanOrEqual(4);
+      expect(place.rise).toBeGreaterThan(14);
       if (phone) {
         await spans.nth(1).tap();
         await expect(n.nth(1)).toBeHidden();
       }
 
-      // Every N in the text, kept on this device.
+      // Every N in the text, kept on this device: right after its full stop, raised to the
+      // prose's cap height.
       await legend.click();
       await expect(legend).toHaveAttribute('aria-pressed', 'true');
       for (const i of [0, 1, 2]) await expect(n.nth(i)).toBeVisible();
-      // UI review: the inline N sits where the hover N did.
-      expect(await placeOf(1)).toEqual(place);
+      const inline = await placeOf(1);
+      expect(inline.left).toBeCloseTo(0, 0);
+      expect(inline.rise).toBeGreaterThan(4);
       await expect(reply).toHaveText(
         'Tampere on Suomen kolmanneksi suurin kaupunki.9 Sen väkiluku kasvaa ensi vuonna noin prosentin.5 Raitiotie jatkunee Hiedanrantaan vuonna 2031.1',
         { useInnerText: true },

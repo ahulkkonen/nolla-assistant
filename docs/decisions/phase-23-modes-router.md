@@ -100,9 +100,12 @@ Lines were read on 2026-10-29 at `d3263f1` (phase 22 server part and Pi 1.4.0 me
    changed (the `same` check covers both maps).
 8. **The Tila chip.** On screens ≥ 768 px, a chip "Tila" replaces `ConfidenceToggle`. It opens a
    `DropdownMenu` with one `DropdownMenuCheckboxItem` per mode: name (14/20) and description (13/18
-   muted). A toggle keeps the menu open. The chip label lists the active names ("Suora,
-   Perusteellinen"), cut at 200 px with an ellipsis, or "Tila" when none is on; `aria-label` is
-   "Tila: <names>". During a run `NextTurnTip` wraps it. On phones `ChatSwitches` gets a group
+   muted). A toggle keeps the menu open. The chip label has one rule at every width and in every
+   state: the active names ("Perusteellinen, Suora") when they fit the free width (up to 200 px);
+   otherwise exactly one fallback, "Tila · N" (N = the count of modes on). A name is never cut and
+   there is no "+N" form. "Tila" when none is on. `aria-label` is "Tila: <names>", or "Tila · N"
+   with the names as its description. A short toolbar first turns the off auto-approve chip into
+   its shield, then the label into "Tila · N" (UI review 2). During a run `NextTurnTip` wraps it. On phones `ChatSwitches` gets a group
    "Tila" with one `SwitchRow` per mode (description as helper). The chip and the rows work on an
    empty new chat too: the store keeps `pendingModes` and `chat.create` sends it.
    `useModes(chatId)` replaces `useConfidence`; the chip and the sheet share it.
@@ -112,13 +115,18 @@ Lines were read on 2026-10-29 at `d3263f1` (phase 22 server part and Pi 1.4.0 me
    editor refuses any other name. New parts:
    - Each marked span gets a child `<sup class="conf-n">N</sup>`, hidden by default.
    - Hover (hover devices): the N of that sentence shows above its end, absolutely placed (no
-     reflow), 11 px tabular, muted.
+     reflow), 11 px tabular, muted. The N sits in a zero-width inline-block anchor `span.conf-a`
+     (`position: relative`) right after the full stop, so an absolute child does not follow the
+     line breaks of an inline box. Its right edge is 1 px before the full stop's end and its box
+     starts at the prose's cap height: a hidden N reserves no width, and with the word space it is
+     at least 4 px clear of the next glyph (UI review 2).
    - Tap (touch): a tap on a marked sentence toggles its N (`data-show`), through one click
      handler on the Markdown root. A sentence is not a tab stop.
    - Legend: under a reply with markers, after the text and before the action row (8 px gap):
      "Luottamus" (micro 12/16, muted), nine swatches 12×8 px in the `--conf` colours with "1
-     arvaus" and "9 varma" at the ends, and a button "Näytä luvut" (`aria-pressed`). On, every N
-     shows inline as text, so a screen reader reads it. The setting is `pa.confN` in
+     arvaus" and "9 varma" at the ends, and a button "Näytä luvut" (`aria-pressed`): a 28 px pill
+     with a 44 px target, as wide on as off (an invisible checked copy reserves the check's width).
+     On, every N shows inline as text after its full stop, so a screen reader reads it. The setting is `pa.confN` in
      `localStorage`, like `pa.thinking`.
 
 ### Prompt and skills placement
@@ -261,8 +269,8 @@ with `pnpm typecheck` and `pnpm lint`.
 | U1 | Blind UI review | UI reviewer | Opus xhigh | screenshots | the screens of the brief | Every cell 4 or 5 | after P1 |
 
 P1 checks: the chip is 32 px high with 12 px side padding and the same type as the model chip; menu
-rows are at least 40 px (44 under 768) with 8 px padding; the legend row is 16 px high with 4 px
-between swatches; the hover N does not move any glyph (measure the bounding boxes before and after
+rows are at least 40 px (44 under 768) with 8 px padding; the legend row is 28 px high (UI review 2;
+16 px before) with 4 px between swatches; the hover N does not move any glyph (measure the bounding boxes before and after
 hover); the phone "Tila" group uses the 44 px `SwitchRow`.
 
 ## Test plan
@@ -307,3 +315,36 @@ at 390, 1024 and 1440 px, light and dark, against brief section 7 and decisions 
 - **The `renderer` field.** Mode files keep the `renderer` field, and the mode editor shows it. The
   web does not use the field to choose a renderer: it shows confidence shading when the reply text
   holds the markers (decision 9).
+
+## UI review 2
+
+The second blind UI review, 2026-10-29. Measured with Playwright Chromium at 390 and 1440 px.
+
+1. **Tila chip.** One label rule (decision 8). Three modes on at 1440 px give "Tila · 3" (a 92 px
+   chip); two modes at 1024 px give "Perusteellinen, Suora". The "+N" form is gone.
+2. **"Hyväksy automaattisesti".** Off: a ghost 32 px chip with the 16 px `Shield` and the label, or
+   the shield alone (32 × 32 px) when the toolbar has no room. The desktop tooltip states the state
+   ("Hyväksy automaattisesti: pois" or "päällä"), then what the switch does. On: the warning-tint
+   pill with `ShieldAlert`. Phones keep the switch in the model sheet; while it is on, the closed
+   row shows the shield in a 28 px `--warning-subtle` circle. An empty new chat has no chip,
+   because the setting belongs to a chat that exists.
+3. **Waiting line.** See phase-26 decision 4.
+4. **"Näytä luvut".** See decision 9: 28 × 103 px on and off, a 44 px target.
+5. **Hidden N.** See decision 9: the anchor is 0 px wide. The N is 4.78 px (390) and 5.02 px (1440)
+   clear of the next glyph.
+6. Badges in the agents list: "Aliagentit käytössä", "Ei aliagentteja", "Virheellinen".
+7. The agents list has the 1 px top rule at 390 px, as the modes list.
+8. A no-break space joins "välimuisti" and its rate (`withRate`), also in the receipt sheet.
+9. Under 768 px the action-row meta has no cache item (the sheet shows it). No item is cut.
+10. The cost tooltip writes every label with a colon ("Syöte: 1 234").
+11. The tool names in the auto-approve helper and tooltip are mono.
+12. "Aihe-ehdotukset" is in the sidebar's nav block under "Tiedostot".
+13. The phone top bar of an empty chat has a visually hidden h1, so no visible text repeats the
+    name of the ✎ button.
+14. Phone action rows: 44 px targets 8 px apart (a 52 px pitch).
+15. See item 2.
+16. The mode editor's "Esitystapa" label is 14/500, as the field labels.
+17. New screen `error-toast-background` (390 and 1440): a model error in a chat that is not open
+    gives the toast with "Näytä tiedot".
+18. `waiting-queue`, `streaming` and `composer-queue` hold the client's clock. `streaming` and
+    `composer-queue` show the active step without the highlight.

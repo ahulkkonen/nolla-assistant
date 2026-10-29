@@ -125,7 +125,11 @@ export function ModeEditor({ doc, onDone }: { doc: ModeDoc | null; onDone: () =>
           />
         </Field>
         {form.renderer && (
-          <Row label="Esitystapa" helper="Vaihdettavissa välilehdellä Markdown.">
+          // The label in the fields' 14/500 (a settings row's label is 15/400).
+          <Row
+            label={<span className="text-ui font-medium">Esitystapa</span>}
+            helper="Vaihdettavissa välilehdellä Markdown."
+          >
             <span className="font-mono text-[13px]">{form.renderer}</span>
           </Row>
         )}
@@ -207,7 +211,7 @@ export function ModesSection({
                 </div>
               </div>
               {!d.file ? (
-                <Badge variant="destructive">virheellinen</Badge>
+                <Badge variant="destructive">Virheellinen</Badge>
               ) : (
                 list.agents.some((a) => a.profile?.modes.default.includes(d.id)) && (
                   <Badge variant="secondary">Oletus</Badge>

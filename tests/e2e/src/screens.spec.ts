@@ -124,12 +124,23 @@ const axe = async (page: Page, name: string) => {
   else for (const f of found) console.warn(`axe: ${name}: ${f}`);
 };
 
-const shot = async (page: Page, screen: string, w: number, scheme: string) => {
-  // The streaming caret stays solid: its breathing must not decide how a shot shows it. The waiting
-  // line's highlight (phase 26) holds half way across its word, so every shot shows it alike.
+/** The waiting line's highlight (phase 26) held half way across its word, or (`sweep: false`) off. */
+const SWEEP = {
+  on: '.sweep { animation-delay: -0.9s !important; animation-play-state: paused !important; }',
+  off: '.sweep { animation: none !important; background: none !important; -webkit-text-fill-color: currentColor !important; }',
+};
+
+const shot = async (
+  page: Page,
+  screen: string,
+  w: number,
+  scheme: string,
+  { sweep = true }: { sweep?: boolean } = {},
+) => {
+  // The streaming caret stays solid: its breathing must not decide how a shot shows it. The
+  // waiting line's highlight holds still, so every shot shows it alike.
   await page.addStyleTag({
-    content:
-      '.md .caret { animation: none !important; } .sweep { animation-delay: -0.9s !important; animation-play-state: paused !important; }',
+    content: `.md .caret { animation: none !important; } ${sweep ? SWEEP.on : SWEEP.off}`,
   });
   // Let transitions settle.
   await page.waitForTimeout(400);
@@ -375,6 +386,8 @@ for (const scheme of ['light', 'dark'] as const) {
       test('composer-queue', async ({ app, page }) => {
         app.llm.push({ text: LONG });
         const hold = await holdAt(page, 'Kappale 6');
+        // The client's clock held: the row's line shows the same seconds in every shot.
+        await page.clock.setFixedTime(new Date(2026, 9, 29, 10, 0, 0));
         await app.login(page);
         await sendMessage(page, 'Kirjoita pitkä vastaus');
         await hold.reached;
@@ -396,7 +409,7 @@ for (const scheme of ['light', 'dark'] as const) {
           const auto = page.getByRole('button', { name: 'Hyväksy automaattisesti' });
           expect(await auto.evaluate((el) => el.getBoundingClientRect().width)).toBe(32);
         }
-        await shot(page, 'composer-queue', vp.width, scheme);
+        await shot(page, 'composer-queue', vp.width, scheme, { sweep: false });
         hold.release();
       });
 
@@ -408,11 +421,12 @@ for (const scheme of ['light', 'dark'] as const) {
         await flipMode(page, 'Luottamus', true);
         await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
         const box = (l: Locator) => l.evaluate((el) => el.getBoundingClientRect().toJSON());
-        // P1: the legend row is 16 px (phones: two 16 px lines 8 apart), 4 px between 12 × 8
-        // swatches, 8 px to the text above and to the action row below.
+        // P1 and UI review: the legend row is 28 px, the button's pill (phones: the pill's line
+        // and the 16 px scale 8 apart), 4 px between 12 × 8 swatches, 8 px to the text above and
+        // to the action row below.
         const legend = page.getByRole('button', { name: 'Näytä luvut' }).locator('..');
         const row = await box(legend);
-        expect(row.height).toBe(vp.width < 768 ? 40 : 16);
+        expect(row.height).toBe(vp.width < 768 ? 52 : 28);
         expect(row.top - (await box(reply)).bottom).toBe(8);
         expect(
           (await box(legend.locator('xpath=following-sibling::div[1]'))).top - row.bottom,
@@ -421,8 +435,21 @@ for (const scheme of ['light', 'dark'] as const) {
         await expect(swatches).toHaveCount(9);
         const [a, b] = [await box(swatches.nth(0)), await box(swatches.nth(1))];
         expect([a.width, a.height, b.x - a.right]).toEqual([12, 8, 4]);
-        const target = await box(page.getByRole('button', { name: 'Näytä luvut' }));
-        expect(target.height).toBe(16);
+        // A 28 px pill, as wide on as off; its target is 44 px (`::after`).
+        const button = page.getByRole('button', { name: 'Näytä luvut' });
+        const off = await box(button);
+        expect(off.height).toBe(28);
+        expect(
+          await button.evaluate((el) => {
+            const after = getComputedStyle(el, '::after');
+            return el.getBoundingClientRect().height - 2 * Number.parseFloat(after.top);
+          }),
+        ).toBe(44);
+        await button.click();
+        const on = await box(button);
+        expect([on.width, on.height]).toEqual([off.width, off.height]);
+        await button.click();
+        await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
         const sentence = reply.locator('span.conf').nth(1);
         if (vp.width < 768) await sentence.tap();
         else await sentence.hover();
@@ -526,8 +553,8 @@ for (const scheme of ['light', 'dark'] as const) {
           expect(await chip.evaluate((el) => getComputedStyle(el).paddingLeft)).toBe('12px');
           await chip.click();
           await page.getByRole('menuitemcheckbox', { name: /^Luottamus/ }).click();
-          // Three names pass 200 px: the first and a count, the whole list as the description.
-          await expect(chip).toHaveAccessibleName('Tila: Luottamus +2');
+          // Three names pass 200 px: "Tila · 3", the whole list as the description.
+          await expect(chip).toHaveAccessibleName('Tila · 3');
           await expect(chip).toHaveAccessibleDescription('Luottamus, Perusteellinen, Suora');
           for (const r of await page.getByRole('menuitemcheckbox').all()) {
             expect((await box(r)).height).toBeGreaterThanOrEqual(40);
@@ -1189,14 +1216,24 @@ for (const scheme of ['light', 'dark'] as const) {
         await shot(page, 'auto-approve-on', vp.width, scheme);
       });
 
-      // UI review: with the sheet closed, the phone's chip row shows a warning shield.
+      // UI review: with the sheet closed, the phone's chip row shows a warning shield in a 28 px
+      // tinted circle.
       if (vp.width === 390)
         test('auto-approve-on-closed', async ({ app, page }) => {
           await helloChat(app, page);
           await flip(page, 'Hyväksy automaattisesti', true);
-          await expect(
-            page.getByRole('img', { name: 'Hyväksytään automaattisesti' }),
-          ).toBeVisible();
+          const shield = page.getByRole('img', { name: 'Hyväksytään automaattisesti' });
+          await expect(shield).toBeVisible();
+          expect(
+            await shield.evaluate((el) => {
+              const r = el.getBoundingClientRect();
+              return [
+                r.width,
+                r.height,
+                Number.parseFloat(getComputedStyle(el).borderRadius) >= 14,
+              ];
+            }),
+          ).toEqual([28, 28, true]);
           await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
           await shot(page, 'auto-approve-on-closed', vp.width, scheme);
         });
@@ -1664,12 +1701,14 @@ for (const scheme of ['light', 'dark'] as const) {
         test('streaming', async ({ app, page }) => {
           app.llm.push({ text: LONG });
           const hold = await holdAfter(page, 'message.delta');
+          // The client's clock held: the row's line shows the same seconds in every shot.
+          await page.clock.setFixedTime(new Date(2026, 9, 29, 10, 0, 0));
           await app.login(page);
           await send(page, 'Kirjoita pitkä vastaus');
           await hold.reached;
           await expect(page.getByRole('button', { name: 'Pysäytä' })).toBeVisible();
           await expect(page.locator('.md').last()).not.toBeEmpty();
-          await shot(page, 'streaming', vp.width, scheme);
+          await shot(page, 'streaming', vp.width, scheme, { sweep: false });
           hold.release();
           await expect(page.getByRole('button', { name: 'Lähetä', exact: true })).toBeVisible();
         });
@@ -1721,6 +1760,44 @@ for (const scheme of ['light', 'dark'] as const) {
             page.getByRole('dialog', { name: 'Mallikutsu epäonnistui (400)' }),
           ).toBeVisible();
           await shot(page, 'model-error-detail', vp.width, scheme);
+        });
+
+        // UI review: a model error in a chat that is not open is a toast with "Näytä tiedot".
+        test('error-toast-background', async ({ app, page }) => {
+          app.llm.push({ text: 'Hei.', match: /^Moi$/ });
+          app.llm.push({ match: /^Hei$/, error: { status: 400, message: 'context length' } });
+          // The failed call's error waits until the first chat is open again; the status and the
+          // provider's message are fixed for a stable shot.
+          let held = '';
+          let deliver: (m: string) => void = () => {};
+          let seen: () => void = () => {};
+          const failed = new Promise<void>((r) => (seen = r));
+          await page.routeWebSocket(/\/ws$/, (ws) => {
+            const server = ws.connectToServer();
+            deliver = (m) => ws.send(m);
+            server.onMessage((m) => {
+              const msg = typeof m === 'string' ? JSON.parse(m) : undefined;
+              if (msg?.type !== 'error' || msg.code !== 'llm_failed') return ws.send(m);
+              held = JSON.stringify({ ...msg, status: 400, detail: CONTEXT_ERROR });
+              seen();
+            });
+          });
+          await app.login(page);
+          await send(page, 'Moi');
+          await expect(page.locator('.md').last()).toHaveText('Hei.');
+          await page.getByRole('button', { name: 'Uusi keskustelu' }).first().click();
+          await send(page, 'Hei');
+          await failed;
+          await showSidebar(page);
+          await page
+            .locator('nav li > button', { hasText: 'Moi' })
+            .click({ position: { x: 16, y: 16 } });
+          await expect(page.locator('.md').last()).toHaveText('Hei.');
+          deliver(held);
+          await expect(page.getByText('Mallikutsu epäonnistui (400)')).toBeVisible();
+          await expect(page.getByRole('button', { name: 'Näytä tiedot' })).toBeVisible();
+          await page.mouse.move(vp.width / 2, 8);
+          await shot(page, 'error-toast-background', vp.width, scheme);
         });
 
         test('composer-attachments', async ({ app, page }) => {

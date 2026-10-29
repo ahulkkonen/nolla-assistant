@@ -90,7 +90,8 @@ Phase-27 and UI-fix review, 2026-10-29. Measured with Playwright Chromium; contr
    still 7 px short. The `auto-approve-on-closed` screen (Auto) keeps the shield.
 8. "Näytä luvut" on: a 12 px check before the text (the segmented-control pattern). The on and off
    fills differ by 1.15:1 (light) and 1.42:1 (dark). The pill grows 16 px to the right (79 to
-   95 px), at 1280 and 390; the label, the scale and the rows do not move.
+   95 px), at 1280 and 390; the label, the scale and the rows do not move. Changed in UI review 2:
+   the pill is 28 px high (44 px target) and 103 px wide on and off.
 9. Not changed: the live reply keeps its key by place. The key goes to the message that came out
    of the live view: a tool-only final gets the live tool rows (an open row stays open), and the
    text final gets the reply's DOM (decision 1). With a constant `live` key, the open row closed at

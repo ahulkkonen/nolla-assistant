@@ -453,7 +453,7 @@ export function Sidebar({
           </kbd>
         )}
       </div>
-      {/* A destination, not a chat row: outside the list (`nav li > button` counts chats). */}
+      {/* Destinations, not chat rows: outside the list (`nav li > button` counts chats). */}
       <div className="mx-2 mb-1 shrink-0">
         <Button
           variant="ghost"
@@ -468,6 +468,28 @@ export function Sidebar({
           <FolderOpen size={16} className="text-muted-foreground" />
           Tiedostot
         </Button>
+        {proposals > 0 && (
+          <Button
+            variant="ghost"
+            aria-current={topicsScreen ? 'page' : undefined}
+            onClick={() => {
+              useStore.getState().setScreen('topics');
+              onNavigate?.();
+            }}
+            className={cn(
+              'w-full justify-start gap-2 px-3 font-normal hover:bg-sidebar-accent',
+              rowH,
+              topicsScreen && 'bg-sidebar-accent font-medium',
+            )}
+          >
+            <Lightbulb size={16} className="text-muted-foreground" />
+            <span className="min-w-0 flex-1 truncate text-left">Aihe-ehdotukset</span>
+            <Badge className="tabular-nums">
+              {proposals}
+              <span className="sr-only"> uutta</span>
+            </Badge>
+          </Button>
+        )}
       </div>
       {archivedView && <p className={groupLabel}>Arkistoidut</p>}
       {loaded && !chats.length && (
@@ -528,30 +550,6 @@ export function Sidebar({
           </li>
         )}
         {loose.map(row)}
-        {proposals > 0 && (
-          <li className="mx-2 mt-2">
-            <button
-              type="button"
-              aria-current={topicsScreen ? 'page' : undefined}
-              onClick={() => {
-                useStore.getState().setScreen('topics');
-                onNavigate?.();
-              }}
-              className={cn(
-                'flex w-full items-center gap-2 rounded-md px-3 text-ui hover:bg-sidebar-accent',
-                rowH,
-                topicsScreen && 'bg-sidebar-accent font-medium',
-              )}
-            >
-              <Lightbulb size={16} className="shrink-0 text-muted-foreground" />
-              <span className="min-w-0 flex-1 truncate text-left">Aihe-ehdotukset</span>
-              <Badge className="tabular-nums">
-                {proposals}
-                <span className="sr-only"> uutta</span>
-              </Badge>
-            </button>
-          </li>
-        )}
       </ul>
       <div className="flex min-h-13 shrink-0 items-center gap-1 border-t border-sidebar-border px-2 pb-[env(safe-area-inset-bottom)]">
         <Button

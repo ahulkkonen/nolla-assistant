@@ -20,7 +20,10 @@ record changes them.
    (`message.thinking`) or "työkalu" (`tool.start` to `tool.end`), 3 writing (first delta). A later
    round queues again and adds to the queue total. The client does not use `at`.
 4. **Line.** `WaitingLine.tsx`: meta 13/18, muted, arrows with 6 px gaps (the mock), the active step
-   in `--foreground` with a 1.8 s highlight (`.sweep`). Reduced motion: colour only. A visually
+   in `--foreground` with a 1.8 s highlight (`.sweep`). Reduced motion: colour only. UI review 2:
+   past and later steps are both `--muted-foreground` at 400 (5.72:1 light, 6.66:1 dark on
+   `--background`), the active step `--foreground` at 500 (17.5:1, 12.7:1), and the arrow before a
+   later step `--chart-faint`; `--pending-foreground` is gone. A visually
    hidden `role="status"` ("Vastaus tulossa") gets the step word only, never the seconds.
 5. **Hand-over.** Before the first token the line fills the 28 px first line. The text fades in at
    that place and the line fades out (150 ms). The line continues at the end of the reserved action

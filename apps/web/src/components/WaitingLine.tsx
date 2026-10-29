@@ -7,9 +7,10 @@ import { useModel } from '../useModel.ts';
 const cap = (w: string) => (w[0]?.toUpperCase() ?? '') + w.slice(1);
 
 /**
- * Phase 26 ("Vaiheet"): steps joined by arrows in meta 13/18. Past steps are muted, the active
- * step is in `--foreground` with a slow highlight across its word (1.8 s; with reduced motion only
- * the colour), later steps are lighter (`--pending-foreground`). The first word starts with a
+ * Phase 26 ("Vaiheet"): steps joined by arrows in meta 13/18. Past and later steps are muted
+ * (400); the active step is in `--foreground` at 500 with a slow highlight across its word (1.8 s;
+ * with reduced motion only the colour). The arrow before a later step is fainter
+ * (`--chart-faint`), so the line reads done → active → to come. The first word starts with a
  * capital letter.
  */
 function PhaseLine({ steps }: { steps: Step[] }) {
@@ -20,12 +21,12 @@ function PhaseLine({ steps }: { steps: Step[] }) {
           {i > 0 && (
             <>
               <span className="sr-only">,</span>
-              <span aria-hidden="true" className={cn(s.later && 'text-(--pending-foreground)')}>
+              <span aria-hidden="true" className={cn(s.later && 'text-(--chart-faint)')}>
                 →
               </span>
             </>
           )}
-          <span className={cn(s.on && 'text-foreground', s.later && 'text-(--pending-foreground)')}>
+          <span className={cn(s.on && 'font-medium text-foreground')}>
             <span className={cn('inline-block', s.on && 'sweep')}>{i ? s.word : cap(s.word)}</span>
             {s.ms !== undefined && ` ${duration(s.ms)}`}
           </span>

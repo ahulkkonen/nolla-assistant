@@ -56,9 +56,8 @@ const refChips = (refs: AttachmentRef[]): Chip[] =>
 
 /**
  * How far the composer toolbar gives way (UI review): 0 every chip with its text; 1 the off
- * auto-approve chip is a shield (phones: the on shield goes, the sheet shows it); 2 the Tila label
- * is also its first name and a count; 3 the Tila label is "Tila · 2" (a column beside the side
- * panel), so the model's name stays whole. A step is taken while the free space before the
+ * auto-approve chip is its shield (phones: the on shield goes, the sheet shows it); 2 the Tila label
+ * is "Tila · 2", so the model's name stays whole. A step is taken while the free space before the
  * right-hand group (mic, send) is below zero, that is, the model chip would truncate (`data-fit`
  * marks its name); it is undone once the free space holds what the step saved. Re-checks when the
  * toolbar or an item changes size, or an item comes or goes.
@@ -66,7 +65,7 @@ const refChips = (refs: AttachmentRef[]): Chip[] =>
 function useToolbarFit(bar: RefObject<HTMLDivElement | null>) {
   const [level, setLevel] = useState(0);
   // `pending`: a step waits for its render; `before`: the free space before it.
-  const s = useRef({ level: 0, pending: false, before: 0, saved: [0, 0, 0, 0] }).current;
+  const s = useRef({ level: 0, pending: false, before: 0, saved: [0, 0, 0] }).current;
   /** The auto margin of the right-hand group, less what the model name lacks. */
   const freeOf = (el: HTMLElement) => {
     const right = el.lastElementChild;
@@ -77,7 +76,7 @@ function useToolbarFit(bar: RefObject<HTMLDivElement | null>) {
   const check = () => {
     if (!bar.current || s.pending) return;
     const free = freeOf(bar.current);
-    if (free < 0 && s.level < 3) {
+    if (free < 0 && s.level < 2) {
       s.before = free;
       s.level += 1;
     } else if (s.level > 0 && free >= (s.saved[s.level] ?? 0) + 1) {
@@ -120,19 +119,24 @@ function useToolbarFit(bar: RefObject<HTMLDivElement | null>) {
 }
 
 /**
- * "Hyväksy automaattisesti" (phase-21 decision 7). Off: a ghost chip, or (`compact`) a 32 px
- * shield toggle when the toolbar has no room for its text. On: its text and an outline in the
- * warning colour. Phones: the model sheet holds the switch; the row shows a warning shield while
+ * "Hyväksy automaattisesti" (phase-21 decision 7). Off: a ghost 32 px chip with `Shield` and its
+ * text, or (`compact`) the shield alone when the toolbar has no room for the text. On: `ShieldAlert`,
+ * its text and the warning tint. The tooltip names the state, then what the switch does. Phones:
+ * the model sheet holds the switch; the row shows the warning shield in a 28 px tinted circle while
  * it is on, unless (`compact`) the model's name would be cut.
  */
 function AutoApproveChip({ chatId, compact }: { chatId: string; compact: boolean }) {
   const auto = useAutoApprove(chatId);
   const mobile = useMobile();
   if (!auto) return null;
-  const { on, which, tip, toggle } = auto;
+  const { on, which, tip, help, toggle } = auto;
   if (mobile)
     return on && !compact ? (
-      <span role="img" aria-label="Hyväksytään automaattisesti" className="shrink-0 px-1">
+      <span
+        role="img"
+        aria-label="Hyväksytään automaattisesti"
+        className="flex size-7 shrink-0 items-center justify-center rounded-full bg-warning-subtle"
+      >
         <ShieldAlert size={16} className="text-warning" />
       </span>
     ) : null;
@@ -141,45 +145,37 @@ function AutoApproveChip({ chatId, compact }: { chatId: string; compact: boolean
     // No tooltips on touch: the toast names the tools.
     if (!on && touch) useStore.getState().notify(`Ajetaan ${which}`);
   };
-  if (compact && !on)
-    return (
-      <Tip
-        // The control's name, then what it does (a block box: the kit's tooltip is a flex row).
-        className="block"
-        label={
-          <>
-            Hyväksy automaattisesti
-            <br />
-            {tip}
-          </>
-        }
-      >
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label="Hyväksy automaattisesti"
-          aria-pressed={false}
-          onClick={click}
-          className="rounded-full text-muted-foreground hover:text-foreground"
-        >
-          <Shield size={16} />
-        </Button>
-      </Tip>
-    );
+  const bare = compact && !on;
+  const state = `Hyväksy automaattisesti: ${on ? 'päällä' : 'pois'}`;
+  const Icon = on ? ShieldAlert : Shield;
   return (
-    <Tip label={tip}>
+    <Tip
+      // The state, then what it does (a block box: the kit's tooltip is a flex row).
+      className="block"
+      ariaLabel={`${state}. ${tip}`}
+      label={
+        <>
+          {state}
+          <br />
+          {help}
+        </>
+      }
+    >
       <Button
         variant={on ? 'outline' : 'ghost'}
+        size={bare ? 'icon-sm' : 'default'}
         aria-pressed={on}
+        {...(bare ? { 'aria-label': 'Hyväksy automaattisesti' } : {})}
         onClick={click}
         className={cn(
-          'h-8 shrink-0 rounded-full px-3 font-normal text-muted-foreground hover:text-foreground',
+          'shrink-0 rounded-full font-normal text-muted-foreground hover:text-foreground',
+          !bare && 'h-8',
           on &&
             'border-warning-line bg-warning-subtle text-warning hover:bg-warning-subtle hover:text-warning aria-pressed:bg-warning-subtle',
         )}
       >
-        {on && <ShieldAlert size={16} aria-hidden="true" />}
-        Hyväksy automaattisesti
+        <Icon size={16} aria-hidden="true" />
+        {!bare && 'Hyväksy automaattisesti'}
       </Button>
     </Tip>
   );
@@ -529,11 +525,7 @@ export function Composer() {
           />
           <AgentPicker />
           <ModelPicker />
-          <ModesChip
-            chatId={chatId}
-            running={running}
-            size={fit >= 3 ? 'bare' : fit >= 2 ? 'short' : 'auto'}
-          />
+          <ModesChip chatId={chatId} running={running} compact={fit >= 2} />
           {chatId && <AutoApproveChip chatId={chatId} compact={fit >= 1} />}
           <div className="ml-auto flex shrink-0 items-center gap-2">
             <MicButton onText={insertTranscript} onState={setMic} meter={meter} />

@@ -51,10 +51,13 @@ export function cacheRate(u: CacheCounts | undefined) {
   return (rate < 0.01 || rate > 0.99 ? finePercent : wholePercent).format(rate);
 }
 
-/** `text` + " · välimuisti 82 %" when the counts give a rate (meta, menu, header, Käyttö). */
+/**
+ * `text` + " · välimuisti 82 %" when the counts give a rate (meta, menu, header, Käyttö); a
+ * no-break space keeps the word and the rate on one line.
+ */
 export const withRate = (text: string, u: CacheCounts | undefined) => {
   const rate = cacheRate(u);
-  return rate ? `${text} · välimuisti ${rate}` : text;
+  return rate ? `${text} · välimuisti\u00a0${rate}` : text;
 };
 
 /** Tokens of a call: input, output and both cache parts, as Pi's `totalTokens`. */

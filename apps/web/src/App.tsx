@@ -277,7 +277,10 @@ function Shell() {
             <IconButton label="Valikko" onClick={() => setSidebarOpen(true)}>
               <Menu size={20} className="size-5" />
             </IconButton>
-            <h1 className="min-w-0 flex-1 truncate text-center text-heading">{title}</h1>
+            {/* An empty chat: no visible title, so it does not repeat the ✎ button's name. */}
+            <h1 className="min-w-0 flex-1 truncate text-center text-heading">
+              {screen === 'chat' && empty ? <span className="sr-only">{title}</span> : title}
+            </h1>
             <IconButton label={UNTITLED} onClick={() => useStore.getState().setActive(null)}>
               <SquarePen size={20} className="size-5" />
             </IconButton>

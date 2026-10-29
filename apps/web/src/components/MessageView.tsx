@@ -330,9 +330,10 @@ const confLevel = (n: number) => Math.round(CONF_FLOOR + ((n - 1) * (100 - CONF_
 /**
  * Rehype plugin (phase-21 decision 4): each confidence marker `⟦N⟧` goes, and the text before it
  * (from the previous marker or the start of the text node) gets a span whose `--conf` runs from
- * CONF_FLOOR (N=1) to 100 (N=9), and its N as a last child `sup.conf-n` that CSS shows on hover,
- * on a tap or with "Näytä luvut" (phase-23 decision 9). Code stays as written. An unterminated
- * marker at the end of the last text node (a reply still streaming) is hidden.
+ * CONF_FLOOR (N=1) to 100 (N=9), and its N as a last child `sup.conf-n` in a zero-width anchor
+ * `span.conf-a`, which CSS shows on hover, on a tap or with "Näytä luvut" (phase-23 decision 9).
+ * Code stays as written. An unterminated marker at the end of the last text node (a reply still
+ * streaming) is hidden.
  */
 export const rehypeConfidence = () => (tree: HNode) => {
   let last: HNode | undefined;
@@ -356,9 +357,16 @@ export const rehypeConfidence = () => (tree: HNode) => {
             { type: 'text', value: value.slice(at, m.index) },
             {
               type: 'element',
-              tagName: 'sup',
-              properties: { className: ['conf-n'] },
-              children: [{ type: 'text', value: String(n) }],
+              tagName: 'span',
+              properties: { className: ['conf-a'] },
+              children: [
+                {
+                  type: 'element',
+                  tagName: 'sup',
+                  properties: { className: ['conf-n'] },
+                  children: [{ type: 'text', value: String(n) }],
+                },
+              ],
             },
           ],
         });
@@ -438,14 +446,14 @@ const toggleN = (e: ReactMouseEvent) => {
 };
 
 /**
- * Phase-23 decision 9: the scale under a reply with markers (micro, muted, 16 px) and "Näytä luvut",
- * which puts every N in the text (`pa.confN`). Phones: two lines, "Luottamus" and the button, then
- * the scale; the button's 44 px target reaches past its 16 px pill, so the gaps stay 8 px.
+ * Phase-23 decision 9: the scale under a reply with markers (micro, muted) and "Näytä luvut", which
+ * puts every N in the text (`pa.confN`). One 28 px row; phones: "Luottamus" and the button, then
+ * the scale. The button's 44 px target reaches 8 px past its 28 px pill, so the gaps stay 8 px.
  */
 function ConfidenceLegend() {
   const on = useStore((s) => s.showConfN);
   return (
-    <div className="flex h-4 items-center gap-3 text-micro text-muted-foreground max-md:h-auto max-md:flex-wrap max-md:gap-y-2">
+    <div className="flex h-7 items-center gap-3 text-micro text-muted-foreground max-md:h-auto max-md:flex-wrap max-md:gap-y-2">
       <span>Luottamus</span>
       <span className="flex items-center gap-2 tabular-nums max-md:order-last max-md:basis-full">
         <span>1 arvaus</span>
@@ -464,13 +472,19 @@ function ConfidenceLegend() {
         type="button"
         aria-pressed={on}
         onClick={() => useStore.getState().setShowConfN(!on)}
-        // A 16 px pill with a border; on: the fill and a 12 px check before the text (the brief's
-        // segmented control), the pill grows to the right. The target is 32 px (44 on phones: 8 up
-        // to the text above, 20 down over the scale) through `::after`.
-        className="relative inline-flex h-4 items-center gap-1 rounded-full border border-border px-1.5 text-foreground transition-colors duration-100 after:absolute after:inset-x-0 after:-inset-y-2 hover:bg-accent aria-pressed:bg-accent max-md:after:-top-2 max-md:after:-bottom-5"
+        // A 28 px pill with a border; on: the fill and a 12 px check before the text (the brief's
+        // segmented control). An invisible checked copy shares the grid cell, so the pill keeps
+        // its width in both states. The 44 px target is `::after`.
+        className="relative grid h-7 items-center rounded-full border border-border px-2.5 text-foreground transition-colors duration-100 after:absolute after:inset-x-0 after:-inset-y-2 hover:bg-accent aria-pressed:bg-accent"
       >
-        {on && <Check size={12} className="shrink-0" />}
-        Näytä luvut
+        <span aria-hidden="true" className="invisible col-start-1 row-start-1 flex gap-1">
+          <Check size={12} />
+          Näytä luvut
+        </span>
+        <span className="col-start-1 row-start-1 flex items-center justify-center gap-1">
+          {on && <Check size={12} className="shrink-0" />}
+          Näytä luvut
+        </span>
       </button>
     </div>
   );
@@ -810,7 +824,8 @@ export function MessageView({
             className={cn(
               // ≥ 768 a column under 620 px (Thread's `col` container) puts the receipt on its own
               // line; phones keep the receipt in the long-press sheet, so the meta keeps its line.
-              'flex min-h-8 items-center gap-1 transition-opacity duration-100 [-webkit-touch-callout:none] max-md:min-h-11 md:@max-[620px]/col:flex-wrap',
+              // Phones: 44 px targets 8 px apart (brief 7.7).
+              'flex min-h-8 items-center gap-1 transition-opacity duration-100 [-webkit-touch-callout:none] max-md:min-h-11 max-md:gap-2 md:@max-[620px]/col:flex-wrap',
               // A user turn's row, and an older reply's, sits in the 40 px gap below it (Thread.tsx).
               (user || (!latest && !live)) && 'absolute top-full mt-1',
               // A reply's row spans the column: its receipt sits at the end.

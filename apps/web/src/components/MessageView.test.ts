@@ -10,7 +10,7 @@ const html = (md: string) =>
   renderToStaticMarkup(createElement(Markdown, { rehypePlugins: [rehypeConfidence] }, md));
 // Phase-23 decision 9: each span ends with its N, which CSS shows on hover, a tap or "Näytä luvut".
 const conf = (p: number, n: number, text: string) =>
-  `<span class="conf" style="--conf:${p}" title="Luottamus ${n}/9">${text}<sup class="conf-n">${n}</sup></span>`;
+  `<span class="conf" style="--conf:${p}" title="Luottamus ${n}/9">${text}<span class="conf-a"><sup class="conf-n">${n}</sup></span></span>`;
 
 test('rehypeConfidence: each sentence before its marker gets --conf and its N, the marker goes', () => {
   expect(html('Varma.⟦9⟧ Arvaus.⟦1⟧ Keskeltä.⟦5⟧ Loppu ilman')).toBe(
@@ -42,7 +42,10 @@ test('legend: a reply with markers shows the scale and "Näytä luvut"; others h
   expect(html).toContain('style="--conf:100"');
   // Phones hide the scale's words visually; the text keeps them.
   expect(html.replace(/<[^>]+>/g, '')).toContain('Luottamus1 arvaus9 varmaNäytä luvut');
-  expect(html).toMatch(/<button type="button" aria-pressed="false"[^>]*>Näytä luvut<\/button>/);
+  // The pill's width comes from an invisible checked copy that screen readers skip.
+  expect(html).toMatch(
+    /<button type="button" aria-pressed="false"[^>]*><span aria-hidden="true" class="invisible[^"]*"><svg[^>]*>.*?<\/svg>Näytä luvut<\/span><span[^>]*>Näytä luvut<\/span><\/button>/,
+  );
   expect(html).not.toContain('data-conf-n');
   expect(view('assistant', 'Ei merkintöjä.')).not.toContain('Näytä luvut');
   expect(view('user', 'Varma.⟦9⟧')).not.toContain('Näytä luvut');

@@ -293,7 +293,7 @@ describe('cacheRate and withRate', () => {
   });
   it('appends the rate when there is one', () => {
     expect(withRate('3 k', { input: 1, cacheRead: 3, cacheWrite: 0 })).toBe(
-      '3 k · välimuisti 75 %',
+      '3 k · välimuisti\u00a075\u00a0%',
     );
     expect(withRate('3 k', {})).toBe('3 k');
   });

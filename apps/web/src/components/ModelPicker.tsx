@@ -10,6 +10,7 @@ import {
   Star,
 } from 'lucide-react';
 import {
+  Fragment,
   type KeyboardEvent,
   type ReactElement,
   type ReactNode,
@@ -129,10 +130,24 @@ export function useAutoApprove(chatId: string) {
   if (!auto?.tools.length) return null;
   const { on, tools } = auto;
   const which = `ilman hyväksyntää: ${tools.join(', ')}`;
+  const lead = on ? 'Ajetaan' : 'Kun päällä, ajetaan';
   return {
     on,
     which,
-    tip: on ? `Ajetaan ${which}` : `Kun päällä, ajetaan ${which}`,
+    /** What the switch does, as text (the tooltip's text for screen readers). */
+    tip: `${lead} ${which}`,
+    /** The same with the tool names as code in mono (brief 7.9). */
+    help: (
+      <>
+        {lead} ilman hyväksyntää:{' '}
+        {tools.map((t, i) => (
+          <Fragment key={t}>
+            {i > 0 && ', '}
+            <span className="font-mono">{t}</span>
+          </Fragment>
+        ))}
+      </>
+    ),
     toggle: () => send({ type: 'chat.setAutoApprove', chatId, on: !on }),
   };
 }
@@ -170,45 +185,37 @@ function useFits(ref: RefObject<HTMLElement | null>, text: string, max: number, 
 /**
  * Phase-23 decision 8: the "Tila" chip (≥ 768; phones have the model sheet's rows). One check box
  * per mode, and a toggle keeps the menu open. The label lists the active modes when they fit in
- * 200 px, else the first and a count ("Perusteellinen +1"), or "Tila"; it is never cut inside a
- * name. A toolbar without room turns the auto-approve chip into a shield first, then asks for the
- * short label, then for "Tila · 2" (`size`, Composer.tsx).
+ * 200 px and the toolbar has room, else "Tila · 2"; "Tila" when none is on. It is never cut inside
+ * a name. A toolbar without room turns the auto-approve chip into a shield first, then asks for
+ * "Tila · 2" (`compact`, Composer.tsx).
  */
 export function ModesChip({
   chatId,
   running,
-  size = 'auto',
+  compact = false,
 }: {
   chatId: string | null;
   running: boolean;
-  /**
-   * `auto`: the list when it fits in 200 px; `short`: the first name and a count (the toolbar has
-   * no room even with the auto-approve shield); `bare`: "Tila · 2".
-   */
-  size?: 'auto' | 'short' | 'bare';
+  /** The toolbar has no room for the names even with the auto-approve shield. */
+  compact?: boolean;
 }) {
   const { all, active, names, toggle } = useModes(chatId);
   const label = useRef<HTMLSpanElement>(null);
   // Called before the early return: the modes may load after the first render.
   const fits = useFits(label, names, 200, all.length > 0);
   if (!all.length) return null;
-  const on = all.filter((m) => active.includes(m.id));
-  const shown = !on.length
-    ? 'Tila'
-    : size === 'bare'
-      ? `Tila · ${on.length}`
-      : (fits && size === 'auto') || on.length === 1
-        ? names
-        : `${on[0]?.name} +${on.length - 1}`;
+  const on = all.filter((m) => active.includes(m.id)).length;
+  const full = on > 0 && fits && !compact;
+  const shown = !on ? 'Tila' : full ? names : `Tila · ${on}`;
   return (
     <DropdownMenu modal={false}>
       <NextTurnTip running={running}>
         <DropdownMenuTrigger asChild>
           <Button
             variant="ghost"
-            // The name holds the visible label (axe); a shortened one adds the whole list.
-            aria-label={!on.length || size === 'bare' ? shown : `Tila: ${shown}`}
-            {...(shown !== names && on.length ? { 'aria-description': names } : {})}
+            // The name holds the visible label (axe); "Tila · 2" adds the whole list.
+            aria-label={full ? `Tila: ${names}` : shown}
+            {...(on && !full ? { 'aria-description': names } : {})}
             className={cn(CHIP, 'shrink-0 max-md:hidden')}
           >
             <span ref={label} className="whitespace-nowrap">
@@ -574,7 +581,7 @@ function ChatSwitches({ chatId }: { chatId: string | null }) {
               )
             }
             label="Hyväksy automaattisesti"
-            helper={auto.tip}
+            helper={auto.help}
             checked={auto.on}
             onToggle={auto.toggle}
           />
@@ -597,7 +604,7 @@ function SwitchRow({
 }: {
   icon?: ReactNode;
   label: string;
-  helper?: string;
+  helper?: ReactNode;
   checked: boolean;
   onToggle: () => void;
 }) {

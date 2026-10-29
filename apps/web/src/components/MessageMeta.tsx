@@ -25,8 +25,10 @@ export function metaText(createdAt: string, usage: CallUsage | undefined, fx: Fx
 
 /**
  * The action row meta (phase-13 UI): "klo 17.20 · 0,012 € · 3,4 k tokenia · välimuisti 82 %" (the
- * cache hit rate is phase 16). The time's tooltip
- * gives the full date; the cost's gives the model, the token parts and an estimate's note.
+ * cache hit rate is phase 16; phones leave it to the long-press sheet). The row ends on a whole
+ * item: each item keeps its "·" and wraps whole to a second line that the one-line box hides; its
+ * 4 px padding keeps the focus ring. The time's tooltip gives the full date; the cost's gives the
+ * model, the token parts and an estimate's note.
  */
 export function MessageMeta({
   createdAt,
@@ -42,51 +44,62 @@ export function MessageMeta({
   const fx = useStore((s) => s.fx);
   const catalog = useStore((s) => s.models?.catalog);
   const cache = usage ? usage.cacheRead + usage.cacheWrite : 0;
+  const rate = cacheRate(usage);
   return (
-    <span className="ml-2 flex min-w-0 items-center gap-1 text-meta text-muted-foreground tabular-nums">
+    <span className="-my-1 ml-1 flex h-[26px] min-w-0 flex-wrap items-center gap-x-1 gap-y-2 overflow-hidden p-1 text-meta whitespace-nowrap text-muted-foreground tabular-nums">
       <Tip label={fullTime(createdAt)}>
         {/* Focus shows the full date too. */}
-        <time dateTime={createdAt} {...tab} className="rounded-xs whitespace-nowrap">
+        <time dateTime={createdAt} {...tab} className="rounded-xs">
           {messageTime(createdAt)}
         </time>
       </Tip>
       {usage && (
         <>
-          <span aria-hidden="true">·</span>
-          <Tip
-            // Lines as text and <br>: an element inside the tooltip's hidden copy would sit
-            // outside every landmark (axe `region`). One token part per line, in a block box (the
-            // kit's tooltip is a flex row): no orphan word.
-            className="block"
-            label={
-              <>
-                Malli: {modelLabel(catalog, usage.model)}
-                <br />
-                Syöte {count.format(usage.input)}
-                {cache > 0 && (
-                  <>
-                    <br />
-                    Välimuisti {count.format(cache)}
-                  </>
-                )}
-                <br />
-                Tuloste {count.format(usage.output)}
-                {usage.reasoning > 0 && ` (ajattelu ${count.format(usage.reasoning)})`}
-                {usage.estimated && (
-                  <>
-                    <br />
-                    Arvio hinnaston mukaan
-                  </>
-                )}
-              </>
-            }
-          >
-            <span {...tab} className="rounded-xs whitespace-nowrap">
-              {formatCost(usage.costUsd, fx, { reply: true, estimated: usage.estimated })}
+          <span className="flex gap-1">
+            <span aria-hidden="true">·</span>
+            <Tip
+              // Lines as text and <br>: an element inside the tooltip's hidden copy would sit
+              // outside every landmark (axe `region`). One token part per line, in a block box (the
+              // kit's tooltip is a flex row): no orphan word.
+              className="block"
+              label={
+                <>
+                  Malli: {modelLabel(catalog, usage.model)}
+                  <br />
+                  Syöte: {count.format(usage.input)}
+                  {cache > 0 && (
+                    <>
+                      <br />
+                      Välimuisti: {count.format(cache)}
+                    </>
+                  )}
+                  <br />
+                  Tuloste: {count.format(usage.output)}
+                  {usage.reasoning > 0 && ` (ajattelu ${count.format(usage.reasoning)})`}
+                  {usage.estimated && (
+                    <>
+                      <br />
+                      Arvio hinnaston mukaan
+                    </>
+                  )}
+                </>
+              }
+            >
+              <span {...tab} className="rounded-xs">
+                {formatCost(usage.costUsd, fx, { reply: true, estimated: usage.estimated })}
+              </span>
+            </Tip>
+          </span>
+          <span className="flex gap-1">
+            <span aria-hidden="true">·</span>
+            {formatTokens(tokensOf(usage))}
+          </span>
+          {rate && (
+            <span className="flex gap-1 max-md:hidden">
+              <span aria-hidden="true">·</span>
+              {`välimuisti\u00a0${rate}`}
             </span>
-          </Tip>
-          <span aria-hidden="true">·</span>
-          <span className="truncate">{tokenText(usage)}</span>
+          )}
         </>
       )}
     </span>

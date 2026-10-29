@@ -432,7 +432,7 @@ export function AgentsScreen() {
       <section aria-label="Agenttiprofiilit" className="flex flex-col">
         <ListSkeleton loading={!list} />
         {list && !list.agents.length && <EmptyState Icon={Bot} title="Ei agentteja" />}
-        <ul className="flex flex-col divide-y divide-border border-y max-md:border-t-0 empty:hidden">
+        <ul className="flex flex-col divide-y divide-border border-y empty:hidden">
           {list?.agents.map((d) => (
             <li key={d.id} className="flex min-h-14 items-center gap-3 py-2">
               <div className="min-w-0 flex-1">
@@ -443,10 +443,10 @@ export function AgentsScreen() {
                 </div>
               </div>
               {!d.profile ? (
-                <Badge variant="destructive">virheellinen</Badge>
+                <Badge variant="destructive">Virheellinen</Badge>
               ) : (
                 <Badge variant={d.profile.subagents ? 'info' : 'secondary'}>
-                  {d.profile.subagents ? 'aliagentit käytössä' : 'ei aliagentteja'}
+                  {d.profile.subagents ? 'Aliagentit käytössä' : 'Ei aliagentteja'}
                 </Badge>
               )}
               <ActionMenu
