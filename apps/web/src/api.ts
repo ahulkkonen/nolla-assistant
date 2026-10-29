@@ -9,6 +9,8 @@ import type {
   FileError,
   FileRoot,
   FileUsage,
+  ModeDoc,
+  ModeSave,
   TrashEntry,
   TrashListing,
   TreeEntry,
@@ -16,12 +18,16 @@ import type {
 } from '@pa/protocol';
 import { startAuthentication, startRegistration } from '@simplewebauthn/browser';
 
-/** The rest of a failed answer body: phase 15's `path` and `message`, `in_use`'s `automations`. */
+/**
+ * The rest of a failed answer body: phase 15's `path` and `message`, `in_use`'s `automations`,
+ * and a mode's `agents` (phase 23).
+ */
 export type ErrorDetail = {
   path?: string;
   message?: string;
   chats?: number;
   automations?: string[];
+  agents?: string[];
 };
 
 export class HttpError extends Error {
@@ -202,6 +208,14 @@ export const agentSave = (
   );
 export const agentDelete = (id: string) =>
   req<void>(`/api/agents/${encodeURIComponent(id)}`, { method: 'DELETE' });
+/** Phase-23 decision 13: a mode file from the form (`file`, `body`) or the raw text. */
+export const modeSave = (id: string | undefined, body: ModeSave, dry = false) =>
+  req<ModeDoc>(
+    `/api/modes${id ? `/${encodeURIComponent(id)}` : ''}${dry ? '?dry=1' : ''}`,
+    json(id ? 'PUT' : 'POST', body),
+  );
+export const modeDelete = (id: string) =>
+  req<void>(`/api/modes/${encodeURIComponent(id)}`, { method: 'DELETE' });
 export const automationSave = (id: string | undefined, body: Record<string, unknown>) =>
   req<{ id: string }>(
     `/api/automations${id ? `/${encodeURIComponent(id)}` : ''}`,

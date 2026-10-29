@@ -12,12 +12,15 @@ import {
   COLLIDING,
   CONFIDENCE_PLAIN,
   CONFIDENCE_REPLY,
+  confidenceReply,
   DICT,
   deviceRows,
   editAgent,
   expect,
   flip,
+  flipMode,
   HTML_REPLY,
+  helloChat,
   holdAt,
   MERMAID_REPLY,
   memoryTurns,
@@ -461,6 +464,7 @@ test('keyboard: [ toggles sidebar, Tab reaches send with focus ring', async ({ a
   await page.keyboard.press('Tab'); // attach
   await page.keyboard.press('Tab'); // agent picker (a new chat can still choose)
   await page.keyboard.press('Tab'); // model chip
+  await page.keyboard.press('Tab'); // Tila chip (phase 23)
   await page.keyboard.press('Tab'); // mic
   await page.keyboard.press('Tab'); // send
   const sendBtn = page.getByRole('button', { name: 'Lähetä', exact: true });
@@ -1224,6 +1228,75 @@ test.describe('admin', () => {
     await expect(page.getByLabel('Viesti')).toBeVisible();
   });
 
+  // Phase-23 decision 14: the mode files in Agentit › Tilat.
+  test('modes: create a mode, it shows in the Tila chip; edit its text; a default mode stays; Oletustilat saves', async ({
+    app,
+    page,
+  }) => {
+    const file = (id: string) => readFileSync(join(app.dataDir, 'agents', id), 'utf8');
+    const modes = page.getByRole('region', { name: 'Tilat' });
+    await app.login(page);
+    await openSettings(page, 'Agentit');
+    await expect(modes.getByText('Oletus', { exact: true })).toHaveCount(2);
+    await modes.getByRole('button', { name: 'Uusi tila' }).click();
+    await page.getByLabel('Nimi', { exact: true }).fill('Lyhyt');
+    await page.getByLabel('Kuvaus', { exact: true }).fill('Enintään kolme virkettä');
+    await page.getByLabel('Ohje', { exact: true }).fill('Vastaa enintään kolmella virkkeellä.');
+    await page.getByRole('button', { name: 'Tallenna' }).click();
+    await expect(modes.getByText('Enintään kolme virkettä')).toBeVisible();
+    expect(file('modes/lyhyt.md')).toContain('Vastaa enintään kolmella virkkeellä.');
+
+    // agents.state brings it to the chip of a new chat.
+    await newChat(page);
+    await page.getByRole('button', { name: /^Tila/ }).click();
+    await expect(page.getByRole('menuitemcheckbox', { name: /^Lyhyt/ })).toHaveAttribute(
+      'aria-checked',
+      'false',
+    );
+    await page.keyboard.press('Escape');
+
+    // The text, through the Markdown tab's dry run and back.
+    await openSettings(page, 'Agentit');
+    await modes.getByRole('button', { name: 'Toiminnot: Lyhyt' }).click();
+    await page.getByRole('menuitem', { name: 'Muokkaa' }).click();
+    await page.getByLabel('Ohje', { exact: true }).fill('Vastaa yhdellä virkkeellä.');
+    await page.getByRole('tab', { name: 'Markdown' }).click();
+    const raw = page.getByLabel('Tiedosto', { exact: true });
+    await expect(raw).toHaveValue(/^name: Lyhyt$/m);
+    await expect(raw).toHaveValue(/Vastaa yhdellä virkkeellä\.$/m);
+    await page.getByRole('tab', { name: 'Lomake' }).click();
+    await page.getByRole('button', { name: 'Tallenna' }).click();
+    await expect(modes.getByRole('button', { name: 'Toiminnot: Lyhyt' })).toBeVisible();
+    expect(file('modes/lyhyt.md')).toContain('Vastaa yhdellä virkkeellä.');
+
+    // A mode that a profile names stays, with the reason in Finnish.
+    await modes.getByRole('button', { name: 'Toiminnot: Suora' }).click();
+    await page.getByRole('menuitem', { name: 'Poista' }).click();
+    const confirm = page.getByRole('alertdialog', { name: 'Poistetaanko tila ”Suora”?' });
+    await confirm.getByRole('button', { name: 'Poista' }).click();
+    await expect(
+      page.getByText(
+        'Agentti Avustaja käyttää tilaa oletuksena. Poista se ensin sen oletustiloista.',
+      ),
+    ).toBeVisible();
+    await expect(modes.getByRole('button', { name: 'Toiminnot: Suora' })).toBeVisible();
+
+    // Oletustilat of Kirjoittaja: the file gets the list, the row its badge.
+    await page.getByRole('button', { name: 'Toiminnot: Kirjoittaja' }).click();
+    await page.getByRole('menuitem', { name: 'Muokkaa' }).click();
+    const defaults = page.getByRole('group', { name: 'Oletustilat' });
+    await defaults.getByLabel('Lyhyt', { exact: true }).check();
+    await page.getByRole('button', { name: 'Tallenna' }).click();
+    await expect(modes.getByText('Oletus', { exact: true })).toHaveCount(3);
+    expect(file('kirjoittaja.yaml')).toMatch(/^modes:\n {2}default:.*lyhyt/ms);
+
+    // A mode no profile names goes.
+    await modes.getByRole('button', { name: 'Toiminnot: Luottamus' }).click();
+    await page.getByRole('menuitem', { name: 'Poista' }).click();
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Poista' }).click();
+    await expect(modes.getByRole('button', { name: 'Toiminnot: Luottamus' })).toHaveCount(0);
+  });
+
   test('devices: a revoke from another browser signs this one out (4401), then the last one itself', async ({
     app,
     page,
@@ -1273,10 +1346,7 @@ test.describe('admin', () => {
   });
 
   test('export: a masked export builds and downloads once', async ({ app, page }) => {
-    app.llm.push({ text: 'Hei.' });
-    await app.login(page);
-    await send(page, 'Moi');
-    await expect(page.locator('.md').last()).toHaveText('Hei.');
+    await helloChat(app, page);
     await openSettings(page, 'Asetukset');
     await page.getByRole('button', { name: 'Vie kaikki', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: 'Vie kaikki tiedot' });
@@ -1311,10 +1381,7 @@ test.describe('claims', () => {
 
   /** A chat with one reply, then the seeded claims; returns the chat id. */
   const claimChat = async (app: App, page: Page) => {
-    app.llm.push({ text: 'Hei.' });
-    await app.login(page);
-    await send(page, 'Moi');
-    await expect(page.locator('.md').last()).toHaveText('Hei.');
+    await helloChat(app, page);
     const db = new DatabaseSync(join(app.dataDir, 'app.db'));
     const { id } = db.prepare('SELECT id FROM chats LIMIT 1').get() as { id: string };
     db.close();
@@ -1618,11 +1685,12 @@ for (const viewport of VIEWPORTS)
       await app.login(page);
       await send(page, 'Moi');
       await expect(page.locator('.md').last()).toHaveText('Ensin ilman merkintöjä.');
-      await flip(page, 'Luottamus', true);
+      await flipMode(page, 'Luottamus', true);
 
       await send(page, 'Kerro Tampereesta');
       const reply = page.locator('.md').last();
-      await expect(reply).toHaveText(CONFIDENCE_PLAIN);
+      // The text a reader sees: each sentence's N (`sup.conf-n`) is hidden.
+      await expect(reply).toHaveText(CONFIDENCE_PLAIN, { useInnerText: true });
       const prompt = (text: string) =>
         JSON.stringify(
           app.llm.requests.find((r) => JSON.stringify(r.body.messages).includes(text))?.body
@@ -1649,8 +1717,134 @@ for (const viewport of VIEWPORTS)
       await page.reload();
       if (viewport.width < 768) await page.getByRole('button', { name: 'Valikko' }).click();
       await page.locator('nav li > button').click({ position: { x: 16, y: 16 } });
-      await expect(page.locator('.md').last()).toHaveText(CONFIDENCE_PLAIN);
-      await flip(page, 'Luottamus', false);
+      await expect(page.locator('.md').last()).toHaveText(CONFIDENCE_PLAIN, {
+        useInnerText: true,
+      });
+      await flipMode(page, 'Luottamus', false);
+    });
+
+    test('Tila: a new chat sends the chosen modes; the label and the sheet follow the chat', async ({
+      app,
+      page,
+    }) => {
+      const phone = viewport.width < 768;
+      app.llm.push({ text: 'Hei.', match: 'Moi' });
+      await app.login(page);
+      // The profile default (assistant.yaml), in the server's order.
+      if (!phone)
+        await expect(page.getByRole('button', { name: /^Tila/ })).toHaveAccessibleName(
+          'Tila: Perusteellinen, Suora',
+        );
+      // A new chat: the choice waits in the store and goes with `chat.create`.
+      await flipMode(page, 'Perusteellinen', false);
+      await flipMode(page, 'Luottamus', true);
+      const chip = page.getByRole('button', { name: /^Tila/ });
+      if (!phone) {
+        await expect(chip).toHaveAccessibleName('Tila: Luottamus, Suora');
+        await expect(chip).toHaveText('Luottamus, Suora');
+      }
+      await send(page, 'Moi');
+      await expect(page.locator('.md').last()).toHaveText('Hei.');
+      const system = JSON.stringify(
+        app.llm.requests.find((r) => JSON.stringify(r.body.messages).includes('Moi'))?.body
+          .messages[0],
+      );
+      expect(system).toContain('Luottamusmerkinnät');
+      expect(system).toContain('high signal, low noise');
+      expect(system).not.toContain('Selvitä kysymykset perusteellisesti');
+
+      // Stored with the chat: after a reload the same three states.
+      await page.reload();
+      if (phone) await page.getByRole('button', { name: 'Valikko' }).click();
+      await page.locator('nav li > button').click({ position: { x: 16, y: 16 } });
+      await expect(page.locator('.md').last()).toHaveText('Hei.');
+      if (phone) await page.getByRole('button', { name: /^Malli: / }).click();
+      else await chip.click();
+      const control = (name: string) =>
+        phone
+          ? page.getByRole('switch', { name, exact: true })
+          : page.getByRole('menuitemcheckbox', { name: new RegExp(`^${name}`) });
+      await expect(control('Luottamus')).toHaveAttribute('aria-checked', 'true');
+      await expect(control('Perusteellinen')).toHaveAttribute('aria-checked', 'false');
+      await expect(control('Suora')).toHaveAttribute('aria-checked', 'true');
+      // The description is the row's second line.
+      if (phone)
+        await expect(control('Suora')).toHaveAccessibleDescription(
+          'Tiivis ja suora, ilman varauksia',
+        );
+      else await expect(control('Suora')).toContainText('Tiivis ja suora, ilman varauksia');
+    });
+  });
+
+for (const viewport of VIEWPORTS)
+  test.describe(`confidence N ${viewport.width}`, () => {
+    // Phase-23 decision 9: hover on a desktop, a tap on a touch phone.
+    const phone = viewport.width < 768;
+    test.use({ viewport, ...(phone ? { hasTouch: true, isMobile: true } : {}) });
+
+    test('confidence N: hover or a tap shows one N without moving a glyph; Näytä luvut shows each N', async ({
+      app,
+      page,
+    }) => {
+      const reply = await confidenceReply(app, page);
+      const spans = reply.locator('span.conf');
+      const n = reply.locator('sup.conf-n');
+      await expect(n).toHaveText(['9', '5', '1']);
+      for (const i of [0, 1, 2]) await expect(n.nth(i)).toBeHidden();
+      const legend = page.getByRole('button', { name: 'Näytä luvut' });
+      await expect(legend).toHaveAttribute('aria-pressed', 'false');
+      /** The box of every glyph run of the reply's text, the N left out. */
+      const glyphs = () =>
+        reply.evaluate((el) => {
+          const out: string[] = [];
+          const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+          for (let t = walk.nextNode(); t; t = walk.nextNode()) {
+            if (t.parentElement?.closest('.conf-n')) continue;
+            const r = document.createRange();
+            r.selectNodeContents(t);
+            for (const b of Array.from(r.getClientRects()))
+              out.push(`${b.x},${b.y},${b.width},${b.height}`);
+          }
+          return out;
+        });
+      const before = await glyphs();
+
+      if (phone) await spans.nth(1).tap();
+      else await spans.nth(1).hover();
+      await expect(n.nth(1)).toBeVisible();
+      await expect(n.nth(0)).toBeHidden();
+      expect(await glyphs()).toEqual(before);
+      // Above the sentence's end, on its last line: the centre near the last glyph's right edge,
+      // the bottom in the upper half of that glyph's box.
+      const place = await spans.nth(1).evaluate((el) => {
+        const text = el.firstChild as Text;
+        const r = document.createRange();
+        r.setStart(text, text.length - 1);
+        r.setEnd(text, text.length);
+        const end = r.getBoundingClientRect();
+        const sup = (el.querySelector('.conf-n') as HTMLElement).getBoundingClientRect();
+        return {
+          dx: sup.x + sup.width / 2 - end.right,
+          bottom: (sup.bottom - end.top) / end.height,
+        };
+      });
+      expect(Math.abs(place.dx)).toBeLessThan(6);
+      expect(place.bottom).toBeGreaterThan(0);
+      expect(place.bottom).toBeLessThan(0.6);
+      if (phone) {
+        await spans.nth(1).tap();
+        await expect(n.nth(1)).toBeHidden();
+      }
+
+      // Every N in the text, kept on this device.
+      await legend.click();
+      await expect(legend).toHaveAttribute('aria-pressed', 'true');
+      for (const i of [0, 1, 2]) await expect(n.nth(i)).toBeVisible();
+      await expect(reply).toHaveText(
+        'Tampere on Suomen kolmanneksi suurin kaupunki.9 Sen väkiluku kasvaa ensi vuonna noin prosentin.5 Raitiotie jatkunee Hiedanrantaan vuonna 2031.1',
+        { useInnerText: true },
+      );
+      expect(await page.evaluate(() => localStorage.getItem('pa.confN'))).toBe('on');
     });
   });
 

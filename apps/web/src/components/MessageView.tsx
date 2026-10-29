@@ -24,9 +24,11 @@ import {
 import { Popover } from 'radix-ui';
 import {
   type ComponentProps,
+  type CSSProperties,
   createContext,
   isValidElement,
   memo,
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
   useContext,
   useEffect,
@@ -315,12 +317,15 @@ const rehypeAnnotate = (pairs: [string, string][]) => () => (tree: HNode) => {
 const MARKS = new RegExp(CONFIDENCE_MARK, 'g');
 /** `--conf` of the lowest confidence (N=1); 9 is 100 (phase-21 decision 4). */
 const CONF_FLOOR = 0;
+/** The `--conf` of level `n` (1–9): the colour mix of `.md .conf` and the legend's swatches. */
+const confLevel = (n: number) => Math.round(CONF_FLOOR + ((n - 1) * (100 - CONF_FLOOR)) / 8);
 
 /**
  * Rehype plugin (phase-21 decision 4): each confidence marker `⟦N⟧` goes, and the text before it
  * (from the previous marker or the start of the text node) gets a span whose `--conf` runs from
- * CONF_FLOOR (N=1) to 100 (N=9). Code stays as written. An unterminated marker at the end of the
- * last text node (a reply still streaming) is hidden.
+ * CONF_FLOOR (N=1) to 100 (N=9), and its N as a last child `sup.conf-n` that CSS shows on hover,
+ * on a tap or with "Näytä luvut" (phase-23 decision 9). Code stays as written. An unterminated
+ * marker at the end of the last text node (a reply still streaming) is hidden.
  */
 export const rehypeConfidence = () => (tree: HNode) => {
   let last: HNode | undefined;
@@ -337,10 +342,18 @@ export const rehypeConfidence = () => (tree: HNode) => {
           tagName: 'span',
           properties: {
             className: ['conf'],
-            style: `--conf:${Math.round(CONF_FLOOR + ((n - 1) * (100 - CONF_FLOOR)) / 8)}`,
+            style: `--conf:${confLevel(n)}`,
             title: `Luottamus ${n}/9`,
           },
-          children: [{ type: 'text', value: value.slice(at, m.index) }],
+          children: [
+            { type: 'text', value: value.slice(at, m.index) },
+            {
+              type: 'element',
+              tagName: 'sup',
+              properties: { className: ['conf-n'] },
+              children: [{ type: 'text', value: String(n) }],
+            },
+          ],
         });
       at = m.index + m[0].length;
     }
@@ -388,6 +401,55 @@ const rehypeOpenFence = () => (tree: HNode) => {
   walk(tree);
   if (last) last.properties = { ...last.properties, dataStreaming: 'true' };
 };
+
+/**
+ * Touch (phase-23 decision 9): a tap on a marked sentence shows or hides its N; one handler on the
+ * Markdown root, so a sentence is no tab stop. A tap on a link or a masked name is theirs.
+ */
+const toggleN = (e: ReactMouseEvent) => {
+  const el = e.target as Element;
+  if (!el.closest('a, button, [role="button"]')) el.closest('.conf')?.toggleAttribute('data-show');
+};
+
+/**
+ * Phase-23 decision 9: the scale under a reply with markers (micro, muted, 16 px; 44 on phones for
+ * the button's target) and "Näytä luvut", which puts every N in the text (`pa.confN`).
+ */
+function ConfidenceLegend() {
+  const on = useStore((s) => s.showConfN);
+  return (
+    <div className="flex h-4 items-center gap-3 text-micro text-muted-foreground max-md:h-11">
+      <span>Luottamus</span>
+      {/* Phones: the scale's words only for screen readers, so the row fits 390 px. */}
+      <span className="flex items-center gap-2 tabular-nums">
+        <span>
+          1<span className="max-md:sr-only"> arvaus</span>
+        </span>
+        <span aria-hidden="true" className="flex gap-1">
+          {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
+            <span
+              key={n}
+              className="conf-swatch h-2 w-3"
+              style={{ '--conf': confLevel(n) } as CSSProperties}
+            />
+          ))}
+        </span>
+        <span>
+          9<span className="max-md:sr-only"> varma</span>
+        </span>
+      </span>
+      <button
+        type="button"
+        aria-pressed={on}
+        onClick={() => useStore.getState().setShowConfN(!on)}
+        // The fill is 16 px; the target 32 (44 on phones) through `::after`.
+        className="relative h-4 rounded-sm px-1.5 transition-colors duration-100 after:absolute after:inset-x-0 after:-inset-y-2 hover:bg-accent hover:text-foreground aria-pressed:bg-accent aria-pressed:text-foreground max-md:after:-inset-y-3.5"
+      >
+        Näytä luvut
+      </button>
+    </div>
+  );
+}
 
 const components = { pre: Pre, span: Span };
 const plugins = [remarkGfm];
@@ -442,8 +504,13 @@ export const MarkdownText = memo(function MarkdownText({
     () => (live ? [...rehype, ...(open ? [rehypeOpenFence] : []), rehypeCaret] : rehype),
     [rehype, live, open],
   );
+  const confN = useStore((s) => s.showConfN);
   return (
-    <div className="md break-words">
+    <div
+      className="md break-words"
+      {...(confN ? { 'data-conf-n': '' } : {})}
+      {...(touch ? { onClick: toggleN } : {})}
+    >
       {blocks.map((b, i) => (
         <Block
           key={i}
@@ -696,6 +763,7 @@ export function MessageView({
         ) : (
           text && <MarkdownText text={text} annotations={annotations} />
         )}
+        {!user && CONFIDENCE_MARK.test(text) && <ConfidenceLegend />}
         {/* Turn extras (the memory chip) sit in the turn, above its action row. */}
         {footer}
         {/* 32 px, reserved while streaming so nothing jumps. */}

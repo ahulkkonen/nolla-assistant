@@ -516,6 +516,19 @@ export const CONFIDENCE_REPLY =
 export const CONFIDENCE_PLAIN =
   'Tampere on Suomen kolmanneksi suurin kaupunki. Sen väkiluku kasvaa ensi vuonna noin prosentin. Raitiotie jatkunee Hiedanrantaan vuonna 2031.';
 
+/**
+ * A new chat with CONFIDENCE_REPLY; its Markdown root once the text shows. The text a reader sees
+ * has no N: each sentence's `sup.conf-n` is hidden (phase-23 decision 9).
+ */
+export const confidenceReply = async (app: App, page: Page) => {
+  app.llm.push({ text: CONFIDENCE_REPLY });
+  await app.login(page);
+  await sendMessage(page, 'Kerro Tampereesta');
+  const reply = page.locator('.md').last();
+  await expect(reply).toHaveText(CONFIDENCE_PLAIN, { useInnerText: true });
+  return reply;
+};
+
 /** Phase 20: an HTML page written in a reply, with a title the writing card can show. */
 export const PAGE_REPLY = `Tässä sivu:\n\n${block(
   'html',
@@ -613,6 +626,14 @@ export const sendMessage = async (page: Page, text: string) => {
   await page.getByLabel('Viesti').press('ControlOrMeta+Enter');
 };
 
+/** Signed in, with one chat: "Moi" and the reply "Hei.". */
+export const helloChat = async (app: App, page: Page) => {
+  app.llm.push({ text: 'Hei.' });
+  await app.login(page);
+  await sendMessage(page, 'Moi');
+  await expect(page.locator('.md').last()).toHaveText('Hei.');
+};
+
 /** Sidebar search: Enter runs the full-text search. */
 export const search = async (page: Page, q: string) => {
   const menu = page.getByRole('button', { name: 'Valikko' });
@@ -663,6 +684,23 @@ export const flip = async (page: Page, name: string, on: boolean) => {
   if (!phone) return;
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog', { name: 'Mallin valinta' })).toHaveCount(0);
+};
+
+/**
+ * Turns the output mode `name` (phase-23 decision 8) to `on`: its check box in the Tila chip's
+ * menu ≥ 768, which stays open after the toggle and then closes; on phones its row in the model
+ * sheet (`flip`).
+ */
+export const flipMode = async (page: Page, name: string, on: boolean) => {
+  if ((page.viewportSize()?.width ?? 1280) < 768) return flip(page, name, on);
+  await page.getByRole('button', { name: /^Tila/ }).click();
+  const item = page.getByRole('menuitemcheckbox', { name: new RegExp(`^${name}`) });
+  await expect(item).toHaveAttribute('aria-checked', String(!on));
+  await item.click();
+  await expect(item).toHaveAttribute('aria-checked', String(on));
+  await expect(page.getByRole('menu')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('menu')).toHaveCount(0);
 };
 
 /** Accepts the first topic proposal. */

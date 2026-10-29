@@ -9,6 +9,7 @@ import type {
   ForkLink,
   FxRate,
   Message,
+  ModeInfo,
   ModelChoice,
   ModelPolicy,
   ServerMessage,
@@ -157,6 +158,9 @@ type State = {
   /** "Näytä ajattelu" (localStorage, on by default): off hides every thinking row. */
   showThinking: boolean;
   setShowThinking(on: boolean): void;
+  /** "Näytä luvut" (phase-23 decision 9, localStorage, off by default): every N in the text. */
+  showConfN: boolean;
+  setShowConfN(on: boolean): void;
   /** The last `usage.state` (Käyttö); null until the first answer. */
   usage: Omit<Of<'usage.state'>, 'type'> | null;
   /** A query for the find bar to open with (a global search hit opens its chat with it). */
@@ -175,6 +179,10 @@ type State = {
   pendingAgentId: string;
   /** Model and thinking level for the next `chat.create` (the empty chat's model chip). */
   pendingModel: ModelChoice;
+  /** Phase-23 decision 7: the loaded output modes (`agents.state`), without their prompts. */
+  modes: ModeInfo[];
+  /** Modes for the next `chat.create`; null: the agent's `modes.default` (phase-23 decision 8). */
+  pendingModes: string[] | null;
   /** Null until the first `models.state`. */
   models: ModelsState | null;
   /**
@@ -302,6 +310,15 @@ function loadShowThinking() {
   }
 }
 
+const CONF_N_KEY = 'pa.confN';
+function loadShowConfN() {
+  try {
+    return globalThis.localStorage?.getItem(CONF_N_KEY) === 'on';
+  } catch {
+    return false;
+  }
+}
+
 const STT_KEY = 'pa.stt';
 function loadStt(): Pick<State, 'sttAutoSend' | 'sttLanguage'> {
   try {
@@ -313,6 +330,19 @@ function loadStt(): Pick<State, 'sttAutoSend' | 'sttLanguage'> {
   } catch {
     return { sttAutoSend: false, sttLanguage: 'fi' };
   }
+}
+
+const NO_MODES: string[] = [];
+/**
+ * Phase-23 decision 7: the active mode ids of `chatId`, or of the new chat when null: the chat's
+ * own list, else its agent's `modes.default`. A stable reference, so it can be a selector.
+ */
+export function effectiveModes(st: State, chatId: string | null): string[] {
+  const chat = chatId ? (st.summaries[chatId] ?? st.chats.find((c) => c.id === chatId)) : undefined;
+  const own = chatId ? chat?.modes : st.pendingModes;
+  if (own) return own;
+  const agentId = chatId ? (chat?.agentId ?? 'assistant') : st.pendingAgentId;
+  return st.agents.find((a) => a.id === agentId)?.modes ?? NO_MODES;
 }
 
 /** First line of the first user message: the label for an untitled chat. */
@@ -504,6 +534,8 @@ export const useStore = create<State>()((set, get) => {
     agents: [],
     pendingAgentId: 'assistant',
     pendingModel: DEFAULT_MODEL,
+    modes: [],
+    pendingModes: null,
     models: null,
     policies: {},
     zdrRefused: {},
@@ -558,6 +590,7 @@ export const useStore = create<State>()((set, get) => {
     thinkingLive: {},
     thinkingText: {},
     showThinking: loadShowThinking(),
+    showConfN: loadShowConfN(),
     usage: null,
     findQuery: null,
     showModelSaw: false,
@@ -586,6 +619,7 @@ export const useStore = create<State>()((set, get) => {
             messages: { ...st.messages, [msg.chat.id]: st.messages[msg.chat.id] ?? [] },
             pendingAgentId: 'assistant',
             pendingModel: DEFAULT_MODEL,
+            pendingModes: null,
             policies: { ...st.policies, [msg.chat.id]: msg.chat.modelPolicy },
           }));
         case 'chat.updated':
@@ -856,7 +890,7 @@ export const useStore = create<State>()((set, get) => {
         case 'agent.status':
           return set((st) => status(st, msg.chatId, msg.state));
         case 'agents.state':
-          return set({ agents: msg.agents });
+          return set({ agents: msg.agents, modes: msg.modes });
         case 'approval.request':
           return set((st) => ({
             approvals: [...st.approvals.filter((a) => a.requestId !== msg.requestId), msg],
@@ -1179,6 +1213,12 @@ export const useStore = create<State>()((set, get) => {
         localStorage.setItem(THINKING_KEY, showThinking ? 'on' : 'off');
       } catch {}
       set({ showThinking });
+    },
+    setShowConfN(showConfN) {
+      try {
+        localStorage.setItem(CONF_N_KEY, showConfN ? 'on' : 'off');
+      } catch {}
+      set({ showConfN });
     },
   };
 });

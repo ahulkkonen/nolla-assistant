@@ -38,7 +38,7 @@ import { AgentPicker } from './AgentPicker.tsx';
 import { DropOverlay, useFileDrop } from './FileDrop.tsx';
 import { IconButton, Tip } from './IconButton.tsx';
 import { clock, MicButton, type MicState } from './MicButton.tsx';
-import { ModelPicker, NextTurnTip, useAutoApprove, useConfidence } from './ModelPicker.tsx';
+import { ModelPicker, ModesChip, useAutoApprove } from './ModelPicker.tsx';
 import { WorkPicker } from './TreeDialogs.tsx';
 
 type Chip = { key: string; name: string; preview?: string; ref?: AttachmentRef };
@@ -53,33 +53,9 @@ const refChips = (refs: AttachmentRef[]): Chip[] =>
   }));
 
 /**
- * Phase-21 decision 4: the open chat's confidence trial; outline, filled while on. Like the model
- * chip it works during a reply. A new chat gets it after its first message. Not on phones: next
- * to the queue's two run buttons it squeezed the model chip to its chevron; the model sheet holds
- * the switch there.
- */
-function ConfidenceToggle({ chatId, running }: { chatId: string; running: boolean }) {
-  const { on, toggle } = useConfidence(chatId);
-  return (
-    <NextTurnTip running={running}>
-      <Button
-        variant="outline"
-        aria-pressed={on}
-        onClick={toggle}
-        className={cn(
-          'h-8 rounded-full px-3 font-normal max-md:hidden',
-          on ? 'border-input text-foreground' : 'text-muted-foreground hover:text-foreground',
-        )}
-      >
-        Luottamus
-      </Button>
-    </NextTurnTip>
-  );
-}
-
-/**
  * "Hyväksy automaattisesti" (phase-21 decision 7): an outline chip, filled in the warning colour
- * while on. Not on phones, as `ConfidenceToggle`.
+ * while on. Not on phones: next to the queue's two run buttons it squeezed the model chip to its
+ * chevron; the model sheet holds the switch there.
  */
 function AutoApproveChip({ chatId }: { chatId: string }) {
   const auto = useAutoApprove(chatId);
@@ -443,7 +419,7 @@ export function Composer() {
           />
           <AgentPicker />
           <ModelPicker />
-          {chatId && <ConfidenceToggle chatId={chatId} running={running} />}
+          <ModesChip chatId={chatId} running={running} />
           {chatId && <AutoApproveChip chatId={chatId} />}
           <div className="ml-auto flex shrink-0 items-center gap-2">
             <MicButton onText={insertTranscript} onState={setMic} meter={meter} />
