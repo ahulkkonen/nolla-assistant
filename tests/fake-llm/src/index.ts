@@ -36,11 +36,12 @@ export const FAKE_CITATIONS: FakeCitation[] = [
 /**
  * Phase 13: `reasoning` streams as `reasoning_content` deltas before the text (LiteLLM's field);
  * `thinkMs` waits after the first of them. `usage.cost` is OpenRouter's billed USD, which LiteLLM
- * passes on.
+ * passes on. Phase 26: `queueMs` waits before the response headers, as a provider queue does.
  */
 type FakeReply = {
   reasoning?: string;
   thinkMs?: number;
+  queueMs?: number;
   usage?: {
     prompt_tokens: number;
     completion_tokens: number;
@@ -229,6 +230,7 @@ export async function startFakeLlm(
         return json(turn.error.status, {
           error: { code: turn.error.status, message: turn.error.message },
         });
+      if (turn.queueMs) await new Promise((r) => setTimeout(r, turn.queueMs));
 
       const id = `chatcmpl-${requests.length}`;
       const created = Math.floor(Date.now() / 1000);

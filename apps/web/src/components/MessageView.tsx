@@ -506,6 +506,13 @@ type Props = {
   thinking?: ReactNode;
   /** The action row meta: the time, and a reply's cost and tokens (phase 13). */
   meta?: { createdAt: string; usage?: CallUsage | undefined };
+  /** Phase 26, while live: the waiting line in the first line until the text takes its place. */
+  waiting?: ReactNode;
+  /**
+   * Phase 26: at the action row's end, the live line from the first token on, then the receipt.
+   * Phones keep the receipt in the long-press sheet: the row has no room beside the meta.
+   */
+  receipt?: ReactNode;
   /**
    * Assistant message: sends the previous user message again as a new turn. A failed turn has no
    * message here; the thread's alert retries it in place (`user.retry`).
@@ -589,6 +596,8 @@ export function MessageView({
   onNeedIds,
   thinking,
   meta,
+  waiting,
+  receipt,
   onRetry,
 }: Props) {
   const fx = useStore((s) => s.fx);
@@ -663,9 +672,29 @@ export function MessageView({
               {annotate(text, annotations)}
             </div>
           )
+        ) : live ? (
+          // Phase 26: the waiting line holds the first line (28 px, one line of prose); the first
+          // token fades in at its place while the line fades out, so nothing moves.
+          (text || waiting) && (
+            <div className="relative min-h-7">
+              {text && (
+                <div className="animate-fade-in">
+                  <MarkdownText text={text} annotations={annotations} live />
+                </div>
+              )}
+              <div
+                aria-hidden="true"
+                className={cn(
+                  'absolute inset-x-0 top-0 flex h-7 items-center overflow-hidden transition-[opacity,visibility] duration-150 ease-out',
+                  text && 'invisible opacity-0',
+                )}
+              >
+                {waiting}
+              </div>
+            </div>
+          )
         ) : (
-          // Before the first token nothing shows here: the tool row or the dots carry it.
-          text && <MarkdownText text={text} annotations={annotations} live={!!live} />
+          text && <MarkdownText text={text} annotations={annotations} />
         )}
         {/* Turn extras (the memory chip) sit in the turn, above its action row. */}
         {footer}
@@ -676,7 +705,8 @@ export function MessageView({
               'flex h-8 items-center gap-1 transition-opacity duration-100 [-webkit-touch-callout:none] max-md:h-11',
               // A user turn's row, and an older reply's, sits in the 40 px gap below it (Thread.tsx).
               (user || (!latest && !live)) && 'absolute top-full mt-1',
-              user ? 'right-0' : 'left-0',
+              // A reply's row spans the column: its receipt sits at the end.
+              user ? 'right-0' : 'inset-x-0',
               // Hover devices: on hover or focus, except under the latest assistant turn.
               !(latest && !user) &&
                 '[@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:focus-within:opacity-100',
@@ -717,6 +747,16 @@ export function MessageView({
                 )}
               </>
             )}
+            {receipt && (
+              <span
+                className={cn(
+                  'ml-auto flex shrink-0 pl-2 transition-opacity duration-150 ease-out',
+                  live ? !text && 'opacity-0' : 'max-md:hidden',
+                )}
+              >
+                {receipt}
+              </span>
+            )}
           </div>
         )}
       </div>
@@ -735,6 +775,7 @@ export function MessageView({
                 {metaText(meta.createdAt, user ? undefined : meta.usage, fx)}
               </p>
             )}
+            {receipt && <div className="px-3 pb-1">{receipt}</div>}
             {[
               { label: 'Kopioi', Icon: Copy, run: copy },
               ...(user && onEdit

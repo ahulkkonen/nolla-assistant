@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { announce } from '../announce.ts';
 import { failedText, serverIdOf, type UiMessage, useStore } from '../store.ts';
-import { Follow, replyUsage, threadKey } from '../thread.ts';
+import { Follow, replyTiming, replyUsage, threadKey } from '../thread.ts';
 import { useModel } from '../useModel.ts';
 import { forkChat, openChat, retryTurn, send, sendUserMessage, setDataPolicy } from '../ws.ts';
 import { ApprovalCard } from './ApprovalCard.tsx';
@@ -14,7 +14,8 @@ import { ClaimChipRow, MemoryChipRow } from './MemoryChipRow.tsx';
 import { MessageView } from './MessageView.tsx';
 import { UNTITLED } from './Sidebar.tsx';
 import { SubagentRow } from './SubagentRow.tsx';
-import { ThinkingLive, ThinkingRow } from './ThinkingRow.tsx';
+import { ThinkingRow, ThoughtRow } from './ThinkingRow.tsx';
+import { LiveWait, Receipt, WaitStatus } from './WaitingLine.tsx';
 
 const EMPTY: never[] = [];
 
@@ -90,6 +91,9 @@ export function Thread() {
   const held = useStore((s) => (chatId ? s.held[chatId] !== undefined : false));
   const showThinking = useStore((s) => s.showThinking);
   const thinkingLive = useStore((s) => (chatId ? s.thinkingLive[chatId] : undefined));
+  // Phase 26: a final without tool calls ends the rounds; the live turn goes before the idle.
+  const ended = useStore((s) => (chatId ? s.waits[chatId]?.ended : false));
+  const live = !!stream || (running && !ended);
   const forking = useStore((s) => s.pendingFork);
   const refusal = useStore((s) => (chatId ? s.zdrRefused[chatId] : undefined));
   const { name: modelName, policy } = useModel();
@@ -126,7 +130,22 @@ export function Thread() {
   // Follow the bottom while the user has not scrolled up (a jump, not a smooth scroll).
   useEffect(() => {
     if (scroller.current) follow.follow(scroller.current);
-  }, [messages, stream?.text, stream?.tools, running, allApprovals, subagents, failed]);
+  }, [messages, stream?.text, stream?.tools, live, thinkingLive, allApprovals, subagents, failed]);
+
+  // Phase 26: the thread's own height changes (an Android keyboard, the composer growing): the
+  // bottom stays while pinned, else the reader's distance to it.
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el) return;
+    let height = el.clientHeight;
+    const ro = new ResizeObserver(() => {
+      const delta = height - el.clientHeight;
+      height = el.clientHeight;
+      if (delta) follow.resized(el, delta);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   // A search hit opens at its message once the chat's messages are in.
   useEffect(() => {
@@ -142,6 +161,11 @@ export function Thread() {
   // Each reply's cost and tokens, its tool rounds included (decision 15); once per thread change.
   const usageOf = useMemo(
     () => replyUsage(messages, !!(stream || running)),
+    [messages, stream, running],
+  );
+  // Phase 26: each reply's receipt, from the stored phase times.
+  const timingOf = useMemo(
+    () => replyTiming(messages, !!(stream || running)),
     [messages, stream, running],
   );
   // Phase 12: the toast goes after 8 s, so the held bubble says what it waits for.
@@ -166,9 +190,8 @@ export function Thread() {
       {claimChips.length > 0 && <ClaimChipRow chatId={chatId} claims={claimChips} />}
     </>
   );
-  const chipAt = stream || running ? -1 : messages.findLastIndex((m) => m.role === 'assistant');
-  const lastAssistant =
-    stream || running ? -1 : messages.findLastIndex((m) => m.role === 'assistant');
+  const chipAt = live ? -1 : messages.findLastIndex((m) => m.role === 'assistant');
+  const lastAssistant = live ? -1 : messages.findLastIndex((m) => m.role === 'assistant');
   // A tool-only assistant message and the reply after it are one turn (8 px in-turn gap).
   const turns: { role: UiMessage['role']; items: { m: UiMessage; i: number }[] }[] = [];
   messages.forEach((m, i) => {
@@ -179,54 +202,37 @@ export function Thread() {
     else turns.push({ role: m.role, items: [{ m, i }] });
   });
   const lastTurn = turns.at(-1);
-  const joinLive =
-    !!(stream || running) && lastTurn?.role === 'assistant' && !lastTurn.items.at(-1)?.m.text;
+  const joinLive = live && lastTurn?.role === 'assistant' && !lastTurn.items.at(-1)?.m.text;
   const cards = approvals.map((a) => <ApprovalCard key={a.requestId} a={a} />);
-  // The live line stays until the final message that owns it arrives (`message.final` clears it),
-  // also when a tool round has moved the stream on.
-  const liveThinking =
-    showThinking && thinkingLive ? (
-      <ThinkingLive
-        startedAt={thinkingLive.startedAt}
-        {...(thinkingLive.endedAt ? { endedAt: thinkingLive.endedAt } : {})}
-      />
+  // Phase 26: the waiting line shows the thinking while it lasts; once it stopped, "Ajatteli 12 s"
+  // until the final message that owns it arrives (`message.final` clears it).
+  const liveThought =
+    showThinking && thinkingLive?.endedAt ? (
+      <ThoughtRow ms={thinkingLive.endedAt - thinkingLive.startedAt} />
     ) : undefined;
-  const liveView = (stream || running) && (
+  const liveView = live && chatId && (
     <>
-      {stream?.text || stream?.tools.length || liveThinking ? (
-        <MessageView
-          role="assistant"
-          text={stream?.text ?? ''}
-          annotations={stream?.annotations ?? []}
-          tools={stream?.tools ?? []}
-          thinking={liveThinking}
-          subagents={subagents}
-          live
-          // A pending approval card follows in the same turn; no reserved row in between.
-          reserve={!approvals.length}
-          footer={chip}
-        />
-      ) : (
-        // Before the first token: three 6 px dots; the action row's 32 px is kept.
-        <div className="flex flex-col gap-2">
-          <span
-            role="status"
-            aria-label="Vastaus tulossa"
-            className="flex h-7 items-center gap-1.5"
-          >
-            {[0, 150, 300].map((d) => (
-              <span
-                key={d}
-                style={{ animationDelay: `${d}ms` }}
-                className="size-1.5 animate-pulse rounded-full bg-muted-foreground"
-              />
-            ))}
-          </span>
-          <div className="h-8" />
-        </div>
-      )}
+      <MessageView
+        role="assistant"
+        text={stream?.text ?? ''}
+        annotations={stream?.annotations ?? []}
+        tools={stream?.tools ?? []}
+        thinking={liveThought}
+        subagents={subagents}
+        live
+        // The latest reply: its row (the live line) shows without hover, also on touch.
+        latest
+        // Phase 26: the 28 px first line before the first token, then the action row's end. An
+        // open approval card says what the turn waits for; no line between it and its tool row.
+        waiting={approvals.length ? undefined : <LiveWait chatId={chatId} />}
+        receipt={<LiveWait chatId={chatId} row />}
+        // A pending approval card follows in the same turn; no reserved row in between.
+        reserve={!approvals.length}
+        footer={chip}
+      />
       {/* The approval card sits in the turn of its tool row (8 px gap), never as a modal. */}
       {cards}
+      <WaitStatus chatId={chatId} />
     </>
   );
 
@@ -283,7 +289,9 @@ export function Thread() {
           e.preventDefault();
           jump();
         }}
-        className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-4 outline-none"
+        // No scroll anchoring: it moved the thread 40 px on a keyboard open and unpinned the
+        // follow; `Follow.resized` keeps the place in every engine (Safari has no anchoring).
+        className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-4 outline-none [overflow-anchor:none]"
       >
         {/* Bottom 64: at the end the latest action row sits above the composer's fade. */}
         <div className="mx-auto flex w-full max-w-(--thread-max) flex-col gap-6 pt-6 pb-16">
@@ -321,6 +329,9 @@ export function Thread() {
                         tools={m.tools}
                         latest={i === lastUser || i === lastAssistant}
                         meta={{ createdAt: m.createdAt, usage: usageOf.get(m.id) }}
+                        {...(timingOf.has(m.id)
+                          ? { receipt: <Receipt timing={timingOf.get(m.id) ?? {}} /> }
+                          : {})}
                         {...(showThinking && m.thinking && chatId
                           ? {
                               thinking: (
@@ -363,7 +374,7 @@ export function Thread() {
             );
           })}
           {/* No reply to hold it (the turn failed before any text): on its own. */}
-          {!(stream || running) && chipAt < 0 && chip}
+          {!live && chipAt < 0 && chip}
           {!stream && !running && related.length > 0 && (
             <nav aria-label="Liittyvät keskustelut" className="flex flex-col gap-2">
               <h2 className="text-micro text-muted-foreground">Liittyvät keskustelut</h2>
@@ -388,7 +399,7 @@ export function Thread() {
           {subagents.length > 0 && !stream?.tools.some((t) => t.name === 'subagent') && (
             <SubagentRow items={subagents} />
           )}
-          {(stream || running) && !joinLive && (
+          {live && !joinLive && (
             <article className="flex flex-col gap-2">
               <h2 className="sr-only">Avustaja sanoi</h2>
               {liveView}
@@ -453,7 +464,7 @@ export function Thread() {
               </div>
             </div>
           )}
-          {!(stream || running) && cards}
+          {!live && cards}
         </div>
       </section>
       {/* Prose fades out above the composer instead of ending on a hard cut. */}

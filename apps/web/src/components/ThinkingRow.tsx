@@ -1,7 +1,7 @@
-import { Lightbulb, Loader2 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { Lightbulb } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import { thinkingKey, useStore } from '../store.ts';
-import { duration, messageTime, thoughtFor } from '../thread.ts';
+import { messageTime, thoughtFor } from '../thread.ts';
 import { loadThinking } from '../ws.ts';
 import { annotate } from './MessageView.tsx';
 import { useSlow } from './Page.tsx';
@@ -11,29 +11,15 @@ const line =
   'flex h-8 items-center gap-2 text-meta text-muted-foreground tabular-nums max-md:min-h-11 [@media(pointer:coarse)]:min-h-11';
 
 /**
- * The thinking row while the reply streams (phase-13 UI): "Ajattelee… 8 s" with a turning
- * spinner, counted here; once the thinking stops, "Ajatteli 12 s" until the message is final.
- * A status line, not a button: the text loads only from the final message.
+ * The thinking row of a streaming reply once its thinking stopped (phase-13 UI): "Ajatteli 12 s"
+ * until the message is final. A status line, not a button: the text loads only from the final
+ * message. Phase 26: while the model thinks, the waiting line says so ("ajattelee 8 s").
  */
-export function ThinkingLive({ startedAt, endedAt }: { startedAt: number; endedAt?: number }) {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (endedAt) return;
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, [endedAt]);
-  if (endedAt)
-    return (
-      <div className={line}>
-        <Lightbulb size={16} className="shrink-0" />
-        {thoughtFor(endedAt - startedAt)}
-      </div>
-    );
+export function ThoughtRow({ ms }: { ms: number }) {
   return (
     <div className={line}>
-      {/* Reduced motion: no turning, the text carries the state. */}
-      <Loader2 size={16} className="shrink-0 animate-spin motion-reduce:animate-none" />
-      Ajattelee… {duration(Math.max(0, now - startedAt))}
+      <Lightbulb size={16} className="shrink-0" />
+      {thoughtFor(ms)}
     </div>
   );
 }

@@ -11,8 +11,13 @@ import type { Catalog } from './pi/models.ts';
  * chat as running totals on `chats`. Prices stay in USD.
  */
 
-/** pa-server's key on a Pi assistant message. Pi stores it with the message. */
-export type PaMeta = { costUsd?: number; thinkingMs?: number };
+/**
+ * pa-server's key on a Pi assistant message. Pi stores it with the message. Phase 26: `queueMs`
+ * from the request to its response headers, `writeMs` from the first text token to the end.
+ */
+export type PaMeta = { costUsd?: number; thinkingMs?: number; queueMs?: number; writeMs?: number };
+/** Phase 26: the model call is sent, or its response headers came; `at` is epoch ms. */
+export type OnPhase = (phase: 'sent' | 'headers', at: number) => void;
 /** `search`: one `web_search` call to `zdr/search` (phase-14 decision 11). */
 export type UsageKind = 'chat' | 'task' | 'subagent' | 'search';
 export type UsageAt = { kind: UsageKind; chatId: string | null; agentId?: string | null };
@@ -66,22 +71,41 @@ export const aliasList = () => [...aliasMap().values()];
 /**
  * Captures LiteLLM's cost and the thinking time of each assistant message (decisions 8 and 11).
  * Pi computes its own cost from `models.json` and drops `usage.cost` of the usage chunk, so the
- * raw chunk is read here and the cost goes into the stored message as `pa.costUsd`.
+ * raw chunk is read here and the cost goes into the stored message as `pa.costUsd`. Phase 26: the
+ * request's wait for its headers and the writing time, and `onPhase` at the request and the
+ * headers. Pi sends both before the message's `message_start`. No model has a `promptCache`
+ * tier, so Pi's cache warmer never replays a request that these handlers would count.
  */
-export function usageExtension(at: UsageAt, record?: RecordUsage): ExtensionFactory {
+export function usageExtension(
+  at: UsageAt,
+  record?: RecordUsage,
+  onPhase?: OnPhase,
+): ExtensionFactory {
   return (pi) => {
     // Billed costs by the chunk's response id: a stopped stream's cost can never land on another
     // message. The usage chunk is the last chunk, so the clear at `message_start` comes before it.
     const costs = new Map<string | undefined, number>();
     let thinkFrom: number | undefined;
     let thinkTo: number | undefined;
+    let sentAt: number | undefined;
+    let headersAt: number | undefined;
+    let textFrom: number | undefined;
     /** `responseId:timestamp` of the recorded messages: a repeated `message_end` writes no row. */
     const recorded = new Set<string>();
     pi.on('turn_start', () => costs.clear());
     pi.on('message_start', (e) => {
       if (e.message.role !== 'assistant') return;
       costs.clear();
-      thinkFrom = thinkTo = undefined;
+      thinkFrom = thinkTo = textFrom = undefined;
+    });
+    pi.on('before_provider_request', () => {
+      sentAt = Date.now();
+      headersAt = undefined;
+      onPhase?.('sent', sentAt);
+    });
+    pi.on('after_provider_response', () => {
+      headersAt = Date.now();
+      onPhase?.('headers', headersAt);
     });
     pi.on('provider_stream_event', (e) => {
       const d = e.data as { id?: unknown; usage?: { cost?: unknown } } | null;
@@ -93,6 +117,7 @@ export function usageExtension(at: UsageAt, record?: RecordUsage): ExtensionFact
       const t = e.assistantMessageEvent.type;
       if (t === 'thinking_start') thinkFrom ??= performance.now();
       else if (t === 'thinking_delta') thinkTo = performance.now();
+      else if (t === 'text_delta') textFrom ??= Date.now();
     });
     pi.on('message_end', (e) => {
       const m = e.message;
@@ -104,8 +129,10 @@ export function usageExtension(at: UsageAt, record?: RecordUsage): ExtensionFact
       const cost = costs.get(m.responseId);
       if (cost !== undefined) pa.costUsd = cost;
       if (thinkFrom !== undefined) pa.thinkingMs = Math.round((thinkTo ?? thinkFrom) - thinkFrom);
+      if (sentAt !== undefined && headersAt !== undefined) pa.queueMs = headersAt - sentAt;
+      if (textFrom !== undefined) pa.writeMs = Date.now() - textFrom;
       costs.clear();
-      thinkFrom = thinkTo = undefined;
+      thinkFrom = thinkTo = sentAt = headersAt = textFrom = undefined;
       const changed = Object.keys(pa).length > 0;
       const message = changed ? ({ ...m, pa } as AgentMessage) : m;
       record?.(at, messageUsage(message));

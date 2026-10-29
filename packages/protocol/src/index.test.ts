@@ -219,6 +219,38 @@ describe('ServerMessage', () => {
   });
 });
 
+describe('waiting phases (phase 26)', () => {
+  const phase = { type: 'message.phase', chatId: 'c1', messageId: 's1', phase: 'sent', at: 1 };
+  it('message.phase takes sent or headers and a server time', () => {
+    expect(ServerMessage.safeParse(phase).success).toBe(true);
+    expect(ServerMessage.safeParse({ ...phase, phase: 'headers' }).success).toBe(true);
+    expect(ServerMessage.safeParse({ ...phase, phase: 'thinking' }).success).toBe(false);
+    expect(ServerMessage.safeParse({ ...phase, at: -1 }).success).toBe(false);
+    expect(ServerMessage.safeParse({ ...phase, at: 1.5 }).success).toBe(false);
+  });
+  it('message.phase and Message.phases are strict', () => {
+    expect(ServerMessage.safeParse({ ...phase, text: 'x' }).success).toBe(false);
+    const message = {
+      id: 'e1',
+      role: 'assistant',
+      text: 'vastaus',
+      annotations: [],
+      attachments: [],
+      tools: [],
+      createdAt: '2026-10-29T10:00:00.000Z',
+    };
+    const final = (phases: unknown) => ({
+      type: 'message.final',
+      chatId: 'c1',
+      message: { ...message, phases },
+    });
+    expect(ServerMessage.safeParse(final({ queueMs: 14000, writeMs: 3000 })).success).toBe(true);
+    expect(ServerMessage.safeParse(final({})).success).toBe(true);
+    expect(ServerMessage.safeParse(final({ queueMs: -1 })).success).toBe(false);
+    expect(ServerMessage.safeParse(final({ sentAt: 1 })).success).toBe(false);
+  });
+});
+
 describe('unions', () => {
   it('are non-empty', () => {
     expect(ClientMessage.options.length).toBeGreaterThan(0);

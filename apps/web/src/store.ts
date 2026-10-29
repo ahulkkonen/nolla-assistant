@@ -19,6 +19,7 @@ import type {
 } from '@pa/protocol';
 import { toast } from 'sonner';
 import { create } from 'zustand';
+import type { Wait } from './thread.ts';
 
 /** `output`: live `tool.update` text while the tool runs. */
 export type ToolView = ToolRow & { argsPreview?: string; output?: string };
@@ -143,6 +144,8 @@ type State = {
     localId: string;
     forkId?: string;
   } | null;
+  /** Phase 26: the waiting line of each running chat (`thread.ts` `waitSteps`). */
+  waits: Record<string, Wait>;
   /** The streamed message that thinks now, per chat (`message.thinking`); `endedAt` once it stopped. */
   thinkingLive: Record<string, { messageId: string; startedAt: number; endedAt?: number }>;
   /** Thinking text per `thinkingKey`, loaded on the first open of its row (`thinking.get`). */
@@ -427,9 +430,35 @@ const endTurn = (st: State, chatId: string) => ({
   zdrRefused: omit(st.zdrRefused, chatId),
 });
 
+/** The wait moves to `step` at `now`; leaving the queue adds its time (phase 26). */
+const enter = (w: Wait, step: Wait['step'], now: number): Partial<Wait> => ({
+  step,
+  since: now,
+  ...(w.step === 1 ? { queued: (w.queued ?? 0) + now - w.since } : {}),
+});
+/** The running chat's wait changed by `fn` (at the client's `now`); nothing without one. */
+const patchWait = (
+  st: State,
+  chatId: string,
+  fn: (w: Wait, now: number) => Partial<Wait>,
+): Partial<State> => {
+  const w = st.waits[chatId];
+  return w ? { waits: { ...st.waits, [chatId]: { ...w, ...fn(w, Date.now()) } } } : {};
+};
+
 /** A chat's run state (`agent.status`, or `chat.state` after a reconnect). */
 const status = (st: State, chatId: string, state: 'idle' | 'running'): Partial<State> => ({
   agentStatus: { ...st.agentStatus, [chatId]: state },
+  // Phase 26: a run starts its waiting line at "Lähetetään"; a known one keeps going.
+  waits:
+    state === 'idle'
+      ? omit(st.waits, chatId)
+      : st.waits[chatId]
+        ? st.waits
+        : {
+            ...st.waits,
+            [chatId]: { step: 0, since: Date.now(), accepted: false, ended: false },
+          },
   // A turn that ended without a final (error, abort) must not leave a stale stream.
   streaming: state === 'idle' ? omit(st.streaming, chatId) : st.streaming,
   thinkingLive: state === 'idle' ? omit(st.thinkingLive, chatId) : st.thinkingLive,
@@ -525,6 +554,7 @@ export const useStore = create<State>()((set, get) => {
     forkedFrom: {},
     summaries: {},
     pendingFork: null,
+    waits: {},
     thinkingLive: {},
     thinkingText: {},
     showThinking: loadShowThinking(),
@@ -647,11 +677,30 @@ export const useStore = create<State>()((set, get) => {
           return set({ fx: msg.rate });
         case 'export.state':
           return set({ exportJob: msg.job });
+        case 'message.phase':
+          // Phase 26: the request is out (its queue clock starts), or its headers came.
+          return set((st) =>
+            patchWait(st, msg.chatId, (w, now) =>
+              msg.phase === 'sent'
+                ? { queued: w.queued ?? 0, ...enter(w, 1, now), ended: false, writing: undefined }
+                : w.step < 2
+                  ? enter(w, 2, now)
+                  : {},
+            ),
+          );
         case 'message.thinking':
           return set((st) => {
             const now = st.thinkingLive[msg.chatId];
+            const wait = patchWait(st, msg.chatId, (w, at) =>
+              msg.active
+                ? { thinking: at, thought: w.thought ?? 0, ...(w.step < 2 ? enter(w, 2, at) : {}) }
+                : w.thinking === undefined
+                  ? {}
+                  : { thought: (w.thought ?? 0) + at - w.thinking, thinking: undefined },
+            );
             if (msg.active)
               return {
+                ...wait,
                 thinkingLive: {
                   ...st.thinkingLive,
                   [msg.chatId]: { messageId: msg.messageId, startedAt: Date.now() },
@@ -659,15 +708,17 @@ export const useStore = create<State>()((set, get) => {
               };
             return now?.messageId === msg.messageId
               ? {
+                  ...wait,
                   thinkingLive: {
                     ...st.thinkingLive,
                     [msg.chatId]: { ...now, endedAt: Date.now() },
                   },
                 }
-              : {};
+              : wait;
           });
         case 'message.accepted':
           return set((st) => ({
+            ...patchWait(st, msg.chatId, () => ({ accepted: true })),
             messages: {
               ...st.messages,
               [msg.chatId]: (st.messages[msg.chatId] ?? []).map((m) =>
@@ -708,6 +759,7 @@ export const useStore = create<State>()((set, get) => {
             artifacts: omit(st.artifacts, msg.chatId),
             streaming: omit(st.streaming, msg.chatId),
             agentStatus: omit(st.agentStatus, msg.chatId),
+            waits: omit(st.waits, msg.chatId),
             memoryChip: omit(st.memoryChip, msg.chatId),
             failed: omit(st.failed, msg.chatId),
             zdrRefused: omit(st.zdrRefused, msg.chatId),
@@ -722,6 +774,12 @@ export const useStore = create<State>()((set, get) => {
         case 'integrations.state':
           return set({ integrations: msg.google });
         case 'message.delta':
+          // Phase 26: the round's first text token: the line moves to "kirjoittaa".
+          set((st) =>
+            patchWait(st, msg.chatId, (w, now) =>
+              w.writing === undefined ? { writing: now, ...enter(w, 3, now) } : {},
+            ),
+          );
           return patchStream(msg.chatId, (s) =>
             s.messageId === msg.messageId
               ? {
@@ -743,9 +801,17 @@ export const useStore = create<State>()((set, get) => {
               messages: { ...st.messages, [msg.chatId]: [...prev, { ...msg.message, tools }] },
               streaming: omit(st.streaming, msg.chatId),
               thinkingLive: omit(st.thinkingLive, msg.chatId),
+              // A reply without tool calls ends the turn's rounds; the live line goes now.
+              ...patchWait(st, msg.chatId, () => ({ ended: !msg.message.tools.length })),
             };
           });
         case 'tool.start':
+          set((st) =>
+            patchWait(st, msg.chatId, (w, now) => ({
+              tool: now,
+              ...(w.step === 2 ? {} : enter(w, 2, now)),
+            })),
+          );
           return patchStream(msg.chatId, (s) => ({
             ...s,
             tools: [
@@ -762,6 +828,7 @@ export const useStore = create<State>()((set, get) => {
         case 'tool.update':
           return patchTool(msg.chatId, msg.callId, { output: msg.output.slice(-2000) });
         case 'tool.end': {
+          set((st) => patchWait(st, msg.chatId, () => ({ tool: undefined })));
           const patch = {
             status: msg.status,
             summary: msg.summary,

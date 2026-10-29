@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { inflateSync } from 'node:zlib';
 import { SEARCH_DENIED } from '@pa/server/src/search-tool.ts';
-import type { Page } from '@playwright/test';
+import { devices, type Page } from '@playwright/test';
 import {
   type App,
   acceptProposal,
@@ -99,6 +99,140 @@ test('stop: Escape ends a running turn', async ({ app, page }) => {
   await expect(page.getByRole('button', { name: 'Lähetä', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Pysäytä' })).toHaveCount(0);
   await expect(page.getByRole('status', { name: 'Vastaus tulossa' })).toHaveCount(0);
+});
+
+test('waiting line: steps with the real events; the first token takes its place without a move; the receipt stays', async ({
+  app,
+  page,
+}) => {
+  const long = Array.from({ length: 30 }, (_, i) => `Kappale ${i + 1}: pitkä vastaus.`).join(
+    '\n\n',
+  );
+  app.llm.push({ text: long });
+  app.llm.push({ text: 'Kevät on hyvä aika aloittaa.', queueMs: 1500 });
+  // Once armed, holds the server's frames from the next delta on.
+  let armed = false;
+  let holding = false;
+  const held: (string | Buffer)[] = [];
+  let deliver: (m: string | Buffer) => void = () => {};
+  await page.routeWebSocket(/\/ws$/, (ws) => {
+    const server = ws.connectToServer();
+    deliver = (m) => ws.send(m);
+    server.onMessage((m) => {
+      if (armed && typeof m === 'string' && JSON.parse(m).type === 'message.delta') holding = true;
+      if (holding) return void held.push(m);
+      ws.send(m);
+    });
+  });
+  await app.login(page);
+  await send(page, 'Kirjoita pitkästi');
+  await expect(page.locator('.md').last()).toContainText('Kappale 30');
+  await expect(page.getByRole('button', { name: 'Pysäytä' })).toHaveCount(0);
+  armed = true;
+  await send(page, 'Milloin kasvimaa kannattaa aloittaa?');
+  await expect(
+    thread(page)
+      .getByText(/^jonossa \d+ s$/)
+      .first(),
+  ).toBeVisible();
+  await expect(page.getByRole('status', { name: 'Vastaus tulossa' })).toHaveText('Jonossa');
+  await expect.poll(() => held.length).toBeGreaterThan(0);
+  const bubble = thread(page).getByText('Milloin kasvimaa kannattaa aloittaa?', { exact: true });
+  const before = await bubble.boundingBox();
+  // The first token: the text takes the 28 px first line, the line moves into the action row.
+  deliver(held.shift() as string);
+  await expect(page.locator('.md').last()).not.toBeEmpty();
+  await expect(
+    thread(page)
+      .getByText(/^kirjoittaa \d+ s$/)
+      .last(),
+  ).toBeVisible();
+  expect(await bubble.boundingBox()).toEqual(before);
+  [armed, holding] = [false, false];
+  for (const m of held.splice(0)) deliver(m);
+  await expect(page.getByRole('button', { name: 'Pysäytä' })).toHaveCount(0);
+  // The receipt from the stored times; it stays after a reload.
+  const receipt = page
+    .locator('[data-message-id]')
+    .last()
+    .getByText(/^Jonotti \d+ s$/);
+  await expect(receipt).toBeVisible();
+  expect(await bubble.boundingBox()).toEqual(before);
+  await page.reload();
+  await page.locator('nav li > button').first().click();
+  await expect(receipt).toBeVisible();
+});
+
+test.describe('android keyboard', () => {
+  // Phase 26: Pixel 7 (412 x 839, touch). `resizes-content` shrinks the layout viewport, so the
+  // keyboard is a 330 px smaller viewport here (the method of the mobile composer audit).
+  const { defaultBrowserType: _, ...pixel } = devices['Pixel 7'];
+  test.use(pixel);
+
+  test("keyboard: the thread keeps its bottom or the reader's place, no pill; a send keeps the keyboard", async ({
+    app,
+    page,
+  }) => {
+    const long = Array.from({ length: 30 }, (_, i) => `Kappale ${i + 1}: pitkä vastaus.`).join(
+      '\n\n',
+    );
+    app.llm.push({ text: long });
+    app.llm.push({ text: long });
+    await app.login(page);
+    for (const q of ['Ensimmäinen kysymys', 'Toinen kysymys']) {
+      await page.getByLabel('Viesti').fill(q);
+      await page.getByLabel('Viesti').press('ControlOrMeta+Enter');
+      await expect(page.locator('.md').last()).toContainText('Kappale 30');
+      await expect(page.getByRole('button', { name: 'Pysäytä' })).toHaveCount(0);
+    }
+    const region = thread(page);
+    const view = page.viewportSize() ?? { width: 412, height: 839 };
+    /** Two frames: the resize observer and a scroll event of the resize have run by then. */
+    const frames = () =>
+      page.evaluate(
+        () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))),
+      );
+    const keyboard = async (open: boolean) => {
+      await page.setViewportSize({ ...view, height: view.height - (open ? 330 : 0) });
+      await frames();
+    };
+    /** How far the last message's end sits below the thread's bottom edge (> 0: hidden). */
+    const hidden = () =>
+      region.evaluate((el) => {
+        const last = Array.from(el.querySelectorAll('[data-message-id]')).at(-1);
+        return (last?.getBoundingClientRect().bottom ?? 0) - el.getBoundingClientRect().bottom;
+      });
+    const gap = () => region.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight);
+    const pill = page.getByRole('button', { name: /^Uusimpaan/ });
+
+    await page.getByLabel('Viesti').tap();
+    await keyboard(true);
+    await expect.poll(hidden).toBeLessThanOrEqual(0);
+    await page.getByLabel('Viesti').fill('Kolmas kysymys\nrivi 2\nrivi 3');
+    await expect.poll(hidden).toBeLessThanOrEqual(0);
+    await frames();
+    await expect(pill).toHaveCount(0);
+
+    // Scrolled up 400 px: the keyboard keeps the reader's distance to the bottom.
+    await page.getByLabel('Viesti').fill('');
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    await keyboard(false);
+    await expect.poll(gap).toBeLessThanOrEqual(1);
+    await region.evaluate((el) => el.scrollBy(0, -400));
+    await expect(pill).toBeVisible();
+    await page.getByLabel('Viesti').tap();
+    await keyboard(true);
+    await expect.poll(async () => Math.abs((await gap()) - 400)).toBeLessThanOrEqual(1);
+
+    // "Lähetä" keeps the textarea's focus, so the keyboard stays open.
+    app.llm.push({ text: 'Lyhyt vastaus.' });
+    await page.getByLabel('Viesti').fill('Kolmas kysymys');
+    await page.getByRole('button', { name: 'Lähetä', exact: true }).tap();
+    await expect(page.locator('.md').last()).toHaveText('Lyhyt vastaus.');
+    expect(await page.evaluate(() => document.activeElement?.getAttribute('aria-label'))).toBe(
+      'Viesti',
+    );
+  });
 });
 
 /** About 2,000 lines of mixed Markdown: headings, paragraphs, lists, tables and code fences. */
@@ -831,14 +965,19 @@ test.describe('thread depth', () => {
     expect(forks).toBe(2);
   });
 
-  test('thinking: live row, then "Ajatteli … s" opens to the text; the switch hides it', async ({
+  test('thinking: the waiting line thinks, then "Ajatteli … s" opens to the text; the switch hides it', async ({
     app,
     page,
   }) => {
     app.llm.push(THINKING_TURN);
     await app.login(page);
     await send(page, 'Milloin kasvimaa kannattaa aloittaa?');
-    await expect(thread(page).getByText(/^Ajattelee… \d+ s$/)).toBeVisible();
+    // Phase 26: the waiting line carries the live thinking.
+    await expect(
+      thread(page)
+        .getByText(/^ajattelee \d+ s$/)
+        .first(),
+    ).toBeVisible();
     await expect(page.locator('.md').last()).toHaveText(THINKING_TURN.text);
     const row = thread(page).getByRole('button', { name: /^Ajatteli \d+ s$/ });
     await row.click();
