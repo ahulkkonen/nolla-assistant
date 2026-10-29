@@ -37,6 +37,8 @@ const NO_CHAT = 'Keskustelua ei löydy.';
 const SELF = 'Tämä keskustelu on jo näkyvissäsi. Anna toisen keskustelun tunnus.';
 const NO_HITS = 'Ei osumia.';
 const READ_FAILED = 'Keskustelua ei voitu lukea nyt.';
+export const AGENT_FIXED = 'Agenttia ei voi vaihtaa työkalulla.';
+export const PSEUDO_DOWN = 'Tietosuojapalvelu ei vastaa; profiilia ei voi muuttaa nyt.';
 export const badField = (path: string) =>
   path ? `Muutos ei kelpaa: ${path}` : 'Muutos ei kelpaa.';
 
@@ -58,6 +60,8 @@ export type HarnessDeps = {
   agentId: string;
   /** Call id to the argument as the model wrote it (`maskedArgs`, decision 22). */
   masked: Map<string, unknown>;
+  /** The profile's `tools.allow`: only these harness tools are registered. */
+  allow: string[];
   log: (msg: string, data: object) => void;
 };
 
@@ -126,6 +130,15 @@ export function harness(deps: HarnessDeps): {
     const p = input as ProfileArgs;
     const masked = deps.masked.get(callId);
     if (masked !== undefined && masked !== p.content) return { error: NO_PII };
+    // A real name the model wrote itself is not in the masked argument: probe it with the
+    // sidecar. Down: refuse rather than skip. No sidecar at all: no vault, nothing to find.
+    if (deps.pseudo) {
+      try {
+        if ((await deps.pseudo.mask(chatId, p.content)).spans.length) return { error: NO_PII };
+      } catch {
+        return { error: PSEUDO_DOWN };
+      }
+    }
     const r = run<unknown>(() => profileWrite(p, true), log);
     if ('error' in r) return r;
     const file = profileFile(p, r.body);
@@ -154,7 +167,25 @@ export function harness(deps: HarnessDeps): {
     typeof p.id === 'string' ? p.id : undefined;
   type Dry = { id: string; yaml: string; created: boolean };
 
+  /** The file an update changes, parsed; undefined for a create or an unknown id. */
+  const automationNow = (id: string | undefined) => {
+    if (id === undefined || !AutomationFile.shape.id.safeParse(id).success) return undefined;
+    const path = join(deps.automationsDir, `${id}.yaml`);
+    if (!existsSync(path)) return undefined;
+    const r = AutomationFile.safeParse(parse(readFileSync(path, 'utf8')));
+    return r.success ? r.data : undefined;
+  };
+
   const automationView: View = async (input, callId) => {
+    let old: ReturnType<typeof automationNow>;
+    try {
+      old = automationNow(automationId(input));
+    } catch {
+      return { error: FAILED };
+    }
+    // An update keeps its agent (and its `autoApprove` list, which the body never holds).
+    if (old && input.agentId !== undefined && input.agentId !== old.agentId)
+      return { error: AGENT_FIXED };
     const r = run<Dry>(
       () => writers.saveAutomation(automationId(input), automationBody(input), true),
       log,
@@ -171,6 +202,9 @@ export function harness(deps: HarnessDeps): {
       created,
       yaml,
       nextRuns: a.enabled ? nextRuns(a.cron, a.timezone) : [],
+      ...(old && !created && old.enabled !== a.enabled
+        ? { enabled: { from: old.enabled, to: a.enabled } }
+        : {}),
     };
     return { view };
   };
@@ -207,22 +241,34 @@ export function harness(deps: HarnessDeps): {
     const bad = ownChat(id);
     if (bad) return { error: bad };
     const row = chatRow(db, userId, id);
+    let messages: number;
+    try {
+      messages = transcript(deps.reader(id)).length;
+    } catch {
+      return { error: READ_FAILED };
+    }
     return {
       view: {
         ...view,
         chatId: id,
         title: row?.title ?? null,
         createdAt: row?.createdAt ?? null,
-        messages: transcript(deps.reader(id)).length,
+        messages,
       },
     };
   };
 
   /** The newest messages that fit, restored, so `tool_result` masks them once here (H5). */
   const read = async (row: NonNullable<ReturnType<typeof chatRow>>) => {
-    const lines = transcript(deps.reader(row.id)).map(
-      (m) => `${m.role === 'user' ? 'Käyttäjä' : 'Avustaja'}: ${m.text}`,
-    );
+    let lines: string[];
+    try {
+      lines = transcript(deps.reader(row.id)).map(
+        (m) => `${m.role === 'user' ? 'Käyttäjä' : 'Avustaja'}: ${m.text}`,
+      );
+    } catch {
+      // Fixed text: an error message may hold a path or a value.
+      return text(READ_FAILED, true);
+    }
     const kept: string[] = [];
     let size = 0;
     for (let i = lines.length - 1; i >= 0; i--) {
@@ -241,7 +287,8 @@ export function harness(deps: HarnessDeps): {
     // Masked text would be masked a second time: refuse instead.
     if (down) return text(READ_FAILED, true);
     const head = `Keskustelu "${row.title ?? 'Nimetön'}" (${row.createdAt.slice(0, 10)}), ${lines.length} viestiä, ${lines.length - kept.length} jätetty pois.`;
-    return text(`${head}\n${untrusted('keskustelu', restored.text)}`);
+    // A restored name can be longer than its surrogate: cap after the restore.
+    return text(`${head}\n${untrusted('keskustelu', cutText(restored.text, CHAT_MAX))}`);
   };
 
   const chatRead = async (p: ChatArgs) => {
@@ -272,8 +319,14 @@ export function harness(deps: HarnessDeps): {
     );
   };
 
+  const allowed = new Set(deps.allow);
   const tools: ExtensionFactory = (pi) => {
-    pi.registerTool({
+    // Every end (run, denied, expired, failed) drops the call's stamp.
+    pi.on('tool_execution_end', (event) => void stamps.delete(event.toolCallId));
+    const registerTool: typeof pi.registerTool = (t) => {
+      if (allowed.has(t.name)) pi.registerTool(t);
+    };
+    registerTool({
       name: 'profile_edit',
       label: 'profile_edit',
       description:
@@ -286,7 +339,7 @@ export function harness(deps: HarnessDeps): {
       execute: async (callId, p) =>
         commit('profile_edit', callId, (n) => profileWrite(p, false, n)),
     });
-    pi.registerTool({
+    registerTool({
       name: 'automation_edit',
       label: 'automation_edit',
       description:
@@ -307,7 +360,7 @@ export function harness(deps: HarnessDeps): {
           writers.saveAutomation(automationId(p), automationBody(p), false, n),
         ),
     });
-    pi.registerTool({
+    registerTool({
       name: 'chat_read',
       label: 'chat_read',
       description:

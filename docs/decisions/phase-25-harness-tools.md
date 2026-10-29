@@ -91,8 +91,10 @@ Lines were read on 2026-10-29 at `d3263f1`.
       cannot add a tool or remove a card. `automation_edit` cannot set `autoApprove` (decision 15).
     - **No real values in the prompt.** `profile_edit` content is compared before and after
       `pi-ext-pseudo` (the recorder of decision 22). A difference means it names a vault entity:
-      block with "Profiiliin ei kirjoiteta henkilötietoja; ne kuuluvat muistiin (USER.md)." *The
-      prompt and modes are not masked at injection (H4).*
+      block with "Profiiliin ei kirjoiteta henkilötietoja; ne kuuluvat muistiin (USER.md)." The
+      view also probes the content with the sidecar (`pseudo.mask`): a span means an entity, with
+      the same block. When the sidecar does not answer, the view blocks with a fixed "sidecar down"
+      reason; it does not skip the check. *The prompt and modes are not masked at injection (H4).*
     - **Taint warning** on the card (decision 5).
     - **Next turn only** (decision 8): a change cannot steer the rest of the turn that made it.
     - **Diff, not prose.** The card shows the exact change and a stale check guards it (decision 6).
@@ -116,8 +118,11 @@ Lines were read on 2026-10-29 at `d3263f1`.
     values may stay in the automation prompt: the run sends it through the `input` hook, which
     masks it.
 14. **Errors.** The dry run's `Bad.path` goes into the block reason (decision 4).
-15. **No `autoApprove`.** The tool strips the key. A new automation gets `[]`. *An approved
-    automation must not run gated tools on a schedule without the user's editor action.*
+15. **No `autoApprove`.** The tool strips the key. A new automation gets `[]`. An update keeps the
+    file's list unchanged (the merge never sees the key). *An approved automation must not run
+    gated tools on a schedule without the user's editor action.* An update cannot change
+    `agentId`: "Agenttia ei voi vaihtaa työkalulla." When an update changes `enabled`, the YAML view
+    carries the old and the new value (`enabled: { from, to }`).
 
 ### chat_read
 
@@ -157,7 +162,8 @@ Lines were read on 2026-10-29 at `d3263f1`.
     list. At most 3 redirects, each checked again. Timeout 15 s. Body at most 2 MB (`capped` from
     `fx.ts` over `Readable.toWeb`). Types `text/*`, `application/json`, `application/xhtml+xml`;
     others: "Sivu ei ole tekstiä." No cookie, no auth header. HTML becomes text (scripts, styles
-    and tags removed, entities decoded, white space collapsed; ponytail: no article extraction).
+    and tags removed by a one-pass scanner, entities decoded, white space collapsed; the input is
+    cut to 2 MB first; ponytail: no article extraction).
     The answer is at most 20,000 characters inside `untrusted('sivu', text)`: `resultsText` of
     `search-tool.ts` moves its block into `untrusted(tag, body)`, which `web_search`, `fetch_url`
     and `chat_read` share. Errors are fixed texts. Not in `cleanTool`: it taints the turn.
@@ -165,13 +171,15 @@ Lines were read on 2026-10-29 at `d3263f1`.
     `maskedArgs({ web_search: 'query', fetch_url: 'url', profile_edit: 'content' })`, loaded before
     `pi-ext-pseudo`. The `fetch_url` guard, after it, asks with `confirm` when the restored URL
     differs ("Osoite sisältää henkilötiedon") or when no user message of the branch holds the
-    masked URL ("Osoite ei ole viestissäsi"). An unattended chat blocks both. The chat toggle lets
-    the second case pass. *The skill text "fetch only the URL the user gave" becomes a check: a URL
+    masked URL as a whole white-space token, trailing `.,;:)]` cut ("Osoite ei ole viestissäsi").
+    An unattended chat blocks both. The chat toggle covers neither case, as for the `web_search`
+    entity card, and `autoApproveTools` leaves `fetch_url` out. *The skill text "fetch only the URL the user gave" becomes a check: a URL
     that a page or a search result suggests waits for the user.*
 23. **Shared network rule.** `PRIVATE` and `publicLookup` move to
     `services/sandbox-broker/src/net.ts` (export `@pa/sandbox-broker/net`); `proxy.ts` and
-    `fetch-tool.ts` import them. The list gains multicast and reserved ranges, and an
-    IPv4-mapped IPv6 address is checked as IPv4 (H12). `apps/server` adds the workspace dependency;
+    `fetch-tool.ts` import them. The list gains multicast and reserved ranges, the IPv6 transition
+    ranges that embed an IPv4 address (NAT64 `64:ff9b::/96`, Teredo `2001::/32`, 6to4 `2002::/16`,
+    the 6to4 relay `192.88.99.0/24`), and an IPv4-mapped IPv6 address is checked as IPv4 (H12). `apps/server` adds the workspace dependency;
     `infra/Dockerfile.server` copies `services/sandbox-broker/src/net.ts` with its manifest.
 24. **Profile and prompt.** `assistant.yaml`: `fetch_url` in `tools.allow` and `approval.never`
     (its guard asks, like `web_search`). `assistant.md` gets one mechanics line: "Kun käyttäjä
@@ -282,3 +290,21 @@ layout (two columns under 768); a 200-line diff does not widen the card past the
 - A user who approves every card defeats decision 10; the tainted line is the last signal.
 - A title search can read a chat that the user did not mean; the card names the chat by id only
   when the model gave the id (decision 18).
+
+## Status
+
+Security review fixes (2026-10-29, branch `p25-fix`):
+
+- `htmlText` cuts its input to 2 MB and strips tags with a linear scanner; the entity regex has
+  bounded quantifiers. A 2 MB page of `<` or of unterminated `<script ` takes under 200 ms.
+- The `fetch_url` guard matches whole URL tokens, and the auto-approve toggle never covers its
+  card (decision 22).
+- The private list has the IPv6 transition ranges (decision 23).
+- The registry registers a harness tool only when `tools.allow` lists it.
+- `automation_edit` keeps the agent and the `autoApprove` list of an update (decision 15).
+- `profile_edit` probes its content with the sidecar (decision 10).
+- `chat_read` answers fixed text when a read fails, and applies the 20,000-character cap after the
+  restore. A call that ends without `execute` (denied, expired, failed) drops its stale-check stamp.
+- Accepted for now: the manifests stage of `infra/Dockerfile.server` copies the broker's
+  `package.json`, so the server image installs the broker's dependencies (`undici`, `fastify`,
+  `yaml`, `zod`) although the server imports only `net.ts`, which needs none of them.

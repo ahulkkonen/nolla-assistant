@@ -243,6 +243,8 @@ export const ApprovalView = z.discriminatedUnion('kind', [
     created: z.boolean(),
     yaml: z.string().max(200_000),
     nextRuns: z.array(z.iso.datetime()).max(5),
+    /** An update that turns the automation on or off: the old and the new value. */
+    enabled: z.strictObject({ from: z.boolean(), to: z.boolean() }).optional(),
   }),
   z.strictObject({
     kind: z.literal('chat'),

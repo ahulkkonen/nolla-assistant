@@ -4,7 +4,8 @@ import { lookup } from 'node:dns';
 import net from 'node:net';
 
 /**
- * Private, loopback, link-local, shared, documentation, benchmark, multicast and reserved ranges.
+ * Private, loopback, link-local, shared, documentation, benchmark, multicast and reserved ranges,
+ * and the IPv6 transition ranges that can embed an IPv4 address (NAT64, Teredo, 6to4 and its relay).
  * `BlockList` checks an IPv4-mapped IPv6 address (`::ffff:10.0.0.1`) against the IPv4 rules.
  */
 export const PRIVATE = new net.BlockList();
@@ -17,6 +18,7 @@ for (const [a, p] of [
   ['172.16.0.0', 12],
   ['192.0.0.0', 24],
   ['192.0.2.0', 24],
+  ['192.88.99.0', 24],
   ['192.168.0.0', 16],
   ['198.18.0.0', 15],
   ['198.51.100.0', 24],
@@ -28,8 +30,11 @@ for (const [a, p] of [
 for (const [a, p] of [
   ['::', 128],
   ['::1', 128],
+  ['64:ff9b::', 96],
   ['100::', 64],
+  ['2001::', 32],
   ['2001:db8::', 32],
+  ['2002::', 16],
   ['fc00::', 7],
   ['fe80::', 10],
   ['ff00::', 8],

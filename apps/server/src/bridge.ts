@@ -55,7 +55,7 @@ import { indexChat, related, search } from './search.ts';
 import { SEARCH_DENIED, SEARCH_UNATTENDED } from './search-tool.ts';
 import { topicState } from './topics.ts';
 import { chatUsage, messageUsage, type PaMeta, usageMonth } from './usage.ts';
-import { childrenOf, LEAF_MARK, newestLeaf, versionsOf } from './versions.ts';
+import { childrenOf, conversationAt, LEAF_MARK, newestLeaf, versionsOf } from './versions.ts';
 
 export type Socket = {
   send(data: string): void;
@@ -746,8 +746,9 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
     const target = versionsOf(sm).get(msg.messageId)?.ids[msg.index - 1];
     if (!target) return 'bad_message';
     const leaf = newestLeaf(childrenOf(sm.getEntries()), target);
-    // A version without a stored reply: navigation would land on its parent (P2).
-    const end = sm.getEntry(leaf);
+    // A version without a stored reply: navigation would land on its parent (P2), or on a
+    // `pseudo-spans` entry after a failed reply, which shows the user message with no answer.
+    const end = conversationAt(sm, leaf);
     if (!end || (end.type === 'message' && end.message.role === 'user')) return 'bad_message';
     const moved = await holding(msg.chatId, async () => {
       const nav = await session.navigateTree(leaf).catch(() => ({ cancelled: true }));

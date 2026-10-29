@@ -658,6 +658,30 @@ test('chat.edit keeps the old version in the same file; chat.version shows it in
   expect(textsOf(await c.next('chat.state'))).toEqual(textsOf(edited));
 });
 
+test('chat.version refuses a version whose reply failed (only a pseudo-spans entry after it)', async () => {
+  const { c, chat, srv } = await bootChat([{ text: 'Eka.' }, { text: 'Uusi.' }]);
+  await turn(c, chat.id, 'Yksi');
+  const [user1] = (await open(c, chat.id)).messages;
+  c.send({
+    type: 'chat.edit',
+    chatId: chat.id,
+    messageId: user1?.id ?? '',
+    text: 'Muokattu',
+    localId: 'l1',
+  });
+  const accepted = await c.next('message.accepted');
+  await c.idle();
+  // Version 1 gets a `pseudo-spans` entry as its newest child, as a failed reply leaves it.
+  const sm = (await srv.registry.get(chat.id)).sessionManager;
+  const leaf = sm.getLeafId() ?? '';
+  sm.branch(user1?.id ?? '');
+  sm.appendCustomEntry('pseudo-spans', {});
+  sm.branch(leaf);
+  c.send({ type: 'chat.version', chatId: chat.id, messageId: accepted.messageId, index: 1 });
+  await expect(c.next('chat.state')).rejects.toThrow('bad_message');
+  expect(textsOf(await open(c, chat.id))).toEqual(['Muokattu', 'Uusi.']);
+});
+
 test('chat.edit carries the original images and document blocks, masked once', {
   timeout: 40_000,
 }, async () => {

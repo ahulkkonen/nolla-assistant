@@ -39,6 +39,16 @@ export function anchorOf(byId: Map<string, SessionEntry>, entry: SessionEntry): 
   return null;
 }
 
+/** `id` itself or its nearest ancestor that is part of the conversation (skips `SKIP`). */
+export function conversationAt(
+  sm: Pick<SessionManager, 'getEntry'>,
+  id: string,
+): SessionEntry | undefined {
+  let e = sm.getEntry(id);
+  while (e && SKIP.has(e.type)) e = e.parentId === null ? undefined : sm.getEntry(e.parentId);
+  return e;
+}
+
 /** Parent id → children, in file order (P3). */
 export function childrenOf(entries: SessionEntry[]): Children {
   const children: Children = new Map();

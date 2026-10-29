@@ -574,6 +574,14 @@ describe('approval views (phase 25)', () => {
       nextRuns: ['2026-11-03T05:30:00.000Z'],
     },
     {
+      kind: 'yaml',
+      file: 'automations/a.yaml',
+      created: false,
+      yaml: 'id: a\nenabled: false\n',
+      nextRuns: [],
+      enabled: { from: true, to: false },
+    },
+    {
       kind: 'chat',
       chatId: 'c2',
       title: 'Hei',

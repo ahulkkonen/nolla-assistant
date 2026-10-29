@@ -128,7 +128,13 @@ the agent loop changes only its request identity. Card S0 proves the facts in `t
     the branch (R6). The sweep's `messagesOf(chatId, through)` in `main.ts` returns `{ messages, at
     }`: `at` is the index of the last branch message on `sm.getBranch(through)`, so the extraction
     reads the messages after the branch point. Claims taken from an older version stay; the user
-    reviews them in Muisti › Havainnot.
+    reviews them in Muisti › Havainnot. *No duplicate claims after "edit, extract, switch back":*
+    the switch back reads the old messages again from the branch point, but `duplicateOf` refuses
+    every claim whose normalised text (or vector, within `SAME_DISTANCE`) equals a stored claim of
+    the user, whatever its chat or status. An open match is confirmed instead (`timesSeen` + 1, one
+    more evidence row); a rejected or superseded match writes nothing. The extraction also sends
+    the similar stored claims to the model, which answers with confirms. ponytail: a re-read can
+    count a confirm twice; a per-message evidence check when `timesSeen` starts to matter.
 
 ## Changes to earlier records
 
@@ -201,5 +207,7 @@ right-aligned; the user turn keeps its 40 px gap (48 on phones) with the always-
   cache per session when a long chat makes `chat.open` slow.
 - A switch reindexes the whole chat (R5): seconds of CPU for a very long chat.
 - A version whose newest entry is a user message (no reply stored) cannot be shown (decision 9).
+  The same holds when the newest entry is a `custom` entry (a `pseudo-spans` entry of a failed
+  reply) whose nearest conversation ancestor is a user message.
 - Claims from an older version stay active until the user reviews them (decision 17).
 - A later Pi version that changes P1–P3 fails S0 first; then this record needs an update.

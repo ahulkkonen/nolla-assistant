@@ -2,11 +2,23 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { chats, openDb, users } from '@pa/db';
+import { PseudoClient, PseudoDownError } from '@pa/pi-ext-pseudo';
+import { startFakeSidecar } from '@pa/pi-ext-pseudo/fake-sidecar';
+import { HARNESS_TOOLS } from '@pa/protocol';
 import { afterEach, expect, test, vi } from 'vitest';
 import { adminWriters } from './admin.ts';
 import { loadAgents } from './agents.ts';
 import type { View } from './approval.ts';
-import { CHAT_MAX, harness, NO_PII, NOT_FOUND, SAVED, STALE } from './harness.ts';
+import {
+  AGENT_FIXED,
+  CHAT_MAX,
+  harness,
+  NO_PII,
+  NOT_FOUND,
+  PSEUDO_DOWN,
+  SAVED,
+  STALE,
+} from './harness.ts';
 import { loadModes, modesDir } from './modes.ts';
 import { runCleanups, seedAgents, tempDir } from './test-utils.ts';
 
@@ -18,7 +30,7 @@ const CHAT = 'aaaaaaaa-0000-4000-8000-000000000001';
 
 type Tool = { execute: (id: string, p: object) => Promise<{ content: { text: string }[] }> };
 
-function setup() {
+function setup(o: { pseudo?: unknown; allow?: string[]; reader?: () => never } = {}) {
   const data = tempDir('pa-harness-');
   const agentsDir = join(data, 'agents');
   const automationsDir = join(data, 'automations');
@@ -80,6 +92,7 @@ function setup() {
     db,
     userId: 'u1',
     reader: (id) =>
+      o.reader?.() ??
       ({
         sessionManager: {
           getBranch: () =>
@@ -89,19 +102,28 @@ function setup() {
               message: { role: m.role, content: m.text },
             })),
         },
-      }) as never,
-    pseudo: {
+      } as never),
+    pseudo: (o.pseudo ?? {
+      mask: async (_: string, t: string) => ({ masked: t, spans: [] }),
       unmask: async (t: string) => ({ restored: t.replaceAll(MASKED, REAL), spans: [], hold: 0 }),
-    } as never,
+    }) as never,
     agentsDir,
     automationsDir,
     chatId: CHAT,
     agentId: 'assistant',
     masked,
+    allow: o.allow ?? [...HARNESS_TOOLS],
     log,
   });
   const tools = new Map<string, Tool>();
-  h.tools({ registerTool: (t: Tool & { name: string }) => tools.set(t.name, t) } as never);
+  const ends: ((e: { toolCallId: string }) => void)[] = [];
+  h.tools({
+    on: (_: string, f: (typeof ends)[number]) => ends.push(f),
+    registerTool: (t: Tool & { name: string }) => tools.set(t.name, t),
+  } as never);
+  const end = (toolCallId: string) => {
+    for (const f of ends) f({ toolCallId });
+  };
   const view = (tool: string, input: object, id = 't1') =>
     (h.views[tool] as View)(input as never, id);
   const exec = async (tool: string, input: object, id = 't1') =>
@@ -109,7 +131,19 @@ function setup() {
   const gitLog = () =>
     spawnSync('git', ['log', '--format=%s'], { cwd: agentsDir, encoding: 'utf8' }).stdout;
   cleanups(() => sqlite.close());
-  return { agentsDir, automationsDir, view, exec, masked, log, addChat, gitLog, writers };
+  return {
+    agentsDir,
+    automationsDir,
+    view,
+    exec,
+    masked,
+    log,
+    addChat,
+    gitLog,
+    writers,
+    tools,
+    end,
+  };
 }
 const closers: (() => void)[] = [];
 const cleanups = (f: () => void) => closers.push(f);
@@ -196,10 +230,19 @@ test('automation_edit: YAML view with next runs, autoApprove stripped, a bad cro
     { id: 'aamukatsaus', enabled: false, autoApprove: [] },
     't2',
   );
-  expect(upd).toMatchObject({ view: { created: false, nextRuns: [] } });
+  expect(upd).toMatchObject({
+    view: { created: false, nextRuns: [], enabled: { from: true, to: false } },
+  });
   expect('view' in upd && upd.view.kind === 'yaml' && upd.view.yaml).toMatch(
     /autoApprove: \[ ?bash ?\]/,
   );
+  // An update keeps its agent; an unchanged `enabled` is not on the card.
+  expect(
+    await s.view('automation_edit', { id: 'aamukatsaus', agentId: 'researcher' }, 't5'),
+  ).toEqual({ error: AGENT_FIXED });
+  expect(
+    await s.view('automation_edit', { id: 'aamukatsaus', agentId: 'assistant' }, 't6'),
+  ).not.toHaveProperty('view.enabled');
   expect(await s.view('automation_edit', { name: 'x', cron: '* * *', prompt: 'x' }, 't3')).toEqual({
     error: 'Muutos ei kelpaa: cron',
   });
@@ -280,4 +323,67 @@ test('no block reason holds a seeded real value', async () => {
     expect(r).toHaveProperty('error');
     expect(JSON.stringify(r)).not.toContain('Matti');
   }
+});
+
+test('profile_edit: the sidecar probe refuses a real name the model wrote; a down sidecar refuses', async () => {
+  const sc = await startFakeSidecar({ [REAL]: MASKED });
+  cleanups(sc.close);
+  const s = setup({ pseudo: new PseudoClient(sc.url, 'u1') });
+  // Written as is, not masked: the recorder sees the same text.
+  s.masked.set('t1', `Olet ${REAL}n avustaja.`);
+  expect(
+    await s.view('profile_edit', { file: 'prompt', content: `Olet ${REAL}n avustaja.` }),
+  ).toEqual({ error: NO_PII });
+  expect(
+    await s.view('profile_edit', { file: 'prompt', content: 'Vastaa lyhyesti.' }, 't2'),
+  ).toHaveProperty('view');
+  const d = setup({
+    pseudo: {
+      mask: async () => {
+        throw new PseudoDownError('down');
+      },
+    },
+  });
+  expect(await d.view('profile_edit', { file: 'prompt', content: 'Vastaa lyhyesti.' })).toEqual({
+    error: PSEUDO_DOWN,
+  });
+});
+
+test('only the tools of tools.allow are registered', () => {
+  const s = setup({ allow: ['chat_read', 'read'] });
+  expect([...s.tools.keys()]).toEqual(['chat_read']);
+});
+
+test('a call that ends without execute drops its stamp', async () => {
+  const s = setup();
+  const content = 'Uusi ohje.';
+  await s.view('profile_edit', { file: 'prompt', content });
+  s.end('t1');
+  expect(await s.exec('profile_edit', { file: 'prompt', content })).toBe(STALE);
+});
+
+test('chat_read: a failed read answers fixed text in the view and in execute', async () => {
+  const s = setup({
+    reader: () => {
+      throw new Error(`ENOENT /data/${REAL}`);
+    },
+  });
+  s.addChat('c-x', 'X', '2026-10-02T10:00:00.000Z');
+  expect(await s.view('chat_read', { chatId: 'c-x' })).toEqual({
+    error: 'Keskustelua ei voitu lukea nyt.',
+  });
+  expect(await s.exec('chat_read', { chatId: 'c-x' })).toBe('Keskustelua ei voitu lukea nyt.');
+});
+
+test('chat_read: the cap holds after the restore', async () => {
+  // Each surrogate grows on restore: the restored text would pass the cap.
+  const s = setup({
+    pseudo: {
+      unmask: async (t: string) => ({ restored: t.replaceAll('P', 'PPPP'), spans: [], hold: 0 }),
+    },
+  });
+  s.addChat('c-p', 'P', '2026-10-02T10:00:00.000Z', 0, ['P'.repeat(15_000)]);
+  const out = await s.exec('chat_read', { chatId: 'c-p' });
+  const body = out.slice(out.indexOf('<keskustelu>'));
+  expect(body.length).toBeLessThan(CHAT_MAX + 50);
 });

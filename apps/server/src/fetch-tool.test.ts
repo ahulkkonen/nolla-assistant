@@ -1,6 +1,6 @@
 import { createServer } from 'node:http';
 import type { LookupFunction } from 'node:net';
-import { publicLookup } from '@pa/sandbox-broker/net';
+import { isPrivate, publicLookup } from '@pa/sandbox-broker/net';
 import { afterEach, expect, test, vi } from 'vitest';
 import { UNATTENDED_REASON } from './approval.ts';
 import {
@@ -9,8 +9,10 @@ import {
   FETCH_UNLISTED_REASON,
   fetchExtensions,
   fetchPage,
+  htmlText,
   NOT_PUBLIC,
   NOT_TEXT,
+  saidIn,
   TOO_LARGE,
   TOO_MANY_REDIRECTS,
 } from './fetch-tool.ts';
@@ -73,6 +75,12 @@ test('refused: private hosts, IP literals, other ports', async () => {
     'ei osoite',
   ])
     expect(await fetchPage(url), url).toEqual({ error: BAD_URL });
+});
+
+test('private: IPv6 transition ranges that embed IPv4', () => {
+  for (const a of ['64:ff9b::a00:1', '2002:a00:1::1', '2001:0:4136:e378::1', '192.88.99.1'])
+    expect(isPrivate(a), a).toBe(true);
+  expect(isPrivate('2a00:1450:4001::1')).toBe(false);
 });
 
 test('redirects: each checked again, at most three; size and type caps', async () => {
@@ -159,10 +167,40 @@ test('guard: a URL from the user passes; another URL asks; a vault name asks; un
   });
   expect(u.ask).not.toHaveBeenCalled();
 
-  // The toggle lets an unlisted URL pass; a vault name still asks.
+  // The toggle never covers this card (finding: as the `web_search` entity card).
   const t = guard({ toggle: true });
   expect(await t.call('https://b.example/')).toBeUndefined();
-  expect(t.ask).not.toHaveBeenCalled();
-  await t.call('https://x.example/Pekka', 'https://x.example/Matti');
   expect(t.ask).toHaveBeenCalledTimes(1);
+  await t.call('https://x.example/Pekka', 'https://x.example/Matti');
+  expect(t.ask).toHaveBeenCalledTimes(2);
+});
+
+test('guard: only a whole URL token of the user counts', async () => {
+  const g = guard();
+  // A prefix of the user's URL asks.
+  await g.call('https://a.example/uut');
+  await g.call('https://a.exampl');
+  expect(g.ask).toHaveBeenCalledTimes(2);
+  // The URL at the end of a sentence, and with a trailing slash, passes.
+  expect(await g.call('https://a.example/uutinen/')).toBeUndefined();
+  expect(g.ask).toHaveBeenCalledTimes(2);
+  expect(saidIn('Katso https://a.example/x.', 'https://a.example/x')).toBe(true);
+  expect(saidIn('(lähde: https://a.example/x), kiitos', 'https://a.example/x')).toBe(true);
+  expect(saidIn('Katso https://a.example/x/y', 'https://a.example/x')).toBe(false);
+});
+
+test('htmlText stays linear on hostile pages', () => {
+  for (const page of [
+    '<'.repeat(2 * 1024 * 1024),
+    '<script '.repeat(256 * 1024),
+    '<!--'.repeat(512 * 1024),
+    '<a'.repeat(1024 * 1024),
+    '&aaaa'.repeat(400 * 1024),
+  ]) {
+    const t0 = performance.now();
+    htmlText(page);
+    expect(performance.now() - t0).toBeLessThan(200);
+  }
+  expect(htmlText('a<script>x</SCRIPT >b<!-- c -->d<p>e</p>f < g')).toBe('a b d\ne\nf < g');
+  expect(htmlText('a<style>never closed')).toBe('a');
 });

@@ -94,26 +94,63 @@ const ENTITIES: Record<string, string> = {
   apos: "'",
   nbsp: ' ',
 };
+const RAW = /(script|style|noscript|template|svg)\b/iy;
+const BLOCK = /\/?(br|p|div|li|tr|h[1-6]|section|article|header|footer|ul|ol|table)\b/iy;
+const at = (re: RegExp, s: string, i: number) => {
+  re.lastIndex = i;
+  return re.exec(s);
+};
+
 /**
- * HTML as text: scripts, styles and tags out, entities decoded, white space collapsed.
- * ponytail: no article extraction; pages that build their text in scripts give little text.
+ * Tags, comments and raw-text elements out, in one pass with an index (no backtracking regex:
+ * a hostile page of `<` or unterminated `<script` stays linear). An unterminated comment or
+ * raw-text element drops the rest; a `<` with no `>` after it stays text.
+ */
+function stripTags(html: string) {
+  let out = '';
+  let i = 0;
+  while (i < html.length) {
+    const lt = html.indexOf('<', i);
+    if (lt < 0) break;
+    out += html.slice(i, lt);
+    if (html.startsWith('<!--', lt)) {
+      const end = html.indexOf('-->', lt + 4);
+      if (end < 0) return out;
+      out += ' ';
+      i = end + 3;
+      continue;
+    }
+    const raw = at(RAW, html, lt + 1);
+    if (raw) {
+      const close = new RegExp(`</${raw[1]}\\s*>`, 'gi');
+      close.lastIndex = lt + 1;
+      if (!close.exec(html)) return `${out} `;
+      out += ' ';
+      i = close.lastIndex;
+      continue;
+    }
+    const gt = html.indexOf('>', lt + 1);
+    if (gt < 0) return out + html.slice(lt);
+    out += at(BLOCK, html, lt + 1) ? '\n' : ' ';
+    i = gt + 1;
+  }
+  return out + html.slice(i);
+}
+
+/**
+ * HTML as text: scripts, styles and tags out, entities decoded, white space collapsed. The input
+ * is cut to the body cap first. ponytail: no article extraction; pages that build their text in
+ * scripts give little text.
  */
 export const htmlText = (html: string) =>
-  html
-    .replace(/<(script|style|noscript|template|svg)\b[\s\S]*?<\/\1\s*>/gi, ' ')
-    .replace(/<!--[\s\S]*?-->/g, ' ')
-    .replace(
-      /<\/?(br|p|div|li|tr|h[1-6]|section|article|header|footer|ul|ol|table)\b[^>]*>/gi,
-      '\n',
-    )
-    .replace(/<[^>]*>/g, ' ')
-    .replace(/&(#x[\da-f]+|#\d+|[a-z]+);/gi, (m, e: string) => {
+  stripTags(html.slice(0, FETCH_MAX_BYTES))
+    .replace(/&(#x[\da-f]{1,8}|#\d{1,8}|[a-z]{1,32});/gi, (m, e: string) => {
       if (e[0] !== '#') return ENTITIES[e.toLowerCase()] ?? m;
       const n = e[1] === 'x' || e[1] === 'X' ? Number.parseInt(e.slice(2), 16) : Number(e.slice(1));
       return n > 0 && n <= 0x10ffff ? String.fromCodePoint(n) : m;
     })
     .replace(/[^\S\n]+/g, ' ')
-    .replace(/ *\n[\s]*/g, '\n')
+    .replace(/ ?\n\s*/g, '\n')
     .trim();
 
 /** One page as text, or a fixed error. Each redirect is checked again; at most 3. */
@@ -171,14 +208,24 @@ export async function fetchPage(
 }
 
 /**
+ * True when `url` is a whole white-space token of `t`, with
+ * trailing `.,;:)]` and one trailing slash cut from both: a prefix of a URL the user wrote does not count.
+ */
+export const saidIn = (t: string, url: string) => {
+  const bare = url.replace(/\/$/, '');
+  return t.split(/\s+/).some((w) => w.replace(/[.,;:)\]]+$/, '').replace(/\/$/, '') === bare);
+};
+
+/**
  * `fetch_url` and its guard (decision 22). Load `tool` anywhere and `guard` after
  * `pseudoExtension`: a restored URL that differs from the masked one names a vault entity, and a
  * URL that no user message of the branch holds came from a page or a result. Both ask; an
- * unattended chat blocks both; the chat's toggle lets the second pass.
+ * unattended chat blocks both. The chat's auto-approve toggle never covers this card, as for the
+ * `web_search` entity card.
  */
 export function fetchExtensions(o: {
   chatId: string;
-  ask: Ask & { unattended?: Map<string, string[]>; autoApprove?: Set<string> };
+  ask: Ask & { unattended?: Map<string, string[]> };
   masked: ReturnType<typeof maskedArgs>;
   timeoutMs?: number | undefined;
   /** Call ids this guard approved; `approvalGate` skips them. */
@@ -204,8 +251,7 @@ export function fetchExtensions(o: {
   const guard = toolGuard(FETCH_URL_TOOL, async (event, ctx) => {
     const url = String(event.input.url ?? '');
     const masked = o.masked.sent.get(event.toolCallId) ?? url;
-    const said = (t: string) =>
-      typeof masked === 'string' && (t.includes(masked) || t.includes(masked.replace(/\/$/, '')));
+    const said = (t: string) => typeof masked === 'string' && saidIn(t, masked);
     const fromUser = ctx.sessionManager
       .getBranch()
       .some((e) => e.type === 'message' && e.message.role === 'user' && said(textOf(e.message)));
@@ -213,7 +259,6 @@ export function fetchExtensions(o: {
       masked !== url ? FETCH_ENTITY_REASON : fromUser ? undefined : FETCH_UNLISTED_REASON;
     if (!reason) return;
     if (o.ask.unattended?.has(o.chatId)) return { block: true, reason: UNATTENDED_REASON };
-    if (reason === FETCH_UNLISTED_REASON && o.ask.autoApprove?.has(o.chatId)) return;
     return guardConfirm(o, event.toolCallId, ctx.signal, {
       tool: FETCH_URL_TOOL,
       args: { url },

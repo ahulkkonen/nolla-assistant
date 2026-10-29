@@ -78,6 +78,8 @@ export type HarnessFactory = (o: {
   agentId: string;
   /** Call id to the argument as the model wrote it (masked), from `maskedArgs`. */
   masked: Map<string, unknown>;
+  /** The profile's `tools.allow`: only these harness tools are registered. */
+  allow: string[];
 }) => { tools: InlineExtension; views: Record<string, View> };
 
 /**
@@ -353,14 +355,16 @@ export class SessionRegistry {
 
   /**
    * The tools "Hyväksy automaattisesti" lets run in a chat of this agent (phase-21 decision 7):
-   * `approval.always` minus MCP writes, `web_search` and the harness tools, which still ask.
+   * `approval.always` minus MCP writes, `web_search`, `fetch_url` and the harness tools, which
+   * still ask.
    */
   autoApproveTools(agentId: string): string[] {
     const profile = this.profileOf(agentId);
     if (!profile) return [];
     const writes = this.mcpOf(profile).flatMap(writeTools);
     return profile.approval.always.filter(
-      (t) => t !== WEB_SEARCH_TOOL && !writes.includes(t) && !isHarnessTool(t),
+      (t) =>
+        t !== WEB_SEARCH_TOOL && t !== FETCH_URL_TOOL && !writes.includes(t) && !isHarnessTool(t),
     );
   }
 
@@ -511,7 +515,7 @@ export class SessionRegistry {
       : [];
     // One taint per session: memory parking and the harness card (phase-25 decision 5).
     const taint = turnTaint(memory && pseudo ? () => memory.store.markTainted(chatId) : undefined);
-    const harness = this.opts.harness?.({ chatId, agentId, masked: masked.sent });
+    const harness = this.opts.harness?.({ chatId, agentId, masked: masked.sent, allow: tools });
     const resourceLoader = new DefaultResourceLoader({
       cwd: this.cwd,
       agentDir: this.agentDir,
