@@ -5,7 +5,7 @@ import {
   type ModelPolicy,
   ServerMessage,
 } from '@pa/protocol';
-import { type ClaimChip, thinkingKey, useStore } from './store.ts';
+import { type ClaimChip, shift, thinkingKey, useStore } from './store.ts';
 
 let ws: WebSocket | null = null;
 let url = '';
@@ -299,6 +299,31 @@ export function respondApproval(requestId: string, approve: boolean) {
   useStore.getState().decideApproval(requestId, approve);
 }
 
+type Delta = Extract<ServerMessage, { type: 'message.delta' }>;
+/** Phase 27: the deltas since the last frame, one per chat (a new message id starts another). */
+let deltas: Delta[] = [];
+let frame = 0;
+
+/** Holds a delta until the next frame, joined to the chat's waiting one: one commit per frame. */
+function queueDelta(d: Delta) {
+  const last = deltas.findLast((x) => x.chatId === d.chatId);
+  if (last?.messageId === d.messageId) {
+    last.annotations = [...last.annotations, ...shift(d.annotations, last.text.length)];
+    last.text += d.text;
+  } else deltas.push({ ...d });
+  frame ||= requestAnimationFrame(flushDeltas);
+}
+
+/** Applies the waiting deltas now. */
+function flushDeltas() {
+  if (!deltas.length) return;
+  cancelAnimationFrame(frame);
+  frame = 0;
+  const list = deltas;
+  deltas = [];
+  for (const d of list) useStore.getState().apply(d);
+}
+
 function open() {
   const sock = new WebSocket(url);
   ws = sock;
@@ -319,6 +344,9 @@ function open() {
     const parsed = ServerMessage.safeParse(raw);
     if (!parsed.success) return;
     const msg = parsed.data;
+    if (msg.type === 'message.delta') return queueDelta(msg);
+    // Any other frame comes after the deltas before it (a final, a tool row, the idle status).
+    flushDeltas();
     const store = useStore.getState();
     const was = msg.type === 'chat.updated' ? store.policies[msg.chat.id] : undefined;
     store.apply(msg);
