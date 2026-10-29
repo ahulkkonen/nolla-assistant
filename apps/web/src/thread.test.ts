@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   cacheRate,
+  count,
   duration,
   endsInFence,
   Follow,
@@ -276,6 +277,12 @@ describe('nodeText', () => {
     };
     expect(nodeText(pre)).toBe('<p>Hei Matti Virtanen!</p>\n');
     expect(nodeText(undefined)).toBe('');
+  });
+});
+
+describe('count', () => {
+  it('groups in fi-FI with a no-break space (the memory counters)', () => {
+    expect(`${count.format(1666)} / ${count.format(1500)}`).toBe('1\u00a0666 / 1\u00a0500');
   });
 });
 

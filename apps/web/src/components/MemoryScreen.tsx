@@ -6,6 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import { firstUserLine, type MemoryState, pendingLines, useStore } from '../store.ts';
+import { count } from '../thread.ts';
 import { openChat, send } from '../ws.ts';
 import { ClaimsTab } from './ClaimsTab.tsx';
 import { useLeaveGuard } from './ConfirmDialog.tsx';
@@ -160,7 +161,7 @@ function Pane({
             over && 'font-medium text-destructive',
           )}
         >
-          {value.length} / {CAPS[target]}
+          {count.format(value.length)} / {count.format(CAPS[target])}
           {over && ' · liian pitkä'}
         </span>
       </div>

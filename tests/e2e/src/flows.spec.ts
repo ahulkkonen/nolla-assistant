@@ -1504,7 +1504,8 @@ test.describe('memory', () => {
     await openSettings(page, 'Muisti');
     const user = page.getByLabel('Käyttäjä (USER.md)');
     await expect(user).toHaveValue(USER_MD);
-    await expect(page.getByText(`${USER_MD.length} / 1500`)).toBeVisible();
+    // fi-FI groups with a no-break space; text matching reads it as a space.
+    await expect(page.getByText(`${USER_MD.length} / 1 500`)).toBeVisible();
     const save = page.getByRole('button', { name: 'Tallenna' }).first();
     await expect(save).toBeDisabled();
     await user.fill(`${USER_MD}\nAamuisin juon kahvia.`);

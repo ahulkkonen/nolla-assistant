@@ -61,7 +61,7 @@ import {
 } from '../thread.ts';
 import { InlineFigure } from './Figure.tsx';
 import { IconButton, Tip } from './IconButton.tsx';
-import { MessageMeta, metaText } from './MessageMeta.tsx';
+import { MessageMeta, MetaLine } from './MessageMeta.tsx';
 import { SubagentRow } from './SubagentRow.tsx';
 import { ToolRow } from './ToolRow.tsx';
 
@@ -828,8 +828,9 @@ export function MessageView({
               'flex min-h-8 items-center gap-1 transition-opacity duration-100 [-webkit-touch-callout:none] max-md:min-h-11 max-md:gap-2 md:@max-[620px]/col:flex-wrap',
               // A user turn's row, and an older reply's, sits in the 40 px gap below it (Thread.tsx).
               (user || (!latest && !live)) && 'absolute top-full mt-1',
-              // A reply's row spans the column: its receipt sits at the end.
-              user ? 'right-0' : 'inset-x-0',
+              // A reply's row spans the column: its receipt sits at the end. Phones: the outer
+              // 44 px target moves out by its 14 px inset, so its glyph meets the text edge.
+              user ? 'right-0 max-md:-mr-3.5' : 'inset-x-0 max-md:-ml-3.5',
               // Hover devices: on hover or focus, except under the latest assistant turn.
               !(latest && !user) &&
                 '[@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:focus-within:opacity-100',
@@ -894,13 +895,16 @@ export function MessageView({
             <SheetDescription className="sr-only">
               {stripConfidence(text).slice(0, 80)}
             </SheetDescription>
-            {/* Sulje's 44 px target centred on the first meta line (−13 px = (44 − 18) / 2). */}
-            <div className="flex items-start gap-2 pl-3">
+            {/* Sulje's 44 px target centred on the first meta line (−13 px = (44 − 18) / 2). The
+                meta may run up to its edge, so it keeps one line (UI review 4). */}
+            <div className="flex items-start pl-3">
               <div className="flex min-w-0 flex-1 flex-col gap-1 pb-1">
                 {meta && (
-                  <p className="text-meta text-muted-foreground tabular-nums">
-                    {metaText(meta.createdAt, user ? undefined : meta.usage, fx)}
-                  </p>
+                  <MetaLine
+                    createdAt={meta.createdAt}
+                    usage={user ? undefined : meta.usage}
+                    fx={fx}
+                  />
                 )}
                 {receipt}
               </div>

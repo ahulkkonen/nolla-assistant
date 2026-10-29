@@ -6,21 +6,50 @@ import {
   formatTokens,
 } from '@pa/protocol';
 import { useStore } from '../store.ts';
-import { cacheRate, fullTime, messageTime, SEP, tokensOf, withRate } from '../thread.ts';
+import { cacheRate, count, fullTime, messageTime, tokensOf } from '../thread.ts';
 import { modelLabel } from '../useModel.ts';
 import { Tip } from './IconButton.tsx';
 
-const count = new Intl.NumberFormat('fi');
-
-/** "3,4 k tokenia · välimuisti 82 %"; the rate only when the call had prompt tokens. */
-const tokenText = (u: CallUsage) => withRate(formatTokens(tokensOf(u)), u);
-
-/** The meta as one line of text, for the touch sheet (no tooltips there). */
-export function metaText(createdAt: string, usage: CallUsage | undefined, fx: FxRate | null) {
-  const time = messageTime(createdAt);
-  if (!usage) return time;
-  const cost = formatCost(usage.costUsd, fx, { reply: true, estimated: usage.estimated });
-  return [time, cost, tokenText(usage)].join(SEP);
+/**
+ * The meta for the touch sheet (no tooltips there): "klo 17.20 · 0,012 € · 3,4 k tokenia ·
+ * välimuisti 82 %", the rate only when the call had prompt tokens. Each item carries the "·" before
+ * it in a 12 px box; the row starts 12 px left of the clipped line, so a wrapped line starts with
+ * an item and no line starts or ends with "·" (UI review 4).
+ */
+export function MetaLine({
+  createdAt,
+  usage,
+  fx,
+}: {
+  createdAt: string;
+  usage: CallUsage | undefined;
+  fx: FxRate | null;
+}) {
+  const rate = cacheRate(usage);
+  const items = [
+    messageTime(createdAt),
+    ...(usage
+      ? [
+          formatCost(usage.costUsd, fx, { reply: true, estimated: usage.estimated }),
+          formatTokens(tokensOf(usage)),
+          ...(rate ? [`välimuisti\u00a0${rate}`] : []),
+        ]
+      : []),
+  ];
+  return (
+    <p className="overflow-hidden text-meta text-muted-foreground tabular-nums">
+      <span className="-ml-3 flex flex-wrap">
+        {items.map((s) => (
+          <span
+            key={s}
+            className="whitespace-nowrap before:inline-block before:w-3 before:text-center before:content-['·']"
+          >
+            {s}
+          </span>
+        ))}
+      </span>
+    </p>
+  );
 }
 
 /**

@@ -328,9 +328,11 @@ function AgentEditor({
             value={yaml}
             rows={16}
             // YAML indentation must read as written: no soft wrap, the field scrolls instead.
+            // Phones (16 px text, UI review 4): 24 px lines, and a long line wraps
+            // (`pre-wrap` keeps the indentation).
             wrap="off"
             spellCheck={false}
-            className="max-h-[60dvh] min-h-64 font-mono text-[13px] leading-5"
+            className="max-h-[60dvh] min-h-64 font-mono text-[13px] leading-5 max-md:leading-6 max-md:whitespace-pre-wrap"
             {...invalid('agent-yaml', errorAt('agent-yaml'))}
             onChange={(e) => {
               ed.touch();

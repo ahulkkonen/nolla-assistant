@@ -389,3 +389,38 @@ Not changed, decided before:
 
 - Tool rows keep the type icon next to the status icon (phase-21 decision 5, the user's ask).
 - The phone error alert keeps two equal outline buttons (decision of UI review round 1).
+
+## UI review 4
+
+The fourth blind UI review, 2026-10-29. Measured with Playwright Chromium at 390 and 1440 px.
+
+1. **Background error.** The toast of a failed reply in a chat that is not open has a
+   description line (meta 13/18, muted): "Keskustelu ”Hei”", from the sidebar label of the chat
+   (its title, else its first user line), else "Keskustelu". The title stays 14/20 500. The
+   chat's sidebar row shows `CircleAlert` 14 px in `--destructive` (tooltip "Mallikutsu
+   epäonnistui") until the chat opens (`chat.state`) or a new turn starts. The mark is client
+   state only (`failedAway`); the server does not change.
+2. **Phone action rows.** The outer 44 px target moves out by its 14 px inset: the first glyph
+   of a reply's row starts at x 16, and the last glyph of a user turn's row ends at x 374 (390 px).
+   The pitch stays 52 px.
+3. **Agents YAML.** Under 768 px the field has 24 px lines (16 px text) and `pre-wrap`, so a long
+   line wraps and keeps its indentation. At 768 px and up it stays 13/20 with no soft wrap.
+4. **`waiting-queue`.** The screens fixture turns the `.sweep` highlight off for every shot, so
+   both schemes show the active step flat.
+5. **Receipt sheet.** The meta runs up to the edge of the × button (no gap), so the 390 px meta
+   has one line. Each item carries its "·" in a 12 px box, and the row starts 12 px left of the
+   clipped line, so a wrapped line starts with an item and no line starts or ends with "·".
+6. **Model sheet, empty chat.** The header row has the label "Malli ja ajattelu" (14/20 500)
+   next to the ×.
+7. **Auto-approve helper.** The sheet's switch helpers use `text-wrap: pretty`; "bash" is not
+   alone on the last line.
+8. **Toast.** "Tätä tiedostotyyppiä ei voi liittää. Liitä PDF tai kuva." (56 characters). No-break
+   spaces keep the advice on one line.
+9. **Counters.** One fi-FI formatter (`count` in `thread.ts`) for the memory counters
+   ("61 / 1 500", a no-break space), the message meta and Käyttö.
+
+Not changed:
+
+- The dark mono weight. It is a change to the brief's table; a later typography pass decides it.
+- Tool rows keep the type icon (phase-21 decision 5), and the phone error alert keeps its two
+  buttons (UI review 1).

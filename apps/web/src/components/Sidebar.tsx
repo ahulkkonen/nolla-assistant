@@ -3,6 +3,7 @@ import {
   Archive,
   ArchiveRestore,
   ChevronRight,
+  CircleAlert,
   FileDown,
   FolderOpen,
   GitFork,
@@ -24,7 +25,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
-import { firstUserLine, useStore } from '../store.ts';
+import { FAILED_TEXT, firstUserLine, useStore } from '../store.ts';
 import { withRate } from '../thread.ts';
 import { openChat, runSearch, send } from '../ws.ts';
 import { type Action, ActionMenu, ActionRow } from './Actions.tsx';
@@ -77,6 +78,7 @@ function ChatRow({
     const from = chat.forkedFrom ?? link?.chatId;
     return from ? (link?.title ?? s.chats.find((c) => c.id === from)?.title ?? '') : undefined;
   });
+  const failed = useStore((s) => s.failedAway[chat.id]);
   // Enter and the following blur must not both rename.
   const done = useRef(false);
   const press = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -133,14 +135,20 @@ function ChatRow({
     { label: 'Poista', Icon: Trash2, run: () => setConfirming(true) },
   ];
   const name = label ?? UNTITLED;
-  // The marks: a fork, then the lock of a renamed chat. Desktop: at the row end. The drawer:
-  // right after the title, 14 px, so only ⋯ is at the row end (UI review 3).
+  // The marks: a fork, the lock of a renamed chat, then a reply that failed while the chat was
+  // not open (14 px, `--destructive`, UI review 4). Desktop: at the row end. The drawer: right
+  // after the title, 14 px, so only ⋯ is at the row end (UI review 3).
   const marks = [
     forkTitle !== undefined && {
       label: forkTitle ? `Haarautettu keskustelusta ”${forkTitle}”` : 'Haarautettu keskustelusta',
       Icon: GitFork,
     },
     !!chat.titleLocked && { label: 'Nimi lukittu', Icon: Lock },
+    !!failed && {
+      label: FAILED_TEXT[failed].slice(0, -1),
+      Icon: CircleAlert,
+      alert: true,
+    },
   ].filter((m) => m !== false);
   // The chat's cost at the end of its menu (phase 13); none before the first tokens.
   const note = chat.usage?.tokens ? withRate(chatTotal(chat.usage, fx), chat.usage) : undefined;
@@ -191,10 +199,15 @@ function ChatRow({
             !drawer && menu && 'hidden',
           )}
         >
-          {marks.map(({ label, Icon }) => (
+          {marks.map(({ label, Icon, alert }) => (
             <Tip key={label} label={label}>
-              <span role="img" aria-label={label} tabIndex={-1}>
-                <Icon size={drawer ? 14 : 16} />
+              <span
+                role="img"
+                aria-label={label}
+                tabIndex={-1}
+                className={cn(alert && 'text-destructive')}
+              >
+                <Icon size={drawer || alert ? 14 : 16} />
               </span>
             </Tip>
           ))}

@@ -27,6 +27,9 @@ export const fullTime = (iso: string) => {
   return `${weekday.format(d)} ${fullDate.format(d)} klo ${clock.format(d)}`;
 };
 
+/** Counts in fi-FI: "1 666", the group separator a no-break space. */
+export const count = new Intl.NumberFormat('fi');
+
 const percent = (digits: number) =>
   new Intl.NumberFormat('fi', { style: 'percent', maximumFractionDigits: digits });
 const wholePercent = percent(0);
@@ -52,7 +55,7 @@ export function cacheRate(u: CacheCounts | undefined) {
 }
 
 /** " · " with a no-break space after the dot: a wrapped line never ends in "·" (UI review 3). */
-export const SEP = ' ·\u00a0';
+const SEP = ' ·\u00a0';
 
 /**
  * `text` + " · välimuisti 82 %" when the counts give a rate (meta, menu, header, Käyttö); no-break

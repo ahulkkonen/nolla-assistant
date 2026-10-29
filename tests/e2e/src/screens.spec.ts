@@ -124,24 +124,16 @@ const axe = async (page: Page, name: string) => {
   else for (const f of found) console.warn(`axe: ${name}: ${f}`);
 };
 
-/** The waiting line's highlight (phase 26) held half way across its word, or (`sweep: false`) off. */
-const SWEEP = {
-  on: '.sweep { animation-delay: -0.9s !important; animation-play-state: paused !important; }',
-  off: '.sweep { animation: none !important; background: none !important; -webkit-text-fill-color: currentColor !important; }',
-};
+/**
+ * The waiting line's highlight (phase 26) is off: the active step shows flat, alike in both
+ * schemes (UI review 4).
+ */
+const SWEEP_OFF =
+  '.sweep { animation: none !important; background: none !important; -webkit-text-fill-color: currentColor !important; }';
 
-const shot = async (
-  page: Page,
-  screen: string,
-  w: number,
-  scheme: string,
-  { sweep = true }: { sweep?: boolean } = {},
-) => {
-  // The streaming caret stays solid: its breathing must not decide how a shot shows it. The
-  // waiting line's highlight holds still, so every shot shows it alike.
-  await page.addStyleTag({
-    content: `.md .caret { animation: none !important; } ${sweep ? SWEEP.on : SWEEP.off}`,
-  });
+const shot = async (page: Page, screen: string, w: number, scheme: string) => {
+  // The streaming caret stays solid: its breathing must not decide how a shot shows it.
+  await page.addStyleTag({ content: `.md .caret { animation: none !important; } ${SWEEP_OFF}` });
   // Let transitions settle.
   await page.waitForTimeout(400);
   const noScroll = await page.evaluate(
@@ -409,7 +401,7 @@ for (const scheme of ['light', 'dark'] as const) {
           const auto = page.getByRole('button', { name: 'Hyväksy automaattisesti' });
           expect(await auto.evaluate((el) => el.getBoundingClientRect().width)).toBe(32);
         }
-        await shot(page, 'composer-queue', vp.width, scheme, { sweep: false });
+        await shot(page, 'composer-queue', vp.width, scheme);
         hold.release();
       });
 
@@ -1159,7 +1151,9 @@ for (const scheme of ['light', 'dark'] as const) {
             await openFiles(page);
             await page.getByRole('button', { name: 'Tiedoston toiminnot: arkisto.zip' }).click();
             await page.getByRole('menuitem', { name: 'Liitä keskusteluun' }).click();
-            await expect(page.getByText('Tätä tiedostotyyppiä ei voi liittää.')).toBeVisible();
+            await expect(
+              page.getByText('Tätä tiedostotyyppiä ei voi liittää. Liitä PDF tai kuva.'),
+            ).toBeVisible();
             await expect(page.getByRole('button', { name: 'Sulje' }).last()).toBeVisible();
             // Focus went back to ⋯: a click on empty canvas clears it.
             if (!phone) await page.mouse.click(vp.width / 2, vp.height - 60);
@@ -1713,7 +1707,7 @@ for (const scheme of ['light', 'dark'] as const) {
           await hold.reached;
           await expect(page.getByRole('button', { name: 'Pysäytä' })).toBeVisible();
           await expect(page.locator('.md').last()).not.toBeEmpty();
-          await shot(page, 'streaming', vp.width, scheme, { sweep: false });
+          await shot(page, 'streaming', vp.width, scheme);
           hold.release();
           await expect(page.getByRole('button', { name: 'Lähetä', exact: true })).toBeVisible();
         });
@@ -1801,6 +1795,14 @@ for (const scheme of ['light', 'dark'] as const) {
           deliver(held);
           await expect(page.getByText('Mallikutsu epäonnistui (400)')).toBeVisible();
           await expect(page.getByRole('button', { name: 'Näytä tiedot' })).toBeVisible();
+          // UI review 4: the toast names the chat; the docked sidebar marks its row.
+          await expect(page.getByText('Keskustelu ”Hei”')).toBeVisible();
+          if (vp.width >= 768)
+            await expect(
+              page.locator('nav li', { hasText: 'Hei' }).getByRole('img', {
+                name: 'Mallikutsu epäonnistui',
+              }),
+            ).toBeVisible();
           await page.mouse.move(vp.width / 2, 8);
           await shot(page, 'error-toast-background', vp.width, scheme);
         });

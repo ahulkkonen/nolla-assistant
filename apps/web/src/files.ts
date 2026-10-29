@@ -52,7 +52,8 @@ const FILE_ERROR: Partial<Record<FileError, string>> = {
   not_found: 'Tiedostoa ei löydy.',
   too_large: 'Tiedosto on yli 200 Mt.',
   quota: 'Tallennustila on täynnä. Tyhjennä roskakori.',
-  unsupported: 'Tätä tiedostotyyppiä ei voi liittää.',
+  // No-break spaces: the advice wraps whole, never "Liitä" alone at a line end (UI review 4).
+  unsupported: 'Tätä tiedostotyyppiä ei voi liittää. Liitä\u00a0PDF\u00a0tai\u00a0kuva.',
   pseudo_down: 'Nimisuoja ei vastaa. Yritä uudelleen.',
 };
 

@@ -19,14 +19,13 @@ import {
 } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 import { useStore } from '../store.ts';
-import { cacheRate, withRate } from '../thread.ts';
+import { cacheRate, count, withRate } from '../thread.ts';
 import { openRoute } from '../useModel.ts';
 import { send } from '../ws.ts';
 import { EmptyState, ListSkeleton, Page } from './Page.tsx';
 
 export const USAGE_TITLE = 'Käyttö';
 
-const num = new Intl.NumberFormat('fi');
 const monthName = new Intl.DateTimeFormat('fi', { month: 'long', year: 'numeric' });
 const rateDate = new Intl.DateTimeFormat('fi', {
   day: 'numeric',
@@ -45,7 +44,7 @@ const thisMonth = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 };
-const callCount = (n: number) => `${num.format(n)} ${n === 1 ? 'kutsu' : 'kutsua'}`;
+const callCount = (n: number) => `${count.format(n)} ${n === 1 ? 'kutsu' : 'kutsua'}`;
 
 type BreakdownRow = {
   key: string;
@@ -107,8 +106,8 @@ function Breakdown({
                     {r.badge}
                   </span>
                 </TableCell>
-                <TableCell className="text-right tabular-nums">{num.format(r.calls)}</TableCell>
-                <TableCell className="text-right tabular-nums">{num.format(r.tokens)}</TableCell>
+                <TableCell className="text-right tabular-nums">{count.format(r.calls)}</TableCell>
+                <TableCell className="text-right tabular-nums">{count.format(r.tokens)}</TableCell>
                 <TableCell
                   className={cn(
                     'text-right tabular-nums',
@@ -245,7 +244,7 @@ export function UsageScreen() {
         // One footer group, 32 px under the last table (the page gap), lines 8 px apart.
         <div className="flex flex-col gap-2 text-meta text-muted-foreground">
           {data?.searches !== undefined && (
-            <p className="tabular-nums">Verkkohaut: {num.format(data.searches)}</p>
+            <p className="tabular-nums">Verkkohaut: {count.format(data.searches)}</p>
           )}
           <p>
             {fx

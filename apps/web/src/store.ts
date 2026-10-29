@@ -101,6 +101,11 @@ type State = {
   errorCount: number;
   /** A failed reply per chat, shown inline in the thread until the next message. */
   failed: Record<string, Failure>;
+  /**
+   * A failed reply in a chat that was not open: its sidebar row shows a mark until the chat opens
+   * (`chat.state`) or a new turn starts (UI review 4).
+   */
+  failedAway: Record<string, FailedCode>;
   /** The provider's message of a failed model call in the "Näytä tiedot" dialog (phase 22). */
   errorDetail: Failure | null;
   /** A user message to open in edit mode (↑ in an empty composer). */
@@ -284,7 +289,12 @@ type State = {
   rewind(chatId: string, keep: number): void;
   /** A message sent again: its new local id, and no entry id until `message.accepted`. */
   relocal(chatId: string, id: string, localId: string): void;
-  pushError(message: string, action?: { label: string; onClick: () => void }): void;
+  /** An error toast; `description` is its meta line (the chat of a failed reply). */
+  pushError(
+    message: string,
+    action?: { label: string; onClick: () => void },
+    description?: string,
+  ): void;
   notify(message: string, action?: { label: string; onClick: () => void }): void;
   setSidebarOpen(open: boolean): void;
   setTheme(theme: Theme): void;
@@ -460,6 +470,7 @@ const endTurn = (st: State, chatId: string) => ({
   approvals: st.approvals.filter((a) => a.chatId !== chatId || (!a.expired && !a.denied)),
   memoryChip: omit(st.memoryChip, chatId),
   failed: omit(st.failed, chatId),
+  failedAway: omit(st.failedAway, chatId),
   zdrRefused: omit(st.zdrRefused, chatId),
 });
 
@@ -575,6 +586,7 @@ export const useStore = create<State>()((set, get) => {
     agentStatus: {},
     errorCount: 0,
     failed: {},
+    failedAway: {},
     errorDetail: null,
     editMessageId: null,
     // Docked from 1024 px (brief 7.4); below, the rail or the drawer starts closed.
@@ -693,6 +705,8 @@ export const useStore = create<State>()((set, get) => {
             return {
               messages: { ...st.messages, [msg.chat.id]: [...kept, ...local] },
               summaries: { ...st.summaries, [msg.chat.id]: msg.chat },
+              // The chat is open: its row drops the failed mark.
+              failedAway: omit(st.failedAway, msg.chat.id),
               claimChips: { ...st.claimChips, [msg.chat.id]: msg.claims ?? [] },
               policies: { ...st.policies, [msg.chat.id]: msg.chat.modelPolicy },
               forkedFrom: { ...st.forkedFrom, [msg.chat.id]: msg.forkedFrom ?? null },
@@ -1120,8 +1134,22 @@ export const useStore = create<State>()((set, get) => {
                 failed: { ...st.failed, [msg.chatId as string]: failure },
                 errorCount: st.errorCount + 1,
               }));
+            // Elsewhere: a toast that names the chat, and a mark on its sidebar row (UI review 4).
             const detail = { label: 'Näytä tiedot', onClick: () => set({ errorDetail: failure }) };
-            return get().pushError(failedText(failure), failure.detail ? detail : undefined);
+            const st = get();
+            const id = msg.chatId;
+            if (!id) return st.pushError(failedText(failure), failure.detail ? detail : undefined);
+            // The sidebar row's label: the title, else the first user line.
+            const title =
+              st.chats.find((c) => c.id === id)?.title ??
+              st.summaries[id]?.title ??
+              firstUserLine(st.messages[id]);
+            set({ failedAway: { ...st.failedAway, [id]: failure.code } });
+            return st.pushError(
+              failedText(failure),
+              failure.detail ? detail : undefined,
+              title ? `Keskustelu ”${title}”` : 'Keskustelu',
+            );
           }
           return get().pushError(ERROR_TEXT[msg.code] ?? msg.message);
         }
@@ -1214,8 +1242,13 @@ export const useStore = create<State>()((set, get) => {
         ),
       })),
     // Toasts (brief 7.5): 4 s, errors 6 s with a close button.
-    pushError(message, action) {
-      toast.error(message, { duration: 6000, closeButton: true, ...(action ? { action } : {}) });
+    pushError(message, action, description) {
+      toast.error(message, {
+        duration: 6000,
+        closeButton: true,
+        ...(action ? { action } : {}),
+        ...(description ? { description } : {}),
+      });
       set((st) => ({ errorCount: st.errorCount + 1 }));
     },
     notify: (message, action) => void toast.success(message, action ? { action } : {}),

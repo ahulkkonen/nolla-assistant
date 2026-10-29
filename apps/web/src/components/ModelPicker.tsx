@@ -372,11 +372,13 @@ export function ModelPicker() {
                   Agentti: <span className="text-foreground">{agent}</span>
                 </SheetDescription>
               ) : (
-                <SheetDescription className="sr-only">
-                  Valitse keskustelun malli ja ajattelun taso
+                // An empty chat: a label in its place, so the row is not empty (UI review 4);
+                // Sulje centred on its 20 px line (−12 px).
+                <SheetDescription className="min-w-0 flex-1 pb-1 font-medium text-foreground">
+                  Malli ja ajattelu
                 </SheetDescription>
               )}
-              <SheetCloseButton className="-my-[13px] ml-auto" />
+              <SheetCloseButton className={cn('ml-auto', chatId ? '-my-[13px]' : '-my-3')} />
             </div>
             <Choices
               label="Malli"
@@ -628,7 +630,8 @@ function SwitchRow({
       <span className="flex min-w-0 flex-1 flex-col">
         <span id={`${id}-label`}>{label}</span>
         {helper && (
-          <span id={`${id}-help`} className="text-meta text-muted-foreground">
+          // `pretty`: no lone word on the last line (brief 7.2; UI review 4: "bash").
+          <span id={`${id}-help`} className="text-meta text-pretty text-muted-foreground">
             {helper}
           </span>
         )}

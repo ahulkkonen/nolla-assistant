@@ -174,6 +174,31 @@ describe('store reducers', () => {
     toastError.mockRestore();
   });
 
+  it('a failed reply in the background: the toast names the chat, its row is marked until it opens', () => {
+    const toastError = vi.spyOn(toast, 'error');
+    const { apply } = useStore.getState();
+    useStore.getState().setActive('c1');
+    useStore.setState({
+      chats: [{ ...chat('c2', false, '2026-01-01T00:00:00.000Z'), title: 'Verot' }],
+    });
+    apply({ type: 'error', code: 'llm_failed', message: 'x', chatId: 'c2' });
+    expect(toastError.mock.calls.at(-1)?.[1]).toMatchObject({ description: 'Keskustelu ”Verot”' });
+    expect(useStore.getState().failedAway).toEqual({ c2: 'llm_failed' });
+    // No title and no messages: the chat without a name.
+    apply({ type: 'error', code: 'prompt_failed', message: 'x', chatId: 'c3' });
+    expect(toastError.mock.calls.at(-1)?.[1]).toMatchObject({ description: 'Keskustelu' });
+    // Opened: the mark goes; a new turn also ends it.
+    apply({
+      type: 'chat.state',
+      chat: chat('c2', false, '2026-01-01T00:00:00.000Z'),
+      messages: [],
+    });
+    expect(useStore.getState().failedAway).toEqual({ c3: 'prompt_failed' });
+    useStore.getState().rewind('c3', 0);
+    expect(useStore.getState().failedAway).toEqual({});
+    toastError.mockRestore();
+  });
+
   it('a held message: marked while held, its text back in the composer when dropped', () => {
     const local = (id: string, text: string) =>
       useStore.getState().addLocalMessage('c1', {
