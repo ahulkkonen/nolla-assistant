@@ -44,8 +44,15 @@ import {
   USER_MD,
 } from './fixtures.ts';
 
-const DIR = join(import.meta.dirname, '../screenshots');
-mkdirSync(DIR, { recursive: true });
+/** Shots of the `webkit` project go to their own folder, so the two baselines never mix. */
+const shotDir = () => {
+  const dir = join(
+    import.meta.dirname,
+    test.info().project.name === 'webkit' ? '../screenshots-webkit' : '../screenshots',
+  );
+  mkdirSync(dir, { recursive: true });
+  return dir;
+};
 
 const sizes = [
   { width: 390, height: 844 },
@@ -125,7 +132,7 @@ const shot = async (page: Page, screen: string, w: number, scheme: string) => {
     () => document.documentElement.scrollWidth <= window.innerWidth,
   );
   expect(noScroll, `${screen} scrolls horizontally`).toBe(true);
-  const path = join(DIR, `${screen}-${w}-${scheme}.png`);
+  const path = join(shotDir(), `${screen}-${w}-${scheme}.png`);
   await page.screenshot({ path, fullPage: false });
   expect(existsSync(path)).toBe(true);
   await axe(page, `${screen}-${w}-${scheme}`);

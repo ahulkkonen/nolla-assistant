@@ -19,5 +19,17 @@ export default defineConfig({
     // The screenshot loop only: `playwright test --project screens`. Every test starts its own
     // server, so the tests of the one file can run in parallel.
     { name: 'screens', testMatch: 'screens.spec.ts', fullyParallel: true, use: chromium },
+    // Safari check (phase 22): the phone screens in light and dark plus four flows, shot into
+    // `screenshots-webkit/`. `pnpm test:webkit`; not part of `pnpm test`.
+    {
+      name: 'webkit',
+      testMatch: /(screens|flows)\.spec\.ts/,
+      grep: [
+        /screens\.spec\.ts 390 (light|dark) /,
+        /flows\.spec\.ts (inline figure|queue: |approval card |model policy: )/,
+      ],
+      fullyParallel: true,
+      use: { browserName: 'webkit' },
+    },
   ],
 });

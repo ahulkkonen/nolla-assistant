@@ -7,7 +7,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@earendil-works/pi-coding-agent": "1.3.0"
+    "@earendil-works/pi-coding-agent": "1.4.0"
   },
   "devDependencies": {
     "@pa/fake-llm": "workspace:*",
