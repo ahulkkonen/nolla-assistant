@@ -7,6 +7,7 @@ The build plan is `docs/plan.md`. Section numbers in records refer to it.
 ## Index
 
 - `0001-pi-1.3.0-contract.md`: Pi 1.3.0 API contract.
+- `0009-pi-1.4.0.md`: Pi 1.4.0 differences from the 1.3.0 contract.
 - `0002-workflow-and-pins.md`: workflow, git, and dependency pins.
 - `0003-finnish-pii-stack.md`: Finnish PII stack for `pseudo-svc`.
 - `0004-litellm-openrouter-zdr.md`: LiteLLM, OpenRouter ZDR, and the Presidio backstop.
