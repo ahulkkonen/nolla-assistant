@@ -111,8 +111,12 @@ export function Thread() {
   const scroller = useRef<HTMLElement>(null);
   const content = useRef<HTMLDivElement>(null);
   const follow = useRef(new Follow()).current;
-  // Reply turns that began live here: no fade-in when their final message takes the place.
-  const bornLive = useRef(new Set<string>()).current;
+  // Reply turns of this chat that began live here: no fade-in when their final message takes the
+  // place. Per chat, reset in the render that shows another chat, so a chat opened mid-stream keeps
+  // the live key its first render adds (another chat's turns fade in again when it opens).
+  const born = useRef({ chatId, keys: new Set<string>() }).current;
+  if (born.chatId !== chatId) [born.chatId, born.keys] = [chatId, new Set()];
+  const bornLive = born.keys;
   const touchY = useRef(0);
   const [away, setAway] = useState(false);
   // Messages the reader has seen at the bottom; the rest count as new on the pill.
@@ -124,17 +128,19 @@ export function Thread() {
     if (!away) seen.current = messages.length;
   }, [away, messages.length]);
 
-  // Another chat starts at its bottom, with no pill and nothing unread.
+  // Another chat starts at its bottom, with no pill and nothing unread. The follow runs now: a
+  // cached chat of the same height gives no resize.
   useEffect(() => {
     follow.reset();
-    bornLive.clear();
     setAway(false);
     seen.current = useStore.getState().messages[chatId ?? '']?.length ?? 0;
+    if (scroller.current) follow.follow(scroller.current);
   }, [chatId]);
 
-  // A sent message follows the bottom again.
+  // A sent message follows the bottom again, at once.
   useEffect(() => {
     follow.pinned = true;
+    if (scroller.current) follow.follow(scroller.current);
   }, [lastUserId]);
 
   // Phase 26: the thread's own height changes (an Android keyboard, the composer growing): the

@@ -149,8 +149,11 @@ const CHIP =
 
 const measure = globalThis.document?.createElement('canvas').getContext('2d');
 
-/** Whether `text` fits in `max` px in the font of `ref`'s element; again once the fonts load. */
-function useFits(ref: RefObject<HTMLElement | null>, text: string, max: number) {
+/**
+ * Whether `text` fits in `max` px in the font of `ref`'s element; again once the fonts load, and
+ * when `shown` turns on (the element mounts after a render without it).
+ */
+function useFits(ref: RefObject<HTMLElement | null>, text: string, max: number, shown = true) {
   const [fits, setFits] = useState(true);
   useLayoutEffect(() => {
     const check = () => {
@@ -160,7 +163,7 @@ function useFits(ref: RefObject<HTMLElement | null>, text: string, max: number) 
     };
     check();
     void document.fonts?.ready.then(check);
-  }, [text, max]);
+  }, [text, max, shown]);
   return fits;
 }
 
@@ -186,7 +189,8 @@ export function ModesChip({
 }) {
   const { all, active, names, toggle } = useModes(chatId);
   const label = useRef<HTMLSpanElement>(null);
-  const fits = useFits(label, names, 200);
+  // Called before the early return: the modes may load after the first render.
+  const fits = useFits(label, names, 200, all.length > 0);
   if (!all.length) return null;
   const on = all.filter((m) => active.includes(m.id));
   const shown = !on.length

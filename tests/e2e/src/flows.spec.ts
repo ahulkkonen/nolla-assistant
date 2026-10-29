@@ -1592,6 +1592,111 @@ test('artifact panel: an html reply opens in a sandboxed iframe', async ({ app, 
   await expect(panel).toBeVisible();
 });
 
+/** Lowest opacity of the thread's last article, sampled per frame until `stop` (phase 27). */
+const sampleOpacity = async (page: Page) => {
+  await page.evaluate(() => {
+    const w = window as unknown as { __min: number; __on: boolean };
+    [w.__min, w.__on] = [1, true];
+    const tick = () => {
+      const a = Array.from(
+        document.querySelectorAll('section[aria-label="Keskustelu"] article'),
+      ).at(-1);
+      if (a) w.__min = Math.min(w.__min, Number(getComputedStyle(a).opacity));
+      if (w.__on) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+  return () =>
+    page.evaluate(() => {
+      const w = window as unknown as { __min: number; __on: boolean };
+      w.__on = false;
+      return w.__min;
+    });
+};
+
+test('streaming: a chat opened mid-stream keeps its reply at full opacity at the final', async ({
+  app,
+  page,
+}) => {
+  const long = Array.from({ length: 20 }, (_, i) => `Kappale ${i + 1}: vastaus jatkuu.`).join(
+    '\n\n',
+  );
+  app.llm.push({ text: 'Hei.', match: 'Moi' });
+  app.llm.push({ ...titleTurn('Tervehdys', 'Käyttäjä tervehti.'), match: 'Aiheet:' });
+  app.llm.push({ text: long, match: 'Kirjoita pitkä' });
+  const hold = await holdAt(page, 'Kappale 3');
+  await app.login(page);
+  await send(page, 'Moi');
+  await expect(page.locator('.md').last()).toHaveText('Hei.');
+  const rows = page.locator('nav li > button');
+  const hello = rows.filter({ hasText: 'Tervehdys' });
+  await expect(hello).toHaveCount(1);
+  await newChat(page);
+  await send(page, 'Kirjoita pitkä vastaus');
+  await hold.reached;
+  // Away and back: the first render of the streaming chat adds its live turn.
+  await hello.click();
+  await expect(page.locator('.md').last()).toHaveText('Hei.');
+  await rows.filter({ hasNotText: 'Tervehdys' }).click();
+  await expect(page.locator('.md').last()).toContainText('Kappale 3');
+  const stop = await sampleOpacity(page);
+  hold.release();
+  await expect(page.locator('.md').last()).toContainText('Kappale 20');
+  await expect(page.getByRole('button', { name: 'Pysäytä' })).toHaveCount(0);
+  await page.waitForTimeout(300);
+  expect(await stop()).toBe(1);
+});
+
+test('streaming: a tool-only final keeps the open tool row; the text final keeps the reply DOM', async ({
+  app,
+  page,
+}) => {
+  writeFileSync(join(app.dataDir, 'work/aleksi/note.txt'), 'Muistiinpano.\n');
+  app.llm.push({ toolCalls: [{ name: 'read', args: { path: 'note.txt' } }] });
+  app.llm.push({ text: 'Luin tiedoston.' });
+  // Holds the frames after the first `tool.end`, then after the first delta of the reply.
+  const stops = ['tool.end', 'message.delta'];
+  const queue: string[] = [];
+  let held = false;
+  let deliver = (_: string) => {};
+  const pump = () => {
+    while (!held && queue.length) {
+      const m = queue.shift() as string;
+      deliver(m);
+      if (JSON.parse(m).type !== stops[0]) continue;
+      stops.shift();
+      held = true;
+    }
+  };
+  await page.routeWebSocket(/\/ws$/, (ws) => {
+    const server = ws.connectToServer();
+    deliver = (m) => ws.send(m);
+    server.onMessage((m) => void (queue.push(String(m)), pump()));
+  });
+  const release = async () => {
+    await expect.poll(() => held).toBe(true);
+    held = false;
+    pump();
+  };
+  await app.login(page);
+  await send(page, 'Lue note.txt');
+  const row = page.getByRole('button', { name: /^read/ }).first();
+  await row.click();
+  await expect(row).toHaveAttribute('aria-expanded', 'true');
+  await release();
+  await expect(page.locator('.md').last()).not.toBeEmpty();
+  // The live row became the tool-only message's row: still open.
+  await expect(row).toHaveAttribute('aria-expanded', 'true');
+  await page
+    .locator('.md')
+    .last()
+    .evaluate((el) => el.setAttribute('data-was-live', ''));
+  await release();
+  await expect(page.getByRole('button', { name: 'Lähetä', exact: true })).toBeVisible();
+  await expect(page.locator('.md[data-was-live]')).toHaveText('Luin tiedoston.');
+  await expect(row).toHaveAttribute('aria-expanded', 'true');
+});
+
 test('streaming: an html block shows the writing card, never its source; long code stays code', async ({
   app,
   page,

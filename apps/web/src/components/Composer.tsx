@@ -56,14 +56,14 @@ const refChips = (refs: AttachmentRef[]): Chip[] =>
 
 /**
  * How far the composer toolbar gives way (UI review): 0 every chip with its text; 1 the off
- * auto-approve chip is a shield; 2 the Tila label is also its first name and a count; 3 the Tila
- * label is "Tila · 2" (a column beside the side panel), so the model's name stays whole. A step is
- * taken while the free space before the right-hand group (mic, send) is below zero, that is, the
- * model chip would truncate (`data-fit` marks its name); it is undone once the free space holds
- * what the step saved. Re-checks when the toolbar or an item changes size, or an item comes or
- * goes.
+ * auto-approve chip is a shield (phones: the on shield goes, the sheet shows it); 2 the Tila label
+ * is also its first name and a count; 3 the Tila label is "Tila · 2" (a column beside the side
+ * panel), so the model's name stays whole. A step is taken while the free space before the
+ * right-hand group (mic, send) is below zero, that is, the model chip would truncate (`data-fit`
+ * marks its name); it is undone once the free space holds what the step saved. Re-checks when the
+ * toolbar or an item changes size, or an item comes or goes.
  */
-function useToolbarFit(bar: RefObject<HTMLDivElement | null>, enabled: boolean) {
+function useToolbarFit(bar: RefObject<HTMLDivElement | null>) {
   const [level, setLevel] = useState(0);
   // `pending`: a step waits for its render; `before`: the free space before it.
   const s = useRef({ level: 0, pending: false, before: 0, saved: [0, 0, 0, 0] }).current;
@@ -98,7 +98,7 @@ function useToolbarFit(bar: RefObject<HTMLDivElement | null>, enabled: boolean) 
   }, [level]);
   useLayoutEffect(() => {
     const el = bar.current;
-    if (!enabled || !el) return;
+    if (!el) return;
     const ro = new ResizeObserver(() => latest.current());
     const watch = () => {
       ro.disconnect();
@@ -115,15 +115,15 @@ function useToolbarFit(bar: RefObject<HTMLDivElement | null>, enabled: boolean) 
       ro.disconnect();
       mo.disconnect();
     };
-  }, [enabled]);
-  return enabled ? level : 0;
+  }, []);
+  return level;
 }
 
 /**
  * "Hyväksy automaattisesti" (phase-21 decision 7). Off: a ghost chip, or (`compact`) a 32 px
  * shield toggle when the toolbar has no room for its text. On: its text and an outline in the
  * warning colour. Phones: the model sheet holds the switch; the row shows a warning shield while
- * it is on.
+ * it is on, unless (`compact`) the model's name would be cut.
  */
 function AutoApproveChip({ chatId, compact }: { chatId: string; compact: boolean }) {
   const auto = useAutoApprove(chatId);
@@ -131,7 +131,7 @@ function AutoApproveChip({ chatId, compact }: { chatId: string; compact: boolean
   if (!auto) return null;
   const { on, which, tip, toggle } = auto;
   if (mobile)
-    return on ? (
+    return on && !compact ? (
       <span role="img" aria-label="Hyväksytään automaattisesti" className="shrink-0 px-1">
         <ShieldAlert size={16} className="text-warning" />
       </span>
@@ -220,9 +220,7 @@ export function Composer() {
   const wrap = useRef<HTMLDivElement>(null);
   const meter = useRef<HTMLDivElement>(null);
   const bar = useRef<HTMLDivElement>(null);
-  const mobile = useMobile();
-  // Phones have neither chip in the row (the model sheet holds them).
-  const fit = useToolbarFit(bar, !mobile);
+  const fit = useToolbarFit(bar);
 
   const uploading = chips.some((c) => !c.ref);
   const canSend = !uploading && (text.trim() !== '' || chips.length > 0);

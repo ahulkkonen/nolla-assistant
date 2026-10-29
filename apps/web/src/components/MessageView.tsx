@@ -464,10 +464,12 @@ function ConfidenceLegend() {
         type="button"
         aria-pressed={on}
         onClick={() => useStore.getState().setShowConfN(!on)}
-        // A 16 px pill with a border, on or off; only the fill tells them apart. The target is
-        // 32 px (44 on phones: 8 up to the text above, 20 down over the scale) through `::after`.
-        className="relative inline-flex h-4 items-center rounded-full border border-border px-1.5 text-foreground transition-colors duration-100 after:absolute after:inset-x-0 after:-inset-y-2 hover:bg-accent aria-pressed:bg-accent max-md:after:-top-2 max-md:after:-bottom-5"
+        // A 16 px pill with a border; on: the fill and a 12 px check before the text (the brief's
+        // segmented control), the pill grows to the right. The target is 32 px (44 on phones: 8 up
+        // to the text above, 20 down over the scale) through `::after`.
+        className="relative inline-flex h-4 items-center gap-1 rounded-full border border-border px-1.5 text-foreground transition-colors duration-100 after:absolute after:inset-x-0 after:-inset-y-2 hover:bg-accent aria-pressed:bg-accent max-md:after:-top-2 max-md:after:-bottom-5"
       >
+        {on && <Check size={12} className="shrink-0" />}
         Näytä luvut
       </button>
     </div>

@@ -198,9 +198,16 @@ describe('settleTail', () => {
     expect(settleTail(`${head}| 1 | 2 |\n|`)).toBe(`${head}| 1 | 2 |`);
     expect(settleTail(`${head}| 1 | 2 |\n`)).toBe(`${head}| 1 | 2 |\n`);
   });
-  it('shows a prose pipe once the next line starts; code span and escaped pipes are text', () => {
-    expect(settleTail('Valitse A | B')).toBe('');
+  it('shows a prose line with a pipe while it streams; code span and escaped pipes are text', () => {
+    expect(settleTail('Aja cat a | grep b')).toBe('Aja cat a | grep b');
+    expect(settleTail('Aja cat a | grep b\n')).toBe('Aja cat a | grep b\n');
+    expect(settleTail('Aja cat a | grep b\n|')).toBe('Aja cat a | grep b');
     expect(settleTail('Valitse A | B\nTai')).toBe('Valitse A | B\nTai');
+    // A second piped line may be the header's delimiter or a row: held. A header row without the
+    // leading pipe waits with its delimiter row once that starts.
+    expect(settleTail('a | b\nc | d')).toBe('a | b');
+    expect(settleTail('a | b\n--|-')).toBe('');
+    expect(settleTail('a | b\n--|--\n')).toBe('a | b\n--|--\n');
     expect(settleTail('Käytä `a|b` näin')).toBe('Käytä `a|b` näin');
     expect(settleTail('a \\| b')).toBe('a \\| b');
   });

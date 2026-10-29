@@ -283,8 +283,12 @@ function Shell() {
             </IconButton>
           </header>
         ) : screen === 'chat' && empty ? (
-          // An empty chat has no top bar and no rule (brief 7.4): the title as a sr-only h1.
-          <h1 className="sr-only">{title}</h1>
+          // An empty chat has no top bar and no rule (brief 7.4): the title as a sr-only h1. The
+          // bar's 48 px stay, so the first send mounts the header with nothing below it moving.
+          <>
+            <h1 className="sr-only">{title}</h1>
+            <div aria-hidden="true" className="h-12 shrink-0" />
+          </>
         ) : (
           screen === 'chat' && (
             // Desktop chat header (phase 16): the title and the chat's cost, on the thread column's

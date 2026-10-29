@@ -57,6 +57,10 @@ export function disconnect() {
   clearTimeout(retryTimer);
   clearInterval(pingTimer);
   queue = [];
+  // Phase 27: deltas still waiting for their frame never land after a sign-out's wipe.
+  if (frame) cancelAnimationFrame(frame);
+  frame = 0;
+  deltas = [];
   ws?.close();
   ws = null;
 }

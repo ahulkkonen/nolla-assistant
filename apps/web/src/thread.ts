@@ -383,19 +383,31 @@ const inTable = (lines: string[], i: number) => {
   return false;
 };
 
+/** A line that starts as a table row does: a pipe after at most 3 spaces. */
+const ROW = /^ {0,3}\|/;
+
 /**
  * Phase 27: a table waits until its delimiter row ends (before that its header row renders as
- * text); so does a row without text yet. A prose line with a pipe waits until the next line starts.
+ * text); so does a row without text yet. Only a line that starts with a pipe, or one after a piped
+ * line, is held: a prose line with a pipe ("cat a | grep b") shows while it streams. A header row
+ * without the leading pipe shows as text until its delimiter row starts.
  */
 function holdTable(lines: string[]) {
   const n = lines.length - 1;
   const last = lines[n] ?? '';
-  const prev = lines[n - 1];
+  const prev = lines[n - 1] ?? '';
   // No text yet: a delimiter row being typed, a row that only has its first pipe.
   const empty = /^[\s|:-]*$/.test(last);
-  if (empty && piped(prev) && !DELIMITER.test(prev ?? '') && !inTable(lines, n - 1))
+  if (
+    empty &&
+    piped(prev) &&
+    (ROW.test(prev) || last.includes('-')) &&
+    !DELIMITER.test(prev) &&
+    !inTable(lines, n - 1)
+  )
     lines.splice(n - 1);
-  else if (piped(last) && (empty || !inTable(lines, n))) lines.pop();
+  else if (piped(last) && (ROW.test(last) || piped(prev)) && (empty || !inTable(lines, n)))
+    lines.pop();
 }
 
 /** List and quote markers at the start of a line: never emphasis. */

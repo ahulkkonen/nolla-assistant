@@ -4,9 +4,12 @@ import { cn } from '@/lib/utils';
 import type { SubagentChild } from '../store.ts';
 import { CollapsibleRow } from './ToolRow.tsx';
 
-/** Status per child (brief 7.5): icon and badge, the badge's word in sentence case. */
+/**
+ * Status per child (brief 7.5): icon and badge, the badge's word in sentence case. Queued is an
+ * outline: a `secondary` fill on the `--muted` list is 1.05:1 (light), 1.44:1 (dark).
+ */
 const STATUS = {
-  queued: { Icon: Clock, icon: 'text-muted-foreground', text: 'Jonossa', badge: 'secondary' },
+  queued: { Icon: Clock, icon: 'text-muted-foreground', text: 'Jonossa', badge: 'outline' },
   running: {
     Icon: Loader2,
     icon: 'animate-spin text-muted-foreground',

@@ -233,7 +233,7 @@ Source: background, foreground, card, dark sidebar, border alpha, ink primary, "
 | Rail | none | 56 while a side panel is open or after the user collapses the sidebar (768–1023: rail 56 by default, sidebar opens as a 320 overlay) | 56 only after the user collapses the sidebar |
 | Side panel (artifact) | full-screen Sheet | docked 440; thread area 528 | docked `clamp(440px, 40vw, 640px)` = 576; thread area 600 |
 | Thread | full width, padding 16 | 672 centered in 760 | 672 centered in 1176 |
-| Top bar | 48 + safe-area top | chat only (phase 16): 48, title `--text-ui` 500 truncated at left, chat cost in meta muted at right (tooltip: token parts, cache rate); none on other screens or in an empty chat (title as sr-only h1) | as 1024 |
+| Top bar | 48 + safe-area top | chat only (phase 16): 48, title `--text-ui` 500 truncated at left, chat cost in meta muted at right (tooltip: token parts, cache rate); none on other screens or in an empty chat (title as sr-only h1; ≥ 768 its 48 px stay empty, no rule, so the first send moves nothing) | as 1024 |
 | Composer | full width − 32, bottom gap 8 + safe-area | 672, bottom gap 16 | 672, bottom gap 16 |
 
 Thread minimum width is 480; under that the side panel becomes a full-screen Sheet.

@@ -8,6 +8,7 @@ import {
   send,
   sendUserMessage,
   setDataPolicy,
+  signedOut,
   stopTurn,
 } from './ws.ts';
 
@@ -261,5 +262,36 @@ describe('ws client', () => {
     frame({ type: 'chat.state', chat: c2, messages: [], running: false });
     expect(sent('user.message')).toMatchObject([{ chatId: 'c2', text: 'Jonossa' }]);
     expect(useStore.getState().queued.c2).toBeUndefined();
+  });
+
+  it('a sign-out drops the deltas that wait for their frame: nothing lands after the wipe', () => {
+    const frames: FrameRequestCallback[] = [];
+    const cancel = vi.fn();
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => frames.push(cb));
+    vi.stubGlobal('cancelAnimationFrame', cancel);
+    const { frame } = chat();
+    const delta = (text: string) =>
+      frame({ type: 'message.delta', chatId: 'c1', messageId: 's1', text, annotations: [] });
+    delta('Pekka');
+    signedOut();
+    expect(cancel).toHaveBeenCalledWith(1);
+    // A frame that runs anyway applies nothing.
+    frames.shift()?.(0);
+    expect(useStore.getState().streaming).toEqual({});
+    // The next socket's first delta asks for a frame of its own.
+    const next = chat();
+    next.frame({
+      type: 'message.delta',
+      chatId: 'c1',
+      messageId: 's2',
+      text: 'Uusi',
+      annotations: [],
+    });
+    expect(frames).toHaveLength(1);
+    frames.shift()?.(0);
+    expect(useStore.getState().streaming.c1?.text).toBe('Uusi');
+    useStore.setState({ auth: 'in' });
+    vi.unstubAllGlobals();
+    vi.stubGlobal('WebSocket', FakeWebSocket);
   });
 });

@@ -25,7 +25,8 @@ where this record changes them.
    Follow: the phase-26 `ResizeObserver` also observes the content. It runs after layout, once per
    frame, and does no forced layout. It also shows the pill when the content grows past 80 px.
 5. **Held-back Markdown.** `settleTail` holds a table until its delimiter row ends, and a row that
-   has no text yet. A prose line with a pipe shows when the next line starts. It closes an open
+   has no text yet. Only a line that starts with a pipe, or a line after a piped line, is held: a
+   prose line with a pipe shows while it streams (review fix 4). It closes an open
    `**` and `*` of the last line (the inner one first) and holds back a trailing run. The old
    delimiter-row completion is gone.
 6. **Breathing caret.** The caret is solid while text arrives. 400 ms after the last text it
@@ -62,6 +63,41 @@ CPU throttling, so dropped frames come from the trace (`STATE_DROPPED`, 4 runs a
 | Lowest reply opacity at the final | 0 | 1 |
 | Reply DOM replaced at the final | 16 ms after it | never |
 | User bubble and reply text move at the final | 0 px | 0 px |
+
+## Review fixes
+
+Phase-27 and UI-fix review, 2026-10-29. Measured with Playwright Chromium; contrast from the tokens
+(WCAG 2 ratio).
+
+1. `disconnect()` cancels the waiting frame and drops the deltas. A sign-out (also a 4401 close or
+   an `auth.state` without a session) leaves no delta to land after the wipe.
+2. The set of turns born live belongs to one chat. The render that shows another chat resets it,
+   so the key that the first render of a streaming chat adds stays and its final does not fade
+   in. Before, the chat effect cleared the set after that render; a later render while live added
+   the key again, so the flash needed a final before any other render of the thread.
+3. A chat switch and a sent message call the follow at once. A cached chat of the same height
+   gives no resize, and the resize callback can come before the effect that pins.
+4. Decision 5 changes as written there. A header row without the leading pipe shows as text until
+   its delimiter row starts.
+5. "Jonossa" badge: `outline`. `secondary` on the `--muted` list is 1.05:1 (light) and 1.44:1
+   (dark), under 3:1. The outline's `--border` edge is 1.26:1 and 1.40:1; the text is 15.9:1 and
+   13.9:1.
+6. The Tila chip's fit check runs again when the chip mounts after the modes load.
+7. Phone composer row: the toolbar fit (UI review) runs on phones too. The warning shield of
+   auto-approve gives way first (level 1) when the model's name would be cut; the model sheet shows
+   the state. At 390 with "Pysäytä" and "Lisää jonoon": Auto (31 px) and Opus 5.5 (59 px) keep
+   their name and the shield (37 and 9 px free). Gemini 4 Argon (103 px) loses the shield and is
+   still 7 px short. The `auto-approve-on-closed` screen (Auto) keeps the shield.
+8. "Näytä luvut" on: a 12 px check before the text (the segmented-control pattern). The on and off
+   fills differ by 1.15:1 (light) and 1.42:1 (dark). The pill grows 16 px to the right (79 to
+   95 px), at 1280 and 390; the label, the scale and the rows do not move.
+9. Not changed: the live reply keeps its key by place. The key goes to the message that came out
+   of the live view: a tool-only final gets the live tool rows (an open row stays open), and the
+   text final gets the reply's DOM (decision 1). With a constant `live` key, the open row closed at
+   the tool-only final and the reply's DOM was replaced at the text final. A flow checks both.
+10. Empty chat ≥ 768: a 48 px spacer without a rule holds the header's place. The chat column's top
+    at the first send moved 0 to 48 px; now 48 to 48 px. The greeting and the centred composer of
+    the empty chat are 29 px lower (40 % of a 48 px shorter area).
 
 ## Files
 
