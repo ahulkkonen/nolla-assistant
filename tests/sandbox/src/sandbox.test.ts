@@ -96,6 +96,13 @@ describe.skipIf(!hasDocker)(hasDocker ? 'sandbox broker (docker)' : `sandbox ${S
     if (b.status !== 0) throw new Error(`skill-runner build failed:\n${b.stderr}`);
     // realpath: Docker Desktop resolves bind sources on the host (/var -> /private/var on macOS).
     dataDir = realpathSync(mkdtempSync(join(tmpdir(), 'pa-sandbox-')));
+    // A fixture skill with a host list: `web-digest` fetches any host since phase 22.
+    const skillsDir = join(dataDir, 'skills');
+    mkdirSync(join(skillsDir, 'allowlist'), { recursive: true });
+    writeFileSync(
+      join(skillsDir, 'allowlist', 'SKILL.md'),
+      '---\nname: allowlist\nsandbox:\n  network: [example.com, "*.wikipedia.org"]\n---\n',
+    );
     const proxyPort = await freePort();
     cfg = {
       proxyPort,
@@ -105,8 +112,8 @@ describe.skipIf(!hasDocker)(hasDocker ? 'sandbox broker (docker)' : `sandbox ${S
       image: IMAGE,
       dataDir,
       hostDataDir: dataDir,
-      skillsDir: join(root, 'skills'),
-      hostSkillsDir: join(root, 'skills'),
+      skillsDir,
+      hostSkillsDir: skillsDir,
     };
     app = await build(cfg);
     docker = dockerClient(cfg.dockerSocket);
@@ -164,9 +171,9 @@ describe.skipIf(!hasDocker)(hasDocker ? 'sandbox broker (docker)' : `sandbox ${S
     expect(output).toMatch(/resolve|network|connect/i);
   });
 
-  // web-digest declares network: [example.com, "*.wikipedia.org"]
-  describe('host allowlist (web-digest)', () => {
-    const skill = 'web-digest';
+  // The fixture skill declares network: [example.com, "*.wikipedia.org"]
+  describe('host allowlist (fixture skill)', () => {
+    const skill = 'allowlist';
     const curl = (args: string) => run({ command: `curl -sS -m 10 -o /dev/null ${args}`, skill });
 
     test('listed host over https works', async (ctx) => {
@@ -336,5 +343,7 @@ describe('skill policy and host matching', () => {
     expect(make('d', '["not a host"]')).toBe('none');
     expect(make('e', '["*"]')).toBe('none');
     expect(skillPolicy(dir, 'missing').network).toBe('none');
+    // Phase-22 decision 9: the bundled `web-digest` fetches any host.
+    expect(skillPolicy(join(root, 'skills'), 'web-digest').network).toBe('internet');
   });
 });

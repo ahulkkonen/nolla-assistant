@@ -21,7 +21,7 @@ import { type Child, subagentsExtension } from '@pa/pi-ext-subagents';
 import { topicsExtension } from '@pa/pi-ext-topics';
 import { DEFAULT_AGENT_ID, WEB_SEARCH_TOOL } from '@pa/protocol';
 import { type AgentProfile, type Agents, liveAgentId } from '../agents.ts';
-import { type Ask, approvalGate } from '../approval.ts';
+import { type Ask, approvalGate, childAsk } from '../approval.ts';
 import type { ClaimStore } from '../claims.ts';
 import {
   allowedToolNames,
@@ -421,6 +421,7 @@ export class SessionRegistry {
     const { search } = this.opts;
     // A search the guard approved skips the gate (a profile may list web_search in `always`).
     const searchApproved = new Set<string>();
+    const autoTools = this.autoApproveTools(agentId);
     const [searchTool, searchGuard] =
       search && tools.includes(WEB_SEARCH_TOOL)
         ? webSearchExtensions({
@@ -478,7 +479,7 @@ export class SessionRegistry {
           ask: this.opts.approval.ask,
           timeoutMs: this.opts.approval.timeoutMs,
           approved: searchApproved,
-          autoTools: this.autoApproveTools(agentId),
+          autoTools,
         }),
         ...(broker && tools.includes('bash')
           ? [
@@ -516,7 +517,7 @@ export class SessionRegistry {
                   else this.children.delete(chatId);
                   withSubagents.onState(chatId, children);
                 },
-                ask: this.opts.approval.ask,
+                ask: childAsk(this.opts.approval.ask, chatId, autoTools),
                 log: (...args) => withSubagents.log(chatId, ...args),
                 onUsage: (m) =>
                   this.opts.onUsage?.({ kind: 'subagent', chatId, agentId }, messageUsage(m)),

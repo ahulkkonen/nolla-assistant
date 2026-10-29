@@ -1,13 +1,14 @@
 ---
 name: web-digest
-description: Fetch one web page and summarise it. Use when the user gives a URL and asks what it says.
+description: Fetch one web page from any host and summarise it. Use when the user gives a URL and asks what it says. Fetch only the URL the user gave.
 sandbox:
-  network: [example.com, "*.wikipedia.org"]
+  network: internet
 ---
 
 # Web digest
 
-1. Fetch the page with the `bash` tool:
+1. Fetch only the URL the user gave. Do not fetch other pages, links on the page or other hosts.
+   Fetch the page with the `bash` tool:
 
    ```sh
    curl -sL <url> | head -c 20000

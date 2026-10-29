@@ -24,6 +24,7 @@ import {
   piEntry,
   piModelId,
   policyOf,
+  providerStatus,
   recommendedEffort,
   thinkingLevel,
   toModel,
@@ -496,4 +497,36 @@ test('decision 10: 403 needs a ZDR text; 404 and 503 a ZDR text or a catalog wit
   );
   expect(isZdrRefusal(zdr(null), notFound, catalog)).toBe(false);
   expect(isZdrRefusal(zdr('acme/no-zdr'), undefined, catalog)).toBe(false);
+});
+
+test("phase-22 decision 2: OpenRouter's explicit ZDR refusals match with or without a status", () => {
+  const catalog = { get: () => ({ zdr: true }) as Model };
+  const zdr = { modelId: 'acme/zdr', dataPolicy: 'zdr' as const };
+  for (const m of [
+    '{"error":{"code":"zdr-violation-by-account","message":"Request blocked"}}',
+    '400: {"error":{"code":"zdr-violation-by-account"}}',
+    'OpenRouter API error: ZDR violation (account settings)',
+    '403: ZDR violation (account settings)',
+    'No endpoints found matching your data policy (Zero data retention)',
+    '404: {"error":{"message":"No endpoints found matching your data policy (Zero data retention)"}}',
+    '0 endpoints out of 4 requested are available with your ZDR settings',
+    '503: 0 endpoints out of 12 requested. Provider list filtered by ZDR.',
+  ])
+    expect(isZdrRefusal(zdr, m, catalog), m).toBe(true);
+  // An open chat is never a ZDR refusal; a count without ZDR is not one either.
+  expect(isZdrRefusal({ ...zdr, dataPolicy: 'open' }, 'zdr-violation-by-account', catalog)).toBe(
+    false,
+  );
+  expect(isZdrRefusal(zdr, '0 endpoints out of 4 requested', catalog)).toBe(false);
+});
+
+test('phase-22 decision 1: providerStatus reads the status near the start of the error text', () => {
+  expect(providerStatus('404: {"code":404}')).toBe(404);
+  expect(providerStatus('OpenAI API error (429): rate limited')).toBe(429);
+  expect(providerStatus('litellm.NotFoundError: 404 not found')).toBe(404);
+  expect(providerStatus('500 internal error')).toBe(500);
+  expect(providerStatus(`${'x'.repeat(41)} 404`)).toBeUndefined();
+  expect(providerStatus('Connection error.')).toBeUndefined();
+  expect(providerStatus('200 tokens over limit')).toBeUndefined();
+  expect(providerStatus(undefined)).toBeUndefined();
 });

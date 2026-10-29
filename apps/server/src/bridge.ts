@@ -40,7 +40,14 @@ import { AttachmentNotFound, chatFiles, ingestAttachments, splitBlocks } from '.
 import type { Fx } from './fx.ts';
 import { GENERATED, MemoryError, type MemoryStore } from './memory.ts';
 import { GUARD_REASON } from './pi/guard.ts';
-import { AUTO_MODEL, type Catalog, isZdrRefusal, policyOf, resolveModelId } from './pi/models.ts';
+import {
+  AUTO_MODEL,
+  type Catalog,
+  isZdrRefusal,
+  policyOf,
+  providerStatus,
+  resolveModelId,
+} from './pi/models.ts';
 import { ChatNotFound, type SessionRegistry } from './pi/registry.ts';
 import { BadSubscription, type Push } from './push.ts';
 import { indexChat, related, search } from './search.ts';
@@ -147,6 +154,7 @@ export const summary = (r: ChatRow): ChatSummary => ({
   pinned: r.pinned,
   archived: r.archived,
   titleLocked: r.titleLocked,
+  ...(r.forkedFromChatId ? { forkedFrom: r.forkedFromChatId } : {}),
   modelPolicy: policyOf(r),
   confidence: r.confidence,
   usage: chatUsage(r),
@@ -876,7 +884,6 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
           topicId: src.topicId,
           title: haara(src.title),
           titleMasked: haara(src.titleMasked),
-          titleLocked: !!src.title,
           // A bare OpenRouter id: the prefix comes from `dataPolicy` (phase-10 `piModelId`).
           modelId: src.modelId,
           reasoning: src.reasoning,
@@ -1447,7 +1454,19 @@ function forward(
               'model error not classified as a ZDR refusal',
             );
           }
-          return emit(errorMsg('llm_failed', chatId));
+          // Phase-22 decision 1: the cause for the toast. Cut before the restore like tool output.
+          const status = providerStatus(e.message.errorMessage);
+          const detail = e.message.errorMessage
+            ? (await restore(e.message.errorMessage.slice(0, 400))).text.slice(0, 400)
+            : undefined;
+          return emit({
+            type: 'error',
+            code: 'llm_failed',
+            message: ERRORS.llm_failed,
+            chatId,
+            ...(status ? { status } : {}),
+            ...(detail ? { detail } : {}),
+          });
         }
         pending = e.message;
         return;

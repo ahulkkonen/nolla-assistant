@@ -229,6 +229,20 @@ LiteLLM egress. Only the OpenRouter keys are real; nothing leaves the machine ex
 4. Open http://localhost:3000 and log in with the password. Passkeys, push and the Google
    OAuth callback all accept `localhost`.
 
+### Open the local run on your phone
+
+You can use the local run from a phone on the same wifi. This connection uses plain http.
+Use it only on a network that you trust.
+
+1. In `.env`, set `PA_LAN_BIND=0.0.0.0`, `AUTH_INSECURE_LAN=1` and
+   `AUTH_ORIGIN=http://<mac-name>.local:3000`. Replace `<mac-name>` with the local host name
+   of your Mac (System Settings › General › Sharing).
+2. Start the stack again with the command in step 3.
+3. On the phone, open `http://<mac-name>.local:3000` and log in with the password.
+
+Passkeys, the microphone and the PWA install need https. They do not work on this connection.
+The session cookie does not have the `Secure` flag, because the origin is http.
+
 The `backup` service does not start here because it needs an S3 bucket. Add `--profile backup`
 when `.env` has the S3 values. Stop everything with `docker compose ... down`; add `-v` to
 delete the data volume too.

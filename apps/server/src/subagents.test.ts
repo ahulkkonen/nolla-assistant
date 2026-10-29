@@ -1,6 +1,7 @@
 import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, expect, test } from 'vitest';
+import { approvals, childAsk } from './approval.ts';
 import { boot, connect, runCleanups } from './test-utils.ts';
 
 afterEach(runCleanups);
@@ -37,4 +38,32 @@ test('default profile: a parallel subagent run streams subagent.state', {
   await c.idle();
   const sub = join(srv.registry.sessionDir, chat.id, 'sub');
   expect(readdirSync(sub).filter((f) => f.endsWith('.jsonl'))).toHaveLength(3);
+});
+
+test("phase-22 decision 7: a child's tool passes without a card while the parent's toggle allows it", async () => {
+  const sent: string[] = [];
+  const a = approvals((_chatId, msg) => sent.push(msg.type));
+  const ask = childAsk(a.ask, 'c1', ['write']);
+  const req = (tool: string) => ({ chatId: 'c1', tool, args: {}, reason: 'r', expiresAt: '' });
+  const signal = new AbortController().signal;
+
+  a.autoApprove.add('c1');
+  await expect(ask(req('write'), signal)).resolves.toBe(true);
+  expect(sent).toEqual([]);
+
+  // A tool outside the list, and the listed tool once the toggle is off, still ask.
+  for (const tool of ['bash', 'write']) {
+    if (tool === 'write') a.autoApprove.delete('c1');
+    const answer = ask(req(tool), signal);
+    const [request] = a.list('c1');
+    expect(request?.tool).toBe(tool);
+    a.respond(request?.requestId ?? '', false);
+    await expect(answer).resolves.toBe(false);
+  }
+  expect(sent).toEqual([
+    'approval.request',
+    'approval.resolved',
+    'approval.request',
+    'approval.resolved',
+  ]);
 });

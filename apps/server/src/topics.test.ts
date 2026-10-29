@@ -3,6 +3,7 @@ import { chats, tags, topicProposals, topics } from '@pa/db';
 import { eq } from 'drizzle-orm';
 import { afterEach, expect, test } from 'vitest';
 import { boot, bootPseudo, connect, KEY, runCleanups } from './test-utils.ts';
+import { nearDuplicate, PROPOSAL_DUPLICATE_MIN } from './topics.ts';
 
 afterEach(runCleanups);
 
@@ -118,7 +119,13 @@ test('topics: invalid JSON is retried; proposal lands in the inbox; accept and r
   expect(retry.map((m) => m.role)).toEqual(['system', 'user', 'assistant', 'user']);
   expect(retry[2]?.content).toBe('ei jsonia');
 
-  const proposal = { id: expect.any(Number), name: 'Harrastukset', why, chatId: chat.id };
+  const proposal = {
+    id: expect.any(Number),
+    name: 'Harrastukset',
+    why,
+    chatId: chat.id,
+    chatTitle: 'Uuden harrastuksen aloitus',
+  };
   expect((await c.next('topic.state')).proposals).toEqual([proposal]);
   c.send({ type: 'topic.list' });
   const listed = await c.next('topic.state');
@@ -141,4 +148,15 @@ test('topics: invalid JSON is retried; proposal lands in the inbox; accept and r
     { id: updated.topicId, name: 'Harrastus', description: why, count: 1 },
   ]);
   expect(state.proposals).toEqual([]);
+});
+
+test('phase-22 decision 4: a proposal at the cosine threshold of a known name is a duplicate', () => {
+  const unit = (deg: number) => {
+    const r = (deg * Math.PI) / 180;
+    return new Float32Array([Math.cos(r), Math.sin(r), 0]);
+  };
+  const at = (Math.acos(PROPOSAL_DUPLICATE_MIN) * 180) / Math.PI;
+  expect(nearDuplicate(unit(0), [unit(90), unit(at - 1)])).toBe(true);
+  expect(nearDuplicate(unit(0), [unit(90), unit(at + 1)])).toBe(false);
+  expect(nearDuplicate(unit(0), [])).toBe(false);
 });

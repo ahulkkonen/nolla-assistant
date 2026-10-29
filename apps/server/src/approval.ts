@@ -17,6 +17,26 @@ export type AskInput = Pick<
 /** Resolves with the user's answer, or `false` (request dropped) when `signal` aborts. */
 export type Ask = (req: AskInput, signal: AbortSignal) => Promise<boolean>;
 
+/** `unattended` (see `approvals`): chats with no one to ask; `autoApprove`: chats whose toggle is on. */
+type GateAsk = Ask & { unattended?: Map<string, string[]>; autoApprove?: Set<string> };
+
+/** "Hyväksy automaattisesti" is on in the chat and lets `tool` run (phase-21 decision 7). */
+const autoApproved = (
+  ask: GateAsk,
+  chatId: string,
+  autoTools: string[] | undefined,
+  tool: string,
+) => !!ask.autoApprove?.has(chatId) && !!autoTools?.includes(tool);
+
+/**
+ * The `ask` of a chat's subagent children (phase-22 decision 7): a child's tool that the parent
+ * chat's toggle lets run passes without a card.
+ */
+export const childAsk =
+  (ask: GateAsk, chatId: string, autoTools: string[]): Ask =>
+  (req, signal) =>
+    autoApproved(ask, chatId, autoTools, req.tool) ? Promise.resolve(true) : ask(req, signal);
+
 /**
  * Inline extension on `tool_call`. Tools in `policy.always` wait for the user; tools in
  * `policy.never` and all others pass. Load it after `pseudoExtension`, so `args` are real values.
@@ -32,8 +52,7 @@ export const approvalGate =
   }: {
     chatId: string;
     policy: AgentProfile['approval'];
-    /** `unattended` (see `approvals`): chats with no one to ask; `autoApprove`: chats whose toggle is on. */
-    ask: Ask & { unattended?: Map<string, string[]>; autoApprove?: Set<string> };
+    ask: GateAsk;
     /** The tools the toggle lets run (phase-21 decision 7), from the profile this gate was built with. */
     autoTools?: string[] | undefined;
     timeoutMs?: number | undefined;
@@ -47,7 +66,7 @@ export const approvalGate =
       if (approved?.has(event.toolCallId)) return;
       const auto = ask.unattended?.get(chatId);
       if (auto) return auto.includes(tool) ? undefined : { block: true, reason: UNATTENDED_REASON };
-      if (ask.autoApprove?.has(chatId) && autoTools?.includes(tool)) return;
+      if (autoApproved(ask, chatId, autoTools, tool)) return;
       return confirm(ask, {
         chatId,
         callId: event.toolCallId,

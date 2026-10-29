@@ -566,6 +566,16 @@ test('decision 10: a 503 for a ZDR model is an outage (llm_failed), not a refusa
   writeFileSync(join(srv.registry.agentDir, 'settings.json'), '{"retry":{"enabled":false}}');
   const chat = await create({ modelId: ARGON, reasoning: 'auto' });
   c.send({ type: 'user.message', chatId: chat.id, text: 'Moi' });
+  // Phase-22 decision 1: the status and the provider text go to the toast.
+  const fail = vi.waitFor(() => c.inbox.find((m) => m.type === 'error') ?? Promise.reject(), {
+    timeout: 10_000,
+    interval: 50,
+  });
+  await expect(fail).resolves.toMatchObject({
+    code: 'llm_failed',
+    status: 503,
+    detail: expect.stringContaining('No provider available'),
+  });
   await expect(c.next('message.final')).rejects.toThrow('llm_failed');
   await c.idle();
   expect(llm.requests[0]?.body.model).toBe(`zdr/${ARGON}`);

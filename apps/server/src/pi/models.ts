@@ -273,9 +273,28 @@ const zdrText = (m: string) =>
   /zero data retention/i.test(m) || (/data policy/i.test(m) && !/training/i.test(m));
 
 /**
+ * OpenRouter's explicit ZDR refusals (phase-22 decision 2): the error code, the account-settings
+ * text, the data-policy text that names ZDR and the endpoint count. They name ZDR themselves, so they need no status.
+ */
+const zdrRefusalText = (m: string) =>
+  /zdr-violation|\bZDR violation\b|data policy \(zero data retention\)|\b0 endpoints out of \d+ requested\b[\s\S]*\bZDR\b/i.test(
+    m,
+  );
+
+/**
+ * The HTTP status of a failed model call from Pi's error text, which has no structured status:
+ * `formatProviderError` writes "<status>: …" or "<prefix> (<status>): …", maybe after a short
+ * prefix (LiteLLM's exception name).
+ */
+export const providerStatus = (errorMessage: string | undefined): number | undefined => {
+  const status = errorMessage && /^\D{0,40}\b([45]\d\d)\b/.exec(errorMessage)?.[1];
+  return status ? Number(status) : undefined;
+};
+
+/**
  * Decision 10, as amended by the phase-10 review: a failed call in a `zdr` chat with a catalog
- * model, with status 403, 404 or 503 near the start (Pi's `formatProviderError`, maybe after a
- * short prefix), and:
+ * model, with one of OpenRouter's explicit ZDR refusals (phase 22), or with status 403, 404 or 503
+ * (`providerStatus`) and:
  * - 403 (also budget, guardrail and moderation): a ZDR text only;
  * - 404 (also a model that is gone): a ZDR text, or a catalog without ZDR endpoints;
  * - 503: a ZDR text, or a catalog without ZDR endpoints. A ZDR model with 503 is an outage.
@@ -286,10 +305,11 @@ export function isZdrRefusal(
   catalog: Pick<Catalog, 'get'>,
 ): boolean {
   if (chat.dataPolicy !== 'zdr' || chat.modelId === null || !errorMessage) return false;
-  const status = /^\D{0,40}\b(403|404|503)\b/.exec(errorMessage)?.[1];
-  if (!status) return false;
+  if (zdrRefusalText(errorMessage)) return true;
+  const status = providerStatus(errorMessage);
+  if (status !== 403 && status !== 404 && status !== 503) return false;
   if (zdrText(errorMessage)) return true;
-  return status !== '403' && catalog.get(resolveModelId(chat.modelId))?.zdr === false;
+  return status !== 403 && catalog.get(resolveModelId(chat.modelId))?.zdr === false;
 }
 
 /** The OpenRouter id behind a stored `modelId`. */

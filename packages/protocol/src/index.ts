@@ -139,6 +139,8 @@ export const ChatSummary = z.object({
   archived: z.boolean(),
   /** True after a manual rename: automatic titling no longer changes the title. */
   titleLocked: z.boolean().optional(),
+  /** Phase-22 decision 3: the source chat's id for a chat that "Haarauta" started (the mark). */
+  forkedFrom: id64.optional(),
   modelPolicy: ModelPolicy,
   /** Phase-21 decision 4: the model marks each sentence with `⟦N⟧`. */
   confidence: z.boolean(),
@@ -1154,7 +1156,16 @@ export const ServerMessage = z.discriminatedUnion('type', [
         count: z.int().min(0),
       }),
     ),
-    proposals: z.array(z.object({ id: z.int(), name: z.string(), why: z.string(), chatId: id64 })),
+    proposals: z.array(
+      z.object({
+        id: z.int(),
+        name: z.string(),
+        why: z.string(),
+        chatId: id64,
+        /** Phase-22 decision 4: the chat's title for the "Keskustelusta: X" link; null while untitled. */
+        chatTitle: z.string().nullable(),
+      }),
+    ),
   }),
   z.object({
     type: z.literal('search.results'),
@@ -1177,6 +1188,10 @@ export const ServerMessage = z.discriminatedUnion('type', [
     requestId: id64.optional(),
     /** `zdr_unavailable`: the model the refused run used; the chat can have another by now. */
     modelId: ModelPolicy.shape.modelId.optional(),
+    /** `llm_failed`: the provider's HTTP status, when the error has one (phase-22 decision 1). */
+    status: z.int().optional(),
+    /** `llm_failed`: the provider's error text, restored like tool output, at most 400 characters. */
+    detail: z.string().max(400).optional(),
   }),
   z.object({ type: z.literal('pong') }),
   z.object({

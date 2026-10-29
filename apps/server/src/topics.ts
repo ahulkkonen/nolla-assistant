@@ -5,6 +5,7 @@ import { and, count, eq, like } from 'drizzle-orm';
 import type { FastifyBaseLogger } from 'fastify';
 import { z } from 'zod';
 import { type BridgeDeps, transcript as branch, broadcast, chatRow, summary } from './bridge.ts';
+import { embed } from './embeddings.ts';
 import type { SessionRegistry } from './pi/registry.ts';
 import { indexChat } from './search.ts';
 import { type RecordUsage, rawUsage } from './usage.ts';
@@ -14,6 +15,16 @@ const TIMEOUT_MS = 20_000;
 /** ~4 chars per token: rerun after ~3K new tokens, send the last ~2K tokens. */
 const RERUN_CHARS = 12_000;
 const TAIL_CHARS = 8000;
+/**
+ * Phase-22 decision 4: a proposed topic whose name vector has at least this cosine with an existing
+ * topic or an open proposal is a duplicate.
+ */
+// ponytail: the search threshold (`RELATED_MIN`) reused for short names; re-check with real proposals.
+export const PROPOSAL_DUPLICATE_MIN = 0.86;
+
+/** Whether `v` is a duplicate of one of `others`. The vectors are normalized: the dot product is the cosine. */
+export const nearDuplicate = (v: Float32Array, others: Float32Array[]) =>
+  others.some((o) => v.reduce((sum, x, i) => sum + x * (o[i] ?? 0), 0) >= PROPOSAL_DUPLICATE_MIN);
 
 export const SYSTEM_PROMPT = `Olet keskustelujen luokittelija. Saat käyttäjän aihelistan ja keskustelun lopun. Vastaa pelkällä JSON-objektilla, ilman muuta tekstiä:
 {"title": string, "topics": [string], "proposed_topic": {"name": string, "why": string} | null, "summary": string}
@@ -21,7 +32,8 @@ export const SYSTEM_PROMPT = `Olet keskustelujen luokittelija. Saat käyttäjän
 Säännöt:
 - title: 3–6 sanaa keskustelun kielellä (yleensä suomi). Ei emojeja. Ei henkilöiden nimiä.
 - topics: 0–3 aiheen id:tä, vain annetusta listasta. Tärkein ensin. Tyhjä lista, jos mikään ei sovi.
-- proposed_topic: uusi aihe vain, jos mikään listan aihe ei sovi ja keskustelu on asiapitoinen. Muuten null.
+- proposed_topic: uusi aihe vain, jos mikään listan aihe ei sovi, keskustelu on asiapitoinen ja aihe on laaja teema, joka kattaisi useamman kuin yhden keskustelun. Ei yksittäisen pyynnön mukaan nimettyä aihetta. Muuten null.
+- why: enintään kaksi lyhyttä virkettä siitä, mitä aihe kattaa. Älä koskaan aloita sanalla "Keskustelussa".
 - summary: 3–5 virkettä keskustelun sisällöstä hakua varten, keskustelun kielellä.`;
 
 const REPAIR =
@@ -107,6 +119,34 @@ export function taskSmall(
   };
 }
 
+/**
+ * Whether a proposed topic name is close to an existing topic or an open proposal by embedding
+ * cosine. When the model cannot load, only the same name is a duplicate.
+ */
+async function duplicateProposal(
+  db: Db,
+  userId: string,
+  name: string,
+  list: { name: string }[],
+  log: FastifyBaseLogger,
+) {
+  const open = db
+    .select({ name: topicProposals.name })
+    .from(topicProposals)
+    .where(and(eq(topicProposals.userId, userId), eq(topicProposals.status, 'pending')))
+    .all();
+  const names = [...list, ...open].map((t) => t.name);
+  if (!names.length) return false;
+  try {
+    // e5 wants `query: ` on both sides for a symmetric comparison.
+    const [v, ...others] = await embed([name, ...names], 'query');
+    return nearDuplicate(v as Float32Array, others);
+  } catch (err) {
+    log.warn({ error: err instanceof Error ? err.name : 'unknown' }, 'proposal embedding failed');
+    return names.includes(name);
+  }
+}
+
 /** Topics with chat counts and the pending inbox. */
 export function topicState(db: Db, userId: string): ServerMessage {
   return {
@@ -129,8 +169,10 @@ export function topicState(db: Db, userId: string): ServerMessage {
         name: topicProposals.name,
         why: topicProposals.why,
         chatId: topicProposals.chatId,
+        chatTitle: chats.title,
       })
       .from(topicProposals)
+      .innerJoin(chats, eq(chats.id, topicProposals.chatId))
       .where(and(eq(topicProposals.userId, userId), eq(topicProposals.status, 'pending')))
       .all(),
   };
@@ -193,6 +235,9 @@ export function titleJobs(deps: {
     const ids = [...new Set(reply.topics)].filter((id) => known.has(id)).slice(0, 3);
     const title = pseudo ? (await pseudo.unmask(reply.title)).restored : reply.title;
     const proposed = reply.proposed_topic;
+    const similar = proposed
+      ? await duplicateProposal(db, userId, proposed.name, list, log)
+      : false;
     const { summary: chatSummary } = reply;
     const result = db.transaction((tx) => {
       const r = tx
@@ -237,7 +282,7 @@ export function titleJobs(deps: {
             ),
           )
           .get();
-      const added = !!proposed && !dup;
+      const added = !!proposed && !similar && !dup;
       if (added)
         tx.insert(topicProposals)
           .values({

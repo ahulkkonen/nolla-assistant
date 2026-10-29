@@ -1,11 +1,13 @@
 # Local run of the full stack on this machine (docs/deploy.md "Local run with Docker").
 #   docker compose --env-file .env -f infra/compose.yaml -f infra/compose.local.yaml up --build
 # Then open http://localhost:3000. Coolify does not use this file.
+# Phone on the wifi: PA_LAN_BIND=0.0.0.0, AUTH_INSECURE_LAN=1, AUTH_ORIGIN=http://<mac-name>.local:3000.
 services:
   pa-server:
-    ports: ["127.0.0.1:3000:3000"]
+    ports: ["${PA_LAN_BIND:-127.0.0.1}:3000:3000"]
     environment:
       AUTH_ORIGIN: ${AUTH_ORIGIN:-http://localhost:3000}
+      AUTH_INSECURE_LAN: ${AUTH_INSECURE_LAN:-}
       AUTH_PASSKEY_RP_ID: ${AUTH_PASSKEY_RP_ID:-localhost}
       TRUST_PROXY: ""
   backup:

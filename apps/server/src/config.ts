@@ -36,8 +36,15 @@ export function loadConfig(env: Env = process.env) {
   const origin = new URL(required(env, 'AUTH_ORIGIN'));
   if (origin.protocol !== 'http:' && origin.protocol !== 'https:')
     throw new Error('AUTH_ORIGIN must be http or https');
-  if (origin.protocol === 'http:' && !LOOPBACK.has(origin.hostname))
-    throw new Error('AUTH_ORIGIN must be https unless the host is loopback');
+  // Phase-22 decision 8: plain http on the home wifi only on purpose.
+  if (
+    origin.protocol === 'http:' &&
+    !LOOPBACK.has(origin.hostname) &&
+    env.AUTH_INSECURE_LAN !== '1'
+  )
+    throw new Error(
+      'AUTH_ORIGIN must be https unless the host is loopback; set AUTH_INSECURE_LAN=1 to allow http on a LAN host',
+    );
   const trust = env.TRUST_PROXY;
   const cookieSecret = required(env, 'COOKIE_SECRET');
   const vapid =
