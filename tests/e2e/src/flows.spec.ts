@@ -1057,6 +1057,8 @@ test.describe('thread depth', () => {
 
 test.describe('edit in place (phase 24)', () => {
   const msgs = (page: Page) => thread(page).locator('[data-message-id]');
+  const versions = (page: Page, label: string) =>
+    thread(page).getByRole('group', { name: `Versio ${label}` });
   /** The edit box's "Lähetä"; the composer's send button has the same name, but no text. */
   const editSend = (page: Page) =>
     page.getByRole('button', { name: 'Lähetä', exact: true }).filter({ hasText: 'Lähetä' });
@@ -1067,19 +1069,21 @@ test.describe('edit in place (phase 24)', () => {
     await page.getByLabel('Muokattava viesti').fill(text);
   };
 
-  test('Lähetä: the reply comes under the edited message and the old one goes', async ({
+  test('Lähetä: the reply comes under the edited message and the old one goes; ‹ shows version 1 and its reply; a reload keeps it', async ({
     app,
     page,
   }) => {
+    // Version 1's branch is taller than the thread: a switch keeps the edited message in place.
+    const long = ['Toinen vastaus.', ...Array.from({ length: 30 }, (_, i) => `Kappale ${i + 1}.`)];
     app.llm.push({ text: 'Ensimmäinen vastaus.', match: 'Ensimmäinen kysymys' });
     app.llm.push({ ...titleTurn('Kasvimaa', 'Käyttäjä kysyi kasvimaasta.'), match: 'Aiheet:' });
-    app.llm.push({ text: 'Toinen vastaus.', match: 'Toinen kysymys' });
+    app.llm.push({ text: long.join('\n\n'), match: 'Toinen kysymys' });
     app.llm.push({ text: 'Uusi vastaus.', match: 'toisin' });
     await app.login(page);
     await send(page, 'Ensimmäinen kysymys');
     await expect(page.locator('.md').last()).toHaveText('Ensimmäinen vastaus.');
     await send(page, 'Toinen kysymys');
-    await expect(page.locator('.md').last()).toHaveText('Toinen vastaus.');
+    await expect(page.locator('.md').last()).toContainText('Kappale 30.');
 
     await editFirst(page, 'Ensimmäinen kysymys, toisin');
     await expect(page.getByText(EDIT_HINT)).toBeVisible();
@@ -1093,6 +1097,36 @@ test.describe('edit in place (phase 24)', () => {
     const last = app.llm.requests.filter((r) => r.body.stream === true).at(-1);
     expect(JSON.stringify(last?.body.messages)).toContain('Ensimmäinen kysymys, toisin');
     expect(JSON.stringify(last?.body.messages)).not.toContain('Toinen kysymys');
+    // Decision 10: the switcher shows without hover; the end disables its button.
+    await page.mouse.move(0, 0);
+    await expect(versions(page, '2/2').locator('..')).toHaveCSS('opacity', '1');
+    await expect(
+      versions(page, '2/2').getByRole('button', { name: 'Seuraava versio' }),
+    ).toBeDisabled();
+
+    const top = () =>
+      msgs(page)
+        .first()
+        .evaluate((el) => el.getBoundingClientRect().top);
+    const before = await top();
+    await versions(page, '2/2').getByRole('button', { name: 'Edellinen versio' }).click();
+    await expect(versions(page, '1/2')).toBeVisible();
+    await expect(msgs(page)).toHaveCount(4);
+    expect(await top()).toBe(before);
+    // The message is another entry now: the focus comes back to its button.
+    await expect(
+      versions(page, '1/2').getByRole('button', { name: 'Edellinen versio' }),
+    ).toBeFocused();
+    await expect(thread(page).getByText('Ensimmäinen vastaus.')).toBeVisible();
+    await expect(thread(page).getByText('Toinen vastaus.')).toBeVisible();
+    await expect(thread(page).getByText('Uusi vastaus.')).toHaveCount(0);
+
+    await page.reload();
+    await expect(versions(page, '1/2')).toBeVisible();
+    await expect(thread(page).getByText('Toinen vastaus.')).toBeVisible();
+    await versions(page, '1/2').getByRole('button', { name: 'Seuraava versio' }).click();
+    await expect(versions(page, '2/2')).toBeVisible();
+    await expect(page.locator('.md').last()).toHaveText('Uusi vastaus.');
   });
 
   test('a refused edit keeps the box open with its text', async ({ app, page }) => {
@@ -1118,6 +1152,50 @@ test.describe('edit in place (phase 24)', () => {
     await expect(box).toHaveValue('Toisin kysytty');
     await expect(editSend(page)).toBeEnabled();
     await expect(thread(page).getByText('Vastaus.')).toBeVisible();
+  });
+
+  test('the switcher waits during a reply; a switch never opens the panel, an open panel closes when its artifact leaves', async ({
+    app,
+    page,
+  }) => {
+    const long = Array.from({ length: 20 }, (_, i) => `Kappale ${i + 1}: vastaus jatkuu.`).join(
+      '\n\n',
+    );
+    app.llm.push({ text: HTML_REPLY, match: 'Tee sivu' });
+    app.llm.push({ ...titleTurn('Sivut', 'Käyttäjä pyysi sivuja.'), match: 'Aiheet:' });
+    app.llm.push({ text: PAGE_REPLY, match: 'Tee raportti' });
+    app.llm.push({ text: long, match: 'Kolmas kysymys' });
+    const hold = await holdAt(page, 'Kappale 3');
+    await app.login(page);
+    const panel = page.getByRole('complementary', { name: 'Artefaktit' });
+    await send(page, 'Tee sivu');
+    await expect(panel.getByRole('heading', { name: 'Hei artefakti' })).toBeVisible();
+    await panel.getByRole('button', { name: 'Sulje artefaktit' }).click();
+    await expect(panel).toHaveCount(0);
+
+    // A new page of the edited turn opens the panel, as any new reply does (phase 20).
+    await editFirst(page, 'Tee raportti');
+    await editSend(page).click();
+    await expect(panel.getByRole('heading', { name: 'Kuukausiraportti' })).toBeVisible();
+    // Version 1 has no such page: the open panel closes.
+    await versions(page, '2/2').getByRole('button', { name: 'Edellinen versio' }).click();
+    await expect(versions(page, '1/2')).toBeVisible();
+    await expect(panel).toHaveCount(0);
+    // Back to version 2: its page is no new artifact, the closed panel stays closed.
+    await versions(page, '1/2').getByRole('button', { name: 'Seuraava versio' }).click();
+    await expect(page.getByRole('button', { name: 'Avaa paneelissa' })).toBeVisible();
+    await expect(panel).toHaveCount(0);
+
+    await send(page, 'Kolmas kysymys');
+    await hold.reached;
+    const back = versions(page, '2/2').getByRole('button', { name: 'Edellinen versio' });
+    await expect(back).toBeDisabled();
+    await back.hover();
+    await expect(page.getByRole('tooltip')).toHaveText('Odota, että vastaus valmistuu');
+    hold.release();
+    await expect(page.locator('.md').last()).toContainText('Kappale 20');
+    await expect(back).toBeEnabled();
+    await expect(panel).toHaveCount(0);
   });
 });
 

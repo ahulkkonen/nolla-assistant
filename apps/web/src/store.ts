@@ -153,6 +153,8 @@ type State = {
   } | null;
   /** Phase 24: a `chat.edit` sent from this client and its text, until its run starts or a refusal. */
   pendingEdit: { chatId: string; text: string } | null;
+  /** Phase 24: a `chat.version` sent from this client (`messageId`: the entry id), until its state. */
+  pendingVersion: { chatId: string; messageId: string } | null;
   /** Phase 26: the waiting line of each running chat (`thread.ts` `waitSteps`). */
   waits: Record<string, Wait>;
   /** The streamed message that thinks now, per chat (`message.thinking`); `endedAt` once it stopped. */
@@ -406,14 +408,23 @@ const inMessages = (messages: { text: string }[]) => {
 
 /**
  * `chat.state` artifacts plus the ones opened locally from code blocks (`local-` ids, not known
- * to the server) that have no server twin yet.
+ * to the server) that have no server twin yet. `switched` (phase-24 decision 14): another branch
+ * adds no new ids, and a local one stays only while its block is in `messages`.
  */
-function mergeArtifacts(st: State, chatId: string, server: Artifact[]): Partial<State> {
+function mergeArtifacts(
+  st: State,
+  chatId: string,
+  server: Artifact[],
+  switched?: { text: string }[],
+): Partial<State> {
+  const shown = switched && inMessages(switched);
   const local = (st.artifacts[chatId] ?? []).filter(
     (a) =>
-      a.id.startsWith('local-') && !server.some((x) => x.content.trimEnd() === a.content.trimEnd()),
+      a.id.startsWith('local-') &&
+      !server.some((x) => x.content.trimEnd() === a.content.trimEnd()) &&
+      (!shown || shown(a)),
   );
-  return adopt(st, chatId, [...server, ...local], !st.artifacts[chatId]);
+  return adopt(st, chatId, [...server, ...local], !st.artifacts[chatId] || !!switched);
 }
 
 /** The artifact the panel shows: only on the chat screen, only of the chat on it (decision 12). */
@@ -611,6 +622,7 @@ export const useStore = create<State>()((set, get) => {
     summaries: {},
     pendingFork: null,
     pendingEdit: null,
+    pendingVersion: null,
     waits: {},
     thinkingLive: {},
     thinkingText: {},
@@ -727,7 +739,15 @@ export const useStore = create<State>()((set, get) => {
                 ? { autoApprove: { ...st.autoApprove, [msg.chat.id]: msg.autoApprove } }
                 : {}),
               ...(mine ? { pendingFork: null, activeChatId: msg.chat.id, screen: 'chat' } : {}),
-              ...(msg.artifacts ? mergeArtifacts(st, msg.chat.id, msg.artifacts) : {}),
+              ...(st.pendingVersion?.chatId === msg.chat.id ? { pendingVersion: null } : {}),
+              ...(msg.artifacts
+                ? mergeArtifacts(
+                    st,
+                    msg.chat.id,
+                    msg.artifacts,
+                    msg.switched ? msg.messages : undefined,
+                  )
+                : {}),
               // Phase 20: an `agent.status` missed while offline (the run ended meanwhile).
               ...(msg.running === undefined
                 ? {}
@@ -1099,14 +1119,17 @@ export const useStore = create<State>()((set, get) => {
                 : 'Haarautus epäonnistui. Yritä uudelleen.',
             );
           }
-          // Phase 24: the answer to a pending `chat.edit`; its box keeps the text (`ws.ts` ends
-          // the intent).
-          if (
-            msg.chatId &&
-            st0.pendingEdit?.chatId === msg.chatId &&
-            ['bad_message', 'failed', 'not_found'].includes(msg.code)
-          )
-            return get().pushError('Muokkaus epäonnistui. Yritä uudelleen.');
+          // Phase 24: the answer to a pending `chat.edit` (its box keeps the text; `ws.ts` ends
+          // the intent) or `chat.version`.
+          const edit = !!msg.chatId && st0.pendingEdit?.chatId === msg.chatId;
+          const version = !!msg.chatId && st0.pendingVersion?.chatId === msg.chatId;
+          if (version) set({ pendingVersion: null });
+          if ((edit || version) && ['bad_message', 'failed', 'not_found'].includes(msg.code))
+            return get().pushError(
+              edit
+                ? 'Muokkaus epäonnistui. Yritä uudelleen.'
+                : 'Version vaihto epäonnistui. Yritä uudelleen.',
+            );
           // A thinking text that could not load: its row says so, no toast. The answer names the
           // chat, not the message, so every pending row of that chat takes it.
           const loading = Object.entries(st0.thinkingText).filter(

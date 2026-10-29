@@ -256,6 +256,13 @@ export function editMessage(chatId: string, messageId: string, text: string) {
   send({ type: 'chat.edit', chatId, messageId, text, localId });
 }
 
+/** "‹ ›" (phase-24 decision 9): shows version `index` of the user message `messageId` (entry id). */
+export function switchVersion(chatId: string, messageId: string, index: number) {
+  if (useStore.getState().pendingVersion) return;
+  useStore.setState({ pendingVersion: { chatId, messageId } });
+  send({ type: 'chat.version', chatId, messageId, index });
+}
+
 /** Thinking rows of `chatId` (or all) that still load: they show the error, a new open asks again. */
 function failThinking(chatId?: string) {
   useStore.setState((s) => ({
@@ -439,11 +446,12 @@ function open() {
     clearInterval(pingTimer);
     // 4401: this device's session was revoked (Laitteet, phase 15): signed out, no reconnect.
     if (e.code === 4401) return signedOut();
-    // The answer to a pending consent, retry, edit, fork or thinking text may never come; a
-    // reconnect starts clean.
+    // The answer to a pending consent, retry, edit, switch, fork or thinking text may never come;
+    // a reconnect starts clean.
     policyIntent = null;
     endRetry();
     if (useStore.getState().pendingFork) useStore.setState({ pendingFork: null });
+    if (useStore.getState().pendingVersion) useStore.setState({ pendingVersion: null });
     failThinking();
     if (ws !== sock || stopped) return;
     ws = null;

@@ -8,10 +8,13 @@ import {
   type CallUsage,
   CONFIDENCE_MARK,
   stripConfidence,
+  type Versions,
 } from '@pa/protocol';
 import {
   AppWindow,
   Check,
+  ChevronLeft,
+  ChevronRight,
   Copy,
   Eye,
   EyeOff,
@@ -618,6 +621,8 @@ type Props = {
   canSend?: boolean;
   /** Asks the server for the chat's entry ids (an edit of a message without one). */
   onNeedIds?: () => void;
+  /** User message with versions: the switcher, first in its action row, which then always shows. */
+  switcher?: ReactNode;
   /** The thinking row, above the tool rows and the text (phase 13). */
   thinking?: ReactNode;
   /** The action row meta: the time, and a reply's cost and tokens (phase 13). */
@@ -638,6 +643,50 @@ type Props = {
 
 // 32 px icons in the action row; 44 px touch targets on phones.
 const small = 'size-8';
+
+/**
+ * Phase-24 decision 10: "‹ 1/2 ›". The ends and a running reply (`wait`) disable the buttons;
+ * `busy` while the switch is on its way.
+ */
+export function VersionSwitcher({
+  versions: { index, count },
+  wait,
+  busy,
+  onPick,
+}: {
+  versions: Versions;
+  wait: boolean;
+  busy: boolean;
+  onPick: (index: number) => void;
+}) {
+  const step = (to: number, label: string, icon: ReactNode) => (
+    <IconButton
+      label={label}
+      tip={wait ? 'Odota, että vastaus valmistuu' : undefined}
+      className={small}
+      // `aria-disabled`, not `disabled`: focus stays on the button at the end, the tooltip works.
+      {...(wait || to < 1 || to > count
+        ? { 'aria-disabled': true }
+        : { onClick: () => onPick(to) })}
+    >
+      {icon}
+    </IconButton>
+  );
+  return (
+    <div
+      role="group"
+      aria-label={`Versio ${index}/${count}`}
+      aria-busy={busy || undefined}
+      className="flex items-center gap-1 max-md:gap-2"
+    >
+      {step(index - 1, 'Edellinen versio', <ChevronLeft size={16} />)}
+      <span aria-hidden="true" className="text-meta text-muted-foreground tabular-nums">
+        {index}/{count}
+      </span>
+      {step(index + 1, 'Seuraava versio', <ChevronRight size={16} />)}
+    </div>
+  );
+}
 
 function EditBox({
   text,
@@ -716,6 +765,7 @@ export function MessageView({
   busy = false,
   canSend = true,
   onNeedIds,
+  switcher,
   thinking,
   meta,
   waiting,
@@ -840,15 +890,18 @@ export function MessageView({
               // A reply's row spans the column: its receipt sits at the end. Phones: the outer
               // 44 px target moves out by its 14 px inset, so its glyph meets the text edge.
               user ? 'right-0 max-md:-mr-3.5' : 'inset-x-0 max-md:-ml-3.5',
-              // Hover devices: on hover or focus, except under the latest assistant turn.
+              // Hover devices: on hover or focus, except under the latest assistant turn and with
+              // the version switcher (phase-24 decision 10).
               !(latest && !user) &&
+                !switcher &&
                 '[@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:focus-within:opacity-100',
-              // Touch: only under the latest user and the latest assistant turn.
-              !latest && '[@media(hover:none)]:hidden',
+              // Touch: under the latest user and the latest assistant turn, or with the switcher.
+              !latest && !switcher && '[@media(hover:none)]:hidden',
             )}
           >
             {actions && (
               <>
+                {switcher}
                 {user && meta && <MessageMeta createdAt={meta.createdAt} />}
                 <CopyButton text={() => stripConfidence(text)} className={small} />
                 {user && onEdit && (

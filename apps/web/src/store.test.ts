@@ -499,6 +499,26 @@ describe('artifact panel (phase 20)', () => {
     expect(useStore.getState().artifacts.c2).toBeUndefined();
   });
 
+  it('phase 24: a switched chat.state opens nothing; an open artifact that left gives way to its twin or closes', () => {
+    const { apply } = useStore.getState();
+    useStore.getState().setActive('c1');
+    apply(state([art('v1')]));
+    useStore.setState({ pendingVersion: { chatId: 'c1', messageId: 'u1' } });
+    // Another branch: every id is new, a page among them; the closed panel stays closed.
+    apply({ ...state([art('b1'), art('b2')]), switched: true });
+    expect(open()).toBeNull();
+    expect(useStore.getState().pendingVersion).toBeNull();
+    // An open page of the other branch: its twin (same content) takes its place.
+    useStore.getState().showArtifact('c1', art('b2'));
+    apply({ ...state([{ ...art('c9'), content: art('b2').content }]), switched: true });
+    expect(open()).toEqual({ chatId: 'c1', id: 'c9' });
+    // No twin: the panel closes; a local copy whose block left goes too.
+    useStore.getState().showArtifact('c1', { ...art('local-x'), content: 'graph TD' });
+    apply({ ...state([art('d1')]), switched: true });
+    expect(open()).toBeNull();
+    expect(useStore.getState().artifacts.c1?.map((a) => a.id)).toEqual(['d1']);
+  });
+
   it('a figure upsert with a closed panel opens nothing; an html upsert opens it', () => {
     const { apply } = useStore.getState();
     useStore.getState().setActive('c1');
