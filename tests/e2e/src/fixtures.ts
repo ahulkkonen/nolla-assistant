@@ -1,5 +1,5 @@
 import { createECDH } from 'node:crypto';
-import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -359,6 +359,22 @@ export const searchTurns = (app: App, query: string, reply: string) => {
   app.llm.push({ text: reply });
   app.llm.push({ ...titleTurn('Sää', 'Käyttäjä kysyi säästä.'), match: 'Aiheet:' });
 };
+
+/** Phase 25: the assistant's prompt in the run's own copy of the agents. */
+export const promptOf = (app: App) =>
+  readFileSync(join(app.dataDir, 'agents/prompts/assistant.md'), 'utf8');
+
+/**
+ * Phase 25: a prompt change whose diff is one hunk of 18 lines, over the card's 13-line clamp: the
+ * first line changes and a style list follows the language line.
+ */
+export const promptEdit = (before: string) =>
+  before
+    .replace('Autat arjen asioissa,', 'Autat arjen asioissa, opiskelussa,')
+    .replace(
+      'kirjoittaa.\n',
+      'kirjoittaa.\n\n## Tyyli\n\n- Vastaa ensin lyhyesti, perustele sitten.\n- Käytä luetteloa, kun vaiheita on yli kolme.\n- Älä toista kysymystä vastauksen alussa.\n- Kerro epävarmuudesta yhdellä lauseella.\n',
+    );
 
 /** The surrogate of Matti Virtanen, typed as a real person's name: a collision (phase 12). */
 export const COLLIDING = 'Pekka Laaksonen';

@@ -1,7 +1,8 @@
-import { TOOL_STATUS_WORD, type ToolSearch, WEB_SEARCH_TOOL } from '@pa/protocol';
+import { FETCH_URL_TOOL, TOOL_STATUS_WORD, type ToolSearch, WEB_SEARCH_TOOL } from '@pa/protocol';
 import {
   Ban,
   Brain,
+  CalendarClock,
   Check,
   ChevronRight,
   Clock,
@@ -10,6 +11,7 @@ import {
   Globe,
   Loader2,
   type LucideIcon,
+  MessageSquareText,
   Plug,
   Terminal,
   TimerOff,
@@ -41,6 +43,10 @@ const TOOL_ICON = new Map<string, LucideIcon>([
   ['edit', FilePen],
   ['bash', Terminal],
   [WEB_SEARCH_TOOL, Globe],
+  [FETCH_URL_TOOL, Globe],
+  ['profile_edit', FilePen],
+  ['automation_edit', CalendarClock],
+  ['chat_read', MessageSquareText],
 ]);
 
 const toolTrigger =
@@ -88,6 +94,19 @@ function searchWord(status: ToolView['status'], gate: string | null, s?: ToolSea
   if (status === 'error') return TOOL_STATUS_WORD.error;
   const n = s?.results.length ?? 0;
   return n === 0 ? 'ei tuloksia' : n === 1 ? '1 tulos' : `${n} tulosta`;
+}
+
+/**
+ * The word of a finished harness or fetch call (phase 25): "tallennettu", "haettu", and for
+ * `chat_read` "luettu", "3 osumaa" or "ei osumia" from its answer. A row from history has no
+ * summary: "valmis".
+ */
+function doneWord(name: string, summary: string) {
+  if (name === 'profile_edit' || name === 'automation_edit') return 'tallennettu';
+  if (name === FETCH_URL_TOOL) return 'haettu';
+  if (name !== 'chat_read' || !summary) return TOOL_STATUS_WORD.ok;
+  const hits = /^(\d+) osumaa/.exec(summary)?.[1];
+  return hits ? `${hits} osumaa` : summary.startsWith('Ei osumia') ? 'ei osumia' : 'luettu';
 }
 
 /** "www.yle.fi" → "yle.fi"; null for a URL that is not http(s). */
@@ -182,7 +201,11 @@ export function ToolRow({ tool }: { tool: ToolView }) {
           ? 'vanhentunut'
           : gate === 'rejected'
             ? 'hylätty'
-            : TOOL_STATUS_WORD[tool.status];
+            : tool.status === 'ok'
+              ? doneWord(tool.name, tool.summary)
+              : tool.status === 'running' && tool.name === FETCH_URL_TOOL
+                ? 'haetaan…'
+                : TOOL_STATUS_WORD[tool.status];
   // Live output while running; the final summary replaces it.
   const result = tool.summary || tool.output;
   const part = (label: string, text: string) => (

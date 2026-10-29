@@ -30,6 +30,8 @@ import {
   openVault,
   PAGE_REPLY,
   png,
+  promptEdit,
+  promptOf,
   SERIES_REPLY,
   search,
   searchTurns,
@@ -1236,6 +1238,93 @@ for (const scheme of ['light', 'dark'] as const) {
           await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
           await shot(page, 'auto-approve-on-closed', vp.width, scheme);
         });
+
+      // Phase 25: the harness and fetch cards; next runs in Helsinki time.
+      test.describe('harness cards', () => {
+        test.use({ timezoneId: 'Europe/Helsinki' });
+        const blur = (page: Page) =>
+          page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+
+        // A web search first: the turn read outside text, so the card says so.
+        test('approval-diff', async ({ app, page }) => {
+          app.llm.push({
+            toolCalls: [{ name: 'web_search', args: { query: 'hyvä ohje avustajalle' } }],
+          });
+          app.llm.push({
+            toolCalls: [
+              {
+                name: 'profile_edit',
+                args: { file: 'prompt', content: promptEdit(promptOf(app)) },
+              },
+            ],
+          });
+          await app.login(page);
+          await sendMessage(page, 'Hae vinkkejä ja paranna ohjettasi');
+          const card = page.getByRole('region', { name: 'Muutetaanko avustajan ohjetta?' });
+          await expect(card.getByRole('button', { name: 'Näytä kaikki' })).toBeVisible();
+          await expect(card).toContainText('ulkopuolista sisältöä');
+          await blur(page);
+          await shot(page, 'approval-diff', vp.width, scheme);
+        });
+
+        test('approval-yaml', async ({ app, page }) => {
+          app.llm.push({
+            toolCalls: [
+              {
+                name: 'automation_edit',
+                args: {
+                  name: 'Aamukatsaus',
+                  cron: '30 7 * * 1-5',
+                  prompt: 'Kerro päivän sää, kalenterin tapahtumat ja tärkeimmät uutiset.',
+                },
+              },
+            ],
+          });
+          await app.login(page);
+          await sendMessage(page, 'Tee minulle arkiaamuihin katsaus');
+          await expect(
+            page.getByRole('region', { name: 'Luodaanko automaatio ”Aamukatsaus”?' }),
+          ).toContainText('Seuraavat ajot:');
+          await blur(page);
+          await shot(page, 'approval-yaml', vp.width, scheme);
+        });
+
+        test('approval-chat', async ({ app, page }) => {
+          app.llm.push({ text: 'Huhtikuussa, kun maa on sula.' });
+          app.llm.push(titleTurn('Kasvimaa', 'Käyttäjä kysyi kasvimaasta.'));
+          await app.login(page);
+          await sendMessage(page, 'Milloin kasvimaa aloitetaan?');
+          // The title job ran: the header (the phone's top bar) names the chat.
+          await expect(page.getByText('Kasvimaa', { exact: true }).first()).toBeVisible();
+          const chatId = /\/c\/([^/?#]+)/.exec(page.url())?.[1];
+          await page.getByRole('button', { name: 'Uusi keskustelu' }).first().click();
+          app.llm.push({ toolCalls: [{ name: 'chat_read', args: { chatId } }] });
+          await sendMessage(page, 'Mitä puhuimme kasvimaasta?');
+          await expect(
+            page.getByRole('region', { name: 'Luetaanko keskustelu ”Kasvimaa”?' }),
+          ).toContainText('2 viestiä');
+          await blur(page);
+          await shot(page, 'approval-chat', vp.width, scheme);
+        });
+
+        test('approval-fetch', async ({ app, page }) => {
+          app.llm.push({
+            toolCalls: [
+              {
+                name: 'fetch_url',
+                args: { url: 'https://www.hs.fi/talous/art-2000011234567.html' },
+              },
+            ],
+          });
+          await app.login(page);
+          await sendMessage(page, 'Mitä talousuutisissa kerrotaan tänään?');
+          await expect(
+            page.getByRole('region', { name: 'Osoite ei ole viestissäsi' }),
+          ).toContainText('www.hs.fi');
+          await blur(page);
+          await shot(page, 'approval-fetch', vp.width, scheme);
+        });
+      });
 
       if (vp.width !== 1024) {
         test.describe('collision', () => {

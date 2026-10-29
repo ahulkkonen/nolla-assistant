@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { inflateSync } from 'node:zlib';
+import { FETCH_DENIED, NOT_PUBLIC } from '@pa/server/src/fetch-tool.ts';
 import { SEARCH_DENIED } from '@pa/server/src/search-tool.ts';
 import { devices, type Page } from '@playwright/test';
 import {
@@ -33,6 +34,7 @@ import {
   openVault,
   PAGE_REPLY,
   png,
+  promptOf,
   REFUSED_REPLY,
   search,
   searchTurns,
@@ -1103,6 +1105,195 @@ test.describe('web search', () => {
     await expect(page.locator('.md').last()).toHaveText('Selvä, haen ilman nimeä.');
     await expect(thread(page).getByRole('button', { name: /^web_search estetty/ })).toBeVisible();
     expect(JSON.stringify(app.llm.requests.at(-1)?.body)).toContain(SEARCH_DENIED);
+  });
+});
+
+test.describe('harness tools', () => {
+  // Phase 25 (W1): each tool's approval card; the fake LLM makes the call.
+  const reply = (page: Page) => page.locator('.md').last();
+  /** The assistant's prompt as the agents API serves it. */
+  const served = async (page: Page) => {
+    const { agents } = (await (await page.request.get('/api/agents')).json()) as {
+      agents: { id: string; prompt: string }[];
+    };
+    return agents.find((a) => a.id === 'assistant')?.prompt;
+  };
+  /** The text of every tool result the model got. */
+  const toolResults = (app: App) =>
+    JSON.stringify(
+      app.llm.requests.flatMap((r) =>
+        (r.body?.messages ?? []).filter((m: { role?: string }) => m.role === 'tool'),
+      ),
+    );
+
+  test('profile_edit: the card shows the diff; Hyväksy writes the prompt, Hylkää leaves it', async ({
+    app,
+    page,
+  }) => {
+    const before = promptOf(app);
+    const line = 'Vastaa aina samalla kielellä, jolla käyttäjä kirjoittaa.';
+    const changed = before.replace(line, 'Vastaa aina suomeksi.');
+    app.llm.push({
+      toolCalls: [{ name: 'profile_edit', args: { file: 'prompt', content: changed } }],
+    });
+    app.llm.push({ text: 'Ohje muutettu.' });
+    app.llm.push(titleTurn('Ohje', 'Käyttäjä muutti ohjetta.'));
+    await app.login(page);
+    await send(page, 'Vastaa jatkossa aina suomeksi');
+    const card = page.getByRole('region', { name: 'Muutetaanko avustajan ohjetta?' });
+    const diff = card.getByRole('region', { name: 'Muutos: prompts/assistant.md' });
+    await expect(diff).toContainText(`Poistettu: ${line}`);
+    await expect(diff).toContainText('Lisätty: Vastaa aina suomeksi.');
+    await expect(card).toContainText('Muutetaan tiedostoa prompts/assistant.md');
+    await expect(card).toContainText('Muutos tulee voimaan seuraavassa vastauksessa');
+    await expect(card).not.toContainText('ulkopuolista sisältöä');
+    expect(await served(page)).toBe(before);
+    await card.getByRole('button', { name: 'Hyväksy' }).click();
+    await expect(reply(page)).toHaveText('Ohje muutettu.');
+    await expect(
+      thread(page).getByRole('button', { name: /^profile_edit tallennettu/ }),
+    ).toBeVisible();
+    expect(await served(page)).toBe(changed);
+    await expect(
+      page.getByRole('navigation').getByRole('button', { name: 'Ohje', exact: true }),
+    ).toBeVisible();
+
+    // Hylkää: the file stays as the first change left it.
+    app.llm.push({
+      toolCalls: [
+        { name: 'profile_edit', args: { file: 'prompt', content: `${changed}\nPuhu runoina.\n` } },
+      ],
+    });
+    app.llm.push({ text: 'Selvä, ohje ei muuttunut.' });
+    await send(page, 'Puhu runoina');
+    await expect(diff).toContainText('Lisätty: Puhu runoina.');
+    await card.getByRole('button', { name: 'Hylkää' }).click();
+    await expect(reply(page)).toHaveText('Selvä, ohje ei muuttunut.');
+    await expect(thread(page).getByRole('button', { name: /^profile_edit hylätty/ })).toBeVisible();
+    expect(await served(page)).toBe(changed);
+  });
+
+  test.describe('helsinki', () => {
+    test.use({ timezoneId: 'Europe/Helsinki' });
+
+    test('automation_edit: the card shows the YAML and the next runs; Hyväksy creates it', async ({
+      app,
+      page,
+    }) => {
+      app.llm.push({
+        toolCalls: [
+          {
+            name: 'automation_edit',
+            args: { name: 'Aamukatsaus', cron: '30 7 * * 1-5', prompt: 'Anna lyhyt aamukatsaus.' },
+          },
+        ],
+      });
+      app.llm.push({ text: 'Automaatio luotu.' });
+      await app.login(page);
+      await send(page, 'Tee minulle arkiaamuihin katsaus');
+      const card = page.getByRole('region', { name: 'Luodaanko automaatio ”Aamukatsaus”?' });
+      const yaml = card.getByRole('region', { name: 'automations/aamukatsaus.yaml' });
+      await expect(yaml).toContainText('name: Aamukatsaus');
+      await expect(yaml).toContainText('30 7 * * 1-5');
+      await expect(yaml).toContainText('autoApprove: []');
+      await expect(card).toContainText('Luodaan uusi tiedosto automations/aamukatsaus.yaml');
+      await expect(card).toContainText(
+        /Seuraavat ajot: (ma|ti|ke|to|pe)\s\d+\.\d+\.\sklo\s7\.30(, (ma|ti|ke|to|pe)\s\d+\.\d+\.\sklo\s7\.30){4}/,
+      );
+      await card.getByRole('button', { name: 'Hyväksy' }).click();
+      await expect(reply(page)).toHaveText('Automaatio luotu.');
+      await expect(
+        thread(page).getByRole('button', { name: /^automation_edit tallennettu/ }),
+      ).toBeVisible();
+      expect(readFileSync(join(app.dataDir, 'automations/aamukatsaus.yaml'), 'utf8')).toContain(
+        'Anna lyhyt aamukatsaus.',
+      );
+    });
+  });
+
+  test('chat_read: the card names the chat, its date and size; approve reads it', async ({
+    app,
+    page,
+  }) => {
+    app.llm.push({ text: 'Huhtikuussa, kun maa on sula.' });
+    app.llm.push(titleTurn('Kasvimaa', 'Käyttäjä kysyi kasvimaasta.'));
+    await app.login(page);
+    await send(page, 'Milloin kasvimaa aloitetaan?');
+    await expect(
+      page.getByRole('navigation').getByRole('button', { name: 'Kasvimaa', exact: true }),
+    ).toBeVisible();
+    const chatId = /\/c\/([^/?#]+)/.exec(page.url())?.[1];
+    expect(chatId).toBeTruthy();
+    await newChat(page);
+    app.llm.push({ toolCalls: [{ name: 'chat_read', args: { chatId } }] });
+    app.llm.push({ text: 'Luin keskustelun.' });
+    await send(page, 'Mitä puhuimme kasvimaasta?');
+    const card = page.getByRole('region', { name: 'Luetaanko keskustelu ”Kasvimaa”?' });
+    await expect(card).toContainText(`${new Date().toLocaleDateString('fi-FI')} · 2 viestiä`);
+    await expect(card).toContainText('Malli saa tekstin pseudonymisoituna.');
+    await card.getByRole('button', { name: 'Hyväksy' }).click();
+    await expect(reply(page)).toHaveText('Luin keskustelun.');
+    await expect(thread(page).getByRole('button', { name: /^chat_read luettu/ })).toBeVisible();
+    expect(toolResults(app)).toContain('Huhtikuussa, kun maa on sula.');
+  });
+
+  test('fetch_url: a URL the user did not give asks; a URL from the message runs without a card', async ({
+    app,
+    page,
+  }) => {
+    const url = 'https://www.hs.fi/talous/art-2000011234567.html';
+    app.llm.push({ toolCalls: [{ name: 'fetch_url', args: { url } }] });
+    app.llm.push({ text: 'En hakenut sivua.' });
+    app.llm.push(titleTurn('Uutiset', 'Käyttäjä kysyi uutisista.'));
+    await app.login(page);
+    await send(page, 'Mitä talousuutisissa kerrotaan?');
+    const card = page.getByRole('region', { name: 'Osoite ei ole viestissäsi' });
+    await expect(card).toContainText(url);
+    await expect(card).toContainText('Hylkää, niin avustaja vastaa ilman sivua.');
+    await card.getByRole('button', { name: 'Hylkää' }).click();
+    await expect(reply(page)).toHaveText('En hakenut sivua.');
+    await expect(thread(page).getByRole('button', { name: /^fetch_url hylätty/ })).toBeVisible();
+    expect(toolResults(app)).toContain(FETCH_DENIED);
+    await expect(
+      page.getByRole('navigation').getByRole('button', { name: 'Uutiset', exact: true }),
+    ).toBeVisible();
+
+    // The user's own URL: no card, the tool runs (a private address gets its fixed refusal).
+    app.llm.push({ toolCalls: [{ name: 'fetch_url', args: { url: 'http://127.0.0.1/sivu' } }] });
+    app.llm.push({ text: 'Sivua ei voitu hakea.' });
+    await send(page, 'Lue http://127.0.0.1/sivu');
+    await expect(reply(page)).toHaveText('Sivua ei voitu hakea.');
+    await expect(card).toHaveCount(0);
+    await thread(page)
+      .getByRole('button', { name: /^fetch_url virhe/ })
+      .click();
+    await expect(thread(page).getByRole('region', { name: 'fetch_url: tuloste' })).toContainText(
+      NOT_PUBLIC,
+    );
+  });
+
+  test('tainted: a profile_edit card after a web_search result in the same turn says so', async ({
+    app,
+    page,
+  }) => {
+    app.llm.push({ toolCalls: [{ name: 'web_search', args: { query: 'hyvä ohje avustajalle' } }] });
+    app.llm.push({
+      toolCalls: [
+        {
+          name: 'profile_edit',
+          args: { file: 'prompt', content: `${promptOf(app)}\nOle aina iloinen.\n` },
+        },
+      ],
+    });
+    app.llm.push({ text: 'Selvä, en muuttanut ohjetta.' });
+    await app.login(page);
+    await send(page, 'Hae vinkkejä ja paranna ohjettasi');
+    const card = page.getByRole('region', { name: 'Muutetaanko avustajan ohjetta?' });
+    await expect(card).toContainText(
+      'Tämä vuoro luki ulkopuolista sisältöä. Hyväksy vain, jos pyysit muutosta itse.',
+    );
+    await card.getByRole('button', { name: 'Hylkää' }).click();
+    await expect(reply(page)).toHaveText('Selvä, en muuttanut ohjetta.');
   });
 });
 
