@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { ExtensionFactory } from '@earendil-works/pi-coding-agent';
-import type { ServerMessage } from '@pa/protocol';
+import { type ApprovalView, isHarnessTool, type ServerMessage } from '@pa/protocol';
 import type { AgentProfile } from './agents.ts';
 
 export const DENIED_REASON = 'käyttäjä esti työkalun';
@@ -12,7 +12,7 @@ const TIMEOUT_MS = 10 * 60_000;
 type ApprovalRequest = Extract<ServerMessage, { type: 'approval.request' }>;
 export type AskInput = Pick<
   ApprovalRequest,
-  'chatId' | 'callId' | 'tool' | 'args' | 'reason' | 'expiresAt'
+  'chatId' | 'callId' | 'tool' | 'args' | 'reason' | 'expiresAt' | 'view' | 'tainted'
 >;
 /** Resolves with the user's answer, or `false` (request dropped) when `signal` aborts. */
 export type Ask = (req: AskInput, signal: AbortSignal) => Promise<boolean>;
@@ -20,13 +20,25 @@ export type Ask = (req: AskInput, signal: AbortSignal) => Promise<boolean>;
 /** `unattended` (see `approvals`): chats with no one to ask; `autoApprove`: chats whose toggle is on. */
 type GateAsk = Ask & { unattended?: Map<string, string[]>; autoApprove?: Set<string> };
 
-/** "Hyväksy automaattisesti" is on in the chat and lets `tool` run (phase-21 decision 7). */
+/**
+ * The card a gated call shows (phase-25 decision 3), from the call's real arguments. An `error`
+ * blocks the call without a card; it is fixed text (decision 4).
+ */
+export type View = (
+  input: Record<string, unknown>,
+  callId: string,
+) => Promise<{ view: ApprovalView } | { error: string }>;
+
+/**
+ * "Hyväksy automaattisesti" is on in the chat and lets `tool` run (phase-21 decision 7). Never a
+ * harness tool (phase-25 decision 2).
+ */
 const autoApproved = (
   ask: GateAsk,
   chatId: string,
   autoTools: string[] | undefined,
   tool: string,
-) => !!ask.autoApprove?.has(chatId) && !!autoTools?.includes(tool);
+) => !isHarnessTool(tool) && !!ask.autoApprove?.has(chatId) && !!autoTools?.includes(tool);
 
 /**
  * The `ask` of a chat's subagent children (phase-22 decision 7): a child's tool that the parent
@@ -37,7 +49,8 @@ export const childAsk =
   (ask: GateAsk, chatId: string, autoTools: string[]): Ask =>
   (req, signal) => {
     const unattended = ask.unattended?.get(chatId);
-    if (unattended) return Promise.resolve(unattended.includes(req.tool));
+    if (unattended)
+      return Promise.resolve(!isHarnessTool(req.tool) && unattended.includes(req.tool));
     return autoApproved(ask, chatId, autoTools, req.tool)
       ? Promise.resolve(true)
       : ask(req, signal);
@@ -45,7 +58,9 @@ export const childAsk =
 
 /**
  * Inline extension on `tool_call`. Tools in `policy.always` wait for the user; tools in
- * `policy.never` and all others pass. Load it after `pseudoExtension`, so `args` are real values.
+ * `policy.never` and all others pass. A harness tool always waits, whatever the profile, the
+ * automation or the toggle says (phase-25 decision 2). Load it after `pseudoExtension`, so `args`
+ * are real values.
  */
 export const approvalGate =
   ({
@@ -55,6 +70,8 @@ export const approvalGate =
     timeoutMs,
     approved,
     autoTools,
+    views,
+    tainted,
   }: {
     chatId: string;
     policy: AgentProfile['approval'];
@@ -64,20 +81,32 @@ export const approvalGate =
     timeoutMs?: number | undefined;
     /** Calls the user already approved on an earlier card (the web search guard): no second card. */
     approved?: Set<string> | undefined;
+    /** Phase 25: the card view per tool, awaited before the card. */
+    views?: Record<string, View> | undefined;
+    /** Phase 25: the session's turn taint; a harness card of a tainted turn says so. */
+    tainted?: (() => boolean) | undefined;
   }): ExtensionFactory =>
   (pi) => {
     pi.on('tool_call', async (event, ctx) => {
       const tool = event.toolName;
-      if (policy.never.includes(tool) || !policy.always.includes(tool)) return;
-      if (approved?.has(event.toolCallId)) return;
+      const harness = isHarnessTool(tool);
+      if (!harness && (policy.never.includes(tool) || !policy.always.includes(tool))) return;
+      if (!harness && approved?.has(event.toolCallId)) return;
       const auto = ask.unattended?.get(chatId);
-      if (auto) return auto.includes(tool) ? undefined : { block: true, reason: UNATTENDED_REASON };
+      if (auto)
+        return !harness && auto.includes(tool)
+          ? undefined
+          : { block: true, reason: UNATTENDED_REASON };
       if (autoApproved(ask, chatId, autoTools, tool)) return;
+      const shown = await views?.[tool]?.(event.input, event.toolCallId);
+      if (shown && 'error' in shown) return { block: true, reason: shown.error };
       return confirm(ask, {
         chatId,
         callId: event.toolCallId,
         tool,
         args: event.input,
+        ...(shown ? { view: shown.view } : {}),
+        ...(harness && tainted?.() ? { tainted: true } : {}),
         reason: `Työkalu ${tool} vaatii hyväksynnän.`,
         denied: DENIED_REASON,
         timeoutMs,
@@ -103,8 +132,8 @@ export async function confirm(
   const timeout = AbortSignal.timeout(ms);
   const signal = o.signal ? AbortSignal.any([timeout, o.signal]) : timeout;
   const expiresAt = new Date(Date.now() + ms).toISOString();
-  const { chatId, callId, tool, args, reason } = o;
-  if (await ask({ chatId, callId, tool, args, reason, expiresAt }, signal)) return;
+  const { denied: _, timeoutMs: __, signal: ___, ...req } = o;
+  if (await ask({ ...req, expiresAt }, signal)) return;
   return { block: true, reason: timeout.aborted ? TIMEOUT_REASON : o.denied };
 }
 

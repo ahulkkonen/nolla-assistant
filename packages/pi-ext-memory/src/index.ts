@@ -76,6 +76,44 @@ export function cleanTool(toolName: string, input: Record<string, unknown>, cwd:
   }
 }
 
+/**
+ * The turn taint (phase-8 decision 3, phase-25 decision 5): a turn is tainted from the first tool
+ * that `cleanTool` does not allow, or from the start when the prompt carries an attachment. It
+ * resets at `agent_start`. Memory parking and the harness card share one per session.
+ */
+export function turnTaint(onTaint?: () => void) {
+  let tainted = false;
+  let reported = false;
+  /** An attachment arrived with the prompt: the next run starts tainted. */
+  let attached = false;
+  const taint = () => {
+    tainted = true;
+    if (reported) return;
+    reported = true;
+    onTaint?.();
+  };
+  const extension: ExtensionFactory = (pi) => {
+    pi.on('input', (event) => {
+      if (!event.text?.includes(ATTACHMENT_MARKER)) return;
+      attached = true;
+      taint();
+    });
+    pi.on('agent_start', () => {
+      tainted = attached;
+      attached = false;
+    });
+    // Both: `tool_call` covers a write later in the same batch, `tool_result` any late result.
+    pi.on('tool_call', (event, ctx) => {
+      if (!cleanTool(event.toolName, event.input, ctx.cwd)) taint();
+    });
+    pi.on('tool_result', (event, ctx) => {
+      if (!cleanTool(event.toolName, event.input, ctx.cwd)) taint();
+    });
+  };
+  return { extension, tainted: () => tainted };
+}
+export type TurnTaint = ReturnType<typeof turnTaint>;
+
 const text = (t: string, isError = false) => ({
   content: [{ type: 'text' as const, text: t }],
   details: undefined,
@@ -110,32 +148,20 @@ export function memoryExtension(opts: {
   recallClaims?: (q: string) => Promise<string[]>;
   /** Phase 17: called once per session, the first time a turn is tainted (`chats.tainted`). */
   onTaint?: () => void;
+  /** Phase 25: the session's shared taint; the host loads its extension. Unset: an own one. */
+  taint?: TurnTaint;
   log: MemoryLog;
 }): ExtensionFactory {
-  let tainted = false;
-  let reported = false;
-  const taint = () => {
-    tainted = true;
-    if (reported) return;
-    reported = true;
-    opts.onTaint?.();
-  };
-  /** An attachment arrived with the prompt: the next run starts tainted. */
-  let attached = false;
+  const taint = opts.taint ?? turnTaint(opts.onTaint);
   /** Raw template last injected in this session; unchanged content is not injected again. */
   let injected: string | undefined;
 
   return (pi) => {
+    if (!opts.taint) taint.extension(pi);
     const titles = opts
       .recentTitles()
       .then((ts) => ts.map(sanitizeTitle))
       .catch(() => []);
-
-    pi.on('input', (event) => {
-      if (!event.text?.includes(ATTACHMENT_MARKER)) return;
-      attached = true;
-      taint();
-    });
 
     pi.on('before_agent_start', async (event) => {
       if (event.messageType !== 'user') return;
@@ -196,19 +222,6 @@ export function memoryExtension(opts: {
       };
     });
 
-    pi.on('agent_start', () => {
-      tainted = attached;
-      attached = false;
-    });
-
-    // Both: `tool_call` covers a write later in the same batch, `tool_result` any late result.
-    pi.on('tool_call', (event, ctx) => {
-      if (!cleanTool(event.toolName, event.input, ctx.cwd)) taint();
-    });
-    pi.on('tool_result', (event, ctx) => {
-      if (!cleanTool(event.toolName, event.input, ctx.cwd)) taint();
-    });
-
     pi.registerTool({
       name: 'recall',
       label: 'recall',
@@ -257,7 +270,7 @@ export function memoryExtension(opts: {
       async execute(_id, p) {
         const write: MemoryWrite = { ...p };
         // Tainted: validated at approve time against the file as it is then.
-        if (tainted) {
+        if (taint.tainted()) {
           try {
             return text(`Kirjoitus odottaa hyväksyntääsi (id ${await opts.park(write)})`);
           } catch (err) {

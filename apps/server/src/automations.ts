@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, watch } from 'node:fs';
 import { basename, join } from 'node:path';
 import { automationRuns, chats, type Db, topics } from '@pa/db';
-import type { ServerMessage } from '@pa/protocol';
+import { isHarnessTool, type ServerMessage } from '@pa/protocol';
 import { and, eq } from 'drizzle-orm';
 import type { FastifyBaseLogger } from 'fastify';
 import cron from 'node-cron';
@@ -34,8 +34,13 @@ export const AutomationFile = z.object({
   prompt: z.string().min(1),
   deliver: z.enum(['chat', 'push', 'both']).default('chat'),
   enabled: z.boolean().default(true),
-  /** Gated tools that run without asking; any other gated tool is denied (nobody is there to approve). */
-  autoApprove: z.array(z.string()).default([]),
+  /**
+   * Gated tools that run without asking; any other gated tool is denied (nobody is there to
+   * approve). Never a harness tool (phase-25 decision 2).
+   */
+  autoApprove: z
+    .array(z.string().refine((t) => !isHarnessTool(t), 'this tool always asks'))
+    .default([]),
 });
 export type Automation = z.infer<typeof AutomationFile>;
 

@@ -9,7 +9,7 @@ import {
   ModelRuntime,
   SessionManager,
 } from '@earendil-works/pi-coding-agent';
-import { type MemoryLog, memoryExtension } from '@pa/pi-ext-memory';
+import { type MemoryLog, memoryExtension, turnTaint } from '@pa/pi-ext-memory';
 import {
   type Collision,
   type PseudoClient,
@@ -19,9 +19,9 @@ import {
 import { sandboxExtension } from '@pa/pi-ext-sandbox';
 import { type Child, subagentsExtension } from '@pa/pi-ext-subagents';
 import { topicsExtension } from '@pa/pi-ext-topics';
-import { DEFAULT_AGENT_ID, WEB_SEARCH_TOOL } from '@pa/protocol';
+import { DEFAULT_AGENT_ID, HARNESS_TOOLS, isHarnessTool, WEB_SEARCH_TOOL } from '@pa/protocol';
 import { type AgentProfile, type Agents, liveAgentId } from '../agents.ts';
-import { type Ask, approvalGate, childAsk } from '../approval.ts';
+import { type Ask, approvalGate, childAsk, type View } from '../approval.ts';
 import type { ClaimStore } from '../claims.ts';
 import {
   allowedToolNames,
@@ -52,7 +52,25 @@ export const PROFILE_TOOLS = [
   'recall',
   'memory',
   WEB_SEARCH_TOOL,
+  ...HARNESS_TOOLS,
 ];
+
+/**
+ * A chat's tools that its subagent children get: never memory, never a search (the entity guard
+ * lives in the parent), never a harness tool (phase-25 decision 2).
+ */
+export const childTools = (tools: string[]) =>
+  tools.filter(
+    (t) => t !== 'memory' && t !== 'recall' && t !== WEB_SEARCH_TOOL && !isHarnessTool(t),
+  );
+
+/** Phase 25 decision 9: the harness tools of one chat session and their card views. */
+export type HarnessFactory = (o: {
+  chatId: string;
+  agentId: string;
+  /** Call id to the argument as the model wrote it (masked), from `maskedArgs`. */
+  masked: Map<string, unknown>;
+}) => { tools: InlineExtension; views: Record<string, View> };
 
 /**
  * Phase 26: Pi gives `before_provider_request` and `after_provider_response` to extensions only;
@@ -98,6 +116,8 @@ type RegistryOptions = {
   onSettled?: Parameters<typeof topicsExtension>[0]['onSettled'];
   /** Each model call of a chat and of its subagent children (phase-13 decision 11). */
   onUsage?: RecordUsage;
+  /** Phase 25: `profile_edit`, `automation_edit` and `chat_read`; unset: no such tools. */
+  harness?: HarnessFactory;
   /** Runs `web_search` for profiles that allow it (phase-14); unset: no such tool. */
   search?: Searcher;
   /** Loads `pi-ext-pseudo` per chat when set; `log` receives its logs with the chat id. */
@@ -325,13 +345,15 @@ export class SessionRegistry {
 
   /**
    * The tools "Hyväksy automaattisesti" lets run in a chat of this agent (phase-21 decision 7):
-   * `approval.always` minus MCP writes and `web_search`, which still ask.
+   * `approval.always` minus MCP writes, `web_search` and the harness tools, which still ask.
    */
   autoApproveTools(agentId: string): string[] {
     const profile = this.profileOf(agentId);
     if (!profile) return [];
     const writes = this.mcpOf(profile).flatMap(writeTools);
-    return profile.approval.always.filter((t) => t !== WEB_SEARCH_TOOL && !writes.includes(t));
+    return profile.approval.always.filter(
+      (t) => t !== WEB_SEARCH_TOOL && !writes.includes(t) && !isHarnessTool(t),
+    );
   }
 
   /**
@@ -463,6 +485,9 @@ export class SessionRegistry {
             approved: searchApproved,
           })
         : [];
+    // One taint per session: memory parking and the harness card (phase-25 decision 5).
+    const taint = turnTaint(memory && pseudo ? () => memory.store.markTainted(chatId) : undefined);
+    const harness = this.opts.harness?.({ chatId, agentId, masked: new Map() });
     const resourceLoader = new DefaultResourceLoader({
       cwd: this.cwd,
       agentDir: this.agentDir,
@@ -510,7 +535,12 @@ export class SessionRegistry {
           timeoutMs: this.opts.approval.timeoutMs,
           approved: searchApproved,
           autoTools,
+          views: harness?.views,
+          tainted: taint.tainted,
         }),
+        // After the gate: a harness call's own taint must not mark its card.
+        taint.extension,
+        ...(harness ? [harness.tools] : []),
         ...(broker && tools.includes('bash')
           ? [
               sandboxExtension({
@@ -533,10 +563,7 @@ export class SessionRegistry {
                 pseudoUrl: withSubagents.pseudoUrl,
                 provider,
                 model: modelId,
-                // Children never touch memory and never search (the entity guard lives here).
-                tools: tools.filter(
-                  (t) => t !== 'memory' && t !== 'recall' && t !== WEB_SEARCH_TOOL,
-                ),
+                tools: childTools(tools),
                 broker,
                 approvalAlways: profile.approval.always.filter(
                   (t) => !profile.approval.never.includes(t),
@@ -578,7 +605,7 @@ export class SessionRegistry {
                   await memory.store.applyWrite(w, chatId);
                   memory.onChange(chatId);
                 },
-                onTaint: () => memory.store.markTainted(chatId),
+                taint,
                 ...(memory.claims
                   ? {
                       relevant: memory.claims.relevant,

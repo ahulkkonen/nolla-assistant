@@ -4,7 +4,16 @@ import { chats, usage } from '@pa/db';
 import type { FakeTurn } from '@pa/fake-llm';
 import { eq } from 'drizzle-orm';
 import { afterEach, expect, test, vi } from 'vitest';
-import { DENIED_REASON, TIMEOUT_REASON } from './approval.ts';
+import {
+  approvalGate,
+  childAsk,
+  DENIED_REASON,
+  TIMEOUT_REASON,
+  UNATTENDED_REASON,
+  type View,
+} from './approval.ts';
+import { AutomationFile } from './automations.ts';
+import { childTools } from './pi/registry.ts';
 import {
   boot,
   bootChat,
@@ -245,4 +254,93 @@ test('auto-approve: always minus MCP writes and web_search; a running automation
   c.send({ type: 'chat.setAutoApprove', chatId: chat.id, on: true });
   await expect(c.next('chat.autoApprove')).rejects.toThrow('bad_message');
   expect(srv.approvals.autoApprove.has(chat.id)).toBe(false);
+});
+
+/** The gate's `tool_call` handler without Pi; `ask` approves. */
+function gate(
+  o: {
+    never?: string[];
+    unattended?: Map<string, string[]>;
+    toggle?: boolean;
+    views?: Record<string, View>;
+    tainted?: () => boolean;
+  } = {},
+) {
+  let handler: ((e: unknown, ctx: unknown) => Promise<unknown>) | undefined;
+  const ask = vi.fn(async (_req: Record<string, unknown>) => true);
+  const asker = Object.assign(ask, {
+    ...(o.unattended ? { unattended: o.unattended } : {}),
+    ...(o.toggle ? { autoApprove: new Set(['c1']) } : {}),
+  });
+  approvalGate({
+    chatId: 'c1',
+    policy: { always: [], never: o.never ?? [] },
+    ask: asker,
+    autoTools: ['profile_edit', 'chat_read'],
+    views: o.views,
+    tainted: o.tainted,
+  })({ on: (_: string, h: never) => void (handler = h) } as never);
+  const call = (toolName: string, input: object = {}) =>
+    handler?.({ toolName, toolCallId: 't1', input }, {});
+  return { ask, call };
+}
+
+test('gate: a harness tool asks even when the profile lists it in never', async () => {
+  const { ask, call } = gate({ never: ['profile_edit'] });
+  expect(await call('profile_edit')).toBeUndefined();
+  expect(ask).toHaveBeenCalledTimes(1);
+  expect(await call('read')).toBeUndefined();
+  expect(ask).toHaveBeenCalledTimes(1);
+});
+
+test('gate: unattended blocks a harness tool even when autoApprove lists it', async () => {
+  const { ask, call } = gate({ unattended: new Map([['c1', ['chat_read']]]) });
+  expect(await call('chat_read')).toEqual({ block: true, reason: UNATTENDED_REASON });
+  expect(ask).not.toHaveBeenCalled();
+  // AutomationFile refuses the list itself.
+  const file = { id: 'a', cron: '0 7 * * *', prompt: 'x' };
+  expect(AutomationFile.safeParse({ ...file, autoApprove: ['chat_read'] }).success).toBe(false);
+  expect(AutomationFile.safeParse({ ...file, autoApprove: ['bash'] }).success).toBe(true);
+});
+
+test('gate: the toggle does not cover a harness tool', async () => {
+  const { ask, call } = gate({ toggle: true });
+  await call('chat_read');
+  expect(ask).toHaveBeenCalledTimes(1);
+});
+
+test('gate: a views error blocks without a card; a view and the taint go on the card', async () => {
+  const views: Record<string, View> = {
+    profile_edit: async () => ({ error: 'Muutos ei kelpaa: body' }),
+    chat_read: async (input) => ({
+      view: {
+        kind: 'chat',
+        chatId: null,
+        title: null,
+        createdAt: null,
+        messages: null,
+        query: String(input.title),
+      },
+    }),
+  };
+  const { ask, call } = gate({ views, tainted: () => true });
+  expect(await call('profile_edit')).toEqual({ block: true, reason: 'Muutos ei kelpaa: body' });
+  expect(ask).not.toHaveBeenCalled();
+  expect(await call('chat_read', { title: 'loma' })).toBeUndefined();
+  expect(ask.mock.calls[0]?.[0]).toMatchObject({
+    tool: 'chat_read',
+    tainted: true,
+    view: { kind: 'chat', query: 'loma' },
+  });
+});
+
+test('children never get a harness tool, and childAsk never passes one', async () => {
+  expect(
+    childTools(['read', 'bash', 'recall', 'profile_edit', 'chat_read', 'automation_edit']),
+  ).toEqual(['read', 'bash']);
+  const ask = Object.assign(async () => true, {
+    unattended: new Map([['c1', ['chat_read']]]),
+  });
+  const req = { chatId: 'c1', callId: 't', tool: 'chat_read', args: {}, reason: '', expiresAt: '' };
+  expect(await childAsk(ask, 'c1', ['chat_read'])(req, new AbortController().signal)).toBe(false);
 });
