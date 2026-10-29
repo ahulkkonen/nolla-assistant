@@ -1,13 +1,18 @@
-import { SEARCH_ENTITY_REASON, WEB_SEARCH_TOOL } from '@pa/protocol';
+import { type ApprovalView, SEARCH_ENTITY_REASON, WEB_SEARCH_TOOL } from '@pa/protocol';
 import { Clock, ShieldAlert } from 'lucide-react';
-import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { runText } from '../cron.ts';
 import { type Approval, useStore } from '../store.ts';
 import { respondApproval } from '../ws.ts';
+import { UNTITLED } from './Sidebar.tsx';
 
-/** An argument value: mono, clamped at 6 lines with a fade and "Näytä lisää" (brief 7.5). */
-function Value({ text }: { text: string }) {
+/**
+ * An argument value: mono, clamped at 6 lines with a fade and "Näytä lisää" (brief 7.5).
+ * `children` shows `text` with marks (a URL's host).
+ */
+function Value({ text, children }: { text: string; children?: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
   const [clamped, setClamped] = useState(false);
   const [more, setMore] = useState(false);
@@ -25,7 +30,7 @@ function Value({ text }: { text: string }) {
           !more && clamped && '[mask-image:linear-gradient(to_bottom,black_60%,transparent)]',
         )}
       >
-        {text}
+        {children ?? text}
       </div>
       {(clamped || more) && (
         <Button variant="link" className="text-meta max-md:min-h-11" onClick={() => setMore(!more)}>
@@ -36,6 +41,186 @@ function Value({ text }: { text: string }) {
   );
 }
 
+/** Lines of a diff or YAML block before "Näytä kaikki" (phase 25). */
+export const CLAMP = 13;
+
+/**
+ * Mono 13/20 lines in a muted block that scrolls sideways, so a long line never widens the card.
+ * Over 13 lines it shows 13, the last one fading out, and "Näytä kaikki".
+ */
+export function Lines({
+  label,
+  lines,
+  line,
+}: {
+  label: string;
+  lines: string[];
+  line: (text: string) => ReactNode;
+}) {
+  const [all, setAll] = useState(false);
+  const clamp = !all && lines.length > CLAMP;
+  return (
+    <div className="flex flex-col items-start">
+      <div
+        role="region"
+        aria-label={label}
+        // A scrollable region must be focusable (brief 7.8).
+        tabIndex={0}
+        className="w-full overflow-x-auto rounded-md bg-muted py-2 font-mono text-[13px] leading-5 text-foreground"
+      >
+        {/* The widest line sets every row's width, so a tint spans the whole scroll. The fade
+            starts at the top of line 13: 12 lines × 20 px. */}
+        <div
+          className={cn(
+            'w-max min-w-full',
+            clamp && '[mask-image:linear-gradient(to_bottom,black_240px,transparent)]',
+          )}
+        >
+          {(clamp ? lines.slice(0, CLAMP) : lines).map((l, i) => (
+            <div key={`${i}:${l}`}>{line(l)}</div>
+          ))}
+        </div>
+      </div>
+      {lines.length > CLAMP && (
+        <Button variant="link" className="text-meta max-md:min-h-11" onClick={() => setAll(!all)}>
+          {all ? 'Näytä vähemmän' : 'Näytä kaikki'}
+        </Button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * One unified diff line: a 4 px sign column and the `DiffLine` tints (brief 7.5), the sign as a
+ * glyph and an sr-only word; hunk lines (`@@`) muted. No wrap: the block scrolls.
+ */
+function DiffRow({ line }: { line: string }) {
+  const add = line[0] === '+';
+  const del = line[0] === '-';
+  const hunk = line[0] === '@' || line[0] === '\\';
+  return (
+    <div
+      className={cn(
+        'flex pr-3',
+        add && 'bg-success-subtle',
+        del && 'bg-destructive-subtle',
+        hunk && 'text-muted-foreground',
+      )}
+    >
+      <span
+        aria-hidden="true"
+        className={cn('w-1 shrink-0', add && 'bg-success', del && 'bg-destructive')}
+      />
+      <span
+        aria-hidden="true"
+        className={cn(
+          'w-5 shrink-0 text-center select-none',
+          add && 'text-success',
+          del && 'text-destructive',
+        )}
+      >
+        {add ? '+' : del ? '−' : ''}
+      </span>
+      <span className="whitespace-pre">
+        {(add || del) && <span className="sr-only">{add ? 'Lisätty: ' : 'Poistettu: '}</span>}
+        {(hunk ? line : line.slice(1)) || ' '}
+      </span>
+    </div>
+  );
+}
+
+const yamlRow = (l: string) => <div className="px-3 whitespace-pre">{l || ' '}</div>;
+const linesOf = (text: string) => text.replace(/\n$/, '').split('\n');
+/** The top-level `name:` of a YAML file or a mode's frontmatter, unquoted. */
+const nameIn = (text: string) => /^name:[ \t]*["']?(.*?)["']?[ \t]*$/m.exec(text)?.[1] || null;
+const quoted = (s: string) => `”${s}”`;
+type HarnessView = Exclude<ApprovalView, { kind: 'fetch' }>;
+
+/** The card title of a harness view (phase-25 decision 25). */
+function heading(v: HarnessView, args: Record<string, unknown>) {
+  if (v.kind === 'diff') {
+    const id = /^modes\/(.+)\.md$/.exec(v.file)?.[1];
+    if (!id) return 'Muutetaanko avustajan ohjetta?';
+    const name = quoted(nameIn(String(args.content ?? '')) ?? id);
+    return v.created ? `Lisätäänkö tila ${name}?` : `Muutetaanko tilaa ${name}?`;
+  }
+  if (v.kind === 'yaml') {
+    const name = quoted(nameIn(v.yaml) ?? /([^/]+)\.yaml$/.exec(v.file)?.[1] ?? v.file);
+    return v.created ? `Luodaanko automaatio ${name}?` : `Muutetaanko automaatiota ${name}?`;
+  }
+  return v.query !== null
+    ? `Haetaanko keskustelu otsikolla ${quoted(v.query)}?`
+    : `Luetaanko keskustelu ${quoted(v.title || UNTITLED)}?`;
+}
+
+const meta = 'text-meta text-pretty text-muted-foreground';
+
+/** The body of a harness view: the file and its diff or YAML, or the chat to read. */
+function ViewBody({ v }: { v: HarnessView }) {
+  if (v.kind === 'chat') {
+    if (v.query !== null)
+      return <p className={meta}>Avustaja lukee osuman tai saa listan osumista.</p>;
+    const n = v.messages;
+    return (
+      <div className="flex flex-col gap-1">
+        <p className="text-ui tabular-nums">
+          {[
+            v.createdAt && new Date(v.createdAt).toLocaleDateString('fi-FI'),
+            n !== null && `${n} ${n === 1 ? 'viesti' : 'viestiä'}`,
+          ]
+            .filter(Boolean)
+            .join(' · ')}
+        </p>
+        <p className={meta}>Malli saa tekstin pseudonymisoituna.</p>
+      </div>
+    );
+  }
+  return (
+    <>
+      <p className={meta}>
+        {v.created ? 'Luodaan uusi tiedosto' : 'Muutetaan tiedostoa'}{' '}
+        <span className="font-mono [overflow-wrap:anywhere]">{v.file}</span>
+      </p>
+      {v.kind === 'diff' ? (
+        <Lines
+          label={`Muutos: ${v.file}`}
+          lines={linesOf(v.diff)}
+          line={(l) => <DiffRow line={l} />}
+        />
+      ) : (
+        <div className="flex flex-col gap-2">
+          <Lines label={v.file} lines={linesOf(v.yaml)} line={yamlRow} />
+          <p className={cn(meta, 'tabular-nums')}>
+            {/* No-break spaces: a run never wraps inside itself, only after a comma. */}
+            {v.nextRuns.length
+              ? `Seuraavat ajot: ${v.nextRuns.map((r) => runText(r).replaceAll(' ', '\u00a0')).join(', ')}`
+              : 'Automaatio on pois päältä, eikä sitä ajeta.'}
+          </p>
+        </div>
+      )}
+      {/* An automation has no "next reply": its change shows at its next run. */}
+      <p className={meta}>
+        {v.kind === 'diff'
+          ? 'Muutos tulee voimaan seuraavassa vastauksessa ja tallentuu versiohistoriaan.'
+          : 'Muutos tallentuu versiohistoriaan.'}
+      </p>
+    </>
+  );
+}
+
+/** "https://www.hs.fi/x": the host in foreground and semibold, the rest muted. */
+function Url({ url }: { url: string }) {
+  const [, scheme, host, rest] = /^(https?:\/\/)([^/?#]*)(.*)$/is.exec(url) ?? [];
+  if (host === undefined) return url;
+  return (
+    <>
+      <span className="text-muted-foreground">{scheme}</span>
+      <span className="font-semibold">{host}</span>
+      <span className="text-muted-foreground">{rest}</span>
+    </>
+  );
+}
+
 const show = (v: unknown) => (typeof v === 'string' ? v : JSON.stringify(v, null, 2));
 const clock = (iso: string) =>
   new Date(iso).toLocaleTimeString('fi-FI', { hour: '2-digit', minute: '2-digit' });
@@ -43,7 +228,8 @@ const clock = (iso: string) =>
 /**
  * The real (unmasked) arguments of a gated tool call, inline in the thread. Focus stays where it
  * is, so a typed Enter never approves; the thread announces the request (Thread.tsx). After a
- * decision the card goes and its tool row shows the outcome.
+ * decision the card goes and its tool row shows the outcome. A harness call shows its view (a
+ * diff, YAML or the chat to read) instead of the arguments (phase 25).
  */
 export function ApprovalCard({ a }: { a: Approval }) {
   const titleId = useId();
@@ -56,55 +242,87 @@ export function ApprovalCard({ a }: { a: Approval }) {
     return () => clearTimeout(t);
   }, [a.requestId, a.expiresAt]);
 
-  const args =
+  const record =
     a.args && typeof a.args === 'object' && !Array.isArray(a.args)
-      ? Object.entries(a.args)
-      : [['', a.args] as const];
-  const reason = a.reason !== `Työkalu ${a.tool} vaatii hyväksynnän.` ? a.reason : '';
-  // Phase 14: a search whose query names a vault entity; the reason is the title.
-  const query = args.find(([k]) => k === 'query')?.[1];
-  // Only the entity guard's card; anything else (`approval.always`) keeps the generic list.
-  const search =
-    a.tool === WEB_SEARCH_TOOL &&
-    a.reason === SEARCH_ENTITY_REASON &&
-    String(query ?? '').trim() !== '';
+      ? (a.args as Record<string, unknown>)
+      : null;
+  const args = record ? Object.entries(record) : [['', a.args] as const];
+  const v = a.view;
+  // Phase 14: a search whose query names a vault entity; phase 25: a URL that the fetch guard
+  // asks about. The reason is the title.
+  const query = record?.query;
+  const guard =
+    v?.kind === 'fetch'
+      ? {
+          label: 'Osoite:',
+          text: v.url,
+          marked: <Url url={v.url} />,
+          note: 'Osoite lähtee sivun palvelimelle sellaisenaan. Hylkää, niin avustaja vastaa ilman sivua.',
+        }
+      : // Only the entity guard's card; anything else (`approval.always`) keeps the generic list.
+        !v &&
+          a.tool === WEB_SEARCH_TOOL &&
+          a.reason === SEARCH_ENTITY_REASON &&
+          String(query ?? '').trim() !== ''
+        ? {
+            label: 'Haku:',
+            text: show(query),
+            marked: undefined,
+            note: 'Kysely lähtee hakupalveluun sellaisenaan. Hylkää, niin avustaja hakee ilman henkilöä.',
+          }
+        : null;
+  const harness = v && v.kind !== 'fetch' ? v : null;
+  const reason =
+    !guard && !harness && a.reason !== `Työkalu ${a.tool} vaatii hyväksynnän.` ? a.reason : '';
 
   return (
     <section
       aria-labelledby={titleId}
       className="flex flex-col gap-3 rounded-lg border border-warning-line bg-card p-4"
     >
-      <h2 id={titleId} className="flex items-center gap-2 text-heading">
-        <ShieldAlert size={16} className="shrink-0 text-warning" />
-        {search ? (
+      <h2 id={titleId} className="flex items-start gap-2 text-heading">
+        <ShieldAlert size={16} className="mt-1 shrink-0 text-warning" />
+        {guard ? (
           <span>{a.reason}</span>
+        ) : harness ? (
+          <span>{heading(harness, record ?? {})}</span>
         ) : (
           <span>
             Hyväksytäänkö työkalu <span className="font-mono">{a.tool}</span>?
           </span>
         )}
       </h2>
-      {reason && !search && <p className="text-meta text-muted-foreground">{reason}</p>}
-      {search ? (
-        <dl className="grid grid-cols-[max-content_1fr] gap-x-2">
-          <dt className="font-mono text-[13px] leading-5 text-muted-foreground">Haku:</dt>
-          <Value text={show(query ?? '')} />
-        </dl>
+      {reason && <p className="text-meta text-muted-foreground">{reason}</p>}
+      {guard ? (
+        <>
+          <dl className="grid grid-cols-[max-content_1fr] gap-x-2">
+            <dt className="font-mono text-[13px] leading-5 text-muted-foreground">{guard.label}</dt>
+            <Value text={guard.text}>{guard.marked}</Value>
+          </dl>
+          <p className={meta}>{guard.note}</p>
+        </>
+      ) : harness ? (
+        <ViewBody v={harness} />
       ) : (
         <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1">
-          {args.map(([k, v]) => (
+          {args.map(([k, val]) => (
             <div key={k} className="contents">
               <dt className="max-w-32 truncate font-mono text-[13px] leading-5 text-muted-foreground">
                 {k}
               </dt>
-              <Value text={show(v)} />
+              <Value text={show(val)} />
             </div>
           ))}
         </dl>
       )}
-      {search && (
-        <p className="text-meta text-pretty text-muted-foreground">
-          Kysely lähtee hakupalveluun sellaisenaan. Hylkää, niin avustaja hakee ilman henkilöä.
+      {a.tainted && (
+        // 8 px above and below: the card's 12 px gap less 4 (P1 check).
+        <p className="-my-1 flex items-start gap-2 text-meta text-pretty text-warning">
+          <ShieldAlert size={16} className="mt-px shrink-0" />
+          <span>
+            Tämä vuoro luki ulkopuolista sisältöä. Hyväksy vain, jos pyysit{' '}
+            {a.tool === 'chat_read' ? 'lukemista' : 'muutosta'} itse.
+          </span>
         </p>
       )}
       <div className="flex flex-wrap items-center gap-2 max-md:grid max-md:grid-cols-2">
