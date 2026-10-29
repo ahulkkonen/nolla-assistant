@@ -516,6 +516,19 @@ export const CONFIDENCE_REPLY =
 export const CONFIDENCE_PLAIN =
   'Tampere on Suomen kolmanneksi suurin kaupunki. Sen väkiluku kasvaa ensi vuonna noin prosentin. Raitiotie jatkunee Hiedanrantaan vuonna 2031.';
 
+/**
+ * A new chat with CONFIDENCE_REPLY; its Markdown root once the text shows. The text a reader sees
+ * has no N: each sentence's `sup.conf-n` is hidden (phase-23 decision 9).
+ */
+export const confidenceReply = async (app: App, page: Page) => {
+  app.llm.push({ text: CONFIDENCE_REPLY });
+  await app.login(page);
+  await sendMessage(page, 'Kerro Tampereesta');
+  const reply = page.locator('.md').last();
+  await expect(reply).toHaveText(CONFIDENCE_PLAIN, { useInnerText: true });
+  return reply;
+};
+
 /** Phase 20: an HTML page written in a reply, with a title the writing card can show. */
 export const PAGE_REPLY = `Tässä sivu:\n\n${block(
   'html',
@@ -611,6 +624,14 @@ export const titleTurn = (
 export const sendMessage = async (page: Page, text: string) => {
   await page.getByLabel('Viesti').fill(text);
   await page.getByLabel('Viesti').press('ControlOrMeta+Enter');
+};
+
+/** Signed in, with one chat: "Moi" and the reply "Hei.". */
+export const helloChat = async (app: App, page: Page) => {
+  app.llm.push({ text: 'Hei.' });
+  await app.login(page);
+  await sendMessage(page, 'Moi');
+  await expect(page.locator('.md').last()).toHaveText('Hei.');
 };
 
 /** Sidebar search: Enter runs the full-text search. */

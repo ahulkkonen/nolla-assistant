@@ -1,4 +1,10 @@
-import { type AgentDoc, type AgentFile, type AgentList, DEFAULT_AGENT_ID } from '@pa/protocol';
+import {
+  type AgentDoc,
+  type AgentFile,
+  type AgentList,
+  DEFAULT_AGENT_ID,
+  type ModeDoc,
+} from '@pa/protocol';
 import { Bot, Copy, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
@@ -14,14 +20,24 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { TabsContent } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { agentDelete, agentSave, agentsList, HttpError } from '../api.ts';
 import { useStore } from '../store.ts';
 import { ActionMenu } from './Actions.tsx';
-import { ConfirmDialog, useLeaveGuard } from './ConfirmDialog.tsx';
-import { CHECK_FIELD, Checks, Field, type FieldError, invalid, useFieldError } from './Field.tsx';
-import { BackLink, EmptyState, ListSkeleton, Page } from './Page.tsx';
+import { DeleteDialog } from './ConfirmDialog.tsx';
+import {
+  CHECK_FIELD,
+  Checks,
+  Field,
+  type FieldError,
+  invalid,
+  type SaveFields,
+  saveFailure,
+  useEditor,
+} from './Field.tsx';
+import { ModeEditor, ModesSection } from './ModesEditor.tsx';
+import { EditorPage, EmptyState, ListSkeleton, Page } from './Page.tsx';
 import { Row } from './SettingsDialog.tsx';
 
 export const AGENTS_TITLE = 'Agentit';
@@ -42,6 +58,8 @@ type Form = {
   /** The tools of the file's approval lists first, so an unchanged list keeps its order. */
   order: string[];
   subagents: boolean;
+  /** Phase-23 decision 14: "Oletustilat", the profile's `modes.default`. */
+  modes: string[];
 };
 
 const formOf = (p: AgentFile): Form => ({
@@ -55,6 +73,7 @@ const formOf = (p: AgentFile): Form => ({
   ]),
   order: [...p.approval.always, ...p.approval.never],
   subagents: p.subagents,
+  modes: p.modes.default,
 });
 const blank = (list: AgentList): Form => ({
   name: '',
@@ -64,6 +83,7 @@ const blank = (list: AgentList): Form => ({
   rules: {},
   order: [],
   subagents: false,
+  modes: [],
 });
 /** The tools that get a "Hyväksyntä" row: the allowed ones, and `subagent` when it is on. */
 const ruled = (f: Form) => (f.subagents ? [...f.allow, 'subagent'] : f.allow);
@@ -79,46 +99,31 @@ const fieldsOf = (f: Form) => {
       never: order.filter((t) => f.rules[t] === 'never'),
     },
     subagents: f.subagents,
+    // No key for no modes, as `tools.mcp`: a file without modes stays as it was.
+    modes: f.modes.length ? { default: f.modes } : null,
   };
 };
 
-/** The form field of a server `path` (decision 2); the id comes from the name. */
-const FIELDS: [string, string][] = [
-  ['name', 'agent-name'],
-  ['id', 'agent-name'],
-  ['model', 'agent-model'],
-  ['prompt', 'agent-prompt'],
-  ['tools.allow', 'agent-tools'],
-  ['tools.mcp', 'agent-mcp'],
-  ['approval', 'agent-approval'],
-  ['subagents', 'agent-subagents'],
-];
-const fieldOf = (path: string | undefined) =>
-  FIELDS.find(([p]) => path === p || path?.startsWith(`${p}.`))?.[1];
-
-/** A refused save as the field and its text: "Tarkista kenttä." on the form, the server's text on YAML. */
-function failure(err: unknown, tab: 'form' | 'yaml'): FieldError {
-  const failed = { field: undefined, message: 'Tallennus epäonnistui. Yritä uudelleen.' };
-  if (!(err instanceof HttpError)) return failed;
-  if (err.code === 'exists')
-    return {
-      field: tab === 'yaml' ? 'agent-yaml' : 'agent-name',
-      message: 'Tunniste on jo käytössä.',
-    };
-  if (err.code !== 'bad_message') return failed;
-  const { path, message = '' } = err.detail;
-  if (tab === 'yaml')
-    return { field: 'agent-yaml', message: path ? `${path}: ${message}` : message };
-  const field = fieldOf(path);
-  if (field) return { field, message: CHECK_FIELD };
-  // A key the form does not show (`skills`, a whole `tools`): the YAML tab has it.
-  return {
-    field: undefined,
-    message: path
-      ? `Tarkista kohta ${path} välilehdellä YAML.`
-      : 'Tarkista tiedosto välilehdellä YAML.',
-  };
-}
+/**
+ * Where a refused save goes (decision 2): the form field of a server `path`, the id from the
+ * name; a key the form does not show (`skills`, a whole `tools`) points to the YAML tab.
+ */
+const FIELDS: SaveFields = {
+  file: 'agent-yaml',
+  tab: 'YAML',
+  name: 'agent-name',
+  fields: [
+    ['name', 'agent-name'],
+    ['id', 'agent-name'],
+    ['model', 'agent-model'],
+    ['prompt', 'agent-prompt'],
+    ['tools.allow', 'agent-tools'],
+    ['tools.mcp', 'agent-mcp'],
+    ['approval', 'agent-approval'],
+    ['subagents', 'agent-subagents'],
+    ['modes', 'agent-modes'],
+  ],
+};
 
 /** The editor (phase-15 UI): "Lomake" and "YAML", a dry run on each tab switch. */
 function AgentEditor({
@@ -131,70 +136,40 @@ function AgentEditor({
   onDone: () => void;
 }) {
   const catalog = useStore((s) => s.models?.catalog ?? []);
-  const [form, setForm] = useState<Form>(doc?.profile ? formOf(doc.profile) : blank(list));
   const [prompt, setPrompt] = useState(doc?.prompt ?? '');
   const [yaml, setYaml] = useState(doc?.yaml ?? '');
-  // A file that fails the schema opens in YAML, with its error.
-  const [tab, setTab] = useState<'form' | 'yaml'>(doc && !doc.profile ? 'yaml' : 'form');
-  const {
-    error,
-    setError,
-    at: errorAt,
-  } = useFieldError(doc?.error ? { field: 'agent-yaml', message: doc.error } : null);
-  const [busy, setBusy] = useState(false);
-  // Any edit by the user; a dry run's own rewrite of the text does not count.
-  const [dirty, setDirty] = useState(false);
-  const guard = useLeaveGuard('agents', dirty, 'Agenttiin tehdyt muokkaukset menetetään.');
-  const set = (patch: Partial<Form>) => {
-    setDirty(true);
-    setForm((f) => ({ ...f, ...patch }));
-  };
-
-  /** A save or, `dry`, the check of the tab on screen. The YAML tab leaves the checks to the server. */
-  const call = async (dry: boolean) => {
-    if (tab === 'form' && !prompt.trim()) {
-      setTab('form');
-      throw { field: 'agent-prompt', message: CHECK_FIELD } satisfies FieldError;
-    }
-    try {
-      const body = tab === 'form' ? { profile: fieldsOf(form) } : { yaml };
-      return await agentSave(doc?.id, body, prompt, dry);
-    } catch (err) {
-      throw failure(err, tab);
-    }
-  };
-  const run = async (fn: () => Promise<void>) => {
-    setBusy(true);
-    try {
-      await fn();
-      setError(null);
-    } catch (err) {
-      setError(err as FieldError);
-    } finally {
-      setBusy(false);
-    }
-  };
-  const switchTab = (next: string) =>
-    next !== tab &&
-    void run(async () => {
-      const checked = await call(true);
+  const ed = useEditor({
+    form: doc?.profile ? formOf(doc.profile) : blank(list),
+    // A file that fails the schema opens in YAML, with its error.
+    tab: doc && !doc.profile ? 'yaml' : ('form' as 'form' | 'yaml'),
+    error: doc?.error ? { field: 'agent-yaml', message: doc.error } : null,
+    leave: 'Agenttiin tehdyt muokkaukset menetetään.',
+    // The YAML tab leaves the checks to the server.
+    call: async (form, tab, dry) => {
+      if (tab === 'form' && !prompt.trim())
+        throw { field: 'agent-prompt', message: CHECK_FIELD } satisfies FieldError;
+      try {
+        const body = tab === 'form' ? { profile: fieldsOf(form) } : { yaml };
+        return await agentSave(doc?.id, body, prompt, dry);
+      } catch (err) {
+        throw saveFailure(err, tab === 'yaml', FIELDS);
+      }
+    },
+    take: (checked, next, replace) => {
       if (next === 'yaml') setYaml(checked.yaml);
-      else if (checked.profile) setForm(formOf(checked.profile));
-      setTab(next as 'form' | 'yaml');
-    });
-  const save = () =>
-    void run(async () => {
-      await call(false);
-      useStore.getState().notify('Tallennettu');
-      onDone();
-    });
+      else if (checked.profile) replace(formOf(checked.profile));
+    },
+    onDone,
+  });
+  const { form, set, at: errorAt } = ed;
 
   const models = [
     ...list.options.aliases,
     ...catalog.filter((m) => m.zdr).map((m) => ({ id: `zdr/${m.id}`, name: m.name })),
   ];
   const tools = [...new Set([...list.options.tools, ...form.allow])];
-  const general = error && !error.field ? error.message : null;
+  // A mode the profile names but the server lacks stays visible, so it can be turned off.
+  const modes = [...new Set([...list.options.modes, ...form.modes])];
 
   const promptField = (
     <Field
@@ -210,7 +185,7 @@ function AgentEditor({
         className="max-h-80 min-h-40"
         {...invalid('agent-prompt', errorAt('agent-prompt'))}
         onChange={(e) => {
-          setDirty(true);
+          ed.touch();
           setPrompt(e.target.value);
         }}
       />
@@ -218,173 +193,156 @@ function AgentEditor({
   );
 
   return (
-    <Page
+    <EditorPage
       title={AGENTS_TITLE}
-      footer={
-        <>
-          <Button variant="outline" className="sm:ml-auto" onClick={onDone}>
-            Peruuta
-          </Button>
-          <Button disabled={busy} onClick={save}>
-            Tallenna
-          </Button>
-        </>
-      }
+      heading={doc ? (doc.profile?.name ?? doc.id) : 'Uusi agentti'}
+      id={doc?.id}
+      tabs={[
+        ['form', 'Lomake'],
+        ['yaml', 'YAML'],
+      ]}
+      {...ed.page}
     >
-      <section aria-labelledby="agent-editor-title" className="flex flex-col gap-4">
-        <BackLink onClick={onDone} />
-        <div className="min-w-0">
-          <h2 id="agent-editor-title" className="truncate text-heading">
-            {doc ? (doc.profile?.name ?? doc.id) : 'Uusi agentti'}
-          </h2>
-          <p className="text-meta text-muted-foreground">
-            {doc ? (
-              <>
-                Tunniste <span className="font-mono">{doc.id}</span>
-              </>
-            ) : (
-              'Tunniste tehdään nimestä.'
-            )}
-          </p>
-        </div>
-        {general && (
-          <p role="alert" className="text-meta text-destructive">
-            {general}
-          </p>
-        )}
-        <Tabs value={tab} onValueChange={switchTab} className="gap-0">
-          <TabsList className="max-md:h-11! max-md:w-full">
-            <TabsTrigger value="form">Lomake</TabsTrigger>
-            <TabsTrigger value="yaml">YAML</TabsTrigger>
-          </TabsList>
-          <TabsContent value="form" className="flex flex-col divide-y divide-border pt-2">
-            <Field id="agent-name" label="Nimi" error={errorAt('agent-name')}>
-              <Input
-                id="agent-name"
-                value={form.name}
-                autoComplete="off"
-                {...invalid('agent-name', errorAt('agent-name'))}
-                onChange={(e) => set({ name: e.target.value })}
-              />
-            </Field>
-            <Field id="agent-model" label="Malli" error={errorAt('agent-model')}>
-              <Select value={form.model} onValueChange={(model) => set({ model })}>
-                <SelectTrigger
-                  id="agent-model"
-                  className="w-full"
-                  {...invalid('agent-model', errorAt('agent-model'))}
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent position="popper" className="max-h-80">
-                  {(
-                    [
-                      ['Aliakset', list.options.aliases],
-                      ['ZDR-mallit', models.slice(list.options.aliases.length)],
-                    ] as const
-                  ).map(([group, items]) => (
-                    <SelectGroup key={group}>
-                      <SelectLabel>{group}</SelectLabel>
-                      {items.map((m) => (
-                        <SelectItem key={m.id} value={m.id}>
-                          {m.name}
+      <TabsContent value="form" className="flex flex-col divide-y divide-border pt-2">
+        <Field id="agent-name" label="Nimi" error={errorAt('agent-name')}>
+          <Input
+            id="agent-name"
+            value={form.name}
+            autoComplete="off"
+            {...invalid('agent-name', errorAt('agent-name'))}
+            onChange={(e) => set({ name: e.target.value })}
+          />
+        </Field>
+        <Field id="agent-model" label="Malli" error={errorAt('agent-model')}>
+          <Select value={form.model} onValueChange={(model) => set({ model })}>
+            <SelectTrigger
+              id="agent-model"
+              className="w-full"
+              {...invalid('agent-model', errorAt('agent-model'))}
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent position="popper" className="max-h-80">
+              {(
+                [
+                  ['Aliakset', list.options.aliases],
+                  ['ZDR-mallit', models.slice(list.options.aliases.length)],
+                ] as const
+              ).map(([group, items]) => (
+                <SelectGroup key={group}>
+                  <SelectLabel>{group}</SelectLabel>
+                  {items.map((m) => (
+                    <SelectItem key={m.id} value={m.id}>
+                      {m.name}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              ))}
+              {/* A model the lists lack stays selectable as it is. */}
+              {!models.some((m) => m.id === form.model) && (
+                <SelectItem value={form.model}>{form.model}</SelectItem>
+              )}
+            </SelectContent>
+          </Select>
+        </Field>
+        {promptField}
+        <Field
+          id="agent-modes"
+          label="Oletustilat"
+          group
+          helper="Päällä keskusteluissa, joiden tiloja et ole itse valinnut."
+          error={errorAt('agent-modes')}
+        >
+          {modes.length ? (
+            <Checks
+              options={modes}
+              value={form.modes}
+              labelOf={(id) => list.modes.find((m) => m.id === id)?.file?.name ?? id}
+              onChange={(modes) => set({ modes })}
+            />
+          ) : (
+            <p className="text-meta text-muted-foreground">Ei tiloja.</p>
+          )}
+        </Field>
+        <Field id="agent-tools" label="Työkalut" group error={errorAt('agent-tools')}>
+          <Checks options={tools} value={form.allow} onChange={(allow) => set({ allow })} />
+        </Field>
+        <Field id="agent-mcp" label="MCP-palvelimet" group error={errorAt('agent-mcp')}>
+          {list.options.mcp.length ? (
+            <Checks options={list.options.mcp} value={form.mcp} onChange={(mcp) => set({ mcp })} />
+          ) : (
+            <p className="text-meta text-muted-foreground">Ei MCP-palvelimia.</p>
+          )}
+        </Field>
+        <Field
+          id="agent-approval"
+          label="Hyväksyntä"
+          group
+          helper="Työkalut write, edit, bash ja subagent tarvitsevat valinnan."
+          error={errorAt('agent-approval')}
+        >
+          {ruled(form).length ? (
+            <ul className="flex flex-col">
+              {ruled(form).map((t) => (
+                <li key={t} className="flex min-h-12 items-center gap-4">
+                  <span className="min-w-0 flex-1 truncate font-mono text-[13px]">{t}</span>
+                  <Select
+                    value={form.rules[t] ?? 'default'}
+                    onValueChange={(v) => set({ rules: { ...form.rules, [t]: v as Rule } })}
+                  >
+                    <SelectTrigger aria-label={`Hyväksyntä: ${t}`} className="w-36">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent position="popper" align="end">
+                      {RULES.map((r) => (
+                        <SelectItem key={r.value} value={r.value}>
+                          {r.label}
                         </SelectItem>
                       ))}
-                    </SelectGroup>
-                  ))}
-                  {/* A model the lists lack stays selectable as it is. */}
-                  {!models.some((m) => m.id === form.model) && (
-                    <SelectItem value={form.model}>{form.model}</SelectItem>
-                  )}
-                </SelectContent>
-              </Select>
-            </Field>
-            {promptField}
-            <Field id="agent-tools" label="Työkalut" group error={errorAt('agent-tools')}>
-              <Checks options={tools} value={form.allow} onChange={(allow) => set({ allow })} />
-            </Field>
-            <Field id="agent-mcp" label="MCP-palvelimet" group error={errorAt('agent-mcp')}>
-              {list.options.mcp.length ? (
-                <Checks
-                  options={list.options.mcp}
-                  value={form.mcp}
-                  onChange={(mcp) => set({ mcp })}
-                />
-              ) : (
-                <p className="text-meta text-muted-foreground">Ei MCP-palvelimia.</p>
-              )}
-            </Field>
-            <Field
-              id="agent-approval"
-              label="Hyväksyntä"
-              group
-              helper="Työkalut write, edit, bash ja subagent tarvitsevat valinnan."
-              error={errorAt('agent-approval')}
-            >
-              {ruled(form).length ? (
-                <ul className="flex flex-col">
-                  {ruled(form).map((t) => (
-                    <li key={t} className="flex min-h-12 items-center gap-4">
-                      <span className="min-w-0 flex-1 truncate font-mono text-[13px]">{t}</span>
-                      <Select
-                        value={form.rules[t] ?? 'default'}
-                        onValueChange={(v) => set({ rules: { ...form.rules, [t]: v as Rule } })}
-                      >
-                        <SelectTrigger aria-label={`Hyväksyntä: ${t}`} className="w-36">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent position="popper" align="end">
-                          {RULES.map((r) => (
-                            <SelectItem key={r.value} value={r.value}>
-                              {r.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-meta text-muted-foreground">Ei sallittuja työkaluja.</p>
-              )}
-            </Field>
-            <Row
-              label="Aliagentit"
-              htmlFor="agent-subagents"
-              helper="Agentti voi antaa osatehtäviä omille aliagenteilleen."
-            >
-              <Switch
-                id="agent-subagents"
-                checked={form.subagents}
-                aria-describedby="agent-subagents-help"
-                onCheckedChange={(subagents) => set({ subagents })}
-              />
-            </Row>
-          </TabsContent>
-          <TabsContent value="yaml" className="flex flex-col divide-y divide-border pt-2">
-            <Field id="agent-yaml" label="Tiedosto" error={errorAt('agent-yaml')}>
-              <Textarea
-                id="agent-yaml"
-                value={yaml}
-                rows={16}
-                // YAML indentation must read as written: no soft wrap, the field scrolls instead.
-                wrap="off"
-                spellCheck={false}
-                className="max-h-[60dvh] min-h-64 font-mono text-[13px] leading-5"
-                {...invalid('agent-yaml', errorAt('agent-yaml'))}
-                onChange={(e) => {
-                  setDirty(true);
-                  setYaml(e.target.value);
-                }}
-              />
-            </Field>
-            {/* The prompt is its own file: both tabs edit it (a broken file can get one here). */}
-            {promptField}
-          </TabsContent>
-        </Tabs>
-        {guard}
-      </section>
-    </Page>
+                    </SelectContent>
+                  </Select>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-meta text-muted-foreground">Ei sallittuja työkaluja.</p>
+          )}
+        </Field>
+        <Row
+          label="Aliagentit"
+          htmlFor="agent-subagents"
+          helper="Agentti voi antaa osatehtäviä omille aliagenteilleen."
+        >
+          <Switch
+            id="agent-subagents"
+            checked={form.subagents}
+            aria-describedby="agent-subagents-help"
+            onCheckedChange={(subagents) => set({ subagents })}
+          />
+        </Row>
+      </TabsContent>
+      <TabsContent value="yaml" className="flex flex-col divide-y divide-border pt-2">
+        <Field id="agent-yaml" label="Tiedosto" error={errorAt('agent-yaml')}>
+          <Textarea
+            id="agent-yaml"
+            value={yaml}
+            rows={16}
+            // YAML indentation must read as written: no soft wrap, the field scrolls instead.
+            wrap="off"
+            spellCheck={false}
+            className="max-h-[60dvh] min-h-64 font-mono text-[13px] leading-5"
+            {...invalid('agent-yaml', errorAt('agent-yaml'))}
+            onChange={(e) => {
+              ed.touch();
+              setYaml(e.target.value);
+            }}
+          />
+        </Field>
+        {/* The prompt is its own file: both tabs edit it (a broken file can get one here). */}
+        {promptField}
+      </TabsContent>
+      {ed.guard}
+    </EditorPage>
   );
 }
 
@@ -401,10 +359,14 @@ function deleteError(err: unknown) {
     : 'Agentti on käytössä. Odota, että keskustelu päättyy.';
 }
 
-/** Agentit (phase-15 UI): the profiles of `agents/`, and their editor. Rows 56 h (brief 7.5). */
+/**
+ * Agentit (phase-15 UI): the profiles of `agents/` and, under "Tilat", the mode files (phase-23
+ * decision 14); each opens its editor in place of the list. Rows 56 h (brief 7.5).
+ */
 export function AgentsScreen() {
   const [list, setList] = useState<AgentList | null>(null);
   const [editing, setEditing] = useState<AgentDoc | 'new' | null>(null);
+  const [mode, setMode] = useState<ModeDoc | 'new' | null>(null);
   const [remove, setRemove] = useState<AgentDoc | null>(null);
   const load = () =>
     void agentsList().then(setList, () =>
@@ -434,6 +396,16 @@ export function AgentsScreen() {
     void agentDelete(d.id).then(load, (err) => useStore.getState().pushError(deleteError(err)));
   };
 
+  if (list && mode)
+    return (
+      <ModeEditor
+        doc={mode === 'new' ? null : mode}
+        onDone={() => {
+          setMode(null);
+          load();
+        }}
+      />
+    );
   if (list && editing)
     return (
       <AgentEditor
@@ -491,16 +463,15 @@ export function AgentsScreen() {
           ))}
         </ul>
       </section>
-      <ConfirmDialog
-        open={!!remove}
-        title={`Poistetaanko agentti ”${remove ? nameOf(remove) : ''}”?`}
-        action="Poista"
-        destructive
-        onConfirm={() => remove && drop(remove)}
+      {list && <ModesSection list={list} onEdit={setMode} onChange={load} />}
+      <DeleteDialog
+        kind="agentti"
+        name={remove && nameOf(remove)}
+        onDelete={() => remove && drop(remove)}
         onClose={() => setRemove(null)}
       >
         Agentin keskustelut siirtyvät Avustajalle.
-      </ConfirmDialog>
+      </DeleteDialog>
     </Page>
   );
 }

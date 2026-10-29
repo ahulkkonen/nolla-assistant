@@ -12,6 +12,7 @@ import {
   COLLIDING,
   CONFIDENCE_PLAIN,
   CONFIDENCE_REPLY,
+  confidenceReply,
   DICT,
   deviceRows,
   editAgent,
@@ -19,6 +20,7 @@ import {
   flip,
   flipMode,
   HTML_REPLY,
+  helloChat,
   holdAt,
   MERMAID_REPLY,
   memoryTurns,
@@ -1087,6 +1089,75 @@ test.describe('admin', () => {
     await expect(page.getByLabel('Viesti')).toBeVisible();
   });
 
+  // Phase-23 decision 14: the mode files in Agentit › Tilat.
+  test('modes: create a mode, it shows in the Tila chip; edit its text; a default mode stays; Oletustilat saves', async ({
+    app,
+    page,
+  }) => {
+    const file = (id: string) => readFileSync(join(app.dataDir, 'agents', id), 'utf8');
+    const modes = page.getByRole('region', { name: 'Tilat' });
+    await app.login(page);
+    await openSettings(page, 'Agentit');
+    await expect(modes.getByText('Oletus', { exact: true })).toHaveCount(2);
+    await modes.getByRole('button', { name: 'Uusi tila' }).click();
+    await page.getByLabel('Nimi', { exact: true }).fill('Lyhyt');
+    await page.getByLabel('Kuvaus', { exact: true }).fill('Enintään kolme virkettä');
+    await page.getByLabel('Ohje', { exact: true }).fill('Vastaa enintään kolmella virkkeellä.');
+    await page.getByRole('button', { name: 'Tallenna' }).click();
+    await expect(modes.getByText('Enintään kolme virkettä')).toBeVisible();
+    expect(file('modes/lyhyt.md')).toContain('Vastaa enintään kolmella virkkeellä.');
+
+    // agents.state brings it to the chip of a new chat.
+    await newChat(page);
+    await page.getByRole('button', { name: /^Tila/ }).click();
+    await expect(page.getByRole('menuitemcheckbox', { name: /^Lyhyt/ })).toHaveAttribute(
+      'aria-checked',
+      'false',
+    );
+    await page.keyboard.press('Escape');
+
+    // The text, through the Markdown tab's dry run and back.
+    await openSettings(page, 'Agentit');
+    await modes.getByRole('button', { name: 'Toiminnot: Lyhyt' }).click();
+    await page.getByRole('menuitem', { name: 'Muokkaa' }).click();
+    await page.getByLabel('Ohje', { exact: true }).fill('Vastaa yhdellä virkkeellä.');
+    await page.getByRole('tab', { name: 'Markdown' }).click();
+    const raw = page.getByLabel('Tiedosto', { exact: true });
+    await expect(raw).toHaveValue(/^name: Lyhyt$/m);
+    await expect(raw).toHaveValue(/Vastaa yhdellä virkkeellä\.$/m);
+    await page.getByRole('tab', { name: 'Lomake' }).click();
+    await page.getByRole('button', { name: 'Tallenna' }).click();
+    await expect(modes.getByRole('button', { name: 'Toiminnot: Lyhyt' })).toBeVisible();
+    expect(file('modes/lyhyt.md')).toContain('Vastaa yhdellä virkkeellä.');
+
+    // A mode that a profile names stays, with the reason in Finnish.
+    await modes.getByRole('button', { name: 'Toiminnot: Suora' }).click();
+    await page.getByRole('menuitem', { name: 'Poista' }).click();
+    const confirm = page.getByRole('alertdialog', { name: 'Poistetaanko tila ”Suora”?' });
+    await confirm.getByRole('button', { name: 'Poista' }).click();
+    await expect(
+      page.getByText(
+        'Agentti Avustaja käyttää tilaa oletuksena. Poista se ensin sen oletustiloista.',
+      ),
+    ).toBeVisible();
+    await expect(modes.getByRole('button', { name: 'Toiminnot: Suora' })).toBeVisible();
+
+    // Oletustilat of Kirjoittaja: the file gets the list, the row its badge.
+    await page.getByRole('button', { name: 'Toiminnot: Kirjoittaja' }).click();
+    await page.getByRole('menuitem', { name: 'Muokkaa' }).click();
+    const defaults = page.getByRole('group', { name: 'Oletustilat' });
+    await defaults.getByLabel('Lyhyt', { exact: true }).check();
+    await page.getByRole('button', { name: 'Tallenna' }).click();
+    await expect(modes.getByText('Oletus', { exact: true })).toHaveCount(3);
+    expect(file('kirjoittaja.yaml')).toMatch(/^modes:\n {2}default:.*lyhyt/ms);
+
+    // A mode no profile names goes.
+    await modes.getByRole('button', { name: 'Toiminnot: Luottamus' }).click();
+    await page.getByRole('menuitem', { name: 'Poista' }).click();
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Poista' }).click();
+    await expect(modes.getByRole('button', { name: 'Toiminnot: Luottamus' })).toHaveCount(0);
+  });
+
   test('devices: a revoke from another browser signs this one out (4401), then the last one itself', async ({
     app,
     page,
@@ -1136,10 +1207,7 @@ test.describe('admin', () => {
   });
 
   test('export: a masked export builds and downloads once', async ({ app, page }) => {
-    app.llm.push({ text: 'Hei.' });
-    await app.login(page);
-    await send(page, 'Moi');
-    await expect(page.locator('.md').last()).toHaveText('Hei.');
+    await helloChat(app, page);
     await openSettings(page, 'Asetukset');
     await page.getByRole('button', { name: 'Vie kaikki', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: 'Vie kaikki tiedot' });
@@ -1174,10 +1242,7 @@ test.describe('claims', () => {
 
   /** A chat with one reply, then the seeded claims; returns the chat id. */
   const claimChat = async (app: App, page: Page) => {
-    app.llm.push({ text: 'Hei.' });
-    await app.login(page);
-    await send(page, 'Moi');
-    await expect(page.locator('.md').last()).toHaveText('Hei.');
+    await helloChat(app, page);
     const db = new DatabaseSync(join(app.dataDir, 'app.db'));
     const { id } = db.prepare('SELECT id FROM chats LIMIT 1').get() as { id: string };
     db.close();
@@ -1582,11 +1647,7 @@ for (const viewport of VIEWPORTS)
       app,
       page,
     }) => {
-      app.llm.push({ text: CONFIDENCE_REPLY });
-      await app.login(page);
-      await send(page, 'Kerro Tampereesta');
-      const reply = page.locator('.md').last();
-      await expect(reply).toHaveText(CONFIDENCE_PLAIN, { useInnerText: true });
+      const reply = await confidenceReply(app, page);
       const spans = reply.locator('span.conf');
       const n = reply.locator('sup.conf-n');
       await expect(n).toHaveText(['9', '5', '1']);

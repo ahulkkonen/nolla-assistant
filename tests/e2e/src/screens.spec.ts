@@ -9,14 +9,14 @@ import {
   acceptProposal,
   CHART_REPLY,
   COLLIDING,
-  CONFIDENCE_PLAIN,
-  CONFIDENCE_REPLY,
+  confidenceReply,
   deviceRows,
   editAgent,
   expect,
   flip,
   flipMode,
   HTML_REPLY,
+  helloChat,
   holdAt,
   KIT_REPLY,
   MERMAID_REPLY,
@@ -387,12 +387,8 @@ for (const scheme of ['light', 'dark'] as const) {
       // Phase-21 decision 4 and phase-23 decision 9: three confidence levels with Luottamus on,
       // the legend, and the second sentence's N (hover on a desktop, a tap on the phone).
       test('chat-confidence', async ({ app, page }) => {
-        app.llm.push({ text: CONFIDENCE_REPLY });
-        await app.login(page);
-        await sendMessage(page, 'Kerro Tampereesta');
-        const reply = page.locator('.md').last();
-        await expect(reply).toHaveText(CONFIDENCE_PLAIN, { useInnerText: true });
-        await expect(page.locator('.md span.conf')).toHaveCount(3);
+        const reply = await confidenceReply(app, page);
+        await expect(reply.locator('span.conf')).toHaveCount(3);
         await flipMode(page, 'Luottamus', true);
         await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
         const box = (l: Locator) => l.evaluate((el) => el.getBoundingClientRect().toJSON());
@@ -414,10 +410,7 @@ for (const scheme of ['light', 'dark'] as const) {
 
       // Phase-23 decision 9: "Näytä luvut" on puts every N in the text (axe reads them).
       test('chat-confidence-numbers', async ({ app, page }) => {
-        app.llm.push({ text: CONFIDENCE_REPLY });
-        await app.login(page);
-        await sendMessage(page, 'Kerro Tampereesta');
-        await expect(page.locator('.md span.conf')).toHaveCount(3);
+        await confidenceReply(app, page);
         await page.getByRole('button', { name: 'Näytä luvut' }).click();
         await expect(page.locator('.md sup.conf-n').last()).toBeVisible();
         await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
@@ -486,10 +479,7 @@ for (const scheme of ['light', 'dark'] as const) {
 
       // Phase-23 decision 8: the Tila chip's menu (≥ 768), the model sheet's Tila rows on phones.
       test('mode-menu', async ({ app, page }) => {
-        app.llm.push({ text: 'Hei.' });
-        await app.login(page);
-        await sendMessage(page, 'Moi');
-        await expect(page.locator('.md').last()).toHaveText('Hei.');
+        await helloChat(app, page);
         const box = (l: Locator) => l.evaluate((el) => el.getBoundingClientRect().toJSON());
         if (vp.width < 768) {
           await modelMenu(page);
@@ -1062,10 +1052,7 @@ for (const scheme of ['light', 'dark'] as const) {
 
       // Phase-21 decision 7: the chip on, in the warning colour; on phones the model sheet's row.
       test('auto-approve-on', async ({ app, page }) => {
-        app.llm.push({ text: 'Hei.' });
-        await app.login(page);
-        await sendMessage(page, 'Moi');
-        await expect(page.locator('.md').last()).toHaveText('Hei.');
+        await helloChat(app, page);
         await flip(page, 'Hyväksy automaattisesti', true);
         if (vp.width < 768) await modelMenu(page);
         await page.mouse.move(0, 0);
@@ -1585,10 +1572,7 @@ for (const scheme of ['light', 'dark'] as const) {
         test.use({ pseudo: 'full', memoryUser: USER_MD });
         // Phase 17 W1: the Havainnot tab with seeded claims (proposals, a supersede, stale).
         test('memory-claims', async ({ app, page }) => {
-          app.llm.push({ text: 'Hei.' });
-          await app.login(page);
-          await sendMessage(page, 'Moi');
-          await expect(page.locator('.md').last()).toHaveText('Hei.');
+          await helloChat(app, page);
           const db = new DatabaseSync(join(app.dataDir, 'app.db'));
           const chat = db.prepare('SELECT id FROM chats LIMIT 1').get() as { id: string };
           db.close();
@@ -1678,6 +1662,21 @@ for (const scheme of ['light', 'dark'] as const) {
           await expect(page.getByText('Tarkista kenttä.')).toBeVisible();
           await expect(page.getByLabel('Nimi', { exact: true })).toBeFocused();
           await shot(page, 'agents-editor-error', vp.width, scheme);
+        });
+
+        // Phase-23 decision 14: Agentit › Tilat › Luottamus, its renderer as read-only text.
+        test('modes-editor', async ({ app, page }) => {
+          await app.login(page);
+          await openSettings(page, 'Agentit');
+          await page
+            .getByRole('region', { name: 'Tilat' })
+            .getByRole('button', { name: 'Toiminnot: Luottamus' })
+            .click();
+          await page.getByRole('menuitem', { name: 'Muokkaa' }).click();
+          await expect(page.getByLabel('Nimi', { exact: true })).toHaveValue('Luottamus');
+          await expect(page.getByText('Esitystapa', { exact: true })).toBeVisible();
+          await blur(page);
+          await shot(page, 'modes-editor', vp.width, scheme);
         });
 
         test('automation-editor', async ({ app, page }) => {

@@ -2,6 +2,7 @@ import { ChevronLeft, type LucideIcon } from 'lucide-react';
 import { type ReactNode, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 
 /**
@@ -62,6 +63,86 @@ export function BackLink({ onClick }: { onClick: () => void }) {
       <ChevronLeft size={16} />
       Takaisin luetteloon
     </Button>
+  );
+}
+
+/**
+ * A file editor (phase-15 UI, also the modes of phase 23): the way back, the name and its id,
+ * a general error, the tabs (`children` holds their contents), Peruuta and Tallenna at the bottom.
+ */
+export function EditorPage({
+  title,
+  heading,
+  id,
+  general,
+  busy,
+  tab,
+  tabs,
+  onTab,
+  onSave,
+  onDone,
+  children,
+}: {
+  title: string;
+  heading: string;
+  /** Unset for a new file: the server makes the id from the name. */
+  id: string | undefined;
+  general: string | null;
+  busy: boolean;
+  tab: string;
+  tabs: [value: string, label: string][];
+  onTab: (tab: string) => void;
+  onSave: () => void;
+  onDone: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <Page
+      title={title}
+      footer={
+        <>
+          <Button variant="outline" className="sm:ml-auto" onClick={onDone}>
+            Peruuta
+          </Button>
+          <Button disabled={busy} onClick={onSave}>
+            Tallenna
+          </Button>
+        </>
+      }
+    >
+      <section aria-labelledby="editor-title" className="flex flex-col gap-4">
+        <BackLink onClick={onDone} />
+        <div className="min-w-0">
+          <h2 id="editor-title" className="truncate text-heading">
+            {heading}
+          </h2>
+          <p className="text-meta text-muted-foreground">
+            {id ? (
+              <>
+                Tunniste <span className="font-mono">{id}</span>
+              </>
+            ) : (
+              'Tunniste tehdään nimestä.'
+            )}
+          </p>
+        </div>
+        {general && (
+          <p role="alert" className="text-meta text-destructive">
+            {general}
+          </p>
+        )}
+        <Tabs value={tab} onValueChange={onTab} className="gap-0">
+          <TabsList className="max-md:h-11! max-md:w-full">
+            {tabs.map(([value, label]) => (
+              <TabsTrigger key={value} value={value}>
+                {label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+          {children}
+        </Tabs>
+      </section>
+    </Page>
   );
 }
 

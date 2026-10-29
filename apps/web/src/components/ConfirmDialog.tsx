@@ -54,6 +54,34 @@ export function ConfirmDialog({
   );
 }
 
+/** "Poistetaanko <kind> ”<name>”?" with a destructive Poista; closed while `name` is null. */
+export function DeleteDialog({
+  kind,
+  name,
+  children,
+  onDelete,
+  onClose,
+}: {
+  kind: string;
+  name: string | null;
+  children: ReactNode;
+  onDelete: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <ConfirmDialog
+      open={name !== null}
+      title={`Poistetaanko ${kind} ”${name ?? ''}”?`}
+      action="Poista"
+      destructive
+      onConfirm={onDelete}
+      onClose={onClose}
+    >
+      {children}
+    </ConfirmDialog>
+  );
+}
+
 type Place = Pick<ReturnType<typeof useStore.getState>, 'screen' | 'activeChatId'>;
 
 /**
