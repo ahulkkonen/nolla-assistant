@@ -642,7 +642,7 @@ test('Yritä uudelleen: a failed reply runs again in place, and the thread shows
   app.llm.push({ match: /^Hei uudelleen$/, text: 'Nyt onnistui.' });
   await app.login(page);
   await send(page, 'Hei uudelleen');
-  const alert = page.getByRole('alert').filter({ hasText: 'Mallin kutsu epäonnistui.' });
+  const alert = page.getByRole('alert').filter({ hasText: 'Mallikutsu epäonnistui (400)' });
   await alert.getByRole('button', { name: 'Yritä uudelleen' }).click();
   await expect(page.locator('.md').last()).toHaveText('Nyt onnistui.');
   await expect(alert).toHaveCount(0);

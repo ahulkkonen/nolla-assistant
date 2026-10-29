@@ -37,12 +37,14 @@ discussion. Phases 23 to 25 (modes, router, edit in place, harness tools) have t
    parent's `ask` passes without a card when the parent chat is in `approvals.autoApprove` and the
    tool is in the chat's list (`registry.autoApproveTools`).
 8. **Plain http on the wifi.** `AUTH_ORIGIN` may be `http://<host>:3000` for a non-loopback host
-   when `AUTH_INSECURE_LAN=1` is set. `infra/compose.local.yaml` publishes port 3000 on all
-   interfaces when `PA_LAN=1`. `docs/deploy.md` "Local run" explains: open
+   when `AUTH_INSECURE_LAN=1` is set. `infra/compose.local.yaml` publishes port 3000 on the
+   interface `PA_LAN_BIND` (default `127.0.0.1`; `0.0.0.0` for the wifi). `docs/deploy.md` "Local run" explains: open
    `http://<mac-name>.local:3000` on the phone, password login works, passkeys, microphone and
    PWA install need https and stay off. The insecure cookie flag follows the origin scheme as
    today.
-9. **`web-digest` fetches any host.** The skill's `sandbox.network` becomes `internet`; the bash
+9. **`web-digest` fetches any host.** Superseded by phase-25 decision 20 (`fetch_url`): the
+   widening does nothing in a chat because no profile loads the skill and the broker never learns
+   which skill runs a command. The skill's `sandbox.network` becomes `internet`; the bash
    approval card already shows the `curl` command with the URL. The skill text says: fetch only
    the URL the user gave.
 10. **Pi 1.4.0.** The runtime moves from 1.3.0 to 1.4.0 (released 2026-10-21). The contract tests
@@ -54,8 +56,10 @@ discussion. Phases 23 to 25 (modes, router, edit in place, harness tools) have t
 
 ## Status
 
-Open. Worktrees: `p22-srv` (1, 2, 3 server part, 4 server part, 7, 8, 9), `p22-web` (1 web part,
-3 sidebar, 4 screen, 5, 6), `p25-pi` (10, 11).
+Merged to main 2026-10-29 (server `fed47d9`, web `29baf12`, Pi and WebKit `a8bbd70`). Decision 1 shows the
+status in the inline alert of the open chat and in the toast of a background chat. Decision 3 also
+stops locking the fork's title, so a fork is retitled after its first reply. The double Escape came
+from a tooltip that opened on programmatic focus; `Tip` now opens on keyboard focus only.
 
 ## Pi 1.4.0 (decision 10)
 
