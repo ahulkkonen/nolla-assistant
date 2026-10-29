@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   AgentFile,
   Annotation,
+  ApprovalView,
   AuthLogin,
   artifactExt,
   artifactKind,
@@ -12,6 +13,8 @@ import {
   cronToSchedule,
   decryptCommand,
   ExportStart,
+  FETCH_URL_TOOL,
+  HARNESS_TOOLS,
   ModeFile,
   ModelId,
   mermaidMeta,
@@ -533,5 +536,60 @@ describe('artifact whitelist', () => {
     expect(artifactExt({ kind: 'react', language: 'jsx' })).toBe('jsx');
     expect(artifactExt({ kind: 'mermaid', language: 'mermaid' })).toBe('mmd');
     expect(artifactExt({ kind: 'vega-lite' })).toBe('json');
+  });
+});
+
+describe('approval views (phase 25)', () => {
+  const req = {
+    type: 'approval.request',
+    chatId: 'c1',
+    requestId: 'r1',
+    callId: 't1',
+    tool: 'profile_edit',
+    args: {},
+    reason: 'x',
+    expiresAt: '2026-10-29T10:00:00.000Z',
+  };
+  const views = [
+    { kind: 'diff', file: 'prompts/assistant.md', created: false, diff: '@@ -1 +1 @@\n-a\n+b' },
+    {
+      kind: 'yaml',
+      file: 'automations/a.yaml',
+      created: true,
+      yaml: 'id: a\n',
+      nextRuns: ['2026-11-03T05:30:00.000Z'],
+    },
+    {
+      kind: 'chat',
+      chatId: 'c2',
+      title: 'Hei',
+      createdAt: '2026-10-01T10:00:00.000Z',
+      messages: 4,
+      query: null,
+    },
+    { kind: 'chat', chatId: null, title: null, createdAt: null, messages: null, query: 'loma' },
+    { kind: 'fetch', url: 'https://example.com/a' },
+  ];
+  it('every variant parses on approval.request, with tainted', () => {
+    for (const view of views)
+      expect(ServerMessage.safeParse({ ...req, view, tainted: true }).success).toBe(true);
+  });
+  it('a request without view still parses', () => {
+    expect(ServerMessage.safeParse(req).success).toBe(true);
+  });
+  it('views are strict and bounded', () => {
+    expect(ApprovalView.safeParse({ ...views[0], extra: 1 }).success).toBe(false);
+    expect(ApprovalView.safeParse({ kind: 'other' }).success).toBe(false);
+    expect(
+      ApprovalView.safeParse({ ...views[1], nextRuns: Array(6).fill('2026-11-03T05:30:00.000Z') })
+        .success,
+    ).toBe(false);
+    expect(ApprovalView.safeParse({ kind: 'fetch', url: 'file:///etc/passwd' }).success).toBe(
+      false,
+    );
+  });
+  it('the harness tool list', () => {
+    expect(HARNESS_TOOLS).toEqual(['profile_edit', 'automation_edit', 'chat_read']);
+    expect(FETCH_URL_TOOL).toBe('fetch_url');
   });
 });

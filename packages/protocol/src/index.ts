@@ -222,6 +222,40 @@ export const SearchCitation = z.object({
 });
 export type SearchCitation = z.infer<typeof SearchCitation>;
 
+/** Phase 25 decision 1: the model's tools that edit the harness or read another chat; always a card. */
+export const HARNESS_TOOLS = ['profile_edit', 'automation_edit', 'chat_read'] as const;
+export type HarnessTool = (typeof HARNESS_TOOLS)[number];
+export const isHarnessTool = (tool: string): tool is HarnessTool =>
+  (HARNESS_TOOLS as readonly string[]).includes(tool);
+/** Phase 25 decision 21: one GET of a public page. */
+export const FETCH_URL_TOOL = 'fetch_url';
+/** Phase 25 decision 3: what an approval card shows besides the arguments. */
+export const ApprovalView = z.discriminatedUnion('kind', [
+  z.strictObject({
+    kind: z.literal('diff'),
+    file: z.string().max(200),
+    created: z.boolean(),
+    diff: z.string().max(200_000),
+  }),
+  z.strictObject({
+    kind: z.literal('yaml'),
+    file: z.string().max(200),
+    created: z.boolean(),
+    yaml: z.string().max(200_000),
+    nextRuns: z.array(z.iso.datetime()).max(5),
+  }),
+  z.strictObject({
+    kind: z.literal('chat'),
+    chatId: id64.nullable(),
+    title: z.string().nullable(),
+    createdAt: z.iso.datetime().nullable(),
+    messages: z.int().min(0).nullable(),
+    query: z.string().max(200).nullable(),
+  }),
+  z.strictObject({ kind: z.literal('fetch'), url: SearchCitation.shape.url }),
+]);
+export type ApprovalView = z.infer<typeof ApprovalView>;
+
 /** A `web_search` row: the query that ran and its citations, in result order. */
 export const ToolSearch = z.object({
   query: z.string().max(2000),
@@ -1147,6 +1181,10 @@ export const ServerMessage = z.discriminatedUnion('type', [
     args: z.unknown(),
     reason: z.string(),
     expiresAt: z.iso.datetime(),
+    /** Phase 25 decision 3: the diff, YAML, chat or URL the card shows. */
+    view: ApprovalView.optional(),
+    /** Phase 25 decision 5: a harness card of a turn that read outside content. */
+    tainted: z.boolean().optional(),
   }),
   /** A pending `approval.request` ended: answered (by any client), expired, or aborted. */
   z.object({
