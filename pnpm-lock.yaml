@@ -220,6 +220,9 @@ importers:
       '@simplewebauthn/server':
         specifier: 14.0.3
         version: 14.0.3
+      diff:
+        specifier: 8.0.4
+        version: 8.0.4
       drizzle-orm:
         specifier: 0.45.4
         version: 0.45.4(@types/better-sqlite3@9.6.0)(better-sqlite3@13.0.3)

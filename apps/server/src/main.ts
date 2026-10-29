@@ -10,6 +10,7 @@ import {
   type PseudoLog,
 } from '@pa/pi-ext-pseudo';
 import type { ServerMessage } from '@pa/protocol';
+import { adminWriters } from './admin.ts';
 import { liveAgentId, loadAgents, watchAgents } from './agents.ts';
 import { approvals as approvalStore } from './approval.ts';
 import { purgeExpiredSessions } from './auth/session.ts';
@@ -27,6 +28,7 @@ import { claimStore } from './claims.ts';
 import { collisionWaits } from './collisions.ts';
 import { BUNDLED_AGENTS, BUNDLED_AUTOMATIONS, type Config, loadConfig } from './config.ts';
 import { fxRates } from './fx.ts';
+import { harness } from './harness.ts';
 import { buildServer } from './http.ts';
 import { integrations as integrationStore } from './integrations.ts';
 import { loadMcp } from './mcp.ts';
@@ -202,7 +204,25 @@ export async function start(
     warn: (msg, data) => app.log.warn(data ?? {}, msg),
   });
   const work = workStore(db, config.dataDir);
-  const registry = new SessionRegistry({
+  const warn = (msg: string, data?: object) => app.log.warn(data ?? {}, msg);
+  // Phase-25 decision 9: the harness tools write through the editors' writers.
+  const writers = adminWriters({
+    db,
+    dataDir: config.dataDir,
+    agentsDir: config.agentsDir,
+    automationsDir: config.automationsDir,
+    skillsDir: config.skillsDir,
+    mcpNames: [...mcp.keys()],
+    catalog,
+    registry: { running: (chatId) => registry.running(chatId) },
+    agents,
+    modes,
+    reloadAgents,
+    automations: () => automations,
+    sendAll,
+    warn,
+  });
+  const registry: SessionRegistry = new SessionRegistry({
     dataDir: config.dataDir,
     userId: config.userId,
     work: {
@@ -220,6 +240,18 @@ export async function start(
     mcpWarn: (chatId, missing) => app.log.warn({ chatId, missing }, 'mcp tools missing'),
     onSettled: ({ sessionId }) => titles.scheduleTitleJob(sessionId),
     onUsage: recordUsage,
+    harness: (o) =>
+      harness({
+        ...o,
+        writers,
+        db,
+        userId: config.userId,
+        reader: (chatId) => registry.reader(chatId),
+        pseudo,
+        agentsDir: config.agentsDir,
+        automationsDir: config.automationsDir,
+        log: (msg, data) => app.log.info(data, msg),
+      }),
     search: searcher({
       litellmUrl: config.litellmUrl,
       litellmKey: config.litellmMasterKey,

@@ -1,0 +1,283 @@
+import { spawnSync } from 'node:child_process';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { chats, openDb, users } from '@pa/db';
+import { afterEach, expect, test, vi } from 'vitest';
+import { adminWriters } from './admin.ts';
+import { loadAgents } from './agents.ts';
+import type { View } from './approval.ts';
+import { CHAT_MAX, harness, NO_PII, NOT_FOUND, SAVED, STALE } from './harness.ts';
+import { loadModes, modesDir } from './modes.ts';
+import { runCleanups, seedAgents, tempDir } from './test-utils.ts';
+
+afterEach(runCleanups);
+
+const REAL = 'Matti Virtanen';
+const MASKED = 'Pekka Laaksonen';
+const CHAT = 'aaaaaaaa-0000-4000-8000-000000000001';
+
+type Tool = { execute: (id: string, p: object) => Promise<{ content: { text: string }[] }> };
+
+function setup() {
+  const data = tempDir('pa-harness-');
+  const agentsDir = join(data, 'agents');
+  const automationsDir = join(data, 'automations');
+  seedAgents(agentsDir);
+  mkdirSync(automationsDir);
+  const { db, sqlite } = openDb(join(data, 'app.db'));
+  const now = '2026-10-01T10:00:00.000Z';
+  db.insert(users).values({ id: 'u1', createdAt: now }).run();
+  let agents = loadAgents(agentsDir);
+  let modes = loadModes(modesDir(agentsDir));
+  const writers = adminWriters({
+    db,
+    dataDir: data,
+    agentsDir,
+    automationsDir,
+    skillsDir: join(data, 'skills'),
+    mcpNames: ['workspace'],
+    catalog: { get: () => undefined },
+    registry: { running: () => false },
+    agents: () => agents,
+    modes: () => modes,
+    reloadAgents: () => {
+      agents = loadAgents(agentsDir, () => {}, agents);
+      modes = loadModes(modesDir(agentsDir), () => {}, modes);
+    },
+    automations: () => undefined,
+    sendAll: () => {},
+    warn: () => {},
+  });
+  const branches = new Map<string, { role: string; text: string }[]>();
+  const addChat = (
+    id: string,
+    title: string,
+    createdAt: string,
+    msgs = 2,
+    texts = Array.from({ length: msgs }, (_, i) => `viesti ${i} ${MASKED}`),
+  ) => {
+    db.insert(chats)
+      .values({
+        id,
+        userId: 'u1',
+        title,
+        titleMasked: title,
+        sessionPath: 'sessions/u1/',
+        createdAt,
+        updatedAt: createdAt,
+      })
+      .run();
+    branches.set(
+      id,
+      texts.map((text, i) => ({ role: i % 2 ? 'assistant' : 'user', text })),
+    );
+  };
+  addChat(CHAT, 'Tämä keskustelu', now);
+  const masked = new Map<string, unknown>();
+  const log = vi.fn();
+  const h = harness({
+    writers,
+    db,
+    userId: 'u1',
+    reader: (id) =>
+      ({
+        sessionManager: {
+          getBranch: () =>
+            (branches.get(id) ?? []).map((m, i) => ({
+              type: 'message',
+              id: `${id}-${i}`,
+              message: { role: m.role, content: m.text },
+            })),
+        },
+      }) as never,
+    pseudo: {
+      unmask: async (t: string) => ({ restored: t.replaceAll(MASKED, REAL), spans: [], hold: 0 }),
+    } as never,
+    agentsDir,
+    automationsDir,
+    chatId: CHAT,
+    agentId: 'assistant',
+    masked,
+    log,
+  });
+  const tools = new Map<string, Tool>();
+  h.tools({ registerTool: (t: Tool & { name: string }) => tools.set(t.name, t) } as never);
+  const view = (tool: string, input: object, id = 't1') =>
+    (h.views[tool] as View)(input as never, id);
+  const exec = async (tool: string, input: object, id = 't1') =>
+    (await (tools.get(tool) as Tool).execute(id, input)).content[0]?.text ?? '';
+  const gitLog = () =>
+    spawnSync('git', ['log', '--format=%s'], { cwd: agentsDir, encoding: 'utf8' }).stdout;
+  cleanups(() => sqlite.close());
+  return { agentsDir, automationsDir, view, exec, masked, log, addChat, gitLog, writers };
+}
+const closers: (() => void)[] = [];
+const cleanups = (f: () => void) => closers.push(f);
+afterEach(() => {
+  for (const f of closers.splice(0)) f();
+});
+
+test('profile_edit: diff view, write, commit note; the YAML stays byte-equal', async () => {
+  const s = setup();
+  const yaml = readFileSync(join(s.agentsDir, 'assistant.yaml'), 'utf8');
+  const prompt = join(s.agentsDir, 'prompts', 'assistant.md');
+  const content = `${readFileSync(prompt, 'utf8')}Vastaa lyhyesti.\n`;
+  const v = await s.view('profile_edit', { file: 'prompt', content });
+  expect(v).toMatchObject({ view: { kind: 'diff', file: 'prompts/assistant.md', created: false } });
+  const diff = 'view' in v && v.view.kind === 'diff' ? v.view.diff : '';
+  expect(diff.startsWith('@@')).toBe(true);
+  expect(diff).toContain('+Vastaa lyhyesti.');
+  expect(await s.exec('profile_edit', { file: 'prompt', content })).toBe(SAVED);
+  expect(readFileSync(prompt, 'utf8')).toBe(content);
+  expect(readFileSync(join(s.agentsDir, 'assistant.yaml'), 'utf8')).toBe(yaml);
+  expect(s.gitLog()).toContain('profile_edit prompts/assistant.md (chat aaaaaaaa)');
+  expect(s.log).toHaveBeenCalledWith('harness write', {
+    chatId: CHAT,
+    tool: 'profile_edit',
+    file: 'prompts/assistant.md',
+  });
+  // A new mode: its id from the name.
+  const raw = '---\nname: Runo\n---\n\nVastaa runona.\n';
+  expect(
+    await s.view('profile_edit', { file: 'mode', id: 'runo', content: raw }, 't2'),
+  ).toMatchObject({ view: { file: 'modes/runo.md', created: true } });
+  expect(await s.exec('profile_edit', { file: 'mode', id: 'runo', content: raw }, 't2')).toBe(
+    SAVED,
+  );
+  expect(readFileSync(join(s.agentsDir, 'modes', 'runo.md'), 'utf8')).toBe(raw);
+});
+
+test('profile_edit: stale refusal; a vault name blocks with the fixed reason', async () => {
+  const s = setup();
+  const prompt = join(s.agentsDir, 'prompts', 'assistant.md');
+  const content = 'Uusi ohje.';
+  await s.view('profile_edit', { file: 'prompt', content });
+  writeFileSync(prompt, 'Joku muutti tämän.\n');
+  expect(await s.exec('profile_edit', { file: 'prompt', content })).toBe(STALE);
+  expect(readFileSync(prompt, 'utf8')).toBe('Joku muutti tämän.\n');
+  // No card shown for this call id: refused too.
+  expect(await s.exec('profile_edit', { file: 'prompt', content }, 'x')).toBe(STALE);
+  s.masked.set('t3', `Olet ${MASKED}n avustaja.`);
+  expect(
+    await s.view('profile_edit', { file: 'prompt', content: `Olet ${REAL}n avustaja.` }, 't3'),
+  ).toEqual({ error: NO_PII });
+});
+
+test('automation_edit: YAML view with next runs, autoApprove stripped, a bad cron blocks', async () => {
+  const s = setup();
+  const input = {
+    name: 'Aamukatsaus',
+    cron: '30 7 * * 1',
+    prompt: `Kerro ${REAL}lle päivän sää.`,
+    autoApprove: ['bash'],
+  };
+  const v = await s.view('automation_edit', input);
+  expect(v).toMatchObject({
+    view: { kind: 'yaml', file: 'automations/aamukatsaus.yaml', created: true },
+  });
+  const view = 'view' in v && v.view.kind === 'yaml' ? v.view : undefined;
+  expect(view?.nextRuns).toHaveLength(5);
+  expect(view?.yaml).toContain('autoApprove: []');
+  expect(view?.yaml).not.toContain('bash');
+  expect(await s.exec('automation_edit', input)).toBe(SAVED);
+  const file = readFileSync(join(s.automationsDir, 'aamukatsaus.yaml'), 'utf8');
+  expect(file).toContain('autoApprove: []');
+  expect(s.gitLog()).toBe('');
+  expect(
+    spawnSync('git', ['log', '--format=%s'], { cwd: s.automationsDir, encoding: 'utf8' }).stdout,
+  ).toContain('automation_edit automations/aamukatsaus.yaml (chat aaaaaaaa)');
+  // An update keeps the file's list; the tool never sets it.
+  writeFileSync(
+    join(s.automationsDir, 'aamukatsaus.yaml'),
+    file.replace('autoApprove: []', 'autoApprove: [bash]'),
+  );
+  const upd = await s.view(
+    'automation_edit',
+    { id: 'aamukatsaus', enabled: false, autoApprove: [] },
+    't2',
+  );
+  expect(upd).toMatchObject({ view: { created: false, nextRuns: [] } });
+  expect('view' in upd && upd.view.kind === 'yaml' && upd.view.yaml).toMatch(
+    /autoApprove: \[ ?bash ?\]/,
+  );
+  expect(await s.view('automation_edit', { name: 'x', cron: '* * *', prompt: 'x' }, 't3')).toEqual({
+    error: 'Muutos ei kelpaa: cron',
+  });
+  expect(await s.view('automation_edit', { id: 'puuttuu', enabled: true }, 't4')).toEqual({
+    error: NOT_FOUND,
+  });
+});
+
+test('chat_read: restored and capped; several title hits list five; the current chat is refused', async () => {
+  const s = setup();
+  s.addChat('c-long', 'Pitkä keskustelu', '2026-10-02T10:00:00.000Z', 60);
+  const v = await s.view('chat_read', { chatId: 'c-long' });
+  expect(v).toEqual({
+    view: {
+      kind: 'chat',
+      chatId: 'c-long',
+      title: 'Pitkä keskustelu',
+      createdAt: '2026-10-02T10:00:00.000Z',
+      messages: 60,
+      query: null,
+    },
+  });
+  const out = await s.exec('chat_read', { chatId: 'c-long' });
+  expect(out.split('\n')[0]).toBe(
+    'Keskustelu "Pitkä keskustelu" (2026-10-02), 60 viestiä, 0 jätetty pois.',
+  );
+  expect(out).toContain(`viesti 59 ${REAL}`);
+  expect(out).not.toContain(MASKED);
+  expect(out).toContain('<keskustelu>');
+  for (let i = 0; i < 6; i++) s.addChat(`c-loma-${i}`, `Loma ${i}`, `2026-10-1${i}T10:00:00.000Z`);
+  const list = await s.exec('chat_read', { title: 'LOMA' });
+  expect(list.split('\n')[0]).toBe('6 osumaa. Kutsu uudelleen yhden tunnuksella (chatId):');
+  expect(list.split('\n').slice(1)).toEqual(
+    [5, 4, 3, 2, 1].map((i) => `- c-loma-${i} "Loma ${i}" (2026-10-1${i})`),
+  );
+  expect(await s.exec('chat_read', { title: 'ei tällaista' })).toBe('Ei osumia.');
+  expect(await s.exec('chat_read', { title: 'loma 3' })).toContain('Keskustelu "Loma 3"');
+  // The current chat: refused by id, left out by title.
+  expect(await s.view('chat_read', { chatId: CHAT })).toHaveProperty('error');
+  expect(await s.exec('chat_read', { title: 'Tämä keskustelu' })).toBe('Ei osumia.');
+});
+
+test('chat_read: the newest messages within the cap; one long message is cut', async () => {
+  const s = setup();
+  // 40 messages of 1,000 characters each: 19 fit (with the "Käyttäjä: " prefixes).
+  const many = Array.from(
+    { length: 40 },
+    (_, i) => `m${String(i).padStart(2, '0')}${'x'.repeat(997)}`,
+  );
+  s.addChat('c-big', 'Iso', '2026-10-02T10:00:00.000Z', 0, many);
+  const out = await s.exec('chat_read', { chatId: 'c-big' });
+  expect(out.split('\n')[0]).toMatch(
+    /^Keskustelu "Iso" \(2026-10-02\), 40 viestiä, 2[01] jätetty pois\.$/,
+  );
+  expect(out).toContain('m39');
+  expect(out).not.toContain('m00');
+  const body = out.slice(out.indexOf('<keskustelu>'));
+  expect(body.length).toBeLessThan(CHAT_MAX + 50);
+  s.addChat('c-one', 'Yksi', '2026-10-02T11:00:00.000Z', 0, [`alku ${'y '.repeat(20_000)}`]);
+  const one = await s.exec('chat_read', { chatId: 'c-one' });
+  expect(one.split('\n')[0]).toContain('1 viestiä, 0 jätetty pois.');
+  expect(one).toContain('…');
+  expect(one.length).toBeLessThan(CHAT_MAX + 300);
+});
+
+test('no block reason holds a seeded real value', async () => {
+  const s = setup();
+  const reasons = await Promise.all([
+    s.view('automation_edit', { name: REAL, cron: REAL, prompt: REAL }),
+    s.view('automation_edit', { id: REAL, prompt: REAL }),
+    s.view('automation_edit', { name: 'a', cron: '0 7 * * *', prompt: 'x', agentId: REAL }),
+    s.view('profile_edit', { file: 'mode', content: `---\nname: ${REAL}\nfoo: ${REAL}\n---\n\nx` }),
+    s.view('profile_edit', { file: 'mode', content: `---\nname: [${REAL}\n---\n\nx` }),
+    s.view('chat_read', { chatId: REAL }),
+    s.view('chat_read', { chatId: REAL, title: REAL }),
+  ]);
+  for (const r of reasons) {
+    expect(r).toHaveProperty('error');
+    expect(JSON.stringify(r)).not.toContain('Matti');
+  }
+});

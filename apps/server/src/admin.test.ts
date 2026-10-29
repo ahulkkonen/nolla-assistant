@@ -82,7 +82,7 @@ test('agents: create, update from the form keeps comments, YAML tab, dry run, de
   const yaml = readFileSync(file('assistant'), 'utf8');
   expect(yaml).toContain('# web_search asks only when the query names a vault entity');
   expect(yaml).toContain('name: Avustaja 2');
-  expect(yaml).toMatch(/allow: \[.*web_search, grep \]/);
+  expect(yaml).toMatch(/allow:\s*\[[^\]]*chat_read,\s*grep\s*\]/);
   expect(readFileSync(join(agentsDir, 'prompts', 'assistant.md'), 'utf8')).toContain('Lisärivi.');
   expect((await stateWith('assistant')).name).toBe('Avustaja 2');
   expect(gitLog(agentsDir)).toContain('agent assistant saved');

@@ -114,11 +114,13 @@ export function turnTaint(onTaint?: () => void) {
 }
 export type TurnTaint = ReturnType<typeof turnTaint>;
 
-const text = (t: string, isError = false) => ({
+/** A Pi tool result of one text block; `isError` marks a failure the model reads. */
+export const toolText = (t: string, isError = false) => ({
   content: [{ type: 'text' as const, text: t }],
   details: undefined,
   ...(isError ? { isError: true } : {}),
 });
+const text = toolText;
 
 /**
  * Memory injection, `recall` and `memory` tools (plan §7). Add `recall` and `memory` to the host

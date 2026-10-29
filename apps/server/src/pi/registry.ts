@@ -32,7 +32,7 @@ import {
 } from '../mcp.ts';
 import type { MemoryStore } from '../memory.ts';
 import { type Modes, systemPrompt } from '../modes.ts';
-import { type Searcher, webSearchExtensions } from '../search-tool.ts';
+import { maskedArgs, type Searcher, webSearchExtensions } from '../search-tool.ts';
 import { messageUsage, type RecordUsage, usageExtension } from '../usage.ts';
 import { pathGuard, type WorkHooks } from './guard.ts';
 import { type Catalog, piModelId, policyOf, resolveModelId, thinkingLevel } from './models.ts';
@@ -474,6 +474,8 @@ export class SessionRegistry {
     // A search the guard approved skips the gate (a profile may list web_search in `always`).
     const searchApproved = new Set<string>();
     const autoTools = this.autoApproveTools(agentId);
+    // Arguments as the model wrote them (masked), for the guards after pseudo (phase-25 decision 22).
+    const masked = maskedArgs({ [WEB_SEARCH_TOOL]: 'query', profile_edit: 'content' });
     const [searchTool, searchGuard] =
       search && tools.includes(WEB_SEARCH_TOOL)
         ? webSearchExtensions({
@@ -483,11 +485,12 @@ export class SessionRegistry {
             ask: this.opts.approval.ask,
             timeoutMs: this.opts.approval.timeoutMs,
             approved: searchApproved,
+            masked,
           })
         : [];
     // One taint per session: memory parking and the harness card (phase-25 decision 5).
     const taint = turnTaint(memory && pseudo ? () => memory.store.markTainted(chatId) : undefined);
-    const harness = this.opts.harness?.({ chatId, agentId, masked: new Map() });
+    const harness = this.opts.harness?.({ chatId, agentId, masked: masked.sent });
     const resourceLoader = new DefaultResourceLoader({
       cwd: this.cwd,
       agentDir: this.agentDir,
@@ -507,7 +510,8 @@ export class SessionRegistry {
       noPromptTemplates: true,
       noThemes: true,
       extensionFactories: [
-        // Before pseudo: records the search query as the model wrote it (phase-14 decision 7).
+        // Before pseudo: records the arguments as the model wrote them (phase-14 decision 7).
+        masked.extension,
         ...(searchTool ? [searchTool] : []),
         // Pseudo first: the guard must check the restored (real) path.
         ...(pseudo

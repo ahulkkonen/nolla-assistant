@@ -75,6 +75,15 @@ const rawMode = (raw: string) => {
   }
 };
 
+/**
+ * The field path of a failed check, for a reason the model reads (phase-25 decision 4): never the
+ * library's message. Undefined for any other error.
+ */
+export const badPath = (err: unknown) => {
+  const e = err instanceof ZodError ? fromZod(err) : err;
+  return e instanceof Bad ? e.path : undefined;
+};
+
 const fromZod = (err: ZodError) => {
   const issue = err.issues[0];
   return new Bad(issue?.path.join('.') ?? '', issue?.message ?? 'invalid');
@@ -182,7 +191,7 @@ export function freeId(name: unknown, taken: (id: string) => boolean, fallback: 
 }
 
 /** Writes the editors and phase 25 share; each check failure throws `Bad` (a zod error too). */
-type Answer = { status: number; body?: unknown };
+export type Answer = { status: number; body?: unknown };
 const notFound: Answer = { status: 404, body: { error: 'not_found' } };
 
 const yamlIds = (dir: string) =>
@@ -265,7 +274,13 @@ export function adminWriters(deps: AdminDeps) {
   };
 
   /** Create (`id` undefined) or update; `dry` checks and answers without a write (decision 6). */
-  const saveAgent = (id: string | undefined, rawBody: unknown, dry: boolean): Answer => {
+  const saveAgent = (
+    id: string | undefined,
+    rawBody: unknown,
+    dry: boolean,
+    /** The commit note; phase 25 names the tool and the chat. */
+    note?: string,
+  ): Answer => {
     const body = AgentSave.parse(rawBody);
     const input = 'yaml' in body ? yamlOf(body.yaml) : undefined;
     const fields: unknown = input ? js(input) : 'profile' in body ? body.profile : undefined;
@@ -319,7 +334,7 @@ export function adminWriters(deps: AdminDeps) {
       writeText(promptFile, body.prompt);
       writeText(agentFile(target), yaml);
       deps.reloadAgents();
-      commitAgents(`agent ${target} saved`);
+      commitAgents(note ?? `agent ${target} saved`);
     }
     const doc_: AgentDoc = { id: target, profile, yaml, prompt: body.prompt, error: null };
     return { status: id === undefined && !dry ? 201 : 200, body: doc_ };
@@ -363,7 +378,13 @@ export function adminWriters(deps: AdminDeps) {
     if (state) sendAll(state);
   };
 
-  const saveAutomation = (id: string | undefined, rawBody: unknown): Answer => {
+  /** `dry` answers `{ id, yaml, created }` without a write (phase-25 decision 13). */
+  const saveAutomation = (
+    id: string | undefined,
+    rawBody: unknown,
+    dry = false,
+    note?: string,
+  ): Answer => {
     const fields = AutomationSave.parse(rawBody);
     const at = saveTarget(autoFile, id, fields, 'automaatio');
     if (!at) return notFound;
@@ -377,8 +398,10 @@ export function adminWriters(deps: AdminDeps) {
     if (!deps.agents().has(a.agentId)) throw new Bad('agentId', `unknown agent ${a.agentId}`);
     if (id === undefined && existsSync(autoFile(a.id)))
       return { status: 409, body: { error: 'exists' } };
+    if (dry)
+      return { status: 200, body: { id: a.id, yaml: String(doc), created: id === undefined } };
     writeText(autoFile(a.id), String(doc));
-    automationsChanged(`automation ${a.id} saved`);
+    automationsChanged(note ?? `automation ${a.id} saved`);
     return { status: id === undefined ? 201 : 200, body: { id: a.id } };
   };
 
@@ -396,7 +419,12 @@ export function adminWriters(deps: AdminDeps) {
    * Create (`id` undefined, the id from the name) or update a mode file (phase-23 decision 13).
    * The raw text is written as sent; the form's fields are written as frontmatter and paragraph.
    */
-  const saveMode = (id: string | undefined, rawBody: unknown, dry: boolean): Answer => {
+  const saveMode = (
+    id: string | undefined,
+    rawBody: unknown,
+    dry: boolean,
+    note?: string,
+  ): Answer => {
     const body = ModeSave.parse(rawBody);
     if (id !== undefined && (!ModeId.safeParse(id).success || !existsSync(modeFile(id))))
       return notFound;
@@ -410,7 +438,7 @@ export function adminWriters(deps: AdminDeps) {
       mkdirSync(modesDir(agentsDir), { recursive: true });
       writeText(modeFile(target), raw);
       deps.reloadAgents();
-      commitAgents(`mode ${target} saved`);
+      commitAgents(note ?? `mode ${target} saved`);
     }
     const doc: ModeDoc = { id: target, file, body: text.data, raw, error: null };
     return { status: id === undefined && !dry ? 201 : 200, body: doc };
