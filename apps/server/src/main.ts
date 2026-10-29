@@ -31,6 +31,7 @@ import { buildServer } from './http.ts';
 import { integrations as integrationStore } from './integrations.ts';
 import { loadMcp } from './mcp.ts';
 import { memoryStore } from './memory.ts';
+import { loadModes, modesDir } from './modes.ts';
 import { modelCatalog, writeModelsJson } from './pi/models.ts';
 import { SessionRegistry } from './pi/registry.ts';
 import { pushService } from './push.ts';
@@ -75,6 +76,9 @@ export async function start(
     for (const a of agentMap.values())
       for (const n of a.tools.mcp ?? [])
         if (!mcp.has(n)) agentLog(a.id, `MCP server ${n} not in ${config.mcpConfig}`, 'warn');
+    for (const a of agentMap.values())
+      for (const m of a.modes.default)
+        if (!modeMap.has(m)) agentLog(a.id, `mode ${m} not found`, 'warn');
   };
   // Editable copies under DATA_DIR start as the image's folders (phase-15 decision 4); unedited
   // files follow later images (phase-16 decision 21). `app` does not exist yet: console.
@@ -86,17 +90,24 @@ export async function start(
   let agentMap = loadAgents(config.agentsDir, (file, err, level) =>
     console[level]('agent profile', file, err instanceof Error ? err.message : err),
   );
-  /** The watcher's reload; the agent editor calls it after each write. */
+  // Phase-23 decision 1: a bad mode file keeps its previous version, like a profile.
+  let modeMap = loadModes(modesDir(config.agentsDir), (file, err) =>
+    console.error('mode file', file, err instanceof Error ? err.message : err),
+  );
+  /** The watcher's reload; the agent editor calls it after each write. Mode files too. */
   const reloadAgents = () => {
     try {
       const next = loadAgents(config.agentsDir, agentLog, agentMap);
-      // Unchanged profiles keep their objects: nothing to tell the screens.
-      const same =
-        next.size === agentMap.size && [...next].every(([id, p]) => agentMap.get(id) === p);
+      const nextModes = loadModes(modesDir(config.agentsDir), agentLog, modeMap);
+      // Unchanged profiles and modes keep their objects: nothing to tell the screens.
+      const same = <T>(a: Map<string, T>, b: Map<string, T>) =>
+        a.size === b.size && [...a].every(([id, p]) => b.get(id) === p);
+      const unchanged = same(next, agentMap) && same(nextModes, modeMap);
       agentMap = next;
-      if (same) return;
+      modeMap = nextModes;
+      if (unchanged) return;
       checkBash();
-      sendAll(agentsState(agentMap));
+      sendAll(agentsState(agentMap, modeMap));
     } catch (err) {
       agentLog(config.agentsDir, err);
     }
@@ -105,6 +116,7 @@ export async function start(
     agentLog(config.agentsDir, err),
   );
   const agents = () => agentMap;
+  const modes = () => modeMap;
   const mcp = loadMcp(config.mcpConfig);
   const integrations = integrationStore({
     workspace: mcp.get('workspace'),
@@ -198,6 +210,7 @@ export async function start(
       written: (path, chatId, messageId) => work.written(config.userId, path, chatId, messageId),
     },
     agents,
+    modes,
     getChat: (chatId) => chatRow(db, config.userId, chatId),
     catalog,
     approval: { ask: approvals.ask, timeoutMs: config.approvalTimeoutMs },
@@ -239,6 +252,7 @@ export async function start(
     config,
     rooms,
     agents,
+    modes,
     approvals,
     sockets,
     memory,

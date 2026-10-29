@@ -76,6 +76,7 @@ export async function buildServer({
   | 'pseudo'
   | 'rooms'
   | 'agents'
+  | 'modes'
   | 'approvals'
   | 'automations'
   | 'sockets'

@@ -2,11 +2,14 @@ import { chats, chunks } from '@pa/db';
 import { ChatExport } from '@pa/protocol';
 import { eq } from 'drizzle-orm';
 import { afterEach, expect, test, vi } from 'vitest';
-import { CONFIDENCE_PROMPT } from './pi/registry.ts';
+import { BUNDLED_AGENTS } from './config.ts';
+import { loadModes, modesDir } from './modes.ts';
 import { api, bootChat, login, runCleanups } from './test-utils.ts';
 
-// Phase-21 decision 4: the confidence trial.
+// Phase-21 decision 4: the confidence trial; phase 23 made it the mode `confidence`.
 afterEach(runCleanups);
+
+const CONFIDENCE_PROMPT = loadModes(modesDir(BUNDLED_AGENTS)).get('confidence')?.body ?? '';
 
 const MARKED = 'Helsinki on pääkaupunki.⟦9⟧ Väkiluku on noin 690 000.⟦6⟧';
 const PLAIN = 'Helsinki on pääkaupunki. Väkiluku on noin 690 000.';
@@ -18,7 +21,7 @@ const TITLE = {
 const system = (body: { messages: { role: string; content: unknown }[] }) =>
   JSON.stringify(body.messages.find((m) => m.role === 'system' || m.role === 'developer'));
 
-test('chat.setConfidence: stored, also during a run; the next turn has the prompt, off removes it', {
+test('chat.setModes confidence: stored, also during a run; the next turn has the prompt, off removes it', {
   timeout: 30_000,
 }, async () => {
   const { c, chat, srv, llm } = await bootChat([
@@ -29,13 +32,13 @@ test('chat.setConfidence: stored, also during a run; the next turn has the promp
     { text: 'Taas ilman.' },
   ]);
   const row = () => srv.db.select().from(chats).where(eq(chats.id, chat.id)).get();
-  expect(chat.confidence).toBe(false);
+  expect(chat.modes).toBeNull();
 
   c.send({ type: 'user.message', chatId: chat.id, text: 'Moi' });
   expect((await c.next('agent.status')).state).toBe('running');
-  c.send({ type: 'chat.setConfidence', chatId: chat.id, on: true });
-  expect((await c.next('chat.updated')).chat.confidence).toBe(true);
-  expect(row()?.confidence).toBe(true);
+  c.send({ type: 'chat.setModes', chatId: chat.id, modes: ['confidence'] });
+  expect((await c.next('chat.updated')).chat.modes).toEqual(['confidence']);
+  expect(row()?.modes).toEqual(['confidence']);
   await c.idle();
   expect(system(llm.requests[0]?.body)).not.toContain(CONFIDENCE_PROMPT);
 
@@ -47,7 +50,7 @@ test('chat.setConfidence: stored, also during a run; the next turn has the promp
   expect(system(llm.requests[1]?.body)).toContain(CONFIDENCE_PROMPT);
   c.send({ type: 'chat.open', chatId: chat.id });
   const state = await c.next('chat.state');
-  expect(state.chat.confidence).toBe(true);
+  expect(state.chat.modes).toEqual(['confidence']);
   expect(state.messages.at(-1)?.text).toBe(MARKED);
 
   // The title job and the search index read the text without markers.
@@ -68,17 +71,17 @@ test('chat.setConfidence: stored, also during a run; the next turn has the promp
     { timeout: 20_000, interval: 100 },
   );
 
-  c.send({ type: 'chat.setConfidence', chatId: chat.id, on: false });
+  c.send({ type: 'chat.setModes', chatId: chat.id, modes: [] });
   // The title job's own `chat.updated` may come first.
   await vi.waitFor(() =>
-    expect(c.inbox.some((m) => m.type === 'chat.updated' && !m.chat.confidence)).toBe(true),
+    expect(c.inbox.some((m) => m.type === 'chat.updated' && m.chat.modes?.length === 0)).toBe(true),
   );
   c.send({ type: 'user.message', chatId: chat.id, text: 'Entä nyt?' });
   await c.idle();
   expect(system(llm.requests.at(-1)?.body)).not.toContain(CONFIDENCE_PROMPT);
 
   c.inbox.length = 0;
-  c.send({ type: 'chat.setConfidence', chatId: 'ei-ole', on: true });
+  c.send({ type: 'chat.setModes', chatId: 'ei-ole', modes: ['confidence'] });
   await expect(c.next('chat.updated')).rejects.toThrow('server error: not_found');
 });
 

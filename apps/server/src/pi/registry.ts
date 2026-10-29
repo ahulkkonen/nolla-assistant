@@ -31,6 +31,7 @@ import {
   writeTools,
 } from '../mcp.ts';
 import type { MemoryStore } from '../memory.ts';
+import { type Modes, systemPrompt } from '../modes.ts';
 import { type Searcher, webSearchExtensions } from '../search-tool.ts';
 import { messageUsage, type RecordUsage, usageExtension } from '../usage.ts';
 import { pathGuard, type WorkHooks } from './guard.ts';
@@ -53,24 +54,23 @@ export const PROFILE_TOOLS = [
   WEB_SEARCH_TOOL,
 ];
 
-/** The chat row fields a session build reads: agent, model policy (phase-10), confidence trial. */
+/** The chat row fields a session build reads: agent, model policy (phase-10), output modes. */
 export type ChatModel = {
   agentId: string;
   modelId: string | null;
   reasoning: string;
   dataPolicy: string;
-  confidence: boolean;
+  /** Phase-23 decision 4: null means the profile's `modes.default`. */
+  modes: string[] | null;
 };
-
-/** Phase-21 decision 4: the prompt paragraph of a chat with `confidence` on. */
-export const CONFIDENCE_PROMPT =
-  'Luottamusmerkinnät: kirjoita jokaisen proosavirkkeen perään merkintä ⟦N⟧, jossa N on luku 1–9 sen mukaan, kuinka varma olet virkkeen sisällöstä: 1 on arvaus ja 9 on varma. Kirjoita merkintä heti virkkeen päättävän välimerkin perään, esimerkiksi: Helsinki on Suomen pääkaupunki.⟦9⟧ Älä koskaan kirjoita merkintää koodilohkoon, taulukkoon, otsikkoon tai luettelomerkin (`-`, `1.`) perään. Muuten vastaa täsmälleen niin kuin ilman merkintöjä.';
 
 type RegistryOptions = {
   dataDir: string;
   userId: string;
   /** Current agent profiles; read at every session build. */
   agents: () => Agents;
+  /** Current output modes (phase-23); read at every session build. */
+  modes: () => Modes;
   /** The chat's agent and model policy (DB row) for `get`; undefined when the row is gone. */
   getChat: (chatId: string) => ChatModel | undefined;
   /** Model catalog: thinking level of catalog models (phase-10 decision 7). */
@@ -123,6 +123,8 @@ type Entry = {
   chat: ChatModel;
   /** The profile object the session was built with; a reload replaces only changed ones. */
   profile: AgentProfile | undefined;
+  /** The system prompt the session was built with (profile prompt and mode paragraphs). */
+  prompt: string | undefined;
   /** The session, once the build resolved. */
   ready?: AgentSession;
 };
@@ -131,8 +133,7 @@ const samePolicy = (a: ChatModel, b: ChatModel) =>
   a.agentId === b.agentId &&
   a.modelId === b.modelId &&
   a.reasoning === b.reasoning &&
-  a.dataPolicy === b.dataPolicy &&
-  a.confidence === b.confidence;
+  a.dataPolicy === b.dataPolicy;
 
 async function stop(e: Entry) {
   e.unsubscribe?.();
@@ -182,7 +183,7 @@ export class SessionRegistry {
         modelId: null,
         reasoning: 'auto',
         dataPolicy: 'zdr',
-        confidence: false,
+        modes: null,
       };
       const session = await this.track(chatId, chat, () => {
         const path = SessionManager.findById(this.cwd, chatId, this.sessionDir);
@@ -281,9 +282,23 @@ export class SessionRegistry {
     }
   }
 
-  /** Built with the stored policy and the current profile object of its agent. */
+  /**
+   * Built with the stored policy, the current profile object of its agent and the current prompt:
+   * a mode toggle or a mode file edit rebuilds an idle session (phase-23 decision 5).
+   */
   private fresh(e: Entry, now: ChatModel): boolean {
-    return samePolicy(e.chat, now) && e.profile === this.profileOf(now.agentId);
+    const profile = this.profileOf(now.agentId);
+    return (
+      samePolicy(e.chat, now) && e.profile === profile && e.prompt === this.promptOf(profile, now)
+    );
+  }
+
+  /** The profile prompt and the chat's modes, or the profile's defaults when it has none. */
+  private promptOf(profile: AgentProfile | undefined, chat: ChatModel): string | undefined {
+    return (
+      profile &&
+      systemPrompt(profile.prompt, chat.modes ?? profile.modes.default, this.opts.modes())
+    );
   }
 
   /** The chat's profile; a deleted agent's chat runs with the default agent (phase-16 decision 3). */
@@ -369,8 +384,9 @@ export class SessionRegistry {
     }
     // `build` reads the same profile before its first await.
     const profile = this.profileOf(chat.agentId);
-    const session = this.build(chatId, chat, manager);
-    const entry: Entry = { session, lastUsed: Date.now(), chat, profile };
+    const prompt = this.promptOf(profile, chat);
+    const session = this.build(chatId, chat, manager, prompt);
+    const entry: Entry = { session, lastUsed: Date.now(), chat, profile, prompt };
     this.entries.set(chatId, entry);
     session.then(
       (s) => {
@@ -387,9 +403,11 @@ export class SessionRegistry {
     chatId: string,
     chat: ChatModel,
     manager: () => SessionManager,
+    prompt: string | undefined,
   ): Promise<AgentSession> {
     const profile = this.profileOf(chat.agentId);
-    if (!profile) throw new Error(`Agent profile ${chat.agentId} not found`);
+    if (!profile || prompt === undefined)
+      throw new Error(`Agent profile ${chat.agentId} not found`);
     const agentId = profile.id;
     const sessionManager = manager();
     const { pseudo, subagents, memory } = this.opts;
@@ -436,7 +454,7 @@ export class SessionRegistry {
     const resourceLoader = new DefaultResourceLoader({
       cwd: this.cwd,
       agentDir: this.agentDir,
-      systemPrompt: chat.confidence ? `${profile.prompt}\n\n${CONFIDENCE_PROMPT}` : profile.prompt,
+      systemPrompt: prompt,
       noContextFiles: true,
       noExtensions: true,
       noSkills: skills.size === 0,

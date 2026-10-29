@@ -39,6 +39,7 @@ import type { CollisionWaits } from './collisions.ts';
 import { AttachmentNotFound, chatFiles, ingestAttachments, splitBlocks } from './files.ts';
 import type { Fx } from './fx.ts';
 import { GENERATED, MemoryError, type MemoryStore } from './memory.ts';
+import { type Modes, modeInfos } from './modes.ts';
 import { GUARD_REASON } from './pi/guard.ts';
 import {
   AUTO_MODEL,
@@ -70,6 +71,8 @@ export type BridgeDeps = {
   /** chatId → sockets that have the chat open. Shared by all connections of one server. */
   rooms: Map<string, Set<Socket>>;
   agents: () => Agents;
+  /** Output modes (phase-23); `chat.setModes` and `chat.create` accept only these ids. */
+  modes: () => Modes;
   approvals: Approvals;
   /** Every open socket of this server (for `agents.state` after a profile reload). */
   sockets: Set<Socket>;
@@ -156,7 +159,7 @@ export const summary = (r: ChatRow): ChatSummary => ({
   titleLocked: r.titleLocked,
   ...(r.forkedFromChatId ? { forkedFrom: r.forkedFromChatId } : {}),
   modelPolicy: policyOf(r),
-  confidence: r.confidence,
+  modes: r.modes,
   usage: chatUsage(r),
   updatedAt: r.updatedAt,
 });
@@ -472,14 +475,16 @@ function trackAccept(session: AgentSession, notify?: (entryId: string) => void) 
   return { preflightResult, failed: drop };
 }
 
-export const agentsState = (agents: Agents): ServerMessage => ({
+export const agentsState = (agents: Agents, modes: Modes): ServerMessage => ({
   type: 'agents.state',
-  agents: [...agents.values()].map(({ id, name, model, subagents }) => ({
-    id,
-    name,
-    model,
-    subagents,
+  agents: [...agents.values()].map((p) => ({
+    id: p.id,
+    name: p.name,
+    model: p.model,
+    subagents: p.subagents,
+    modes: p.modes.default,
   })),
+  modes: modeInfos(modes),
 });
 
 export function attachBridge(socket: Socket, deps: BridgeDeps) {
@@ -492,6 +497,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
     rooms,
     pseudo,
     agents,
+    modes,
     approvals,
     sockets,
     memory,
@@ -534,6 +540,8 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
     return reasoning === 'auto' || !!m?.reasoning?.efforts.includes(reasoning);
   };
 
+  const knownModes = (ids: string[]) => ids.every((id) => modes().has(id));
+
   /**
    * A data-policy change needs an idle chat (decision 14; phase-20 decision 15 lets a model
    * change through). Synchronous, like the row write after it: no prompt can start between the
@@ -542,7 +550,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
   const assertIdle = (chatId: string) => {
     if (registry.running(chatId)) throw new RunActive();
   };
-  send(socket, agentsState(agents()));
+  send(socket, agentsState(agents(), modes()));
   send(socket, { type: 'fx.state', rate: fx.get() });
   // A reload must not lose open approvals.
   for (const r of approvals.list()) send(socket, r);
@@ -889,8 +897,8 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
           reasoning: src.reasoning,
           // Consent for `open` was for the source chat only (phase-10 proof 1).
           dataPolicy: 'zdr',
-          // The copied replies hold markers: the trial goes on in the fork.
-          confidence: src.confidence,
+          // The copied replies may hold confidence markers: the modes go on in the fork.
+          modes: src.modes,
           sessionPath: src.sessionPath,
           forkedFromChatId: src.id,
           forkedFromMessageId: edited.id,
@@ -933,7 +941,8 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
         if (!agents().has(msg.agentId)) throw new NotFound();
         if (msg.topicId) ownTopic(msg.topicId);
         const choice = msg.model ?? { modelId: 'auto', reasoning: 'auto' };
-        if (!validChoice(choice)) return send(socket, errorMsg('bad_message'));
+        if (!validChoice(choice) || !knownModes(msg.modes ?? []))
+          return send(socket, errorMsg('bad_message'));
         // No Auto in the catalog (offline first start): the profile's alias, so chats still work.
         const model =
           choice.modelId === 'auto' && !catalog.get(AUTO_MODEL)
@@ -945,7 +954,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
           agentId: msg.agentId,
           ...model,
           dataPolicy: 'zdr',
-          confidence: false,
+          modes: msg.modes ? [...new Set(msg.modes)] : null,
         } as const;
         // Session first: a failed build leaves no chat row behind.
         const session = await registry.create(id, chat);
@@ -1048,10 +1057,11 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
         await registry.evict(msg.chatId);
         return;
       }
-      // Phase-21 decision 4: as `chat.setModel`, also during a run; the next turn has the prompt.
-      case 'chat.setConfidence':
+      // Phase-23 decision 6: as `chat.setModel`, also during a run; the next turn has the prompt.
+      case 'chat.setModes':
         owned(msg.chatId);
-        update(msg.chatId, { confidence: msg.on });
+        if (!knownModes(msg.modes)) return send(socket, errorMsg('bad_message', msg.chatId));
+        update(msg.chatId, { modes: [...new Set(msg.modes)] });
         await registry.evict(msg.chatId);
         return;
       // Also during a run: the next tool call reads it; an open card stays open.
