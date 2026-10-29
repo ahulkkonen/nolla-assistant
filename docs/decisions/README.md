@@ -33,3 +33,4 @@ The build plan is `docs/plan.md`. Section numbers in records refer to it.
 - `phase-24-edit-in-place.md`: edit a user message in place as a version (sibling user entries in the Pi session tree, `pa-leaf`), the version switcher, what readers see.
 - `phase-25-harness-tools.md`: `profile_edit`, `automation_edit` and `chat_read` behind a mandatory card with a diff or YAML view, the audit trail, and `fetch_url` in place of the `web-digest` skill.
 - `phase-26-waiting-keyboard.md`: the waiting line "Vaiheet" (`message.phase` sent and headers, the receipt with stored times), the thread that keeps its bottom when an Android keyboard opens, and send that keeps the keyboard open.
+- `phase-27-streaming.md`: the streaming reply: one article from the live reply to the final message, deltas batched per frame, the caret on the last character and its breathing, a thread that does not render per delta, held-back tables and emphasis, and any upward scroll that stops the follow.
