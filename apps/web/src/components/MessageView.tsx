@@ -358,22 +358,41 @@ export const rehypeConfidence = () => (tree: HNode) => {
   walk(tree);
 };
 
-/** Rehype plugin: the streaming caret after the last character (brief 7.5). */
-const rehypeCaret = () => (tree: HNode) => {
-  let parent: HNode | undefined;
+/**
+ * Rehype plugin: the streaming caret right after the last visible character (brief 7.5; phase
+ * 27). Whitespace-only text (the "\n" between list items and table rows) does not count, and the
+ * newline at the end of a code block stays after the caret, so the caret never takes a line of
+ * its own. An empty code block at the end takes it in its `code`; an empty tree at its end.
+ */
+export const rehypeCaret = () => (tree: HNode) => {
+  let at: { parent: HNode; i?: number } = { parent: tree };
   const walk = (n: HNode) => {
-    const last = n.children?.at(-1);
-    if (!last) return;
-    if (last.type === 'text') parent = n;
-    else walk(last);
+    const code = n.tagName === 'pre' && n.children?.find((c) => c.tagName === 'code');
+    if (code) at = { parent: code };
+    n.children?.forEach((c, i) => {
+      if (c.type === 'text' && /\S/.test(c.value ?? '')) at = { parent: n, i };
+      else walk(c);
+    });
   };
   walk(tree);
-  (parent ?? tree).children?.push({
+  const caret = {
     type: 'element',
     tagName: 'span',
     properties: { className: ['caret'], ariaHidden: 'true' },
     children: [],
-  });
+  };
+  const kids = (at.parent.children ??= []);
+  if (at.i === undefined) return void kids.push(caret);
+  const value = kids[at.i]?.value ?? '';
+  const end = value.trimEnd().length;
+  const rest = value.slice(end);
+  kids.splice(
+    at.i,
+    1,
+    { type: 'text', value: value.slice(0, end) },
+    caret,
+    ...(rest ? [{ type: 'text', value: rest }] : []),
+  );
 };
 
 /** Rehype plugin: the live tail ends inside a fence; its block is the last `pre` (decision 8). */
@@ -442,8 +461,12 @@ export const MarkdownText = memo(function MarkdownText({
     () => (live ? [...rehype, ...(open ? [rehypeOpenFence] : []), rehypeCaret] : rehype),
     [rehype, live, open],
   );
+  // Phase 27: new text flips it, which restarts the caret's wait before it breathes (tokens.css).
+  // A ref, not state: one render per change.
+  const tick = useRef({ text, n: 0 });
+  if (tick.current.text !== text) tick.current = { text, n: tick.current.n ^ 1 };
   return (
-    <div className="md break-words">
+    <div className="md break-words" data-tick={live ? tick.current.n : undefined}>
       {blocks.map((b, i) => (
         <Block
           key={i}

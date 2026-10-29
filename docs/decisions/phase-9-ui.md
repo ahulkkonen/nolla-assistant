@@ -295,7 +295,7 @@ Source: bubble shape, flat assistant text, hover actions, tool and subagent rows
 | Dropdown, popover, tooltip | 120 ms fade + scale 0.97 → 1 from the trigger side (chosen) | `ease-out`; tooltip open delay 500 ms, close 0 |
 | Collapsible (tool rows) | 150 ms height | `ease-out` (chosen) |
 | Message appear | 150 ms opacity only, no slide | `ease-out` |
-| Streaming caret | blink 1 s `steps(2)` | — |
+| Streaming caret (phase 27) | solid while text arrives; 400 ms after the last text it breathes: 1.4 s loop, opacity 1 → 0.2 → 1 | `ease-in-out` |
 | Hover color | 100 ms | `ease-out` |
 | Recording ring | 1.2 s loop, scale 1 → 1.35, opacity 0.6 → 0 | `ease-out` (chosen) |
 | Skeleton | 1.5 s opacity pulse | `ease-in-out` |

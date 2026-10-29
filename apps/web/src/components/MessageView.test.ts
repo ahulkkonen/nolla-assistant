@@ -1,8 +1,9 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import Markdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { expect, test } from 'vitest';
-import { rehypeConfidence } from './MessageView.tsx';
+import { rehypeCaret, rehypeConfidence } from './MessageView.tsx';
 
 const html = (md: string) =>
   renderToStaticMarkup(createElement(Markdown, { rehypePlugins: [rehypeConfidence] }, md));
@@ -24,4 +25,38 @@ test('rehypeConfidence: a marker inside bold wraps the bold text node; code stay
 test('rehypeConfidence: an unterminated marker at the end of the last text is hidden', () => {
   expect(html('Eka.⟦8⟧ Toka.⟦')).toBe(`<p>${conf(88, 8, 'Eka.')} Toka.</p>`);
   expect(html('Eka.⟦8⟧ Toka.⟦6')).toBe(`<p>${conf(88, 8, 'Eka.')} Toka.</p>`);
+});
+
+const CARET = '<span class="caret" aria-hidden="true"></span>';
+const live = (md: string) =>
+  renderToStaticMarkup(
+    createElement(Markdown, { remarkPlugins: [remarkGfm], rehypePlugins: [rehypeCaret] }, md),
+  );
+
+test('rehypeCaret: after the last character of prose, inside its inline element', () => {
+  expect(live('Eka kappale.\n\nToka **lihava')).toBe(
+    `<p>Eka kappale.</p>\n<p>Toka **lihava${CARET}</p>`,
+  );
+  expect(live('Toka **lihava**')).toBe(`<p>Toka <strong>lihava${CARET}</strong></p>`);
+});
+
+test('rehypeCaret: in the last list item and table cell, not on a line under them', () => {
+  expect(live('- yksi\n- kaksi')).toBe(`<ul>\n<li>yksi</li>\n<li>kaksi${CARET}</li>\n</ul>`);
+  expect(live('| a | b |\n| - | - |\n| 1 |')).toMatch(
+    new RegExp(`<td>1${CARET}</td>\\s*<td></td>\\s*</tr>\\s*</tbody>\\s*</table>$`),
+  );
+});
+
+test('rehypeCaret: after the last code character, before the block’s closing newline', () => {
+  expect(live('```ts\nconst a = 1;\nlet b')).toBe(
+    `<pre><code class="language-ts">const a = 1;\nlet b${CARET}\n</code></pre>`,
+  );
+  // An empty code block at the end takes the caret, not the text above it.
+  expect(live('Koodi:\n```ts\n')).toBe(
+    `<p>Koodi:</p>\n<pre><code class="language-ts">${CARET}</code></pre>`,
+  );
+});
+
+test('rehypeCaret: an empty tail keeps the caret at its end', () => {
+  expect(live('')).toBe(CARET);
 });

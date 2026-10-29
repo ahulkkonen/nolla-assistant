@@ -124,7 +124,7 @@ const axe = async (page: Page, name: string) => {
 };
 
 const shot = async (page: Page, screen: string, w: number, scheme: string) => {
-  // The streaming caret stays on: its blink must not decide whether a shot shows it. The waiting
+  // The streaming caret stays solid: its breathing must not decide how a shot shows it. The waiting
   // line's highlight (phase 26) holds half way across its word, so every shot shows it alike.
   await page.addStyleTag({
     content:
