@@ -1504,7 +1504,9 @@ for (const scheme of ['light', 'dark'] as const) {
           await app.login(page);
           await send(page, 'Hei');
           // A failed reply is an inline alert in the thread, not a toast (brief 7.5).
-          await expect(page.getByRole('alert').getByText('Mallikutsu epäonnistui (500)')).toBeVisible({
+          await expect(
+            page.getByRole('alert').getByText('Mallikutsu epäonnistui (500)'),
+          ).toBeVisible({
             timeout: 30_000,
           });
           await shot(page, 'error-toast', vp.width, scheme);

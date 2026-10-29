@@ -1,8 +1,8 @@
 ---
 name: web-digest
-description: Fetch one web page from any host and summarise it. Use when the user gives a URL and asks what it says. Fetch only the URL the user gave.
+description: Fetch one web page and summarise it. Use when the user gives a URL and asks what it says. Fetch only the URL the user gave.
 sandbox:
-  network: internet
+  network: [example.com, "*.wikipedia.org"]
 ---
 
 # Web digest

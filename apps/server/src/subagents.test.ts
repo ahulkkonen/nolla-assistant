@@ -67,3 +67,15 @@ test("phase-22 decision 7: a child's tool passes without a card while the parent
     'approval.resolved',
   ]);
 });
+
+test("an unattended chat: a child's listed tool passes, others are denied at once without a card", async () => {
+  const sent: string[] = [];
+  const a = approvals((_chatId, msg) => sent.push(msg.type));
+  const ask = childAsk(a.ask, 'c1', []);
+  const req = (tool: string) => ({ chatId: 'c1', tool, args: {}, reason: 'r', expiresAt: '' });
+  const signal = new AbortController().signal;
+  a.unattended.set('c1', ['write']);
+  await expect(ask(req('write'), signal)).resolves.toBe(true);
+  await expect(ask(req('bash'), signal)).resolves.toBe(false);
+  expect(sent).toEqual([]);
+});

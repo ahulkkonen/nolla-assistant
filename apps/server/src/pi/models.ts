@@ -283,11 +283,17 @@ const zdrRefusalText = (m: string) =>
 
 /**
  * The HTTP status of a failed model call from Pi's error text, which has no structured status:
- * `formatProviderError` writes "<status>: …" or "<prefix> (<status>): …", maybe after a short
- * prefix (LiteLLM's exception name).
+ * `formatProviderError` writes "<status>: …" or "<prefix> (<status>): …", the OpenAI SDK
+ * "<status> …", maybe after LiteLLM's exception name ("litellm.NotFoundError: 404 …"); LiteLLM can
+ * also wrap `"<status>: {…`. Any other number ("Exceeded 500 requests") is no status.
  */
 export const providerStatus = (errorMessage: string | undefined): number | undefined => {
-  const status = errorMessage && /^\D{0,40}\b([45]\d\d)\b/.exec(errorMessage)?.[1];
+  const status =
+    errorMessage &&
+    /^(?:[\w.]+: )?([45]\d\d)[: ]|^[^():\n]{1,80} \(([45]\d\d)\): |"([45]\d\d): \{/
+      .exec(errorMessage)
+      ?.slice(1)
+      .find(Boolean);
   return status ? Number(status) : undefined;
 };
 

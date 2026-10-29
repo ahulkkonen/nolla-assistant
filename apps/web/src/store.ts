@@ -390,7 +390,7 @@ export const errorText = (code: string, message: string) => ERROR_TEXT[code] ?? 
 
 /** Finnish text per server error code; unknown codes show the server text. */
 const ERROR_TEXT: Record<string, string> = {
-  llm_failed: 'Mallin kutsu epäonnistui.',
+  llm_failed: 'Mallikutsu epäonnistui.',
   prompt_failed: 'Viestin lähetys epäonnistui.',
   not_found: 'Keskustelua ei löydy.',
   bad_message: 'Virheellinen viesti.',
@@ -407,7 +407,7 @@ const ERROR_TEXT: Record<string, string> = {
 
 /** Inline failed-reply text; the alert's "Yritä uudelleen" button says what to do. */
 export const FAILED_TEXT = {
-  llm_failed: 'Mallin kutsu epäonnistui.',
+  llm_failed: 'Mallikutsu epäonnistui.',
   prompt_failed: 'Viestin lähetys epäonnistui.',
 };
 type FailedCode = keyof typeof FAILED_TEXT;
@@ -415,7 +415,9 @@ type FailedCode = keyof typeof FAILED_TEXT;
 export type Failure = { code: FailedCode; status?: number; detail?: string };
 /** "Mallikutsu epäonnistui (404)" when the provider gave a status, else the code's own text. */
 export const failedText = (f: Failure) =>
-  f.status === undefined ? FAILED_TEXT[f.code] : `Mallikutsu epäonnistui (${f.status})`;
+  f.status === undefined
+    ? FAILED_TEXT[f.code]
+    : `${FAILED_TEXT.llm_failed.slice(0, -1)} (${f.status})`;
 
 /** What a new turn ends in a chat: decided approvals, the memory chip and both inline alerts. */
 const endTurn = (st: State, chatId: string) => ({

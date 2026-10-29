@@ -96,7 +96,7 @@ describe.skipIf(!hasDocker)(hasDocker ? 'sandbox broker (docker)' : `sandbox ${S
     if (b.status !== 0) throw new Error(`skill-runner build failed:\n${b.stderr}`);
     // realpath: Docker Desktop resolves bind sources on the host (/var -> /private/var on macOS).
     dataDir = realpathSync(mkdtempSync(join(tmpdir(), 'pa-sandbox-')));
-    // A fixture skill with a host list: `web-digest` fetches any host since phase 22.
+    // A fixture skill with a host list, so the tests do not depend on a bundled skill.
     const skillsDir = join(dataDir, 'skills');
     mkdirSync(join(skillsDir, 'allowlist'), { recursive: true });
     writeFileSync(
@@ -343,7 +343,10 @@ describe('skill policy and host matching', () => {
     expect(make('d', '["not a host"]')).toBe('none');
     expect(make('e', '["*"]')).toBe('none');
     expect(skillPolicy(dir, 'missing').network).toBe('none');
-    // Phase-22 decision 9: the bundled `web-digest` fetches any host.
-    expect(skillPolicy(join(root, 'skills'), 'web-digest').network).toBe('internet');
+    // The bundled `web-digest` keeps its host allowlist.
+    expect(skillPolicy(join(root, 'skills'), 'web-digest').network).toEqual([
+      'example.com',
+      '*.wikipedia.org',
+    ]);
   });
 });

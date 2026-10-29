@@ -520,7 +520,7 @@ test("phase-22 decision 2: OpenRouter's explicit ZDR refusals match with or with
   expect(isZdrRefusal(zdr, '0 endpoints out of 4 requested', catalog)).toBe(false);
 });
 
-test('phase-22 decision 1: providerStatus reads the status near the start of the error text', () => {
+test('phase-22 decision 1: providerStatus reads only a status-shaped number', () => {
   expect(providerStatus('404: {"code":404}')).toBe(404);
   expect(providerStatus('OpenAI API error (429): rate limited')).toBe(429);
   expect(providerStatus('litellm.NotFoundError: 404 not found')).toBe(404);
@@ -528,5 +528,9 @@ test('phase-22 decision 1: providerStatus reads the status near the start of the
   expect(providerStatus(`${'x'.repeat(41)} 404`)).toBeUndefined();
   expect(providerStatus('Connection error.')).toBeUndefined();
   expect(providerStatus('200 tokens over limit')).toBeUndefined();
+  expect(providerStatus('litellm.APIError: {"error":"503: {\\"code\\":503}"}')).toBe(503);
+  // A number in the text is not a status.
+  expect(providerStatus('Exceeded 500 requests per minute')).toBeUndefined();
+  expect(providerStatus('Rate limit: 429 requests left today')).toBeUndefined();
   expect(providerStatus(undefined)).toBeUndefined();
 });

@@ -22,9 +22,12 @@ const TAIL_CHARS = 8000;
 // ponytail: the search threshold (`RELATED_MIN`) reused for short names; re-check with real proposals.
 export const PROPOSAL_DUPLICATE_MIN = 0.86;
 
-/** Whether `v` is a duplicate of one of `others`. The vectors are normalized: the dot product is the cosine. */
+/** The vectors are normalized: the dot product is the cosine. */
+const cosine = (v: Float32Array, o: Float32Array) =>
+  v.reduce((sum, x, i) => sum + x * (o[i] ?? 0), 0);
+/** Whether `v` is a duplicate of one of `others`. */
 export const nearDuplicate = (v: Float32Array, others: Float32Array[]) =>
-  others.some((o) => v.reduce((sum, x, i) => sum + x * (o[i] ?? 0), 0) >= PROPOSAL_DUPLICATE_MIN);
+  others.some((o) => cosine(v, o) >= PROPOSAL_DUPLICATE_MIN);
 
 export const SYSTEM_PROMPT = `Olet keskustelujen luokittelija. Saat käyttäjän aihelistan ja keskustelun lopun. Vastaa pelkällä JSON-objektilla, ilman muuta tekstiä:
 {"title": string, "topics": [string], "proposed_topic": {"name": string, "why": string} | null, "summary": string}
@@ -127,20 +130,29 @@ async function duplicateProposal(
   db: Db,
   userId: string,
   name: string,
-  list: { name: string }[],
+  list: { id: string; name: string }[],
   log: FastifyBaseLogger,
 ) {
   const open = db
-    .select({ name: topicProposals.name })
+    .select({ id: topicProposals.id, name: topicProposals.name })
     .from(topicProposals)
     .where(and(eq(topicProposals.userId, userId), eq(topicProposals.status, 'pending')))
     .all();
-  const names = [...list, ...open].map((t) => t.name);
+  const items = [...list, ...open];
+  const names = items.map((t) => t.name);
   if (!names.length) return false;
   try {
     // e5 wants `query: ` on both sides for a symmetric comparison.
     const [v, ...others] = await embed([name, ...names], 'query');
-    return nearDuplicate(v as Float32Array, others);
+    if (!nearDuplicate(v as Float32Array, others)) return false;
+    const scores = others.map((o) => cosine(v as Float32Array, o));
+    const score = Math.max(...scores);
+    // Ids and the score only: names are user text.
+    log.warn(
+      { score, matchId: items[scores.indexOf(score)]?.id },
+      'topic proposal dropped as duplicate',
+    );
+    return true;
   } catch (err) {
     log.warn({ error: err instanceof Error ? err.name : 'unknown' }, 'proposal embedding failed');
     return names.includes(name);

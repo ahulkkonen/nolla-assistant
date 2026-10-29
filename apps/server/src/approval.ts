@@ -30,12 +30,18 @@ const autoApproved = (
 
 /**
  * The `ask` of a chat's subagent children (phase-22 decision 7): a child's tool that the parent
- * chat's toggle lets run passes without a card.
+ * chat's toggle lets run passes without a card. In an unattended chat no one sees a card: only the
+ * listed tools pass, the others are denied at once.
  */
 export const childAsk =
   (ask: GateAsk, chatId: string, autoTools: string[]): Ask =>
-  (req, signal) =>
-    autoApproved(ask, chatId, autoTools, req.tool) ? Promise.resolve(true) : ask(req, signal);
+  (req, signal) => {
+    const unattended = ask.unattended?.get(chatId);
+    if (unattended) return Promise.resolve(unattended.includes(req.tool));
+    return autoApproved(ask, chatId, autoTools, req.tool)
+      ? Promise.resolve(true)
+      : ask(req, signal);
+  };
 
 /**
  * Inline extension on `tool_call`. Tools in `policy.always` wait for the user; tools in
