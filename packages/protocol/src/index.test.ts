@@ -26,6 +26,7 @@ import {
   TreeMove,
   TreeQuery,
   TreeSaveArtifact,
+  Versions,
   WEB_SEARCH_TOOL,
 } from './index.ts';
 
@@ -320,6 +321,19 @@ describe('thread depth (phase-13)', () => {
     expect(
       ClientMessage.safeParse({ type: 'thinking.get', chatId: 'c1', messageId: 'e1' }).success,
     ).toBe(true);
+  });
+  it('chat.edit and chat.version parse; Versions refuses count 1', () => {
+    const edit = { type: 'chat.edit', chatId: 'c1', messageId: 'e1', text: 'uusi', localId: 'l1' };
+    expect(ClientMessage.safeParse(edit).success).toBe(true);
+    expect(ClientMessage.safeParse({ ...edit, text: '' }).success).toBe(false);
+    expect(ClientMessage.safeParse({ ...edit, extra: 1 }).success).toBe(false);
+    const version = { type: 'chat.version', chatId: 'c1', messageId: 'e1', index: 2 };
+    expect(ClientMessage.safeParse(version).success).toBe(true);
+    expect(ClientMessage.safeParse({ ...version, index: 0 }).success).toBe(false);
+    expect(ClientMessage.safeParse({ ...version, index: 1.5 }).success).toBe(false);
+    expect(Versions.safeParse({ index: 2, count: 2 }).success).toBe(true);
+    expect(Versions.safeParse({ index: 1, count: 1 }).success).toBe(false);
+    expect(Versions.safeParse({ index: 3, count: 2 }).success).toBe(false);
   });
   it('a message carries usage and thinking; both stay optional', () => {
     const message = {

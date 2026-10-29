@@ -239,6 +239,13 @@ export const ToolRow = z.object({
 });
 export type ToolRow = z.infer<typeof ToolRow>;
 
+/** Phase 24: the place of a user message among its versions; set only when count > 1. */
+export const Versions = z
+  .object({ index: z.int().min(1), count: z.int().min(2) })
+  .strict()
+  .refine((v) => v.index <= v.count, 'index must not exceed count');
+export type Versions = z.infer<typeof Versions>;
+
 export const Message = z.object({
   id: z.string(),
   role: z.enum(['user', 'assistant']),
@@ -259,6 +266,8 @@ export const Message = z.object({
     .object({ queueMs: z.int().min(0).optional(), writeMs: z.int().min(0).optional() })
     .strict()
     .optional(),
+  /** Phase 24: on a user message that has more than one version. */
+  versions: Versions.optional(),
 });
 export type Message = z.infer<typeof Message>;
 
@@ -460,6 +469,8 @@ export const ChatExport = z.object({
       /** The artifacts in `text`; they also stay in it as fenced code blocks. */
       artifacts: z.array(Artifact.omit({ id: true })),
       usage: CallUsage.optional(),
+      /** Phase 24: on a user message that has more than one version. */
+      version: Versions.optional(),
     }),
   ),
 });
@@ -946,6 +957,27 @@ export const ClientMessage = z.discriminatedUnion('type', [
     /** The client's id for the edited text in the new chat (`message.accepted`). */
     localId: z.string().max(64).optional(),
   }),
+  /** Phase 24 "Lähetä": a new version of `messageId` in the same session, which then runs. */
+  z
+    .object({
+      type: z.literal('chat.edit'),
+      chatId: id64,
+      /** A user message entry on the chat's shown branch. */
+      messageId: id64,
+      text: z.string().min(1).max(100_000),
+      /** The client's id for the edited text (`message.accepted`). */
+      localId: z.string().max(64).optional(),
+    })
+    .strict(),
+  /** Phase 24 "‹ ›": show version `index` (1-based) of `messageId` and its newest branch. */
+  z
+    .object({
+      type: z.literal('chat.version'),
+      chatId: id64,
+      messageId: id64,
+      index: z.int().min(1).max(1000),
+    })
+    .strict(),
   z.object({ type: z.literal('thinking.get'), chatId: id64, messageId: id64 }),
   z.object({ type: z.literal('usage.get'), month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/) }),
   z.object({ type: z.literal('ping') }),
@@ -1004,6 +1036,8 @@ export const ServerMessage = z.discriminatedUnion('type', [
     /** Phase 17: claims this chat activated at once in the last 7 days (the chip). */
     claims: z.array(ClaimChip).optional(),
     autoApprove: AutoApprove.optional(),
+    /** Phase 24: true on the answer to `chat.version` (the panel adopts no new artifacts). */
+    switched: z.boolean().optional(),
   }),
   z.object({ type: z.literal('chat.list'), chats: z.array(ChatSummary) }),
   z.object({ type: z.literal('chat.created'), chat: ChatSummary }),
