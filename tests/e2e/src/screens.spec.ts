@@ -124,8 +124,12 @@ const axe = async (page: Page, name: string) => {
 };
 
 const shot = async (page: Page, screen: string, w: number, scheme: string) => {
-  // The streaming caret stays on: its blink must not decide whether a shot shows it.
-  await page.addStyleTag({ content: '.md .caret { animation: none !important; }' });
+  // The streaming caret stays on: its blink must not decide whether a shot shows it. The waiting
+  // line's highlight (phase 26) holds half way across its word, so every shot shows it alike.
+  await page.addStyleTag({
+    content:
+      '.md .caret { animation: none !important; } .sweep { animation-delay: -0.9s !important; animation-play-state: paused !important; }',
+  });
   // Let transitions settle.
   await page.waitForTimeout(400);
   const noScroll = await page.evaluate(
@@ -546,16 +550,70 @@ for (const scheme of ['light', 'dark'] as const) {
           });
         };
 
-        test('thinking-live', async ({ app, page }) => {
+        // Phase 26: the waiting line ("Vaiheet") and the receipt; 390 and 1440.
+        /** The client's clock, held: the line counts from this time. */
+        const at = (page: Page, s: number) =>
+          page.clock.setFixedTime(new Date(2026, 9, 29, 10, 0, s));
+
+        test('waiting-queue', async ({ app, page }) => {
+          test.skip(vp.width === 1024, 'Shot at 390 and 1440.');
+          // The provider holds the headers: the line counts the queue on the client's clock.
+          app.llm.push({ ...THINKING_TURN, queueMs: 60_000 });
+          await at(page, 0);
+          await app.login(page);
+          await sendMessage(page, 'Milloin kasvimaa kannattaa aloittaa?');
+          await expect(
+            thread(page)
+              .getByText(/^jonossa \d+ s$/)
+              .first(),
+          ).toBeVisible();
+          await at(page, 12);
+          await expect(thread(page).getByText('jonossa 12 s').first()).toBeVisible();
+          await shot(page, 'waiting-queue', vp.width, scheme);
+        });
+
+        test('waiting-thinking', async ({ app, page }) => {
+          test.skip(vp.width === 1024, 'Shot at 390 and 1440.');
           app.llm.push({ ...THINKING_TURN, thinkMs: 20_000 });
           const hold = await holdAfter(page, 'message.thinking');
+          await at(page, 0);
           await app.login(page);
           await sendMessage(page, 'Milloin kasvimaa kannattaa aloittaa?');
           await hold.reached;
-          await expect(thread(page).getByText(/^Ajattelee… \d+ s$/)).toBeVisible();
-          await page.waitForTimeout(1200);
-          await shot(page, 'thinking-live', vp.width, scheme);
+          await expect(
+            thread(page)
+              .getByText(/^ajattelee \d+ s$/)
+              .first(),
+          ).toBeVisible();
+          await at(page, 3);
+          await expect(thread(page).getByText('ajattelee 3 s').first()).toBeVisible();
+          await shot(page, 'waiting-thinking', vp.width, scheme);
           hold.release();
+        });
+
+        test('reply-receipt', async ({ app, page }) => {
+          test.skip(vp.width === 1024, 'Shot at 390 and 1440.');
+          app.llm.push({ ...THINKING_TURN, queueMs: 2000 });
+          app.llm.push(titleTurn('Kasvimaa', 'Käyttäjä kysyi kasvimaasta.'));
+          await app.login(page);
+          await sendMessage(page, 'Milloin kasvimaa kannattaa aloittaa?');
+          await expect(page.locator('.md').last()).toHaveText(THINKING_TURN.text, {
+            timeout: 15_000,
+          });
+          await expect(page.getByText('Kasvimaa', { exact: true }).first()).toBeVisible({
+            timeout: 15_000,
+          });
+          const reply = thread(page).locator('[data-message-id]').last();
+          if (phone) {
+            // Phones: no room beside the meta; the long-press sheet carries the receipt.
+            await reply.locator('.md').dispatchEvent('pointerdown', { pointerType: 'touch' });
+            await expect(page.getByRole('dialog', { name: 'Viestin toiminnot' })).toBeVisible();
+            await expect(page.getByRole('dialog').getByText('Jonotti 2 s')).toBeVisible();
+          } else {
+            await expect(reply.getByText(/^Jonotti 2 s$/)).toBeVisible();
+            await blur(page);
+          }
+          await shot(page, 'reply-receipt', vp.width, scheme);
         });
 
         test('thinking-closed', async ({ app, page }) => {

@@ -45,6 +45,53 @@ describe('store reducers', () => {
     expect(st.messages.c).toEqual([message]);
   });
 
+  it('phase 26: the waiting line follows the real events and goes at idle', () => {
+    vi.useFakeTimers({ now: 0 });
+    const { apply } = useStore.getState();
+    const at = (ms: number) => vi.setSystemTime(ms);
+    const w = () => useStore.getState().waits.c;
+    apply({ type: 'agent.status', chatId: 'c', state: 'running' });
+    expect(w()).toMatchObject({ step: 0, accepted: false });
+    apply({ type: 'message.accepted', chatId: 'c', localId: 'l', messageId: 'e' });
+    expect(w()?.accepted).toBe(true);
+    at(1000);
+    apply({ type: 'message.phase', chatId: 'c', messageId: 's', phase: 'sent', at: 1 });
+    expect(w()).toMatchObject({ step: 1, since: 1000, queued: 0 });
+    at(15_000);
+    apply({ type: 'message.phase', chatId: 'c', messageId: 's', phase: 'headers', at: 2 });
+    expect(w()).toMatchObject({ step: 2, queued: 14_000 });
+    apply({ type: 'message.thinking', chatId: 'c', messageId: 's', active: true });
+    at(18_000);
+    apply({ type: 'message.thinking', chatId: 'c', messageId: 's', active: false });
+    expect(w()).toMatchObject({ thought: 3000, thinking: undefined });
+    apply({ type: 'message.delta', chatId: 'c', messageId: 's', text: 'Hei', annotations: [] });
+    expect(w()).toMatchObject({ step: 3, writing: 18_000 });
+    // A tool call after the text: the thinking slot says "työkalu" while it runs.
+    apply({ type: 'tool.start', chatId: 'c', callId: 't', name: 'read', argsPreview: '' });
+    expect(w()).toMatchObject({ step: 2, tool: 18_000 });
+    apply({ type: 'tool.end', chatId: 'c', callId: 't', status: 'ok', summary: '' });
+    expect(w()?.tool).toBeUndefined();
+    const message: Message = {
+      id: 'e1',
+      role: 'assistant',
+      text: 'Hei',
+      annotations: [],
+      attachments: [],
+      tools: [{ callId: 't', name: 'read', status: 'ok', summary: '' }],
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+    // A round with a tool call: another one follows, the live turn stays.
+    apply({ type: 'message.final', chatId: 'c', message });
+    expect(w()?.ended).toBe(false);
+    apply({ type: 'message.phase', chatId: 'c', messageId: 's2', phase: 'sent', at: 3 });
+    expect(w()).toMatchObject({ step: 1, writing: undefined });
+    apply({ type: 'message.final', chatId: 'c', message: { ...message, id: 'e2', tools: [] } });
+    expect(w()?.ended).toBe(true);
+    apply({ type: 'agent.status', chatId: 'c', state: 'idle' });
+    expect(w()).toBeUndefined();
+    vi.useRealTimers();
+  });
+
   it('converts chunk-relative delta annotations to message offsets', () => {
     const { apply } = useStore.getState();
     const a = (start: number, end: number) => ({ start, end, entityId: 1, modelSaw: 'Pekka' });

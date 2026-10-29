@@ -218,6 +218,14 @@ export const Message = z.object({
   usage: CallUsage.optional(),
   /** Set when the message has thinking text; the text loads with `thinking.get`. */
   thinking: z.object({ ms: z.int().min(0).nullable() }).optional(),
+  /**
+   * Phase 26: the wait before the response headers (`message.phase` sent to headers) and the time
+   * from the first text token to the end. Messages stored before phase 26 have none.
+   */
+  phases: z
+    .object({ queueMs: z.int().min(0).optional(), writeMs: z.int().min(0).optional() })
+    .strict()
+    .optional(),
 });
 export type Message = z.infer<typeof Message>;
 
@@ -977,6 +985,19 @@ export const ServerMessage = z.discriminatedUnion('type', [
     localId: z.string(),
     messageId: id64,
   }),
+  /**
+   * Phase 26: the model call of the streamed message `messageId` (stream id) is sent (`sent`), or
+   * its response headers came (`headers`). `at`: server time, epoch ms.
+   */
+  z
+    .object({
+      type: z.literal('message.phase'),
+      chatId: id64,
+      messageId: id64,
+      phase: z.enum(['sent', 'headers']),
+      at: z.int().min(0),
+    })
+    .strict(),
   /** The streamed message `messageId` (stream id) thinks now, or stopped thinking. */
   z.object({
     type: z.literal('message.thinking'),

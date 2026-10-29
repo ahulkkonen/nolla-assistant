@@ -8,12 +8,16 @@ import {
   mdBlocks,
   messageTime,
   nodeText,
+  receiptSteps,
+  replyTiming,
   replyUsage,
   sameLengthLower,
   settleTail,
   sumUsage,
   thoughtFor,
   threadKey,
+  type Wait,
+  waitSteps,
   withDefinitions,
   withRate,
 } from './thread.ts';
@@ -257,6 +261,88 @@ describe('cacheRate and withRate', () => {
       '3 k · välimuisti 75 %',
     );
     expect(withRate('3 k', {})).toBe('3 k');
+  });
+});
+
+describe('waiting line (phase 26)', () => {
+  const wait = (w: Partial<Wait>): Wait => ({
+    step: 0,
+    since: 0,
+    accepted: false,
+    ended: false,
+    ...w,
+  });
+  /** "Word 12 s" per step, `*` on the active one. */
+  const text = (w: Wait, now: number, row = false) =>
+    waitSteps(w, now, row)
+      .map((s) => `${s.on ? '*' : ''}${s.word}${s.ms === undefined ? '' : ` ${duration(s.ms)}`}`)
+      .join(' → ');
+
+  it('steps through sending, the queue, thinking and writing', () => {
+    expect(text(wait({}), 100)).toBe('*lähetetään → jonossa → ajattelee → kirjoittaa');
+    expect(text(wait({ accepted: true }), 100)).toBe(
+      '*lähetetty → jonossa → ajattelee → kirjoittaa',
+    );
+    const queue = wait({ step: 1, since: 1000, accepted: true, queued: 0 });
+    expect(text(queue, 13_400)).toBe('lähetetty → *jonossa 12 s → ajattelee → kirjoittaa');
+    // Headers came, nothing streams yet: the active thinking step has no clock.
+    const work = wait({ step: 2, since: 15_000, queued: 14_000 });
+    expect(text(work, 15_100)).toBe('lähetetty → jonotti 14 s → *ajattelee → kirjoittaa');
+    expect(text({ ...work, thinking: 15_000, thought: 0 }, 18_000)).toBe(
+      'lähetetty → jonotti 14 s → *ajattelee 3 s → kirjoittaa',
+    );
+    expect(text({ ...work, tool: 16_000 }, 18_000)).toBe(
+      'lähetetty → jonotti 14 s → *työkalu 2 s → kirjoittaa',
+    );
+  });
+
+  it('the action row line drops the send step and a thinking that did not happen', () => {
+    const writing = wait({ step: 3, since: 20_000, queued: 14_000, writing: 20_000 });
+    expect(text({ ...writing, thought: 3000 }, 22_000, true)).toBe(
+      'jonotti 14 s → ajatteli 3 s → *kirjoittaa 2 s',
+    );
+    expect(text(writing, 22_000, true)).toBe('jonotti 14 s → *kirjoittaa 2 s');
+    // A queue under a second still happened: at least 1 s, as `duration` writes it.
+    expect(text({ ...writing, queued: 4 }, 22_000, true)).toBe('jonotti 1 s → *kirjoittaa 2 s');
+  });
+
+  it('a later round queues again with the turn total', () => {
+    const again = wait({ step: 1, since: 30_000, queued: 14_000, thought: 3000 });
+    expect(text(again, 32_000)).toBe('lähetetty → *jonossa 16 s → ajattelee → kirjoittaa');
+  });
+
+  it('the receipt lists the phases that happened, a reply with its tool rounds', () => {
+    const steps = (t: Parameters<typeof receiptSteps>[0]) =>
+      receiptSteps(t).map((s) => `${s.word} ${duration(s.ms ?? 0)}`);
+    expect(steps({ queueMs: 14_000, thinkMs: 3000, writeMs: 3000 })).toEqual([
+      'jonotti 14 s',
+      'ajatteli 3 s',
+      'kirjoitti 3 s',
+    ]);
+    expect(steps({ queueMs: 900, writeMs: 1200 })).toEqual(['jonotti 1 s', 'kirjoitti 1 s']);
+    expect(steps({})).toEqual([]);
+    const msg = (id: string, role: 'user' | 'assistant', text: string, extra = {}) => ({
+      id,
+      role,
+      text,
+      ...extra,
+    });
+    const timing = replyTiming(
+      [
+        msg('u1', 'user', 'Hae'),
+        msg('t1', 'assistant', '', { phases: { queueMs: 2000 }, thinking: { ms: 1000 } }),
+        msg('a1', 'assistant', 'Tässä', {
+          phases: { queueMs: 12_000, writeMs: 3000 },
+          thinking: { ms: 2000 },
+        }),
+        // Stored before phase 26: no receipt.
+        msg('u2', 'user', 'Vanha'),
+        msg('a2', 'assistant', 'Vastaus', { thinking: { ms: null } }),
+      ],
+      false,
+    );
+    expect(timing.get('a1')).toEqual({ queueMs: 14_000, thinkMs: 3000, writeMs: 3000 });
+    expect(timing.has('a2')).toBe(false);
   });
 });
 

@@ -2,7 +2,7 @@ import { mkdirSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
   type AgentSession,
-  type AgentSessionEventListener,
+  type AgentSessionEvent,
   createAgentSession,
   DefaultResourceLoader,
   type InlineExtension,
@@ -52,6 +52,14 @@ export const PROFILE_TOOLS = [
   'memory',
   WEB_SEARCH_TOOL,
 ];
+
+/**
+ * Phase 26: Pi gives `before_provider_request` and `after_provider_response` to extensions only;
+ * the registry passes them to the chat's listener as this event, in Pi's order.
+ */
+export type ProviderPhase = { type: 'provider_phase'; phase: 'sent' | 'headers'; at: number };
+export type ChatEvent = AgentSessionEvent | ProviderPhase;
+export type ChatListener = (e: ChatEvent) => void;
 
 /** The chat row fields a session build reads: agent, model policy (phase-10), confidence trial. */
 export type ChatModel = {
@@ -119,6 +127,8 @@ type Entry = {
   session: Promise<AgentSession>;
   lastUsed: number;
   unsubscribe?: () => void;
+  /** The subscribed listener; it also gets the session's `ProviderPhase` events. */
+  listener?: ChatListener;
   /** The policy the session was built with. */
   chat: ChatModel;
   /** The profile object the session was built with; a reload replaces only changed ones. */
@@ -242,9 +252,11 @@ export class SessionRegistry {
   }
 
   /** Subscribes once per open session; the listener is removed on eviction and dispose. */
-  subscribe(chatId: string, session: AgentSession, listener: AgentSessionEventListener): void {
+  subscribe(chatId: string, session: AgentSession, listener: ChatListener): void {
     const e = this.entries.get(chatId);
-    if (e && !e.unsubscribe) e.unsubscribe = session.subscribe(listener);
+    if (!e || e.unsubscribe) return;
+    e.listener = listener;
+    e.unsubscribe = session.subscribe(listener);
   }
 
   async evictIdle(maxIdleMs = 30 * 60_000): Promise<void> {
@@ -526,7 +538,9 @@ export class SessionRegistry {
           : []),
         pathGuard(this.cwd, chatId, this.opts.work),
         // LiteLLM's cost and the thinking time into each assistant message (phase-13).
-        usageExtension({ kind: 'chat', chatId, agentId }, this.opts.onUsage),
+        usageExtension({ kind: 'chat', chatId, agentId }, this.opts.onUsage, (phase, at) =>
+          this.entries.get(chatId)?.listener?.({ type: 'provider_phase', phase, at }),
+        ),
         // Fail closed: without the sidecar nothing could be masked (invariant 1).
         ...(memory && pseudo
           ? [

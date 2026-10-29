@@ -421,6 +421,40 @@
   animation: blink 1s step-end infinite;
 }
 
+/*
+ * Phase 26: the active step of the waiting line. A muted band crosses the word once per 1.8 s.
+ * Reduced motion: no band, the colour marks the step (brief 7.6).
+ */
+@keyframes sweep {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0 0;
+  }
+}
+.sweep {
+  background:
+    linear-gradient(
+      100deg,
+      var(--foreground) 38%,
+      var(--muted-foreground) 50%,
+      var(--foreground) 62%
+    )
+    0 0 / 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: sweep 1.8s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sweep {
+    animation: none;
+    background: none;
+    -webkit-text-fill-color: currentColor;
+  }
+}
+
 /* Phase-21 decision 4: a sentence's confidence as its contrast; --conf 100 is --foreground. */
 .md .conf {
   color: color-mix(in oklch, var(--foreground) calc(var(--conf) * 1%), var(--muted-foreground));

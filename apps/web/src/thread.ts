@@ -87,28 +87,36 @@ type Turnish = {
   role: 'user' | 'assistant';
   text: string;
   usage?: CallUsage | undefined;
+  thinking?: { ms: number | null } | undefined;
+  phases?: { queueMs?: number | undefined; writeMs?: number | undefined } | undefined;
 };
 
 /**
- * Each reply's usage (decision 15): its call plus the tool rounds before it that have no text.
- * Rounds of a turn that ended without a reply (an abort, an error) go to the reply before them,
- * so the replies add up to the chat total; while a turn runs (`running`), its rounds wait.
+ * Each reply's sum of `get` (decision 15): its call plus the tool rounds before it that have no
+ * text. Rounds of a turn that ended without a reply (an abort, an error) go to the reply before
+ * them, so the replies add up to the chat total; while a turn runs (`running`), its rounds wait.
  */
-export function replyUsage(messages: Turnish[], running: boolean) {
-  const out = new Map<string, CallUsage>();
-  let pending: CallUsage[] = [];
+function perReply<T>(
+  messages: Turnish[],
+  running: boolean,
+  get: (m: Turnish) => T | undefined,
+  sum: (list: (T | undefined)[]) => T | undefined,
+) {
+  const out = new Map<string, T>();
+  let pending: T[] = [];
   let lastReply: string | undefined;
   const settle = () => {
-    const merged = lastReply && pending.length && sumUsage([...pending, out.get(lastReply)]);
+    const merged = lastReply && pending.length && sum([...pending, out.get(lastReply)]);
     if (lastReply && merged) out.set(lastReply, merged);
     pending = [];
   };
   for (const m of messages) {
+    const v = get(m);
     if (m.role === 'user') settle();
     else if (!m.text) {
-      if (m.usage) pending.push(m.usage);
+      if (v) pending.push(v);
     } else {
-      const u = sumUsage([...pending, m.usage]);
+      const u = sum([...pending, v]);
       pending = [];
       if (u) out.set(m.id, u);
       lastReply = m.id;
@@ -118,11 +126,114 @@ export function replyUsage(messages: Turnish[], running: boolean) {
   return out;
 }
 
+/** Each reply's usage (decision 15). */
+export const replyUsage = (messages: Turnish[], running: boolean) =>
+  perReply(messages, running, (m) => m.usage, sumUsage);
+
+/** Phase 26: what a reply's receipt says; a phase that did not happen is undefined. */
+export type Timing = { queueMs?: number; thinkMs?: number; writeMs?: number };
+const timingOf = (m: Turnish): Timing | undefined => {
+  const t: Timing = {
+    ...(m.phases?.queueMs !== undefined ? { queueMs: m.phases.queueMs } : {}),
+    ...(m.thinking?.ms != null ? { thinkMs: m.thinking.ms } : {}),
+    ...(m.phases?.writeMs !== undefined ? { writeMs: m.phases.writeMs } : {}),
+  };
+  return Object.keys(t).length ? t : undefined;
+};
+const sumTiming = (list: (Timing | undefined)[]): Timing | undefined => {
+  const out: Timing = {};
+  for (const t of list)
+    for (const k of ['queueMs', 'thinkMs', 'writeMs'] as const) {
+      const v = t?.[k];
+      if (v !== undefined) out[k] = (out[k] ?? 0) + v;
+    }
+  return Object.keys(out).length ? out : undefined;
+};
+/** Each reply's receipt (phase 26), its tool rounds included like its usage. */
+export const replyTiming = (messages: Turnish[], running: boolean) =>
+  perReply(messages, running, timingOf, sumTiming);
+
 /** "12 s", "1 min 5 s"; at least 1 s. */
 export function duration(ms: number) {
   const s = Math.max(1, Math.round(ms / 1000));
   return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${s % 60} s`;
 }
+
+/**
+ * The waiting line of a running chat (phase 26), in client times (ms). `step`: 0 sending, 1 in
+ * the provider's queue, 2 thinking or running a tool, 3 writing; `since`: when it began.
+ */
+export type Wait = {
+  step: 0 | 1 | 2 | 3;
+  since: number;
+  /** `message.accepted` came: "Lähetetty". */
+  accepted: boolean;
+  /** Queue time of the turn's finished rounds; undefined before the first request. */
+  queued?: number | undefined;
+  /**
+   * Finished thinking time of the turn; undefined while it has not thought. `thinking`: it
+   * thinks now, since then.
+   */
+  thought?: number | undefined;
+  thinking?: number | undefined;
+  /** A tool runs, since then. */
+  tool?: number | undefined;
+  /** The first text token of the current message came then. */
+  writing?: number | undefined;
+  /** A final without tool calls came: no round follows, the turn only settles. */
+  ended: boolean;
+};
+
+/** One step of the line: `k` its place (0–3), `on` the active one. */
+export type Step = { k: number; word: string; ms?: number; on?: boolean };
+const NOW = ['lähetetään', 'jonossa', 'ajattelee', 'kirjoittaa'];
+const PAST = ['lähetetty', 'jonotti', 'ajatteli', 'kirjoitti'];
+
+/**
+ * The steps of a wait at `now` (phase 26): "Lähetetty → jonossa 12 s → ajattelee → kirjoittaa".
+ * The active step counts; a past step shows its time, or goes when it did not happen (no
+ * thinking); a later step shows its word only. `row`: the action row's line, without sending.
+ */
+export function waitSteps(w: Wait, now: number, row = false): Step[] {
+  const thought =
+    w.thought === undefined
+      ? undefined
+      : w.thought + (w.thinking === undefined ? 0 : now - w.thinking);
+  const clock = [
+    undefined,
+    w.queued === undefined ? undefined : w.queued + (w.step === 1 ? now - w.since : 0),
+    w.tool !== undefined ? now - w.tool : thought,
+    w.writing === undefined ? undefined : now - w.writing,
+  ];
+  return [0, 1, 2, 3].flatMap((k): Step[] => {
+    if (row && k === 0) return [];
+    const at = clock[k];
+    const ms = at === undefined ? undefined : Math.max(0, at);
+    if (k > w.step) return [{ k, word: NOW[k] ?? '' }];
+    if (k < w.step)
+      return k === 0
+        ? [{ k, word: PAST[0] ?? '' }]
+        : ms === undefined
+          ? []
+          : [{ k, word: PAST[k] ?? '', ms }];
+    const word =
+      k === 0
+        ? w.accepted
+          ? PAST[0]
+          : NOW[0]
+        : k === 2 && w.tool !== undefined
+          ? 'työkalu'
+          : NOW[k];
+    return [{ k, word: word ?? '', on: true, ...(ms === undefined ? {} : { ms }) }];
+  });
+}
+
+/** A finished reply's receipt (phase 26): "Jonotti 14 s → ajatteli 3 s → kirjoitti 3 s". */
+export const receiptSteps = (t: Timing): Step[] =>
+  (['queueMs', 'thinkMs', 'writeMs'] as const).flatMap((key, i) => {
+    const ms = t[key];
+    return ms === undefined ? [] : [{ k: i + 1, word: PAST[i + 1]!, ms }];
+  });
 
 /** The closed thinking row: "Ajatteli 12 s", or "Ajatteli" without a time. */
 export const thoughtFor = (ms: number | null | undefined) =>

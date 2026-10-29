@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from 'node:fs';
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { chats, files, openDb } from '@pa/db';
@@ -184,6 +184,67 @@ test('thinking: live state, Message.thinking with ms, thinking.get restores the 
   // A message without thinking text has no thinking row.
   const plain = (await open(c, chat.id)).messages.at(-1);
   expect(plain?.thinking).toBeUndefined();
+});
+
+test('message.phase: sent, then headers, before the reply streams under the same id (phase 26)', async () => {
+  const { c, chat, srv } = await bootChat([
+    { toolCalls: [{ name: 'read', args: { path: 'note.txt' } }], queueMs: 80 },
+    { text: 'Luin sen.', reasoning: 'Mietin.', thinkMs: 30, queueMs: 60 },
+  ]);
+  writeFileSync(join(srv.registry.cwd, 'note.txt'), 'hei');
+  c.send({ type: 'user.message', chatId: chat.id, text: 'Lue', localId: 'local-1' });
+  await c.idle();
+  const kinds = new Set([
+    'message.accepted',
+    'message.phase',
+    'message.thinking',
+    'message.delta',
+    'tool.start',
+    'tool.end',
+    'message.final',
+  ]);
+  const seen = c.inbox.filter((m) => kinds.has(m.type));
+  const label = (m: (typeof seen)[number]) =>
+    m.type === 'message.phase'
+      ? m.phase
+      : m.type === 'message.thinking'
+        ? `thinking ${m.active}`
+        : m.type;
+  // One request per round: each round's phases come before anything of its message.
+  expect(seen.map(label)).toEqual([
+    'message.accepted',
+    'sent',
+    'headers',
+    'tool.start',
+    'tool.end',
+    'message.final',
+    'sent',
+    'headers',
+    'thinking true',
+    'thinking false',
+    ...seen.filter((m) => m.type === 'message.delta').map(() => 'message.delta'),
+    'message.final',
+  ]);
+  const phases = seen.flatMap((m) => (m.type === 'message.phase' ? [m] : []));
+  const [sent1, headers1, sent2, headers2] = phases;
+  // Each round has its own stream id; the second round's thinking and text use it.
+  expect(headers1?.messageId).toBe(sent1?.messageId);
+  expect(headers2?.messageId).toBe(sent2?.messageId);
+  expect(sent2?.messageId).not.toBe(sent1?.messageId);
+  for (const m of seen)
+    if (m.type === 'message.thinking' || m.type === 'message.delta')
+      expect(m.messageId).toBe(sent2?.messageId);
+  expect((headers1?.at ?? 0) - (sent1?.at ?? 0)).toBeGreaterThanOrEqual(70);
+  expect((headers2?.at ?? 0) - (sent2?.at ?? 0)).toBeGreaterThanOrEqual(50);
+  // The stored message keeps the same wait (the receipt after a reload) and its writing time.
+  const finals = seen.flatMap((m) => (m.type === 'message.final' ? [m.message] : []));
+  expect(finals[0]?.phases).toEqual({ queueMs: (headers1?.at ?? 0) - (sent1?.at ?? 0) });
+  expect(finals[1]?.phases).toEqual({
+    queueMs: (headers2?.at ?? 0) - (sent2?.at ?? 0),
+    writeMs: expect.any(Number),
+  });
+  const stored = (await open(c, chat.id)).messages.filter((m) => m.role === 'assistant');
+  expect(stored.map((m) => m.phases)).toEqual(finals.map((m) => m.phases));
 });
 
 test('usage.get, the summary totals and fx.state at attach', async () => {

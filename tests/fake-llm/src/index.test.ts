@@ -186,3 +186,23 @@ test('zdr/search takes only citations turns and answers with url_citation annota
     await fake.close();
   }
 });
+
+test('queueMs holds the response headers, as a provider queue does (phase 26)', async () => {
+  const fake = await startFakeLlm([{ text: 'myöhässä', queueMs: 120 }]);
+  try {
+    const from = Date.now();
+    const res = await fetch(`${fake.url}/chat/completions`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ model: 'm', stream: true, messages: [] }),
+    });
+    expect(Date.now() - from).toBeGreaterThanOrEqual(110);
+    expect(
+      events(await res.text())
+        .map((e) => e.choices[0].delta.content ?? '')
+        .join(''),
+    ).toBe('myöhässä');
+  } finally {
+    await fake.close();
+  }
+});

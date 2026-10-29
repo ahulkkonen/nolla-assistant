@@ -101,6 +101,68 @@ test('stop: Escape ends a running turn', async ({ app, page }) => {
   await expect(page.getByRole('status', { name: 'Vastaus tulossa' })).toHaveCount(0);
 });
 
+test('waiting line: steps with the real events; the first token takes its place without a move; the receipt stays', async ({
+  app,
+  page,
+}) => {
+  const long = Array.from({ length: 30 }, (_, i) => `Kappale ${i + 1}: pitkä vastaus.`).join(
+    '\n\n',
+  );
+  app.llm.push({ text: long });
+  app.llm.push({ text: 'Kevät on hyvä aika aloittaa.', queueMs: 1500 });
+  // Once armed, holds the server's frames from the next delta on.
+  let armed = false;
+  let holding = false;
+  const held: (string | Buffer)[] = [];
+  let deliver: (m: string | Buffer) => void = () => {};
+  await page.routeWebSocket(/\/ws$/, (ws) => {
+    const server = ws.connectToServer();
+    deliver = (m) => ws.send(m);
+    server.onMessage((m) => {
+      if (armed && typeof m === 'string' && JSON.parse(m).type === 'message.delta') holding = true;
+      if (holding) return void held.push(m);
+      ws.send(m);
+    });
+  });
+  await app.login(page);
+  await send(page, 'Kirjoita pitkästi');
+  await expect(page.locator('.md').last()).toContainText('Kappale 30');
+  await expect(page.getByRole('button', { name: 'Pysäytä' })).toHaveCount(0);
+  armed = true;
+  await send(page, 'Milloin kasvimaa kannattaa aloittaa?');
+  await expect(
+    thread(page)
+      .getByText(/^jonossa \d+ s$/)
+      .first(),
+  ).toBeVisible();
+  await expect(page.getByRole('status', { name: 'Vastaus tulossa' })).toHaveText('Jonossa');
+  await expect.poll(() => held.length).toBeGreaterThan(0);
+  const bubble = thread(page).getByText('Milloin kasvimaa kannattaa aloittaa?', { exact: true });
+  const before = await bubble.boundingBox();
+  // The first token: the text takes the 28 px first line, the line moves into the action row.
+  deliver(held.shift() as string);
+  await expect(page.locator('.md').last()).not.toBeEmpty();
+  await expect(
+    thread(page)
+      .getByText(/^kirjoittaa \d+ s$/)
+      .last(),
+  ).toBeVisible();
+  expect(await bubble.boundingBox()).toEqual(before);
+  [armed, holding] = [false, false];
+  for (const m of held.splice(0)) deliver(m);
+  await expect(page.getByRole('button', { name: 'Pysäytä' })).toHaveCount(0);
+  // The receipt from the stored times; it stays after a reload.
+  const receipt = page
+    .locator('[data-message-id]')
+    .last()
+    .getByText(/^Jonotti \d+ s$/);
+  await expect(receipt).toBeVisible();
+  expect(await bubble.boundingBox()).toEqual(before);
+  await page.reload();
+  await page.locator('nav li > button').first().click();
+  await expect(receipt).toBeVisible();
+});
+
 /** About 2,000 lines of mixed Markdown: headings, paragraphs, lists, tables and code fences. */
 const LONG_MD = Array.from({ length: 125 }, (_, i) =>
   [
@@ -831,14 +893,19 @@ test.describe('thread depth', () => {
     expect(forks).toBe(2);
   });
 
-  test('thinking: live row, then "Ajatteli … s" opens to the text; the switch hides it', async ({
+  test('thinking: the waiting line thinks, then "Ajatteli … s" opens to the text; the switch hides it', async ({
     app,
     page,
   }) => {
     app.llm.push(THINKING_TURN);
     await app.login(page);
     await send(page, 'Milloin kasvimaa kannattaa aloittaa?');
-    await expect(thread(page).getByText(/^Ajattelee… \d+ s$/)).toBeVisible();
+    // Phase 26: the waiting line carries the live thinking.
+    await expect(
+      thread(page)
+        .getByText(/^ajattelee \d+ s$/)
+        .first(),
+    ).toBeVisible();
     await expect(page.locator('.md').last()).toHaveText(THINKING_TURN.text);
     const row = thread(page).getByRole('button', { name: /^Ajatteli \d+ s$/ });
     await row.click();

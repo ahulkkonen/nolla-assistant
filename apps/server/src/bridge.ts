@@ -48,7 +48,7 @@ import {
   providerStatus,
   resolveModelId,
 } from './pi/models.ts';
-import { ChatNotFound, type SessionRegistry } from './pi/registry.ts';
+import { type ChatEvent, ChatNotFound, type SessionRegistry } from './pi/registry.ts';
 import { BadSubscription, type Push } from './push.ts';
 import { indexChat, related, search } from './search.ts';
 import { SEARCH_DENIED, SEARCH_UNATTENDED } from './search-tool.ts';
@@ -1361,7 +1361,9 @@ function forward(
   { db, rooms, log, userId, pseudo, push, catalog, refusals, registry }: BridgeDeps,
 ) {
   const emit = (msg: ServerMessage) => broadcast(rooms, chatId, msg);
-  let streamId = randomUUID();
+  let streamId: string = randomUUID();
+  /** Phase 26: the stream id of the reply whose request is out; its `message_start` takes it. */
+  let nextId: string | undefined;
   let pending: AgentMessage | undefined;
   /** Masked text of the streaming message not yet sent (the hold-back). */
   let held = '';
@@ -1410,11 +1412,22 @@ function forward(
         emit({ type: 'artifact.upsert', chatId, artifact });
   };
 
-  const handle = async (e: AgentSessionEvent) => {
+  const handle = async (e: ChatEvent) => {
     switch (e.type) {
+      // Phase 26: Pi sends the request and gets its headers before the message starts.
+      case 'provider_phase':
+        if (e.phase === 'sent') nextId = randomUUID();
+        return emit({
+          type: 'message.phase',
+          chatId,
+          messageId: nextId ?? streamId,
+          phase: e.phase,
+          at: e.at,
+        });
       case 'message_start':
         if (e.message.role === 'assistant') {
-          streamId = randomUUID();
+          streamId = nextId ?? randomUUID();
+          nextId = undefined;
           held = '';
           thinking = false;
         }
@@ -1536,7 +1549,7 @@ function forward(
 
   // Sidecar calls are async: one chain keeps every chat event in Pi's order.
   let chain = Promise.resolve();
-  return (e: AgentSessionEvent) => {
+  return (e: ChatEvent) => {
     chain = chain
       .then(() => handle(e))
       .catch((err: unknown) => log.warn({ chatId, err }, 'forward'));
@@ -1631,7 +1644,14 @@ function toMessage(id: string, m: AgentMessage, tools: ToolRow[]): Message {
   // Phase 13: cost and tokens per call, and whether the row "Ajatteli … s" has a text to load.
   const usage = messageUsage(m);
   if (usage) msg.usage = usage;
-  if (thinkingOf(m)) msg.thinking = { ms: (m as { pa?: PaMeta }).pa?.thinkingMs ?? null };
+  const pa = (m as { pa?: PaMeta }).pa;
+  if (thinkingOf(m)) msg.thinking = { ms: pa?.thinkingMs ?? null };
+  // Phase 26: the receipt's queue and writing times.
+  if (pa?.queueMs !== undefined || pa?.writeMs !== undefined)
+    msg.phases = {
+      ...(pa.queueMs !== undefined ? { queueMs: pa.queueMs } : {}),
+      ...(pa.writeMs !== undefined ? { writeMs: pa.writeMs } : {}),
+    };
   return msg;
 }
 
