@@ -4,18 +4,17 @@ import { cn } from '@/lib/utils';
 import type { SubagentChild } from '../store.ts';
 import { CollapsibleRow } from './ToolRow.tsx';
 
-/** Status per child (brief 7.5): icon and badge. */
+/** Status per child (brief 7.5): icon and badge, the badge's word in sentence case. */
 const STATUS = {
-  // Outline, not secondary: the rows sit on --muted, where a secondary fill disappears.
-  queued: { Icon: Clock, icon: 'text-muted-foreground', text: 'jonossa', badge: 'outline' },
+  queued: { Icon: Clock, icon: 'text-muted-foreground', text: 'Jonossa', badge: 'secondary' },
   running: {
     Icon: Loader2,
     icon: 'animate-spin text-muted-foreground',
-    text: 'käynnissä',
+    text: 'Käynnissä',
     badge: 'info',
   },
-  done: { Icon: Check, icon: 'text-success', text: 'valmis', badge: 'success' },
-  error: { Icon: X, icon: 'text-destructive', text: 'virhe', badge: 'destructive' },
+  done: { Icon: Check, icon: 'text-success', text: 'Valmis', badge: 'success' },
+  error: { Icon: X, icon: 'text-destructive', text: 'Virhe', badge: 'destructive' },
 } as const;
 
 /** A subagent run as a tool-row variant; expands to one 32 px row per child. */

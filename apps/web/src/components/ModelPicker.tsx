@@ -13,9 +13,11 @@ import {
   type KeyboardEvent,
   type ReactElement,
   type ReactNode,
+  type RefObject,
   useDeferredValue,
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -138,32 +140,76 @@ export function useAutoApprove(chatId: string) {
 type Option = { value: string; title: string; meta?: string | undefined };
 
 /**
- * The composer chips that open a choice (model, Tila). They truncate: `shrink` beats the kit
- * button's `shrink-0`. Ghost at rest like the agent chip; the accent fill only while the menu or
- * sheet is open (`aria-expanded`).
+ * The composer chips that open a choice (model, Tila). Ghost at rest like the agent chip; the
+ * accent fill only while the menu or sheet is open (`aria-expanded`). The model chip truncates:
+ * `shrink` beats the kit button's `shrink-0`.
  */
 const CHIP =
   'h-8 min-w-0 shrink rounded-full px-3 font-normal text-muted-foreground hover:text-foreground max-md:h-11';
 
+const measure = globalThis.document?.createElement('canvas').getContext('2d');
+
+/** Whether `text` fits in `max` px in the font of `ref`'s element; again once the fonts load. */
+function useFits(ref: RefObject<HTMLElement | null>, text: string, max: number) {
+  const [fits, setFits] = useState(true);
+  useLayoutEffect(() => {
+    const check = () => {
+      if (!ref.current || !measure) return;
+      measure.font = getComputedStyle(ref.current).font;
+      setFits(measure.measureText(text).width <= max);
+    };
+    check();
+    void document.fonts?.ready.then(check);
+  }, [text, max]);
+  return fits;
+}
+
 /**
  * Phase-23 decision 8: the "Tila" chip (≥ 768; phones have the model sheet's rows). One check box
- * per mode, and a toggle keeps the menu open. The label lists the active modes, or "Tila".
+ * per mode, and a toggle keeps the menu open. The label lists the active modes when they fit in
+ * 200 px, else the first and a count ("Perusteellinen +1"), or "Tila"; it is never cut inside a
+ * name. A toolbar without room turns the auto-approve chip into a shield first, then asks for the
+ * short label, then for "Tila · 2" (`size`, Composer.tsx).
  */
-export function ModesChip({ chatId, running }: { chatId: string | null; running: boolean }) {
+export function ModesChip({
+  chatId,
+  running,
+  size = 'auto',
+}: {
+  chatId: string | null;
+  running: boolean;
+  /**
+   * `auto`: the list when it fits in 200 px; `short`: the first name and a count (the toolbar has
+   * no room even with the auto-approve shield); `bare`: "Tila · 2".
+   */
+  size?: 'auto' | 'short' | 'bare';
+}) {
   const { all, active, names, toggle } = useModes(chatId);
+  const label = useRef<HTMLSpanElement>(null);
+  const fits = useFits(label, names, 200);
   if (!all.length) return null;
+  const on = all.filter((m) => active.includes(m.id));
+  const shown = !on.length
+    ? 'Tila'
+    : size === 'bare'
+      ? `Tila · ${on.length}`
+      : (fits && size === 'auto') || on.length === 1
+        ? names
+        : `${on[0]?.name} +${on.length - 1}`;
   return (
     <DropdownMenu modal={false}>
       <NextTurnTip running={running}>
         <DropdownMenuTrigger asChild>
           <Button
             variant="ghost"
-            aria-label={names ? `Tila: ${names}` : 'Tila'}
-            // It gives way first, down to 96 px: the model's name matters more than the mode list.
-            // A share of the shrink under 1/64 px leaves the model chip whole.
-            className={cn(CHIP, 'min-w-24 shrink-[10000] max-md:hidden')}
+            // The name holds the visible label (axe); a shortened one adds the whole list.
+            aria-label={!on.length || size === 'bare' ? shown : `Tila: ${shown}`}
+            {...(shown !== names && on.length ? { 'aria-description': names } : {})}
+            className={cn(CHIP, 'shrink-0 max-md:hidden')}
           >
-            <span className="max-w-[200px] truncate">{names || 'Tila'}</span>
+            <span ref={label} className="whitespace-nowrap">
+              {shown}
+            </span>
             <ChevronDown size={16} className="shrink-0" />
           </Button>
         </DropdownMenuTrigger>
@@ -199,7 +245,10 @@ export function ModelPicker() {
   const label = (
     <>
       {isOpen && mobile && <ShieldOff size={16} className="shrink-0 text-warning" />}
-      <span className="max-w-[200px] truncate">{mobile ? shortName(name) : name}</span>
+      {/* `data-fit`: the composer toolbar reads whether the name is cut (Composer.tsx). */}
+      <span data-fit className="max-w-[200px] truncate">
+        {mobile ? shortName(name) : name}
+      </span>
       {/* The space keeps "5.1 Ei ZDR" apart in the visible text that axe compares. */}
       {isOpen && !mobile && ' '}
       {isOpen && !mobile && (
@@ -434,6 +483,27 @@ function OptionText({ o }: { o: Option }) {
   );
 }
 
+/** A titled group of the phone sheet: a micro muted heading that names the group. */
+function SheetGroup({
+  label,
+  role = 'group',
+  children,
+}: {
+  label: string;
+  role?: 'group' | 'radiogroup';
+  children: ReactNode;
+}) {
+  const id = useId();
+  return (
+    <div role={role} aria-labelledby={id} className="flex flex-col">
+      <p id={id} className="px-3 pt-2 pb-1 text-micro text-muted-foreground">
+        {label}
+      </p>
+      {children}
+    </div>
+  );
+}
+
 /** One section of the phone sheet: a radio group of 44 px rows with a check on the current one. */
 function Choices({
   label,
@@ -446,12 +516,8 @@ function Choices({
   value: string;
   onPick: (value: string) => void;
 }) {
-  const id = useId();
   return (
-    <div role="radiogroup" aria-labelledby={id} className="flex flex-col">
-      <p id={id} className="px-3 pt-2 pb-1 text-micro text-muted-foreground">
-        {label}
-      </p>
+    <SheetGroup label={label} role="radiogroup">
       {options.map((o) => (
         <button
           key={o.value}
@@ -465,27 +531,23 @@ function Choices({
           {o.value === value && <Check size={16} className="shrink-0" />}
         </button>
       ))}
-    </div>
+    </SheetGroup>
   );
 }
 
 /**
  * The chat's switches in the phone sheet: next to the queue's two run buttons, their composer
- * chips squeezed the model chip to its chevron. The Tila rows (phase-23 decision 8) work in a new
- * chat too; auto-approve needs a started one.
+ * chips squeezed the model chip to its chevron. A group "Tila" with one row per mode (phase-23
+ * decision 8; a new chat too), then "Tässä keskustelussa" with auto-approve (a started chat). Every
+ * label starts at the rows' text edge; the shield sits beside the switch.
  */
 function ChatSwitches({ chatId }: { chatId: string | null }) {
   const modes = useModes(chatId);
   const auto = useAutoApprove(chatId ?? '');
-  const id = useId();
-  if (!modes.all.length && !auto) return null;
   return (
-    <div role="group" aria-labelledby={id} className="flex flex-col">
-      <p id={id} className="px-3 pt-2 pb-1 text-micro text-muted-foreground">
-        Tässä keskustelussa
-      </p>
+    <>
       {modes.all.length > 0 && (
-        <div role="group" aria-label="Tila" className="flex flex-col">
+        <SheetGroup label="Tila">
           {modes.all.map((m) => (
             <SwitchRow
               key={m.id}
@@ -495,28 +557,33 @@ function ChatSwitches({ chatId }: { chatId: string | null }) {
               onToggle={() => modes.toggle(m.id)}
             />
           ))}
-        </div>
+        </SheetGroup>
       )}
       {auto && (
-        <SwitchRow
-          icon={
-            auto.on ? (
-              <ShieldAlert size={16} className="shrink-0 text-warning" />
-            ) : (
-              <Shield size={16} className="shrink-0 text-muted-foreground" />
-            )
-          }
-          label="Hyväksy automaattisesti"
-          helper={auto.tip}
-          checked={auto.on}
-          onToggle={auto.toggle}
-        />
+        <SheetGroup label="Tässä keskustelussa">
+          <SwitchRow
+            icon={
+              auto.on ? (
+                <ShieldAlert size={16} className="shrink-0 text-warning" />
+              ) : (
+                <Shield size={16} className="shrink-0 text-muted-foreground" />
+              )
+            }
+            label="Hyväksy automaattisesti"
+            helper={auto.tip}
+            checked={auto.on}
+            onToggle={auto.toggle}
+          />
+        </SheetGroup>
       )}
-    </div>
+    </>
   );
 }
 
-/** A 44 px sheet row: the whole row turns the switch; the switch is named by the label only. */
+/**
+ * A 44 px sheet row: the whole row turns the switch; the switch is named by the label only. The
+ * icon sits before the switch, so the label keeps the rows' text edge.
+ */
 function SwitchRow({
   icon,
   label,
@@ -536,7 +603,6 @@ function SwitchRow({
       htmlFor={id}
       className="flex min-h-11 items-center gap-3 rounded-md px-3 py-1 text-ui hover:bg-accent"
     >
-      {icon}
       <span className="flex min-w-0 flex-1 flex-col">
         <span id={`${id}-label`}>{label}</span>
         {helper && (
@@ -545,6 +611,7 @@ function SwitchRow({
           </span>
         )}
       </span>
+      {icon}
       <Switch
         id={id}
         checked={checked}

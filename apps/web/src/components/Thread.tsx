@@ -1,9 +1,10 @@
 import { TOOL_STATUS_WORD, WEB_SEARCH_TOOL } from '@pa/protocol';
-import { AlertCircle, ArrowDown, GitBranch, MessageSquare, ShieldAlert } from 'lucide-react';
+import { AlertCircle, ArrowDown, GitFork, MessageSquare, ShieldAlert } from 'lucide-react';
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { announce } from '../announce.ts';
+import { useMobile } from '../media.ts';
 import { failedText, serverIdOf, type UiMessage, useStore } from '../store.ts';
 import { Follow, replyTiming, replyUsage, threadKey } from '../thread.ts';
 import { useModel } from '../useModel.ts';
@@ -25,7 +26,8 @@ function ForkRow({ chatId }: { chatId: string }) {
   if (!from) return null;
   return (
     <div className="flex min-h-8 items-center gap-2 text-meta text-muted-foreground [@media(pointer:coarse)]:min-h-11">
-      <GitBranch size={16} className="shrink-0" />
+      {/* The sidebar's fork mark (phase-22 decision 3): one glyph for a fork. */}
+      <GitFork size={16} className="shrink-0" />
       {from.deleted ? (
         <span>Haarautettu keskustelusta, joka on poistettu.</span>
       ) : (
@@ -99,6 +101,7 @@ export function Thread() {
   const forking = useStore((s) => s.pendingFork);
   const refusal = useStore((s) => (chatId ? s.zdrRefused[chatId] : undefined));
   const { name: modelName, policy } = useModel();
+  const mobile = useMobile();
   // Only while the chat keeps the refused model: the name in the alert is that model's.
   const refused = refusal?.modelId === policy.modelId;
   // Filtered here, not in the selector: a new array per call would re-render forever.
@@ -318,9 +321,10 @@ export function Thread() {
         className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-4 outline-none [overflow-anchor:none]"
       >
         {/* Bottom 64: at the end the latest action row sits above the composer's fade. */}
+        {/* `col`: a reply's action row reads the column's width (the receipt's own line). */}
         <div
           ref={content}
-          className="mx-auto flex w-full max-w-(--thread-max) flex-col gap-6 pt-6 pb-16"
+          className="@container/col mx-auto flex w-full max-w-(--thread-max) flex-col gap-6 pt-6 pb-16"
         >
           <FindBar scroller={scroller} />
           {chatId && <ForkRow chatId={chatId} />}
@@ -340,6 +344,11 @@ export function Thread() {
                     t.role === 'user' && 'mb-4 max-md:mb-6',
                     // An older reply's action row sits in the gap below it, as a user turn's does.
                     t.role === 'assistant' && !last && '[@media(hover:hover)]:mb-4',
+                    // Under 620 px its receipt line (4 + 18 px) needs a wider gap.
+                    t.role === 'assistant' &&
+                      !last &&
+                      t.items.some(({ m }) => timingOf.has(m.id)) &&
+                      'md:@max-[620px]/col:[@media(hover:hover)]:mb-9',
                     t.role === 'user' && t.items.some(({ i }) => i === lastUser) && 'max-md:mb-12',
                     // Editing: the action row is gone, so is the room kept for it.
                     t.role === 'user' && 'has-[textarea]:mb-0',
@@ -442,32 +451,29 @@ export function Thread() {
           {failed && !streaming && !running && (
             <div
               role="alert"
-              className="flex flex-wrap items-center gap-3 rounded-lg bg-destructive-subtle px-4 py-3 text-body text-foreground"
+              className="flex flex-wrap items-center gap-3 rounded-lg bg-destructive-subtle px-4 py-3 text-body text-foreground max-md:gap-y-2"
             >
               <AlertCircle size={16} className="shrink-0 text-destructive" />
-              {/* Phones: with "Näytä tiedot" the actions wrap under the text. */}
-              <span
-                className={cn('min-w-0 flex-1', failed.detail && 'max-md:basis-[calc(100%-28px)]')}
-              >
-                {failedText(failed)}
-              </span>
-              {failed.detail && (
+              <span className="min-w-0 flex-1">{failedText(failed)}</span>
+              {/* Phones: two 44 px outline buttons in one row, 50 % each, as the approval card. */}
+              <div className="flex items-center gap-3 max-md:grid max-md:basis-full max-md:grid-cols-2 max-md:gap-2">
+                {failed.detail && (
+                  <Button
+                    variant={mobile ? 'outline' : 'link'}
+                    onClick={() => useStore.setState({ errorDetail: failed })}
+                  >
+                    Näytä tiedot
+                  </Button>
+                )}
                 <Button
-                  variant="link"
-                  className="max-md:ml-7 max-md:min-h-11"
-                  onClick={() => useStore.setState({ errorDetail: failed })}
+                  variant="outline"
+                  size="sm"
+                  className="max-md:col-start-2"
+                  onClick={() => chatId && retryTurn(chatId)}
                 >
-                  Näytä tiedot
+                  Yritä uudelleen
                 </Button>
-              )}
-              <Button
-                variant="outline"
-                size="sm"
-                className="ml-auto"
-                onClick={() => chatId && retryTurn(chatId)}
-              >
-                Yritä uudelleen
-              </Button>
+              </div>
             </div>
           )}
           {refused && !streaming && !running && (

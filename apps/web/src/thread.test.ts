@@ -334,6 +334,24 @@ describe('waiting line (phase 26)', () => {
     expect(text({ ...writing, queued: 4 }, 22_000, true)).toBe('jonotti 1 s → *kirjoittaa 2 s');
   });
 
+  it('marks later steps and drops a later thinking the model cannot do (UI review)', () => {
+    const queue = wait({ step: 1, since: 1000, accepted: true, queued: 0 });
+    expect(waitSteps(queue, 2000).map((s) => (s.later ? s.word : '-'))).toEqual([
+      '-',
+      '-',
+      'ajattelee',
+      'kirjoittaa',
+    ]);
+    expect(waitSteps(queue, 13_400, false, false).map((s) => s.word)).toEqual([
+      'lähetetty',
+      'jonossa',
+      'kirjoittaa',
+    ]);
+    // A thinking that came anyway stays.
+    const thinking = wait({ step: 2, since: 15_000, queued: 14_000, thinking: 15_000, thought: 0 });
+    expect(waitSteps(thinking, 18_000, false, false).map((s) => s.word)).toContain('ajattelee');
+  });
+
   it('a later round queues again with the turn total', () => {
     const again = wait({ step: 1, since: 30_000, queued: 14_000, thought: 3000 });
     expect(text(again, 32_000)).toBe('lähetetty → *jonossa 16 s → ajattelee → kirjoittaa');

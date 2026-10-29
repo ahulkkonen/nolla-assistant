@@ -20,6 +20,7 @@ import {
   PanelRight,
   Pencil,
   RotateCcw,
+  X,
 } from 'lucide-react';
 import { Popover } from 'radix-ui';
 import {
@@ -40,7 +41,13 @@ import {
 import Markdown, { type ExtraProps, type Options } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Button } from '@/components/ui/button';
-import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet';
+import {
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetDescription,
+  SheetTitle,
+} from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import { touch } from '../media.ts';
@@ -431,19 +438,17 @@ const toggleN = (e: ReactMouseEvent) => {
 };
 
 /**
- * Phase-23 decision 9: the scale under a reply with markers (micro, muted, 16 px; 44 on phones for
- * the button's target) and "Näytä luvut", which puts every N in the text (`pa.confN`).
+ * Phase-23 decision 9: the scale under a reply with markers (micro, muted, 16 px) and "Näytä luvut",
+ * which puts every N in the text (`pa.confN`). Phones: two lines, "Luottamus" and the button, then
+ * the scale; the button's 44 px target reaches past its 16 px pill, so the gaps stay 8 px.
  */
 function ConfidenceLegend() {
   const on = useStore((s) => s.showConfN);
   return (
-    <div className="flex h-4 items-center gap-3 text-micro text-muted-foreground max-md:h-11">
+    <div className="flex h-4 items-center gap-3 text-micro text-muted-foreground max-md:h-auto max-md:flex-wrap max-md:gap-y-2">
       <span>Luottamus</span>
-      {/* Phones: the scale's words only for screen readers, so the row fits 390 px. */}
-      <span className="flex items-center gap-2 tabular-nums">
-        <span>
-          1<span className="max-md:sr-only"> arvaus</span>
-        </span>
+      <span className="flex items-center gap-2 tabular-nums max-md:order-last max-md:basis-full">
+        <span>1 arvaus</span>
         <span aria-hidden="true" className="flex gap-1">
           {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
             <span
@@ -453,16 +458,15 @@ function ConfidenceLegend() {
             />
           ))}
         </span>
-        <span>
-          9<span className="max-md:sr-only"> varma</span>
-        </span>
+        <span>9 varma</span>
       </span>
       <button
         type="button"
         aria-pressed={on}
         onClick={() => useStore.getState().setShowConfN(!on)}
-        // The fill is 16 px; the target 32 (44 on phones) through `::after`.
-        className="relative h-4 rounded-sm px-1.5 transition-colors duration-100 after:absolute after:inset-x-0 after:-inset-y-2 hover:bg-accent hover:text-foreground aria-pressed:bg-accent aria-pressed:text-foreground max-md:after:-inset-y-3.5"
+        // A 16 px pill with a border, on or off; only the fill tells them apart. The target is
+        // 32 px (44 on phones: 8 up to the text above, 20 down over the scale) through `::after`.
+        className="relative inline-flex h-4 items-center rounded-full border border-border px-1.5 text-foreground transition-colors duration-100 after:absolute after:inset-x-0 after:-inset-y-2 hover:bg-accent aria-pressed:bg-accent max-md:after:-top-2 max-md:after:-bottom-5"
       >
         Näytä luvut
       </button>
@@ -802,7 +806,9 @@ export function MessageView({
         {((live && reserve) || actions) && (
           <div
             className={cn(
-              'flex h-8 items-center gap-1 transition-opacity duration-100 [-webkit-touch-callout:none] max-md:h-11',
+              // ≥ 768 a column under 620 px (Thread's `col` container) puts the receipt on its own
+              // line; phones keep the receipt in the long-press sheet, so the meta keeps its line.
+              'flex min-h-8 items-center gap-1 transition-opacity duration-100 [-webkit-touch-callout:none] max-md:min-h-11 md:@max-[620px]/col:flex-wrap',
               // A user turn's row, and an older reply's, sits in the 40 px gap below it (Thread.tsx).
               (user || (!latest && !live)) && 'absolute top-full mt-1',
               // A reply's row spans the column: its receipt sits at the end.
@@ -850,7 +856,7 @@ export function MessageView({
             {receipt && (
               <span
                 className={cn(
-                  'ml-auto flex shrink-0 pl-2 transition-opacity duration-150 ease-out',
+                  'ml-auto flex shrink-0 pl-2 transition-opacity duration-150 ease-out md:@max-[620px]/col:basis-full md:@max-[620px]/col:justify-end md:@max-[620px]/col:pl-0',
                   live ? !text && 'opacity-0' : 'max-md:hidden',
                 )}
               >
@@ -864,18 +870,29 @@ export function MessageView({
         <Sheet open={sheet} onOpenChange={setSheet}>
           <SheetContent
             side="bottom"
-            className="gap-1 rounded-t-xl px-2 pt-2 pb-[max(env(safe-area-inset-bottom),8px)]"
+            showCloseButton={false}
+            className="gap-1 rounded-t-xl px-2 pt-4 pb-[max(env(safe-area-inset-bottom),8px)]"
           >
             <SheetTitle className="sr-only">Viestin toiminnot</SheetTitle>
             <SheetDescription className="sr-only">
               {stripConfidence(text).slice(0, 80)}
             </SheetDescription>
-            {meta && (
-              <p className="px-3 pb-1 text-meta text-muted-foreground tabular-nums">
-                {metaText(meta.createdAt, user ? undefined : meta.usage, fx)}
-              </p>
-            )}
-            {receipt && <div className="px-3 pb-1">{receipt}</div>}
+            {/* Sulje's 44 px target centred on the first meta line (−13 px = (44 − 18) / 2). */}
+            <div className="flex items-start gap-2 pl-3">
+              <div className="flex min-w-0 flex-1 flex-col gap-1 pb-1">
+                {meta && (
+                  <p className="text-meta text-muted-foreground tabular-nums">
+                    {metaText(meta.createdAt, user ? undefined : meta.usage, fx)}
+                  </p>
+                )}
+                {receipt}
+              </div>
+              <SheetClose asChild>
+                <Button variant="ghost" size="icon-sm" aria-label="Sulje" className="-my-[13px]">
+                  <X />
+                </Button>
+              </SheetClose>
+            </div>
             {[
               { label: 'Kopioi', Icon: Copy, run: copy },
               ...(user && onEdit

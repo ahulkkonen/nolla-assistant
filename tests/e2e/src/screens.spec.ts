@@ -383,11 +383,18 @@ for (const scheme of ['light', 'dark'] as const) {
         // Text again: the two run buttons, Pysäytä and Lisää jonoon.
         await page.getByLabel('Viesti').fill('Lisää myös lähteet.');
         await expect(page.getByRole('button', { name: 'Lisää jonoon' })).toBeVisible();
-        // The model chip keeps its whole name next to the two run buttons.
+        // The model chip keeps its whole name next to the two run buttons; ≥ 768 the Tila chip
+        // keeps its whole label, and the auto-approve chip gives way as a 32 px shield.
         const name = page.getByRole('button', { name: /^Malli: / }).locator('span.truncate');
         expect(
           await name.evaluate((el) => el.clientWidth > 0 && el.scrollWidth <= el.clientWidth),
         ).toBe(true);
+        if (vp.width >= 768) {
+          const tila = page.getByRole('button', { name: /^Tila/ }).locator('span');
+          expect(await tila.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+          const auto = page.getByRole('button', { name: 'Hyväksy automaattisesti' });
+          expect(await auto.evaluate((el) => el.getBoundingClientRect().width)).toBe(32);
+        }
         await shot(page, 'composer-queue', vp.width, scheme);
         hold.release();
       });
@@ -400,9 +407,15 @@ for (const scheme of ['light', 'dark'] as const) {
         await flipMode(page, 'Luottamus', true);
         await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
         const box = (l: Locator) => l.evaluate((el) => el.getBoundingClientRect().toJSON());
-        // P1: the legend row is 16 px (44 on phones for its button), 4 px between 12 × 8 swatches.
+        // P1: the legend row is 16 px (phones: two 16 px lines 8 apart), 4 px between 12 × 8
+        // swatches, 8 px to the text above and to the action row below.
         const legend = page.getByRole('button', { name: 'Näytä luvut' }).locator('..');
-        expect((await box(legend)).height).toBe(vp.width < 768 ? 44 : 16);
+        const row = await box(legend);
+        expect(row.height).toBe(vp.width < 768 ? 40 : 16);
+        expect(row.top - (await box(reply)).bottom).toBe(8);
+        expect(
+          (await box(legend.locator('xpath=following-sibling::div[1]'))).top - row.bottom,
+        ).toBe(8);
         const swatches = legend.locator('.conf-swatch');
         await expect(swatches).toHaveCount(9);
         const [a, b] = [await box(swatches.nth(0)), await box(swatches.nth(1))];
@@ -512,7 +525,9 @@ for (const scheme of ['light', 'dark'] as const) {
           expect(await chip.evaluate((el) => getComputedStyle(el).paddingLeft)).toBe('12px');
           await chip.click();
           await page.getByRole('menuitemcheckbox', { name: /^Luottamus/ }).click();
-          await expect(chip).toHaveAccessibleName('Tila: Luottamus, Perusteellinen, Suora');
+          // Three names pass 200 px: the first and a count, the whole list as the description.
+          await expect(chip).toHaveAccessibleName('Tila: Luottamus +2');
+          await expect(chip).toHaveAccessibleDescription('Luottamus, Perusteellinen, Suora');
           for (const r of await page.getByRole('menuitemcheckbox').all()) {
             expect((await box(r)).height).toBeGreaterThanOrEqual(40);
             expect(await r.evaluate((el) => getComputedStyle(el).paddingTop)).toBe('8px');
@@ -737,6 +752,57 @@ for (const scheme of ['light', 'dark'] as const) {
           await blur(page);
           await shot(page, 'fork-link', vp.width, scheme);
         });
+
+        // UI review: a renamed chat (lock) and its renamed fork (fork mark and lock side by side);
+        // the drawer on the phone.
+        if (vp.width !== 1024)
+          test('sidebar-lock-fork', async ({ app, page }) => {
+            app.llm.push({ text: 'Kevät on hyvä aika.' });
+            app.llm.push(titleTurn('Kasvimaa', 'Käyttäjä kysyi kasvimaasta.'));
+            app.llm.push({ text: 'Syksy sopii myös, jos maa on kuohkea.' });
+            await app.login(page);
+            await sendMessage(page, 'Milloin kasvimaa kannattaa aloittaa?');
+            await expect(page.locator('.md').last()).toHaveText('Kevät on hyvä aika.');
+            await expect(page.getByText('Kasvimaa', { exact: true }).first()).toBeVisible({
+              timeout: 15_000,
+            });
+            /** Renames the open chat from its sidebar row. */
+            const rename = async (title: string) => {
+              await showSidebar(page);
+              const row = page.locator('nav li', {
+                has: page.locator('button[aria-current="page"]'),
+              });
+              await row.hover();
+              await row.getByRole('button', { name: /^(Lisää|Toiminnot): / }).click();
+              await page.getByRole('menuitem', { name: 'Nimeä uudelleen' }).click();
+              await page.getByLabel('Keskustelun nimi').fill(title);
+              await page.getByLabel('Keskustelun nimi').press('Enter');
+              await expect(page.getByRole('button', { name: title, exact: true })).toBeVisible();
+            };
+            await rename('Kasvimaa keväällä');
+            if (phone) {
+              await page.keyboard.press('Escape');
+              await page.getByLabel('Viesti').press('ArrowUp');
+            } else {
+              const first = thread(page).locator('[data-message-id]').first();
+              await first.hover();
+              await first.getByRole('button', { name: 'Muokkaa' }).click();
+            }
+            await page.getByLabel('Muokattava viesti').fill('Entä jos aloitan syksyllä?');
+            await page.getByRole('button', { name: 'Haarauta' }).click();
+            await expect(page.locator('.md').last()).toHaveText(
+              'Syksy sopii myös, jos maa on kuohkea.',
+            );
+            await rename('Kasvimaa syksyllä');
+            const fork = page.locator('nav li', {
+              has: page.getByRole('button', { name: 'Kasvimaa syksyllä', exact: true }),
+            });
+            await expect(fork.getByRole('img')).toHaveCount(2);
+            await expect(fork.getByRole('img', { name: 'Nimi lukittu' })).toBeVisible();
+            if (!phone) await page.mouse.move(vp.width / 2, vp.height / 2);
+            await blur(page);
+            await shot(page, 'sidebar-lock-fork', vp.width, scheme);
+          });
 
         if (vp.width !== 1024)
           test('message-edit-fork', async ({ app, page }) => {
@@ -1121,6 +1187,18 @@ for (const scheme of ['light', 'dark'] as const) {
         await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
         await shot(page, 'auto-approve-on', vp.width, scheme);
       });
+
+      // UI review: with the sheet closed, the phone's chip row shows a warning shield.
+      if (vp.width === 390)
+        test('auto-approve-on-closed', async ({ app, page }) => {
+          await helloChat(app, page);
+          await flip(page, 'Hyväksy automaattisesti', true);
+          await expect(
+            page.getByRole('img', { name: 'Hyväksytään automaattisesti' }),
+          ).toBeVisible();
+          await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+          await shot(page, 'auto-approve-on-closed', vp.width, scheme);
+        });
 
       if (vp.width !== 1024) {
         test.describe('collision', () => {
