@@ -24,7 +24,7 @@ self.addEventListener('push', (event) => {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const chatId = event.notification.data?.chatId;
-  const url = chatId ? `/?chat=${encodeURIComponent(chatId)}` : '/';
+  const url = chatId ? `/c/${encodeURIComponent(chatId)}` : '/';
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
       // Only windows of this app; a visible one first. The app opens the chat itself.

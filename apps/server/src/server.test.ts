@@ -15,6 +15,7 @@ import {
   login,
   openFirst,
   runCleanups,
+  tempDir,
 } from './test-utils.ts';
 
 const SCRIPTED = 'Hei! Miten voin auttaa?';
@@ -55,6 +56,23 @@ test('create chat, stream reply, reload after restart', { timeout: 30_000 }, asy
   expect(state.messages[1]?.id).toBe(final.message.id);
   c.send({ type: 'chat.list' });
   expect((await c.next('chat.list')).chats.map((x) => x.id)).toEqual([chat.id]);
+});
+
+test('app paths answer index.html; /api and non-HTML requests do not (phase-23 decision 19)', {
+  timeout: 30_000,
+}, async () => {
+  const web = tempDir('pa-web-');
+  writeFileSync(join(web, 'index.html'), '<!doctype html><title>app</title>');
+  const { config, run } = await boot([], { WEB_DIST: web });
+  await run();
+  const html = { headers: { accept: 'text/html' } };
+  for (const path of ['/c/abc', '/files', '/search?q=kissa', '/settings']) {
+    const res = await api(config.port, path, html);
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain('<title>app</title>');
+  }
+  expect((await api(config.port, '/api/nope', html)).status).toBe(404);
+  expect((await api(config.port, '/c/abc')).status).toBe(404);
 });
 
 test('fan-out: two sockets on one chat see the same stream', { timeout: 30_000 }, async () => {

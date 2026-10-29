@@ -38,6 +38,7 @@ import { USAGE_TITLE, UsageScreen } from './components/UsageScreen.tsx';
 import { VAULT_TITLE, VaultScreen } from './components/VaultScreen.tsx';
 import { useMedia, useMobile } from './media.ts';
 import { resyncPush } from './push.ts';
+import { startRouter } from './router.ts';
 import { failedText, firstUserLine, shownArtifact, useStore } from './store.ts';
 import { connect, openChat, reportFocus } from './ws.ts';
 
@@ -192,15 +193,12 @@ function Shell() {
   const swipe = useRef<number | null>(null);
   useKeyboardInset();
 
-  // Deep links: `?chat=` from a notification click, `?integrations=` from the Google callback.
+  // `?integrations=` from the Google callback; the router drops the query and reads the path.
   useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const chat = params.get('chat');
-    const integration = params.get('integrations');
-    if (chat) openChat(chat);
+    const integration = new URLSearchParams(location.search).get('integrations');
     if (integration === 'google') useStore.getState().notify('Google yhdistetty.');
     else if (integration) useStore.getState().pushError('Yhdistäminen epäonnistui.');
-    if (chat || integration) history.replaceState(null, '', '/');
+    const stopRouter = startRouter();
     // A notification click on an open window: the service worker posts the chat id.
     const onMessage = (e: MessageEvent<{ type?: string; chatId?: unknown }>) => {
       if (e.data?.type === 'open-chat' && typeof e.data.chatId === 'string')
@@ -208,8 +206,18 @@ function Shell() {
     };
     navigator.serviceWorker?.addEventListener('message', onMessage);
     void resyncPush();
-    return () => navigator.serviceWorker?.removeEventListener('message', onMessage);
+    return () => {
+      stopRouter();
+      navigator.serviceWorker?.removeEventListener('message', onMessage);
+    };
   }, []);
+  // The browser's history menu names each entry (phase-23 decision 19); signed out, no chat title.
+  useEffect(() => {
+    document.title = `${title} · Avustaja`;
+    return () => {
+      document.title = 'Avustaja';
+    };
+  }, [title]);
 
   // The server skips a push for the chat in the foreground.
   const focused = useStore((s) => (s.screen === 'chat' ? s.activeChatId : null));

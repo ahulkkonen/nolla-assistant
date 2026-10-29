@@ -363,7 +363,7 @@ function Origin({ origin }: { origin: TreeEntry['origin'] }) {
   if (!origin) return null;
   return (
     <a
-      href={`/?chat=${encodeURIComponent(origin.chatId)}`}
+      href={`/c/${encodeURIComponent(origin.chatId)}`}
       onClick={(e) => {
         e.preventDefault();
         openChat(origin.chatId, origin.messageId);
