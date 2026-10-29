@@ -702,11 +702,12 @@ export function MessageView({
             </div>
           )
         ) : (
-          // Phase 26: while live, the waiting line holds the first line (28 px, one line of prose);
-          // the first token fades in at its place while the line fades out, so nothing moves.
-          // Phase 27: one tree for the live and the final reply: the final swaps the text in place.
+          // Phase 26: while live, the waiting line holds the first line (one line of prose: 28 px,
+          // 26 on phones); the first token fades in at its place while the line fades out, so
+          // nothing moves. Phase 27: one tree for the live and the final reply: the final swaps
+          // the text in place.
           (text || (live && waiting)) && (
-            <div className="relative min-h-7">
+            <div className="relative min-h-(--text-prose--line-height)">
               {text && (
                 <div className={cn(live && 'animate-fade-in')}>
                   <MarkdownText text={text} annotations={annotations} live={!!live} />
@@ -716,7 +717,7 @@ export function MessageView({
                 <div
                   aria-hidden="true"
                   className={cn(
-                    'absolute inset-x-0 top-0 flex h-7 items-center overflow-hidden transition-[opacity,visibility] duration-150 ease-out',
+                    'absolute inset-x-0 top-0 flex h-(--text-prose--line-height) items-center overflow-hidden transition-[opacity,visibility] duration-150 ease-out',
                     text && 'invisible opacity-0',
                   )}
                 >
