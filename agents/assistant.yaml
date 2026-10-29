@@ -3,14 +3,15 @@ name: Avustaja
 model: zdr/strong
 prompt: prompts/assistant.md
 tools:
-  allow: [read, write, edit, bash, recall, memory, web_search, profile_edit, automation_edit, chat_read]
+  allow: [read, write, edit, bash, recall, memory, web_search, fetch_url, profile_edit, automation_edit, chat_read]
   mcp: [workspace]
 approval:
   # The harness tools always ask, whatever this file says (phase-25 decision 2).
   always: [write, edit, bash, profile_edit, automation_edit, chat_read]
   # Children ask for their own gated tools.
   # web_search asks only when the query names a vault entity (phase-14 decision 7).
-  never: [read, subagent, recall, memory, web_search]
+  # fetch_url asks when the URL names one or is not in the user's messages (phase-25 decision 22).
+  never: [read, subagent, recall, memory, web_search, fetch_url]
 subagents: true
 # Phase-23 decision 3: the output modes of a chat without its own choice.
 modes:

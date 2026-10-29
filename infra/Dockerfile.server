@@ -48,6 +48,8 @@ COPY packages/pi-ext-topics packages/pi-ext-topics
 COPY packages/pi-ext-memory packages/pi-ext-memory
 COPY packages/pi-ext-sandbox packages/pi-ext-sandbox
 COPY packages/pi-ext-subagents packages/pi-ext-subagents
+# The shared private-address rule of `fetch_url` (phase-25 decision 23); the rest of the broker stays out.
+COPY services/sandbox-broker/src/net.ts services/sandbox-broker/src/net.ts
 # Not `pnpm deploy`: it copies workspace packages into node_modules, where Node refuses to strip types.
 RUN pnpm install --frozen-lockfile --prod --filter @pa/server...
 # Prune what the server never loads. onnxruntime-node ships binaries for every OS/arch (~230 MB unused);
@@ -79,6 +81,7 @@ COPY tsconfig.base.json ./
 COPY packages packages
 COPY tests/fake-llm tests/fake-llm
 COPY apps/server apps/server
+COPY services/sandbox-broker/src/net.ts services/sandbox-broker/src/net.ts
 COPY agents agents
 COPY automations automations
 COPY skills skills
@@ -95,6 +98,7 @@ COPY --from=prod --chown=app:app /app/packages/pi-ext-topics /app/packages/pi-ex
 COPY --from=prod --chown=app:app /app/packages/pi-ext-memory /app/packages/pi-ext-memory
 COPY --from=prod --chown=app:app /app/packages/pi-ext-sandbox /app/packages/pi-ext-sandbox
 COPY --from=prod --chown=app:app /app/packages/pi-ext-subagents /app/packages/pi-ext-subagents
+COPY --from=prod --chown=app:app /app/services/sandbox-broker /app/services/sandbox-broker
 COPY --chown=app:app infra/models.json infra/mcp.yaml /app/infra/
 COPY --chown=app:app skills /app/skills
 COPY --chown=app:app agents /app/agents

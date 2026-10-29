@@ -1,4 +1,4 @@
-import type { ExtensionFactory } from '@earendil-works/pi-coding-agent';
+import type { ExtensionContext, ExtensionFactory } from '@earendil-works/pi-coding-agent';
 import {
   SEARCH_ENTITY_REASON,
   SEARCH_MAX_RESULTS,
@@ -264,27 +264,59 @@ export function webSearchExtensions(o: {
       },
     });
   };
-  const guard: ExtensionFactory = (pi) => {
-    pi.on('tool_call', async (event, ctx) => {
-      if (event.toolName !== WEB_SEARCH_TOOL) return;
-      const masked = sent.get(event.toolCallId);
-      sent.delete(event.toolCallId);
-      const query = event.input.query;
-      if (masked === query) return;
-      if (o.ask.unattended?.has(o.chatId)) return { block: true, reason: SEARCH_UNATTENDED };
-      const blocked = await confirm(o.ask, {
-        chatId: o.chatId,
-        callId: event.toolCallId,
-        tool: WEB_SEARCH_TOOL,
-        args: { query },
-        reason: SEARCH_ENTITY_REASON,
-        denied: SEARCH_DENIED,
-        timeoutMs: o.timeoutMs,
-        signal: ctx.signal,
-      });
-      if (!blocked) o.approved?.add(event.toolCallId);
-      return blocked;
+  const guard = toolGuard(WEB_SEARCH_TOOL, async (event, ctx) => {
+    const masked = sent.get(event.toolCallId);
+    sent.delete(event.toolCallId);
+    const query = event.input.query;
+    if (masked === query) return;
+    if (o.ask.unattended?.has(o.chatId)) return { block: true, reason: SEARCH_UNATTENDED };
+    return guardConfirm(o, event.toolCallId, ctx.signal, {
+      tool: WEB_SEARCH_TOOL,
+      args: { query },
+      reason: SEARCH_ENTITY_REASON,
+      denied: SEARCH_DENIED,
     });
-  };
+  });
   return [tool, guard];
+}
+
+type GuardBlock = { block: true; reason: string } | undefined;
+/** A `tool_call` handler for one tool only (the guards after `pseudoExtension`). */
+export const toolGuard =
+  (
+    tool: string,
+    fn: (
+      event: { toolCallId: string; input: Record<string, unknown> },
+      ctx: ExtensionContext,
+    ) => Promise<GuardBlock>,
+  ): ExtensionFactory =>
+  (pi) => {
+    pi.on('tool_call', (event, ctx) =>
+      event.toolName === tool
+        ? fn(event as { toolCallId: string; input: Record<string, unknown> }, ctx)
+        : undefined,
+    );
+  };
+
+/** A guard's card; an approved call skips `approvalGate`, so one call shows one card. */
+export async function guardConfirm(
+  o: {
+    chatId: string;
+    ask: Ask;
+    timeoutMs?: number | undefined;
+    approved?: Set<string> | undefined;
+  },
+  callId: string,
+  signal: AbortSignal | undefined,
+  req: Pick<Parameters<typeof confirm>[1], 'tool' | 'args' | 'reason' | 'denied' | 'view'>,
+): Promise<GuardBlock> {
+  const blocked = await confirm(o.ask, {
+    chatId: o.chatId,
+    callId,
+    ...req,
+    timeoutMs: o.timeoutMs,
+    signal,
+  });
+  if (!blocked) o.approved?.add(callId);
+  return blocked;
 }

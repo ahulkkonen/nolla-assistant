@@ -19,10 +19,17 @@ import {
 import { sandboxExtension } from '@pa/pi-ext-sandbox';
 import { type Child, subagentsExtension } from '@pa/pi-ext-subagents';
 import { topicsExtension } from '@pa/pi-ext-topics';
-import { DEFAULT_AGENT_ID, HARNESS_TOOLS, isHarnessTool, WEB_SEARCH_TOOL } from '@pa/protocol';
+import {
+  DEFAULT_AGENT_ID,
+  FETCH_URL_TOOL,
+  HARNESS_TOOLS,
+  isHarnessTool,
+  WEB_SEARCH_TOOL,
+} from '@pa/protocol';
 import { type AgentProfile, type Agents, liveAgentId } from '../agents.ts';
 import { type Ask, approvalGate, childAsk, type View } from '../approval.ts';
 import type { ClaimStore } from '../claims.ts';
+import { fetchExtensions } from '../fetch-tool.ts';
 import {
   allowedToolNames,
   type McpServers,
@@ -52,16 +59,17 @@ export const PROFILE_TOOLS = [
   'recall',
   'memory',
   WEB_SEARCH_TOOL,
+  FETCH_URL_TOOL,
   ...HARNESS_TOOLS,
 ];
 
 /**
- * A chat's tools that its subagent children get: never memory, never a search (the entity guard
- * lives in the parent), never a harness tool (phase-25 decision 2).
+ * A chat's tools that its subagent children get: never memory, never a search or a fetch (their
+ * guards live in the parent), never a harness tool (phase-25 decision 2).
  */
 export const childTools = (tools: string[]) =>
   tools.filter(
-    (t) => t !== 'memory' && t !== 'recall' && t !== WEB_SEARCH_TOOL && !isHarnessTool(t),
+    (t) => !['memory', 'recall', WEB_SEARCH_TOOL, FETCH_URL_TOOL].includes(t) && !isHarnessTool(t),
   );
 
 /** Phase 25 decision 9: the harness tools of one chat session and their card views. */
@@ -471,11 +479,15 @@ export class SessionRegistry {
       never: profile.approval.never.filter((t) => !mcpWrites.includes(t)),
     };
     const { search } = this.opts;
-    // A search the guard approved skips the gate (a profile may list web_search in `always`).
+    // A search or fetch its guard approved skips the gate (a profile may list it in `always`).
     const searchApproved = new Set<string>();
     const autoTools = this.autoApproveTools(agentId);
     // Arguments as the model wrote them (masked), for the guards after pseudo (phase-25 decision 22).
-    const masked = maskedArgs({ [WEB_SEARCH_TOOL]: 'query', profile_edit: 'content' });
+    const masked = maskedArgs({
+      [WEB_SEARCH_TOOL]: 'query',
+      [FETCH_URL_TOOL]: 'url',
+      profile_edit: 'content',
+    });
     const [searchTool, searchGuard] =
       search && tools.includes(WEB_SEARCH_TOOL)
         ? webSearchExtensions({
@@ -488,6 +500,15 @@ export class SessionRegistry {
             masked,
           })
         : [];
+    const [fetchTool, fetchGuard] = tools.includes(FETCH_URL_TOOL)
+      ? fetchExtensions({
+          chatId,
+          ask: this.opts.approval.ask,
+          masked,
+          timeoutMs: this.opts.approval.timeoutMs,
+          approved: searchApproved,
+        })
+      : [];
     // One taint per session: memory parking and the harness card (phase-25 decision 5).
     const taint = turnTaint(memory && pseudo ? () => memory.store.markTainted(chatId) : undefined);
     const harness = this.opts.harness?.({ chatId, agentId, masked: masked.sent });
@@ -531,6 +552,8 @@ export class SessionRegistry {
           : []),
         // After pseudo: a restored query that differs names a vault entity and asks.
         ...(searchGuard ? [searchGuard] : []),
+        // After pseudo: a URL that names a vault entity or that the user did not give asks.
+        ...(fetchTool && fetchGuard ? [fetchGuard, fetchTool] : []),
         // After pseudo (the user approves real values), before the guard.
         approvalGate({
           chatId,

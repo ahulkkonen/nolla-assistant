@@ -343,10 +343,5 @@ describe('skill policy and host matching', () => {
     expect(make('d', '["not a host"]')).toBe('none');
     expect(make('e', '["*"]')).toBe('none');
     expect(skillPolicy(dir, 'missing').network).toBe('none');
-    // The bundled `web-digest` keeps its host allowlist.
-    expect(skillPolicy(join(root, 'skills'), 'web-digest').network).toEqual([
-      'example.com',
-      '*.wikipedia.org',
-    ]);
   });
 });

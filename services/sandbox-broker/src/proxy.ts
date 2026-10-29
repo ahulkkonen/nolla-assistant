@@ -2,40 +2,10 @@
 // HTTP CONNECT (port 443) and plain HTTP forwarding (port 80). Each run registers a random token
 // with its host list; the runner sends the token as proxy userinfo. No other authentication.
 import { randomBytes } from 'node:crypto';
-import { lookup } from 'node:dns';
 import http from 'node:http';
 import net from 'node:net';
 import type { Duplex } from 'node:stream';
-
-const PRIVATE = new net.BlockList();
-for (const [a, p] of [
-  ['0.0.0.0', 8],
-  ['10.0.0.0', 8],
-  ['100.64.0.0', 10],
-  ['127.0.0.0', 8],
-  ['169.254.0.0', 16],
-  ['172.16.0.0', 12],
-  ['192.168.0.0', 16],
-] as const)
-  PRIVATE.addSubnet(a, p, 'ipv4');
-for (const [a, p] of [
-  ['::', 128],
-  ['::1', 128],
-  ['fc00::', 7],
-  ['fe80::', 10],
-] as const)
-  PRIVATE.addSubnet(a, p, 'ipv6');
-
-/** DNS lookup that refuses private, loopback and link-local answers (a host on the list must not reach the broker's networks). */
-const publicLookup: net.LookupFunction = (host, opts, cb) =>
-  lookup(host, { ...opts, all: true }, (err, addrs) => {
-    if (err) return cb(err, '', 4);
-    if (addrs.some((a) => PRIVATE.check(a.address, a.family === 6 ? 'ipv6' : 'ipv4')))
-      return cb(Object.assign(new Error('private address'), { code: 'EACCES' }), '', 4);
-    if (opts.all) return cb(null, addrs);
-    const [first] = addrs as [(typeof addrs)[number]];
-    cb(null, first.address, first.family);
-  });
+import { publicLookup } from './net.ts';
 
 /** `host` is on the list: exact match, or `*.example.com` for any subdomain (not the apex). */
 export function allowed(hosts: string[], host: string): boolean {
