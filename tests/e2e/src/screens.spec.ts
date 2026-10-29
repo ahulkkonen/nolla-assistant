@@ -333,8 +333,9 @@ for (const scheme of ['light', 'dark'] as const) {
           if (screen !== 'kit-artifact')
             await page.getByRole('figure').getByRole('button', { name: 'Avaa paneelissa' }).click();
           const frame = page.getByRole('complementary', { name: 'Artefaktit' }).locator('iframe');
+          // The panel's chart draws after the frame loads; under a parallel run 15 s was too short.
           await expect(frame.contentFrame().locator(ready).first()).toBeVisible({
-            timeout: 15_000,
+            timeout: 30_000,
           });
           await shot(page, screen, vp.width, scheme);
         });
