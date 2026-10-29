@@ -185,13 +185,41 @@ describe('settleTail', () => {
     expect(settleTail('`[a](b')).toBe('`[a](b`');
     expect(settleTail('`[a](b`')).toBe('`[a](b`');
   });
-  it('completes a table delimiter row only under a real header row', () => {
-    expect(settleTail('| a | b |\n| -')).toBe('| a | b |\n| -| --- |');
-    expect(settleTail('| a | b |\n| :-- | --: |')).toBe('| a | b |\n| :-- | --: |');
-    expect(settleTail('a | b\n-')).toBe('a | b');
-    expect(settleTail('| a \\| b |\n| -')).toBe('| a \\| b |\n| -');
-    expect(settleTail('| `a|b` | c |\n| -')).toBe('| `a|b` | c |\n| -| --- |');
-    expect(settleTail('| a | b |\n| x')).toBe('| a | b |\n| x');
+  it('holds back a table until its delimiter row ends, and a row without text (phase 27)', () => {
+    expect(settleTail('Taulukko:\n| Kuukausi | Kulu')).toBe('Taulukko:');
+    expect(settleTail('| a | b |')).toBe('');
+    expect(settleTail('```\nx\n```\n\n|')).toBe('```\nx\n```\n');
+    expect(settleTail('| a | b |\n')).toBe('');
+    expect(settleTail('| a | b |\n|--')).toBe('');
+    expect(settleTail('| a | b |\n| :-- | --: |')).toBe('');
+    const head = '| a | b |\n|---|---|\n';
+    expect(settleTail(head)).toBe(head);
+    expect(settleTail(`${head}| 1 | 2`)).toBe(`${head}| 1 | 2`);
+    expect(settleTail(`${head}| 1 | 2 |\n|`)).toBe(`${head}| 1 | 2 |`);
+    expect(settleTail(`${head}| 1 | 2 |\n`)).toBe(`${head}| 1 | 2 |\n`);
+  });
+  it('shows a prose pipe once the next line starts; code span and escaped pipes are text', () => {
+    expect(settleTail('Valitse A | B')).toBe('');
+    expect(settleTail('Valitse A | B\nTai')).toBe('Valitse A | B\nTai');
+    expect(settleTail('Käytä `a|b` näin')).toBe('Käytä `a|b` näin');
+    expect(settleTail('a \\| b')).toBe('a \\| b');
+  });
+  it('closes open ** and *, the inner first; a trailing run waits (phase 27)', () => {
+    expect(settleTail('Tämä on **tärkeä')).toBe('Tämä on **tärkeä**');
+    expect(settleTail('Tämä on *kallis ')).toBe('Tämä on *kallis*');
+    expect(settleTail('**a *b')).toBe('**a *b***');
+    expect(settleTail('*a **b')).toBe('*a **b***');
+    expect(settleTail('***a')).toBe('***a***');
+    expect(settleTail('a **')).toBe('a ');
+    expect(settleTail('**valmis**')).toBe('**valmis**');
+    expect(settleTail('**valmis*')).toBe('**valmis**');
+    expect(settleTail('- kohta **lihava')).toBe('- kohta **lihava**');
+    expect(settleTail('* kohta')).toBe('* kohta');
+    expect(settleTail('2 * 3 = 6')).toBe('2 * 3 = 6');
+    expect(settleTail('`a*b` ja *c')).toBe('`a*b` ja *c*');
+    expect(settleTail('\\*ei')).toBe('\\*ei');
+    expect(settleTail('**auki `koodi')).toBe('**auki `koodi`**');
+    expect(settleTail('**eka\ntoka')).toBe('**eka\ntoka');
   });
   it('holds back a half-typed fence, a lone list marker and setext underlines', () => {
     expect(settleTail('```py\nfoo\n``')).toBe('```py\nfoo');

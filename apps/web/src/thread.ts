@@ -370,15 +370,58 @@ export function withDefinitions(block: string, definitions: Definition[]) {
   return used.length ? `${block}\n\n${used.map((d) => d.line).join('\n')}` : block;
 }
 
-/** Table cells of a row: escaped pipes and pipes inside code spans do not split. */
-const cells = (row: string) =>
-  row
-    .replace(/\\\|/g, '')
-    .replace(/(`+)[\s\S]*?\1/g, '')
-    .trim()
-    .replace(/^\|/, '')
-    .replace(/\|$/, '')
-    .split('|');
+/** A table row candidate: an unescaped pipe outside code spans. */
+const piped = (line = '') => /\|/.test(line.replace(/\\\|/g, '').replace(/(`+)[\s\S]*?\1/g, ''));
+const DELIMITER = /^ {0,3}\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/;
+/** Line `i` is a row of a table above it: a delimiter row under a header row, then rows. */
+const inTable = (lines: string[], i: number) => {
+  for (let j = i - 1; j > 0 && piped(lines[j]); j--)
+    if (DELIMITER.test(lines[j] ?? '') && piped(lines[j - 1])) return true;
+  return false;
+};
+
+/**
+ * Phase 27: a table waits until its delimiter row ends (before that its header row renders as
+ * text); so does a row without text yet. A prose line with a pipe waits until the next line starts.
+ */
+function holdTable(lines: string[]) {
+  const n = lines.length - 1;
+  const last = lines[n] ?? '';
+  const prev = lines[n - 1];
+  // No text yet: a delimiter row being typed, a row that only has its first pipe.
+  const empty = /^[\s|:-]*$/.test(last);
+  if (empty && piped(prev) && !DELIMITER.test(prev ?? '') && !inTable(lines, n - 1))
+    lines.splice(n - 1);
+  else if (piped(last) && (empty || !inTable(lines, n))) lines.pop();
+}
+
+/** List and quote markers at the start of a line: never emphasis. */
+const MARKERS = /^(?:\s*(?:[-*+]|\d+[.)])\s+|\s*>\s?)*/;
+
+/**
+ * Phase 27: closes the emphasis (`**`, `*`) that the last line leaves open, the inner one first,
+ * and holds back a trailing run (an opener, or a closer still being typed). A run opens when
+ * text follows it and closes an open one when text comes before it.
+ */
+function closeEmphasis(out: string) {
+  const body = out.replace(/(?<!\\)\*+$/, '');
+  const line = body
+    .slice(body.lastIndexOf('\n') + 1)
+    .replace(MARKERS, (m) => ' '.repeat(m.length))
+    .replace(/\\./g, 'xx')
+    .replace(/(`+)[\s\S]*?\1/g, (m) => 'x'.repeat(m.length));
+  const open: string[] = [];
+  for (const m of line.matchAll(/\*+/g)) {
+    const before = /\S/.test(line[m.index - 1] ?? ' ');
+    const after = /\S/.test(line[m.index + m[0].length] ?? ' ');
+    for (const k of m[0].length === 1 ? ['*'] : m[0].length === 2 ? ['**'] : ['**', '*']) {
+      const at = open.lastIndexOf(k);
+      if (before && at >= 0) open.splice(at, 1);
+      else if (after) open.push(k);
+    }
+  }
+  return open.length ? body.trimEnd() + open.reverse().join('') : body;
+}
 
 /**
  * The fence `lines` end inside ('' when every fence closed), the line that opened it, and the line
@@ -409,10 +452,10 @@ export const nodeText = (n: TextNode | undefined): string =>
 
 /**
  * The streamed last block, settled so that it never shows what the final text will not render;
- * when unsure it holds back instead of closing. An unclosed inline code span or link URL is
- * closed; a table's delimiter row gets its missing cells; a half-typed fence, a fence opener
- * whose info string may still grow (phase-20 decision 9), a lone list marker or a setext
- * underline (`-`, `--`, `=`) after text waits for the next delta. An unclosed fence already
+ * when unsure it holds back instead of closing. An unclosed inline code span, link URL or
+ * emphasis is closed; a half-typed fence, a fence opener whose info string may still grow
+ * (phase-20 decision 9), a lone list marker, a setext underline (`-`, `--`, `=`) after text and
+ * a table before its delimiter row ends wait for the next delta. An unclosed fence already
  * renders as a code block (CommonMark).
  */
 export function settleTail(block: string): string {
@@ -431,34 +474,20 @@ export function settleTail(block: string): string {
   )
     lines.pop();
   if (fence) return lines.join('\n');
-  const head = lines.at(-2);
-  const tail = lines.at(-1);
-  // A delimiter row being typed under a header row of two or more unescaped pipes.
-  if (
-    head &&
-    tail &&
-    (head.replace(/\\\|/g, '').match(/\|/g) ?? []).length >= 2 &&
-    /^[\s|:-]*-[\s|:-]*$/.test(tail)
-  ) {
-    const want = cells(head).length;
-    const typed = cells(tail).filter((c) => c.includes('-'));
-    if (typed.length < want)
-      lines[lines.length - 1] =
-        `|${[...typed, ...Array<string>(want - typed.length).fill(' --- ')].join('|')}|`;
-  }
-  const out = lines.join('\n');
+  holdTable(lines);
+  let out = lines.join('\n');
   const open = openSpan(lines.slice(after).join('\n'));
   if (open) {
     // A trailing run is the opener itself or maybe a closer still being typed: hold it back and
     // add no closer. Otherwise close the span.
     const trailing = /(?<!\\)`+$/.exec(out)?.[0].length ?? 0;
-    if (trailing) return out.slice(0, -trailing);
-    return out + '`'.repeat(open);
+    out = trailing ? out.slice(0, -trailing) : out + '`'.repeat(open);
+  } else {
+    // A link whose URL is still coming: closed; an image waits whole (no request to half a URL).
+    const link = /(!?)\[[^\]\n]*\]\([^)\s`]*$/.exec(out);
+    if (link) out = link[1] ? out.slice(0, link.index) : `${out})`;
   }
-  // A link whose URL is still coming: closed; an image waits whole (no request to half a URL).
-  const link = /(!?)\[[^\]\n]*\]\([^)\s`]*$/.exec(out);
-  if (!link) return out;
-  return link[1] ? out.slice(0, link.index) : `${out})`;
+  return closeEmphasis(out);
 }
 
 /** The thread's scroll container as the follow logic needs it (an element, or a test double). */
