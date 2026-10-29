@@ -251,7 +251,7 @@ id: assistant
 name: Avustaja
 model: zdr/strong          # LiteLLM alias
 prompt: prompts/assistant.md
-skills: [web-digest, cite]  # from skills/
+skills: [cite]  # from skills/
 tools:
   allow: [read, write, bash, web_fetch, recall, memory]
   mcp: [workspace]          # MCP servers this agent may see
