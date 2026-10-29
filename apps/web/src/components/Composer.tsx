@@ -134,6 +134,9 @@ export function Composer() {
     useStore.setState({ draft: null });
     requestAnimationFrame(resize);
   }, [draft, chatId]);
+  // Phase-22 decision 5: an update waits while text, files or a recording would be lost.
+  const composing = text !== '' || chips.length > 0 || mic !== 'idle';
+  useEffect(() => useStore.setState({ composing }), [composing]);
   const area = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
   const wrap = useRef<HTMLDivElement>(null);

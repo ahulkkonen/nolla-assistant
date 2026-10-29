@@ -16,12 +16,24 @@ type TipProps = {
   open?: boolean;
 };
 
+/** The last key moved focus (Tab, an arrow key): a focus that opens a tooltip. */
+let focusKey = false;
+globalThis.addEventListener?.('keydown', (e) => (focusKey = /^(Tab|Arrow)/.test(e.key)), true);
+globalThis.addEventListener?.('pointerdown', () => (focusKey = false), true);
+
 /** Kit tooltip around one trigger element; none on touch screens (brief 7.5). */
 export function Tip({ label, children, side, align, ariaLabel, className, open }: TipProps) {
   if (touch && open === undefined) return children;
   return (
     <Tooltip {...(open === undefined ? {} : { open })}>
-      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipTrigger
+        asChild
+        // Phase-22 decision 6: focus that a dialog, sheet or menu moves (on open, back on close)
+        // opens no tooltip, so the next Esc reaches the dialog and not the tooltip.
+        onFocus={(e) => !focusKey && e.preventDefault()}
+      >
+        {children}
+      </TooltipTrigger>
       <TooltipContent
         sideOffset={4}
         collisionPadding={8}

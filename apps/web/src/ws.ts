@@ -176,7 +176,8 @@ export function retryTurn(chatId: string) {
   const { messages, i, last } = lastUser(chatId);
   if (!last) return;
   const inPlace =
-    st.failed[chatId] !== 'prompt_failed' && messages.slice(i + 1).every((m) => !m.tools.length);
+    st.failed[chatId]?.code !== 'prompt_failed' &&
+    messages.slice(i + 1).every((m) => !m.tools.length);
   // The kept message becomes a new entry: a fresh local id, and its old entry id (off the branch
   // after the rewind) goes; `message.accepted` brings the new one.
   const localId = `local-${crypto.randomUUID()}`;

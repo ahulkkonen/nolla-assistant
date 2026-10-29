@@ -139,6 +139,8 @@ export const ChatSummary = z.object({
   archived: z.boolean(),
   /** True after a manual rename: automatic titling no longer changes the title. */
   titleLocked: z.boolean().optional(),
+  /** Phase-22 decision 3: the chat "Haarauta" started this one from; the sidebar marks it. */
+  forkedFrom: id64.nullable().optional(),
   modelPolicy: ModelPolicy,
   /** Phase-21 decision 4: the model marks each sentence with `⟦N⟧`. */
   confidence: z.boolean(),
@@ -1177,6 +1179,10 @@ export const ServerMessage = z.discriminatedUnion('type', [
     requestId: id64.optional(),
     /** `zdr_unavailable`: the model the refused run used; the chat can have another by now. */
     modelId: ModelPolicy.shape.modelId.optional(),
+    /** Phase-22 decision 1, `llm_failed`: the provider's HTTP status, when there is one. */
+    status: z.int().optional(),
+    /** The provider's message, masked, first 400 characters. */
+    detail: z.string().max(400).optional(),
   }),
   z.object({ type: z.literal('pong') }),
   z.object({

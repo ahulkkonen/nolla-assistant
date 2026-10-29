@@ -11,7 +11,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useStore } from '../store.ts';
-import { send } from '../ws.ts';
+import { openChat, send } from '../ws.ts';
 import { type Action, ActionMenu } from './Actions.tsx';
 import { ListSkeleton, Page } from './Page.tsx';
 import { UNTITLED } from './Sidebar.tsx';
@@ -62,8 +62,16 @@ function ProposalCard({
         <div className="col-start-1 row-start-1 min-w-0">
           <div className="font-medium">{p.name}</div>
           <div className="text-meta text-muted-foreground text-pretty">{p.why}</div>
-          <div className="truncate text-meta text-muted-foreground">
-            Keskustelusta: {chatTitle ?? UNTITLED}
+          <div className="flex gap-1 text-meta whitespace-nowrap text-muted-foreground">
+            Keskustelusta:
+            {/* Phase-22 decision 4: opens the chat, as a search hit does. */}
+            <button
+              type="button"
+              onClick={() => openChat(p.chatId)}
+              className="min-w-0 truncate text-link underline-offset-4 hover:underline"
+            >
+              {chatTitle ?? UNTITLED}
+            </button>
           </div>
         </div>
         {!mode && (
@@ -95,7 +103,11 @@ function ProposalCard({
             value={name}
             maxLength={80}
             onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => e.key === 'Escape' && setEditing(null)}
+            onKeyDown={(e) => {
+              if (e.key !== 'Escape') return;
+              e.preventDefault();
+              setEditing(null);
+            }}
             className="min-w-0 flex-1"
           />
           <Button type="submit" disabled={!name.trim()}>
