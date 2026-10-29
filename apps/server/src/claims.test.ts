@@ -1,4 +1,5 @@
 import { join } from 'node:path';
+import { SessionManager } from '@earendil-works/pi-coding-agent';
 import { chats, claimEntities, claims, evidence, openDb } from '@pa/db';
 import { type FakeTurn, startFakeLlm } from '@pa/fake-llm';
 import { ATTACHMENT_MARKER } from '@pa/pi-ext-memory';
@@ -6,7 +7,7 @@ import { type Json, PseudoClient } from '@pa/pi-ext-pseudo';
 import { startFakeSidecar } from '@pa/pi-ext-pseudo/fake-sidecar';
 import { eq, inArray } from 'drizzle-orm';
 import { afterEach, expect, test } from 'vitest';
-import { type ChatMsg, claimStore } from './claims.ts';
+import { branchPoint, type ChatMsg, claimStore } from './claims.ts';
 import { loadModel } from './embeddings.ts';
 import { bootPseudo, cleanups, runCleanups, tempDir } from './test-utils.ts';
 import { taskSmall } from './topics.ts';
@@ -91,9 +92,11 @@ async function extraction(
   const asked: string[] = [];
   const sweep = (msgs: ChatMsg[] | ((chatId: string) => Promise<ChatMsg[]>), now = Date.now()) =>
     s.sweep(
-      async (chatId) => {
+      async (chatId, through) => {
         asked.push(chatId);
-        return typeof msgs === 'function' ? msgs(chatId) : msgs;
+        const messages = typeof msgs === 'function' ? await msgs(chatId) : msgs;
+        // A linear chat: the marker's path is the branch up to it.
+        return { messages, at: messages.findIndex((m) => m.id === through) };
       },
       (chatId, a) => activated.push({ chatId, ids: a.map((c) => c.id) }),
       now,
@@ -622,23 +625,47 @@ test('sweep: a message during the call is picked up next time; a failure waits 3
   expect(order).toEqual(['newer', 'old']);
 });
 
-test('extract: a long tail goes in windows; a marker off the branch marks read', {
-  timeout: 60_000,
-}, async () => {
+test('extract: a long tail goes in windows', { timeout: 60_000 }, async () => {
   const x = await extraction([ONE([]), ONE([])]);
   const long = (id: string): ChatMsg => ({ id, role: 'user', text: 'a'.repeat(15_000) });
   x.chat('c1');
-  await x.s.extract('c1', [long('u1'), long('u2')], {
-    through: null,
-    tainted: false,
-    date: '2026-10-26',
-  });
+  await x.s.extract('c1', [long('u1'), long('u2')], { at: -1, tainted: false, date: '2026-10-26' });
   expect(x.llm.requests).toHaveLength(2);
   expect(x.db.select().from(chats).get()?.claimsThrough).toBe('u2');
-  await x.s.extract('c1', [long('v1')], { through: 'gone', tainted: false, date: '2026-10-26' });
-  expect(x.llm.requests).toHaveLength(2);
-  expect(x.warnings).toContain('claims marker not on branch: marked read');
-  expect(x.db.select().from(chats).get()?.claimsThrough).toBe('v1');
+});
+
+test('after an edit, the extraction reads the new messages from the branch point (phase 24)', {
+  timeout: 60_000,
+}, async () => {
+  const x = await extraction([ONE([])]);
+  const sm = SessionManager.inMemory();
+  const user = (text: string) =>
+    sm.appendMessage({ role: 'user', content: text, timestamp: Date.now() });
+  const long = 'a'.repeat(15_000);
+  const u1 = user(long);
+  const u2 = user('Lopetin juoksemisen.');
+  const marker = user('Selvä.'); // read up to here
+  // The edit: a sibling of u2 with its own reply.
+  sm.branch(u1);
+  user('Lopetin uinnin.');
+  user('Selvä, uinti pois.');
+  const messages: ChatMsg[] = sm
+    .getBranch()
+    .flatMap((e) =>
+      e.type === 'message' && e.message.role === 'user'
+        ? [{ id: e.id, role: 'user' as const, text: String(e.message.content) }]
+        : [],
+    );
+  const at = branchPoint(messages, sm.getBranch(marker));
+  expect([at, messages[at]?.id]).toEqual([0, u1]);
+  expect(messages.map((m) => m.id)).not.toContain(u2);
+  x.chat('c1');
+  await x.s.extract('c1', messages, { at, tainted: false, date: '2026-10-26' });
+  // One window: the long first message is context, not read again.
+  expect(x.llm.requests).toHaveLength(1);
+  expect(JSON.stringify(x.llm.requests[0]?.body)).toContain('Lopetin uinnin.');
+  expect(x.warnings).not.toContain('claims extraction failed');
+  expect(x.db.select().from(chats).get()?.claimsThrough).toBe(messages.at(-1)?.id);
 });
 
 test.skipIf(!modelOk)(

@@ -112,6 +112,7 @@ export async function chatExport(
         artifacts:
           m.role === 'assistant' ? extractArtifacts(m.id, text).map(({ id: _, ...a }) => a) : [],
         ...(m.usage ? { usage: m.usage } : {}),
+        ...(m.versions ? { version: m.versions } : {}),
       };
     }),
   };
@@ -176,7 +177,9 @@ export function toMarkdown(e: ChatExport): string {
       `- Kustannus: ${formatCost(chat.usage.costUsd, fx)} · ${formatTokens(chat.usage.tokens)}${rate}`,
     );
   for (const m of e.messages) {
-    lines.push('', `## ${m.role === 'user' ? 'Sinä' : agent} · ${when(m.createdAt)}`);
+    // Phase 24: the export holds the shown branch; an edited message says which version it is.
+    const version = m.version ? ` (versio ${m.version.index}/${m.version.count})` : '';
+    lines.push('', `## ${m.role === 'user' ? 'Sinä' : agent} · ${when(m.createdAt)}${version}`);
     if (m.text) lines.push('', quote(m.text));
     if (m.attachments.length)
       lines.push(
