@@ -15,6 +15,7 @@
     "test:contract": "pnpm --filter @pa/contract-tests test",
     "test:egress": "pnpm --filter @pa/egress-tests test",
     "test:sandbox": "pnpm --filter @pa/sandbox-tests test",
+    "test:webkit": "pnpm --filter @pa/e2e exec playwright test --project webkit",
     "build": "pnpm -r --if-present build"
   },
   "devDependencies": {
