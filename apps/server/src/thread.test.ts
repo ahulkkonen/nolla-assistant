@@ -3,8 +3,9 @@ import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { chats, files, openDb } from '@pa/db';
 import { startFakeSidecar } from '@pa/pi-ext-pseudo/fake-sidecar';
-import type { ChatExport } from '@pa/protocol';
+import type { AttachmentRef, ChatExport } from '@pa/protocol';
 import { eq } from 'drizzle-orm';
+import sharp from 'sharp';
 import { afterEach, expect, test } from 'vitest';
 import { cutText, thinkingOf, threadFiles } from './bridge.ts';
 import {
@@ -12,6 +13,7 @@ import {
   bootChat,
   bootPseudo,
   cleanups,
+  connect,
   login,
   runCleanups,
   sidecarProxy,
@@ -583,4 +585,180 @@ test('user.retry with a fresh local id gets the new entry id', async () => {
   const byId = await texts(c, chat.id);
   expect(byId.get(again?.[1] ?? '')).toBe('Yksi');
   expect(byId.has(first?.[1] ?? '')).toBe(false);
+});
+
+// Phase 24 (docs/decisions/phase-24-edit-in-place.md): edit in place and the version switch.
+
+const textsOf = (s: { messages: { text: string }[] }) => s.messages.map((m) => m.text);
+
+test('chat.edit keeps the old version in the same file; chat.version shows it in every tab, also after an eviction', async () => {
+  const { c, chat, srv, config, llm } = await bootChat([
+    { text: 'Eka vastaus.' },
+    { text: 'Toka vastaus.' },
+    { text: 'Uusi vastaus.' },
+  ]);
+  await turn(c, chat.id, 'Ensimmäinen');
+  await turn(c, chat.id, 'Toinen');
+  const user2 = (await open(c, chat.id)).messages[2];
+  const file = (await srv.registry.get(chat.id)).sessionManager.getSessionFile();
+  const other = await connect(config.port);
+  await open(other, chat.id);
+
+  c.send({
+    type: 'chat.edit',
+    chatId: chat.id,
+    messageId: user2?.id ?? '',
+    text: 'Toinen muokattu',
+    localId: 'l1',
+  });
+  const accepted = await c.next('message.accepted');
+  await c.idle();
+  // The model sees the edited turn only.
+  const body = JSON.stringify(llm.requests.at(-1)?.body.messages);
+  expect(body).toContain('Toinen muokattu');
+  expect(body).not.toContain('Toka vastaus.');
+  const edited = await open(c, chat.id);
+  expect(edited.messages.map((m) => [m.text, m.versions])).toEqual([
+    ['Ensimmäinen', undefined],
+    ['Eka vastaus.', undefined],
+    ['Toinen muokattu', { index: 2, count: 2 }],
+    ['Uusi vastaus.', undefined],
+  ]);
+  expect(edited.messages[2]?.id).toBe(accepted.messageId);
+  // Same session, same file: nothing copied, nothing deleted.
+  const sm = (await srv.registry.get(chat.id)).sessionManager;
+  expect(sm.getSessionFile()).toBe(file);
+  expect(readdirSync(srv.registry.sessionDir).filter((f) => f.includes(chat.id))).toHaveLength(1);
+
+  other.inbox.length = 0;
+  c.send({ type: 'chat.version', chatId: chat.id, messageId: accepted.messageId, index: 1 });
+  const shown = await c.next('chat.state');
+  expect(shown.switched).toBe(true);
+  expect(textsOf(shown)).toEqual(['Ensimmäinen', 'Eka vastaus.', 'Toinen', 'Toka vastaus.']);
+  expect(shown.messages[2]?.versions).toEqual({ index: 1, count: 2 });
+  // Every socket of the room gets the switch.
+  const seen = await other.next('chat.state');
+  expect([seen.switched, textsOf(seen)]).toEqual([true, textsOf(shown)]);
+  // The `pa-leaf` mark keeps the shown branch when the file opens again.
+  await srv.registry.evictIdle(-1);
+  expect(srv.registry.has(chat.id)).toBe(false);
+  expect(textsOf(await open(c, chat.id))).toEqual(textsOf(shown));
+  // An index that is no version, and a message without versions, are refused.
+  const v1 = shown.messages[2]?.id ?? '';
+  c.send({ type: 'chat.version', chatId: chat.id, messageId: v1, index: 3 });
+  await expect(c.next('chat.state')).rejects.toThrow('bad_message');
+  c.send({
+    type: 'chat.version',
+    chatId: chat.id,
+    messageId: shown.messages[0]?.id ?? '',
+    index: 1,
+  });
+  await expect(c.next('chat.state')).rejects.toThrow('bad_message');
+  c.send({ type: 'chat.version', chatId: chat.id, messageId: v1, index: 2 });
+  expect(textsOf(await c.next('chat.state'))).toEqual(textsOf(edited));
+});
+
+test('chat.edit carries the original images and document blocks, masked once', {
+  timeout: 40_000,
+}, async () => {
+  const { c, chat, llm, config } = await bootPseudo({ [REAL]: SURROGATE }, [
+    { text: 'Näen kuvan.' },
+    { text: 'Näen sen taas.' },
+  ]);
+  const { cookie } = await login(config.port);
+  const png = await sharp({ create: { width: 4, height: 4, channels: 3, background: '#f00' } })
+    .png()
+    .toBuffer();
+  const form = new FormData();
+  form.append('files', new Blob([new Uint8Array(png)], { type: 'image/png' }), 'dot.png');
+  form.append('files', new Blob([`muistio ${REAL}`], { type: 'text/plain' }), 'note.txt');
+  const up = await api(config.port, '/api/files', {
+    method: 'POST',
+    body: form,
+    headers: { cookie },
+  });
+  const { files: refs } = (await up.json()) as { files: AttachmentRef[] };
+  c.send({ type: 'user.message', chatId: chat.id, text: `Katso ${REAL}`, attachments: refs });
+  await c.idle();
+  const [user] = (await open(c, chat.id)).messages;
+  c.send({
+    type: 'chat.edit',
+    chatId: chat.id,
+    messageId: user?.id ?? '',
+    text: `Katso tarkemmin ${REAL}`,
+  });
+  await c.idle();
+  const messages = llm.requests.at(-1)?.body.messages as { role: string; content: unknown }[];
+  const sent = JSON.stringify(messages);
+  expect(sent).not.toContain(REAL);
+  expect(sent).not.toContain('Näen kuvan.');
+  expect(sent).toContain('[Liite: note.txt]\\nmuistio Pekka Laaksonen');
+  const edited = messages.filter((m) => JSON.stringify(m).includes(`Katso tarkemmin ${SURROGATE}`));
+  expect(edited).toHaveLength(1);
+  expect(JSON.stringify(edited[0])).toContain('image_url');
+  const state = await open(c, chat.id);
+  expect(state.messages.map((m) => [m.text, m.attachments.map((a) => a.name), m.versions])).toEqual(
+    [
+      [`Katso tarkemmin ${REAL}`, ['dot.png', 'note.txt'], { index: 2, count: 2 }],
+      ['Näen sen taas.', [], undefined],
+    ],
+  );
+});
+
+test('chat.edit and chat.version answer failed during a run and held while a message is held', {
+  timeout: 40_000,
+}, async () => {
+  const { c, chat } = await bootPseudo(
+    { [REAL]: SURROGATE },
+    [
+      { text: 'Eka.' },
+      { text: 'Hidas.', reasoning: 'mietin pitkään nyt', thinkMs: 400 },
+      { text: 'ok' },
+    ],
+    { collide: [SURROGATE] },
+  );
+  await turn(c, chat.id, 'Yksi');
+  const [user] = (await open(c, chat.id)).messages;
+  const id = user?.id ?? '';
+  const refuse = async (code: string) => {
+    c.send({ type: 'chat.edit', chatId: chat.id, messageId: id, text: 'Muokattu' });
+    await expect(c.next('message.accepted')).rejects.toThrow(`server error: ${code}`);
+    c.send({ type: 'chat.version', chatId: chat.id, messageId: id, index: 1 });
+    await expect(c.next('chat.state')).rejects.toThrow(`server error: ${code}`);
+  };
+  c.send({ type: 'user.message', chatId: chat.id, text: 'Kaksi' });
+  await c.next('message.thinking');
+  await refuse('failed');
+  await c.idle();
+  c.send({ type: 'user.message', chatId: chat.id, text: `Soita ${SURROGATE}` });
+  await c.next('chat.held');
+  await refuse('held');
+});
+
+test('chat.edit: a mask failure after the check puts the old leaf back (pseudo_down, no call)', {
+  timeout: 40_000,
+}, async () => {
+  const sc = await startFakeSidecar({});
+  cleanups.push(sc.close);
+  const proxy = await sidecarProxy(sc.url);
+  const { c, chat, llm, srv } = await bootChat([{ text: 'Eka.' }, { text: 'Toka.' }], {
+    PSEUDO_URL: proxy.url,
+  });
+  await turn(c, chat.id, 'Yksi');
+  await turn(c, chat.id, 'Kaksi');
+  const before = await open(c, chat.id);
+  // /unmask (the restore) answers, /mask (the input hook) does not.
+  proxy.fail.add('/mask');
+  c.send({
+    type: 'chat.edit',
+    chatId: chat.id,
+    messageId: before.messages[2]?.id ?? '',
+    text: 'X',
+  });
+  await expect(c.next('message.accepted')).rejects.toThrow('pseudo_down');
+  await sleep(100);
+  expect(llm.requests).toHaveLength(2);
+  expect((await open(c, chat.id)).messages).toEqual(before.messages);
+  await srv.registry.evictIdle(-1);
+  expect(textsOf(await open(c, chat.id))).toEqual(textsOf(before));
 });
