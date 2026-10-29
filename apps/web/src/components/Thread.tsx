@@ -8,7 +8,15 @@ import { useMobile } from '../media.ts';
 import { failedText, serverIdOf, type UiMessage, useStore } from '../store.ts';
 import { Follow, replyTiming, replyUsage, threadKey } from '../thread.ts';
 import { useModel } from '../useModel.ts';
-import { forkChat, openChat, retryTurn, send, sendUserMessage, setDataPolicy } from '../ws.ts';
+import {
+  editMessage,
+  forkChat,
+  openChat,
+  retryTurn,
+  send,
+  sendUserMessage,
+  setDataPolicy,
+} from '../ws.ts';
 import { ApprovalCard } from './ApprovalCard.tsx';
 import { FindBar } from './FindBar.tsx';
 import { ClaimChipRow, MemoryChipRow } from './MemoryChipRow.tsx';
@@ -99,6 +107,7 @@ export function Thread() {
   const ended = useStore((s) => (chatId ? s.waits[chatId]?.ended : false));
   const live = streaming || (running && !ended);
   const forking = useStore((s) => s.pendingFork);
+  const editPending = useStore((s) => !!chatId && s.pendingEdit?.chatId === chatId);
   const refusal = useStore((s) => (chatId ? s.zdrRefused[chatId] : undefined));
   const { name: modelName, policy } = useModel();
   const mobile = useMobile();
@@ -123,7 +132,6 @@ export function Thread() {
   const seen = useRef(messages.length);
   useAnnouncements(chatId);
   const lastUserId = messages.findLast((m) => m.role === 'user')?.id;
-
   useEffect(() => {
     if (!away) seen.current = messages.length;
   }, [away, messages.length]);
@@ -397,15 +405,18 @@ export function Thread() {
                             : {})}
                           {...(i === chipAt ? { footer: chip } : {})}
                           {...(held && i === lastUser ? { footer: heldNote } : {})}
-                          // "Muokkaa" forks (phase 13); not while a reply streams.
+                          // "Muokkaa" edits in place or forks (phases 24, 13); not while a reply
+                          // streams.
                           {...(m.role === 'user' && chatId && !streaming && !running
                             ? {
                                 // Without its entry id (sent before `message.accepted` existed,
                                 // or the answer never came) the edit box asks for a reopen.
                                 onEdit: (text: string) =>
+                                  serverId && editMessage(chatId, serverId, text),
+                                onFork: (text: string) =>
                                   serverId && forkChat(chatId, serverId, text),
-                                canFork: !!serverId,
-                                forking: !!forking,
+                                canSend: !!serverId,
+                                busy: !!forking || editPending,
                                 onNeedIds: () => send({ type: 'chat.open', chatId }),
                               }
                             : {})}

@@ -18,6 +18,7 @@ import type {
   VaultEntity,
   VaultPending,
 } from '@pa/protocol';
+import { stripConfidence } from '@pa/protocol';
 import { toast } from 'sonner';
 import { create } from 'zustand';
 import type { Wait } from './thread.ts';
@@ -150,6 +151,8 @@ type State = {
     localId: string;
     forkId?: string;
   } | null;
+  /** Phase 24: a `chat.edit` sent from this client and its text, until its run starts or a refusal. */
+  pendingEdit: { chatId: string; text: string } | null;
   /** Phase 26: the waiting line of each running chat (`thread.ts` `waitSteps`). */
   waits: Record<string, Wait>;
   /** The streamed message that thinks now, per chat (`message.thinking`); `endedAt` once it stopped. */
@@ -285,7 +288,10 @@ type State = {
   setActive(chatId: string | null): void;
   setArchivedView(on: boolean): void;
   addLocalMessage(chatId: string, msg: UiMessage): void;
-  /** Keeps the chat's first `keep` messages and ends the turn (a retry in place). */
+  /**
+   * Keeps the chat's first `keep` messages and ends the turn (a retry or an edit in place). The
+   * artifacts of the dropped messages go too, and a panel that shows one closes.
+   */
   rewind(chatId: string, keep: number): void;
   /** A message sent again: its new local id, and no entry id until `message.accepted`. */
   relocal(chatId: string, id: string, localId: string): void;
@@ -391,6 +397,12 @@ function adopt(st: State, chatId: string, list: Artifact[], first = false): Part
     return { artifacts, openArtifact: { chatId, id: page.id } };
   return { artifacts };
 }
+
+/** Phase-24 decision 14: whether an artifact's content is in one of `messages`. */
+const inMessages = (messages: { text: string }[]) => {
+  const texts = messages.map((m) => stripConfidence(m.text));
+  return (a: Artifact) => texts.some((t) => t.includes(a.content.trimEnd()));
+};
 
 /**
  * `chat.state` artifacts plus the ones opened locally from code blocks (`local-` ids, not known
@@ -598,6 +610,7 @@ export const useStore = create<State>()((set, get) => {
     forkedFrom: {},
     summaries: {},
     pendingFork: null,
+    pendingEdit: null,
     waits: {},
     thinkingLive: {},
     thinkingText: {},
@@ -1004,9 +1017,14 @@ export const useStore = create<State>()((set, get) => {
           return set({ vault: { entities: msg.entities, pending: msg.pending } });
         // Phase 12: a message that names an issued surrogate waits for an answer in the vault.
         case 'chat.held': {
-          const last = get().messages[msg.chatId]?.findLast((m) => m.role === 'user');
+          const st0 = get();
+          // Phase 24: a held edit waits with its new text.
+          const text =
+            st0.pendingEdit?.chatId === msg.chatId
+              ? st0.pendingEdit.text
+              : st0.messages[msg.chatId]?.findLast((m) => m.role === 'user')?.text;
           set((st) => ({
-            held: { ...st.held, [msg.chatId]: last?.text ?? '' },
+            held: { ...st.held, [msg.chatId]: text ?? '' },
             ...giveBack(st, msg.chatId),
           }));
           // A question, not a success: a warning toast that stays long enough to use its action.
@@ -1081,6 +1099,14 @@ export const useStore = create<State>()((set, get) => {
                 : 'Haarautus epäonnistui. Yritä uudelleen.',
             );
           }
+          // Phase 24: the answer to a pending `chat.edit`; its box keeps the text (`ws.ts` ends
+          // the intent).
+          if (
+            msg.chatId &&
+            st0.pendingEdit?.chatId === msg.chatId &&
+            ['bad_message', 'failed', 'not_found'].includes(msg.code)
+          )
+            return get().pushError('Muokkaus epäonnistui. Yritä uudelleen.');
           // A thinking text that could not load: its row says so, no toast. The answer names the
           // chat, not the message, so every pending row of that chat takes it.
           const loading = Object.entries(st0.thinkingText).filter(
@@ -1233,14 +1259,24 @@ export const useStore = create<State>()((set, get) => {
         },
       })),
     rewind: (chatId, keep) =>
-      set((st) => ({
-        ...endTurn(st, chatId),
-        messages: { ...st.messages, [chatId]: (st.messages[chatId] ?? []).slice(0, keep) },
-        // A rerun's reply is a new entry: no thinking text of this chat carries over.
-        thinkingText: Object.fromEntries(
-          Object.entries(st.thinkingText).filter(([, t]) => t.chatId !== chatId),
-        ),
-      })),
+      set((st) => {
+        const messages = (st.messages[chatId] ?? []).slice(0, keep);
+        // Phase-24 decision 14: only the artifacts of kept messages stay.
+        const artifacts = st.artifacts[chatId]?.filter(inMessages(messages));
+        const open = st.openArtifact;
+        return {
+          ...endTurn(st, chatId),
+          messages: { ...st.messages, [chatId]: messages },
+          ...(artifacts ? { artifacts: { ...st.artifacts, [chatId]: artifacts } } : {}),
+          ...(open?.chatId === chatId && !artifacts?.some((a) => a.id === open.id)
+            ? { openArtifact: null }
+            : {}),
+          // A rerun's reply is a new entry: no thinking text of this chat carries over.
+          thinkingText: Object.fromEntries(
+            Object.entries(st.thinkingText).filter(([, t]) => t.chatId !== chatId),
+          ),
+        };
+      }),
     // Toasts (brief 7.5): 4 s, errors 6 s with a close button.
     pushError(message, action, description) {
       toast.error(message, {

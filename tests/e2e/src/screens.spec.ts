@@ -829,29 +829,48 @@ for (const scheme of ['light', 'dark'] as const) {
             await shot(page, 'sidebar-lock-fork', vp.width, scheme);
           });
 
-        if (vp.width !== 1024)
-          test('message-edit-fork', async ({ app, page }) => {
-            app.llm.push({ text: 'Kevät on hyvä aika.' });
-            await app.login(page);
-            await sendMessage(page, 'Milloin kasvimaa kannattaa aloittaa?');
-            await expect(page.locator('.md').last()).toHaveText('Kevät on hyvä aika.');
-            if (phone) await page.getByLabel('Viesti').press('ArrowUp');
-            else {
-              const first = thread(page).locator('[data-message-id]').first();
-              await first.hover();
-              await first.getByRole('button', { name: 'Muokkaa' }).click();
-            }
-            await page
-              .getByLabel('Muokattava viesti')
-              .fill('Milloin kasvimaa kannattaa aloittaa syksyllä?');
-            await expect(
-              page.getByText(
-                'Muokattu viesti aloittaa uuden keskustelun. Tämä keskustelu ei muutu.',
-              ),
-            ).toBeVisible();
-            if (!phone) await page.mouse.move(vp.width / 2, vp.height - 200);
-            await shot(page, 'message-edit-fork', vp.width, scheme);
-          });
+        // Phase 24: the edit box with its three buttons; it measures the P1 checks.
+        const box = (l: Locator) => l.evaluate((el) => el.getBoundingClientRect().toJSON());
+        /** Opens the edit box of the first and only user message (↑ on the phone) with `text`. */
+        const editFirst = async (page: Page, text: string) => {
+          if (phone) await page.getByLabel('Viesti').press('ArrowUp');
+          else {
+            const first = thread(page).locator('[data-message-id]').first();
+            await first.hover();
+            await first.getByRole('button', { name: 'Muokkaa' }).click();
+          }
+          await page.getByLabel('Muokattava viesti').fill(text);
+        };
+
+        test('edit-box', async ({ app, page }) => {
+          app.llm.push({ text: 'Kevät on hyvä aika.' });
+          await app.login(page);
+          await sendMessage(page, 'Milloin kasvimaa kannattaa aloittaa?');
+          await expect(page.locator('.md').last()).toHaveText('Kevät on hyvä aika.');
+          await editFirst(page, 'Milloin kasvimaa kannattaa aloittaa syksyllä?');
+          await expect(
+            page.getByText(
+              'Lähetä tekee viestistä uuden version tähän keskusteluun. Haarauta aloittaa uuden keskustelun.',
+            ),
+          ).toBeVisible();
+          // P1: 36 px buttons (44 under 768), 8 px apart, at the box's right edge.
+          // The composer's send button is also "Lähetä", without text.
+          const [cancel, fork, sendButton] = await Promise.all(
+            ['Peruuta', 'Haarauta', 'Lähetä'].map((name) =>
+              box(page.getByRole('button', { name, exact: true }).filter({ hasText: name })),
+            ),
+          );
+          const field = await box(page.getByLabel('Muokattava viesti'));
+          const h = phone ? 44 : 36;
+          expect([cancel?.height, fork?.height, sendButton?.height]).toEqual([h, h, h]);
+          expect([
+            (fork?.left ?? 0) - (cancel?.right ?? 0),
+            (sendButton?.left ?? 0) - (fork?.right ?? 0),
+          ]).toEqual([8, 8]);
+          expect(sendButton?.right).toBe(field.right);
+          if (!phone) await page.mouse.move(vp.width / 2, vp.height - 200);
+          await shot(page, 'edit-box', vp.width, scheme);
+        });
 
         test('find-bar', async ({ app, page }) => {
           app.llm.push({ text: 'Omena on hedelmä, ja omenapuu kukkii keväällä.' });

@@ -464,6 +464,41 @@ describe('artifact panel (phase 20)', () => {
     expect(useStore.getState().agentStatus.c1).toBe('idle');
   });
 
+  it('phase 24: a rewind drops the artifacts of removed messages and closes their panel', () => {
+    const msg = (id: string, role: Message['role'], text: string): Message => ({
+      id,
+      role,
+      text,
+      annotations: [],
+      attachments: [],
+      tools: [],
+      createdAt: '2026-01-01T00:00:00.000Z',
+    });
+    const { apply } = useStore.getState();
+    useStore.getState().setActive('c1');
+    const block = (a: Artifact) => `Sivu:\n\n\`\`\`html\n${a.content}\n\`\`\`⟦9⟧`;
+    apply({
+      ...state([art('k1'), art('g1')]),
+      messages: [
+        msg('u1', 'user', 'Tee sivu'),
+        msg('a1', 'assistant', block(art('k1'))),
+        msg('u2', 'user', 'Toinen'),
+        msg('a2', 'assistant', block(art('g1'))),
+      ],
+    });
+    useStore.getState().showArtifact('c1', art('g1'));
+    useStore.getState().rewind('c1', 3);
+    expect(useStore.getState().artifacts.c1?.map((a) => a.id)).toEqual(['k1']);
+    expect(open()).toBeNull();
+    // A panel on a kept artifact stays.
+    useStore.getState().showArtifact('c1', art('k1'));
+    useStore.getState().rewind('c1', 2);
+    expect(open()).toEqual({ chatId: 'c1', id: 'k1' });
+    // A chat without an artifact list keeps none.
+    useStore.getState().rewind('c2', 0);
+    expect(useStore.getState().artifacts.c2).toBeUndefined();
+  });
+
   it('a figure upsert with a closed panel opens nothing; an html upsert opens it', () => {
     const { apply } = useStore.getState();
     useStore.getState().setActive('c1');
