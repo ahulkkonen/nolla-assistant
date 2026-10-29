@@ -17,7 +17,8 @@ The user decided these on 2026-10-29:
    unfiltered, unhedged, uncensored, match the user's deadpan humor". Luottamus (`confidence`)
    keeps its renderer, gets a legend under the reply and shows N on hover or tap. One "Tila" chip
    with checkboxes replaces the Luottamus chip. The phone sheet gets the same rows. The column
-   `confidence` goes; a migration moves `true` to `modes = ["confidence"]`.
+   `confidence` goes; a migration moves `true` to the profile defaults plus `confidence`
+   (decision 4).
 2. **Placement.** `agents/prompts/assistant.md` keeps only mechanics (tools, masking, figures,
    search, language). Behaviour lives in modes. Facts about the user live in `USER.md`. Skills stay
    in `skills/`. The phase-15 editors edit modes too.
@@ -75,8 +76,11 @@ Lines were read on 2026-10-29 at `d3263f1` (phase 22 server part and Pi 1.4.0 me
 4. **What a chat stores.** `chats.modes` is a nullable JSON list. Null means "the profile default"
    at each session build. A list (also an empty one) is the user's choice. *A change of the
    profile default reaches every chat that the user did not change, and the migration needs no
-   profile.* The migration sets `["confidence"]` where `confidence` was true (the user's rule) and
-   null elsewhere. Such a chat has no `suora` until the user turns it on.
+   profile.* The migration sets `["suora", "perusteellinen", "confidence"]` (the profile defaults
+   plus confidence) where `confidence` was true and null elsewhere. *Changed on 2026-10-29 from
+   `["confidence"]` alone: the migrated chat keeps today's behaviour (`perusteellinen`) and gets
+   `suora` like every other chat.* The list is fixed in the SQL, so a later change of the profile
+   default does not reach a migrated chat.
 5. **The system prompt.** `systemPrompt(profile, ids, modes)` in `modes.ts` returns the profile
    prompt, a blank line, and the bodies of the active modes in id order (not toggle order), joined
    by blank lines. An unknown id (a deleted mode) is skipped. *Id order keeps the prompt bytes
@@ -235,7 +239,7 @@ two statements by hand:
 
 ```sql
 ALTER TABLE `chats` ADD `modes` text;
-UPDATE `chats` SET `modes` = '["confidence"]' WHERE `confidence` = 1;
+UPDATE `chats` SET `modes` = '["suora","perusteellinen","confidence"]' WHERE `confidence` = 1;
 ALTER TABLE `chats` DROP COLUMN `confidence`;
 ```
 
@@ -285,7 +289,8 @@ at 390, 1024 and 1440 px, light and dark, against brief section 7 and decisions 
 
 ## Risks and ceilings
 
-- A chat migrated from the trial has no `suora` (decision 4).
+- A chat migrated from the trial has a fixed list, so a later change of the profile default does
+  not reach it (decision 4).
 - Every mode toggle changes the system prompt, so the next turn misses the provider's prompt cache.
 - A user-edited production `assistant.md` keeps line 3 (decision 11).
 - The queue (phase 20) lives in one tab; the router adds no cross-tab sync.
