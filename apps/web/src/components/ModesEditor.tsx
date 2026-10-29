@@ -88,6 +88,7 @@ export function ModeEditor({ doc, onDone }: { doc: ModeDoc | null; onDone: () =>
   return (
     <EditorPage
       title="Agentit"
+      eyebrow="Tila"
       heading={doc ? (doc.file?.name ?? doc.id) : 'Uusi tila'}
       id={doc?.id}
       tabs={[
@@ -185,7 +186,8 @@ export function ModesSection({
   };
   return (
     <section aria-labelledby="modes-title" className="flex flex-col gap-3">
-      <div className="flex items-center gap-4">
+      {/* Phones: the button full width under the heading, as "Uusi agentti" (Page). */}
+      <div className="flex items-center gap-4 max-md:flex-col max-md:items-stretch max-md:gap-3">
         <h2 id="modes-title" className="min-w-0 flex-1 text-heading">
           Tilat
         </h2>
@@ -200,7 +202,7 @@ export function ModesSection({
             <li key={d.id} className="flex min-h-14 items-center gap-3 py-2">
               <div className="min-w-0 flex-1">
                 <div className="truncate font-medium">{nameOf(d)}</div>
-                <div className="truncate text-meta text-muted-foreground">
+                <div className="line-clamp-2 text-meta text-muted-foreground">
                   {d.file ? d.file.description || d.id : d.error}
                 </div>
               </div>

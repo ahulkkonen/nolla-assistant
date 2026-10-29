@@ -1814,23 +1814,21 @@ for (const viewport of VIEWPORTS)
       await expect(n.nth(1)).toBeVisible();
       await expect(n.nth(0)).toBeHidden();
       expect(await glyphs()).toEqual(before);
-      // Above the sentence's end, on its last line: the centre near the last glyph's right edge,
-      // the bottom in the upper half of that glyph's box.
-      const place = await spans.nth(1).evaluate((el) => {
-        const text = el.firstChild as Text;
-        const r = document.createRange();
-        r.setStart(text, text.length - 1);
-        r.setEnd(text, text.length);
-        const end = r.getBoundingClientRect();
-        const sup = (el.querySelector('.conf-n') as HTMLElement).getBoundingClientRect();
-        return {
-          dx: sup.x + sup.width / 2 - end.right,
-          bottom: (sup.bottom - end.top) / end.height,
-        };
-      });
-      expect(Math.abs(place.dx)).toBeLessThan(6);
-      expect(place.bottom).toBeGreaterThan(0);
-      expect(place.bottom).toBeLessThan(0.6);
+      /** The N's box against the full stop's: right after it, raised to the prose's cap height. */
+      const placeOf = (i: number) =>
+        spans.nth(i).evaluate((el) => {
+          const text = el.firstChild as Text;
+          const r = document.createRange();
+          r.setStart(text, text.length - 1);
+          r.setEnd(text, text.length);
+          const end = r.getBoundingClientRect();
+          const sup = (el.querySelector('.conf-n') as HTMLElement).getBoundingClientRect();
+          return { dx: sup.x - end.right, rise: end.bottom - sup.bottom };
+        });
+      const place = await placeOf(1);
+      expect(place.dx).toBeCloseTo(0, 0);
+      // Unraised, an 11 px sans box ends about 2 px above the serif's box.
+      expect(place.rise).toBeGreaterThan(4);
       if (phone) {
         await spans.nth(1).tap();
         await expect(n.nth(1)).toBeHidden();
@@ -1840,6 +1838,8 @@ for (const viewport of VIEWPORTS)
       await legend.click();
       await expect(legend).toHaveAttribute('aria-pressed', 'true');
       for (const i of [0, 1, 2]) await expect(n.nth(i)).toBeVisible();
+      // UI review: the inline N sits where the hover N did.
+      expect(await placeOf(1)).toEqual(place);
       await expect(reply).toHaveText(
         'Tampere on Suomen kolmanneksi suurin kaupunki.9 Sen väkiluku kasvaa ensi vuonna noin prosentin.5 Raitiotie jatkunee Hiedanrantaan vuonna 2031.1',
         { useInnerText: true },

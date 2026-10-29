@@ -186,8 +186,8 @@ export type Wait = {
   ended: boolean;
 };
 
-/** One step of the line: `k` its place (0–3), `on` the active one. */
-export type Step = { k: number; word: string; ms?: number; on?: boolean };
+/** One step of the line: `k` its place (0–3), `on` the active one, `later` one still to come. */
+export type Step = { k: number; word: string; ms?: number; on?: boolean; later?: boolean };
 const NOW = ['lähetetään', 'jonossa', 'ajattelee', 'kirjoittaa'];
 const PAST = ['lähetetty', 'jonotti', 'ajatteli', 'kirjoitti'];
 
@@ -195,8 +195,9 @@ const PAST = ['lähetetty', 'jonotti', 'ajatteli', 'kirjoitti'];
  * The steps of a wait at `now` (phase 26): "Lähetetty → jonossa 12 s → ajattelee → kirjoittaa".
  * The active step counts; a past step shows its time, or goes when it did not happen (no
  * thinking); a later step shows its word only. `row`: the action row's line, without sending.
+ * `thinks`: false for a model without reasoning or with the effort off, so no later "ajattelee".
  */
-export function waitSteps(w: Wait, now: number, row = false): Step[] {
+export function waitSteps(w: Wait, now: number, row = false, thinks = true): Step[] {
   const thought =
     w.thought === undefined
       ? undefined
@@ -211,7 +212,7 @@ export function waitSteps(w: Wait, now: number, row = false): Step[] {
     if (row && k === 0) return [];
     const at = clock[k];
     const ms = at === undefined ? undefined : Math.max(0, at);
-    if (k > w.step) return [{ k, word: NOW[k] ?? '' }];
+    if (k > w.step) return k === 2 && !thinks ? [] : [{ k, word: NOW[k] ?? '', later: true }];
     if (k < w.step)
       return k === 0
         ? [{ k, word: PAST[0] ?? '' }]

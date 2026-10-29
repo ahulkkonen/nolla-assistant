@@ -55,14 +55,22 @@ export function MessageMeta({
           <span aria-hidden="true">·</span>
           <Tip
             // Lines as text and <br>: an element inside the tooltip's hidden copy would sit
-            // outside every landmark (axe `region`).
+            // outside every landmark (axe `region`). One token part per line, in a block box (the
+            // kit's tooltip is a flex row): no orphan word.
+            className="block"
             label={
               <>
                 Malli: {modelLabel(catalog, usage.model)}
                 <br />
                 Syöte {count.format(usage.input)}
-                {cache > 0 && ` · välimuisti ${count.format(cache)}`} · tuloste{' '}
-                {count.format(usage.output)}
+                {cache > 0 && (
+                  <>
+                    <br />
+                    Välimuisti {count.format(cache)}
+                  </>
+                )}
+                <br />
+                Tuloste {count.format(usage.output)}
                 {usage.reasoning > 0 && ` (ajattelu ${count.format(usage.reasoning)})`}
                 {usage.estimated && (
                   <>

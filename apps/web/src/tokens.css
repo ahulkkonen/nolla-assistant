@@ -256,6 +256,9 @@
   --chart-6: #b5446e;
   /* 3.2:1 on --card (phase-20 decision 23). */
   --chart-faint: #929088;
+  /* A waiting line's later steps: lighter than --muted-foreground, still 4.6:1 on --background
+     (--chart-faint is 3.0:1, under the 4.5:1 that text needs). */
+  --pending-foreground: #72716b;
   --chart-band: #f3efe6;
   --chart-accent-soft: #f4dfd3;
   --radius: 12px;
@@ -318,6 +321,7 @@
     --chart-5: #b8a3f0;
     --chart-6: #e795b5;
     --chart-faint: #7f7d75;
+    --pending-foreground: #908f87;
     --chart-band: #3a3936;
     --chart-accent-soft: #4d3429;
     --elevation-sm: 0 0 #0000;
@@ -455,28 +459,36 @@
   }
 }
 
-/* Phase-21 decision 4: a sentence's confidence as its contrast; --conf 100 is --foreground. */
+/* Phase-21 decision 4: a sentence's confidence as its contrast; --conf 100 is --foreground. In
+   OKLab: the steps stay on the line between the two warm greys. In OKLCH Chrome gives these
+   low-chroma greys the hue `none`, which renders as hue 0, a pink tint (UI review). */
 .md .conf,
 .conf-swatch {
-  color: color-mix(in oklch, var(--foreground) calc(var(--conf) * 1%), var(--muted-foreground));
+  color: color-mix(in oklab, var(--foreground) calc(var(--conf) * 1%), var(--muted-foreground));
 }
 .conf-swatch {
   background: currentColor;
 }
-/* Phase-23 decision 9: each sentence's N. Hover (hover devices) or a tap (`data-show`) shows it
-   above the sentence's end in a box that advances 0 px (1 px wide, −1 px margin), so no glyph
-   moves; "Näytä luvut" (`data-conf-n`) puts it in the text, where a screen reader reads it. Not
-   `position: absolute`: Chrome puts the static position of an absolute child of a split inline
-   on the inline's first line. */
+/* Phase-23 decision 9: each sentence's N, right after its full stop (2 px of ink between them)
+   with its top at the prose's cap height. Hidden, it keeps part of its place: it reaches 2.5 px
+   into the word space after it, so the sentence gap grows by about 4 px, a hover (hover devices)
+   or a tap (`data-show`) moves no glyph, and the N stays 2 px clear of the next word. "Näytä luvut"
+   (`data-conf-n`) shows every N at the same place with its whole width, where a screen reader
+   reads it (hidden text is not read). */
+@property --prose-cap {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 0px;
+}
+.md .conf {
+  --prose-cap: 1cap;
+}
 .md .conf-n {
-  display: none;
-  width: 1px;
-  margin-right: -1px;
-  justify-content: center;
+  visibility: hidden;
+  margin-right: -2.5px;
   position: relative;
-  top: 0;
-  /* Over the full stop rather than the space after it. */
-  translate: -0.2em -0.75em;
+  top: calc(1cap - var(--prose-cap));
+  vertical-align: baseline;
   font-family: var(--font-sans);
   font-size: 11px;
   line-height: 1;
@@ -486,18 +498,15 @@
 }
 @media (hover: hover) {
   .md .conf:hover > .conf-n {
-    display: inline-flex;
+    visibility: visible;
   }
 }
 .md .conf[data-show] > .conf-n {
-  display: inline-flex;
+  visibility: visible;
 }
 .md[data-conf-n] .conf > .conf-n {
-  display: inline;
-  width: auto;
-  top: -0.5em;
-  translate: none;
-  margin: 0 0 0 1px;
+  visibility: visible;
+  margin-right: 0;
 }
 
 /* Assistant prose (7.2): serif, markdown without a typography plugin. */

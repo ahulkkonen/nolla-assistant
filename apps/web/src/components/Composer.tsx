@@ -7,6 +7,7 @@ import {
   FolderOpen,
   LoaderCircle,
   Paperclip,
+  Shield,
   ShieldAlert,
   Square,
   Upload,
@@ -16,6 +17,7 @@ import {
   type ClipboardEvent,
   type KeyboardEvent,
   type MouseEvent,
+  type RefObject,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -30,7 +32,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import { uploadFiles } from '../api.ts';
-import { touch } from '../media.ts';
+import { touch, useMobile } from '../media.ts';
 import { useShortcuts } from '../shortcuts.ts';
 import { useStore } from '../store.ts';
 import { sendUserMessage, stopTurn } from '../ws.ts';
@@ -53,26 +55,125 @@ const refChips = (refs: AttachmentRef[]): Chip[] =>
   }));
 
 /**
- * "Hyväksy automaattisesti" (phase-21 decision 7): an outline chip, filled in the warning colour
- * while on. Not on phones: next to the queue's two run buttons it squeezed the model chip to its
- * chevron; the model sheet holds the switch there.
+ * How far the composer toolbar gives way (UI review): 0 every chip with its text; 1 the off
+ * auto-approve chip is a shield; 2 the Tila label is also its first name and a count; 3 the Tila
+ * label is "Tila · 2" (a column beside the side panel), so the model's name stays whole. A step is
+ * taken while the free space before the right-hand group (mic, send) is below zero, that is, the
+ * model chip would truncate (`data-fit` marks its name); it is undone once the free space holds
+ * what the step saved. Re-checks when the toolbar or an item changes size, or an item comes or
+ * goes.
  */
-function AutoApproveChip({ chatId }: { chatId: string }) {
+function useToolbarFit(bar: RefObject<HTMLDivElement | null>, enabled: boolean) {
+  const [level, setLevel] = useState(0);
+  // `pending`: a step waits for its render; `before`: the free space before it.
+  const s = useRef({ level: 0, pending: false, before: 0, saved: [0, 0, 0, 0] }).current;
+  /** The auto margin of the right-hand group, less what the model name lacks. */
+  const freeOf = (el: HTMLElement) => {
+    const right = el.lastElementChild;
+    const name = el.querySelector<HTMLElement>('[data-fit]');
+    const cut = name ? name.scrollWidth - name.clientWidth : 0;
+    return right ? Number.parseFloat(getComputedStyle(right).marginLeft) - cut : 0;
+  };
+  const check = () => {
+    if (!bar.current || s.pending) return;
+    const free = freeOf(bar.current);
+    if (free < 0 && s.level < 3) {
+      s.before = free;
+      s.level += 1;
+    } else if (s.level > 0 && free >= (s.saved[s.level] ?? 0) + 1) {
+      s.before = Number.NaN;
+      s.level -= 1;
+    } else return;
+    s.pending = true;
+    setLevel(s.level);
+  };
+  const latest = useRef(check);
+  latest.current = check;
+  // After a step's render: what it freed, then the next step if the room is still short.
+  useLayoutEffect(() => {
+    if (!s.pending) return;
+    s.pending = false;
+    if (bar.current && !Number.isNaN(s.before)) s.saved[s.level] = freeOf(bar.current) - s.before;
+    check();
+  }, [level]);
+  useLayoutEffect(() => {
+    const el = bar.current;
+    if (!enabled || !el) return;
+    const ro = new ResizeObserver(() => latest.current());
+    const watch = () => {
+      ro.disconnect();
+      ro.observe(el);
+      for (const c of el.children) ro.observe(c);
+    };
+    const mo = new MutationObserver(() => {
+      watch();
+      latest.current();
+    });
+    mo.observe(el, { childList: true });
+    watch();
+    return () => {
+      ro.disconnect();
+      mo.disconnect();
+    };
+  }, [enabled]);
+  return enabled ? level : 0;
+}
+
+/**
+ * "Hyväksy automaattisesti" (phase-21 decision 7). Off: a ghost chip, or (`compact`) a 32 px
+ * shield toggle when the toolbar has no room for its text. On: its text and an outline in the
+ * warning colour. Phones: the model sheet holds the switch; the row shows a warning shield while
+ * it is on.
+ */
+function AutoApproveChip({ chatId, compact }: { chatId: string; compact: boolean }) {
   const auto = useAutoApprove(chatId);
+  const mobile = useMobile();
   if (!auto) return null;
   const { on, which, tip, toggle } = auto;
+  if (mobile)
+    return on ? (
+      <span role="img" aria-label="Hyväksytään automaattisesti" className="shrink-0 px-1">
+        <ShieldAlert size={16} className="text-warning" />
+      </span>
+    ) : null;
+  const click = () => {
+    toggle();
+    // No tooltips on touch: the toast names the tools.
+    if (!on && touch) useStore.getState().notify(`Ajetaan ${which}`);
+  };
+  if (compact && !on)
+    return (
+      <Tip
+        // The control's name, then what it does (a block box: the kit's tooltip is a flex row).
+        className="block"
+        label={
+          <>
+            Hyväksy automaattisesti
+            <br />
+            {tip}
+          </>
+        }
+      >
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Hyväksy automaattisesti"
+          aria-pressed={false}
+          onClick={click}
+          className="rounded-full text-muted-foreground hover:text-foreground"
+        >
+          <Shield size={16} />
+        </Button>
+      </Tip>
+    );
   return (
     <Tip label={tip}>
       <Button
-        variant="outline"
+        variant={on ? 'outline' : 'ghost'}
         aria-pressed={on}
-        onClick={() => {
-          toggle();
-          // No tooltips on touch: the toast names the tools.
-          if (!on && touch) useStore.getState().notify(`Ajetaan ${which}`);
-        }}
+        onClick={click}
         className={cn(
-          'h-8 rounded-full px-3 font-normal text-muted-foreground hover:text-foreground max-md:hidden',
+          'h-8 shrink-0 rounded-full px-3 font-normal text-muted-foreground hover:text-foreground',
           on &&
             'border-warning-line bg-warning-subtle text-warning hover:bg-warning-subtle hover:text-warning aria-pressed:bg-warning-subtle',
         )}
@@ -118,6 +219,10 @@ export function Composer() {
   const picker = useRef<HTMLInputElement>(null);
   const wrap = useRef<HTMLDivElement>(null);
   const meter = useRef<HTMLDivElement>(null);
+  const bar = useRef<HTMLDivElement>(null);
+  const mobile = useMobile();
+  // Phones have neither chip in the row (the model sheet holds them).
+  const fit = useToolbarFit(bar, !mobile);
 
   const uploading = chips.some((c) => !c.ref);
   const canSend = !uploading && (text.trim() !== '' || chips.length > 0);
@@ -386,7 +491,10 @@ export function Composer() {
             Litteroidaan…
           </div>
         )}
-        <div className="flex h-12 items-center gap-1 px-2 py-1.5 max-md:h-14 max-md:px-1.5">
+        <div
+          ref={bar}
+          className="flex h-12 items-center gap-1 px-2 py-1.5 max-md:h-14 max-md:px-1.5"
+        >
           {/* Not modal: a modal menu hides the page from assistive technology (axe). */}
           <DropdownMenu modal={false}>
             <DropdownMenuTrigger asChild>
@@ -423,8 +531,12 @@ export function Composer() {
           />
           <AgentPicker />
           <ModelPicker />
-          <ModesChip chatId={chatId} running={running} />
-          {chatId && <AutoApproveChip chatId={chatId} />}
+          <ModesChip
+            chatId={chatId}
+            running={running}
+            size={fit >= 3 ? 'bare' : fit >= 2 ? 'short' : 'auto'}
+          />
+          {chatId && <AutoApproveChip chatId={chatId} compact={fit >= 1} />}
           <div className="ml-auto flex shrink-0 items-center gap-2">
             <MicButton onText={insertTranscript} onState={setMic} meter={meter} />
             {running && chatId && canSend ? (

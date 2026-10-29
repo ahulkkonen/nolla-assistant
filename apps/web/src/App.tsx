@@ -282,11 +282,14 @@ function Shell() {
               <SquarePen size={20} className="size-5" />
             </IconButton>
           </header>
+        ) : screen === 'chat' && empty ? (
+          // An empty chat has no top bar and no rule (brief 7.4): the title as a sr-only h1.
+          <h1 className="sr-only">{title}</h1>
         ) : (
           screen === 'chat' && (
-            // Desktop chat header (phase 16), also in a new chat (no shift on the first send): the
-            // title and the chat's cost, on the thread column's edges (672, or the narrower column
-            // beside the side panel); the bottom border meets the artifact panel's header.
+            // Desktop chat header (phase 16): the title and the chat's cost, on the thread column's
+            // edges (672, or the narrower column beside the side panel); the bottom border meets
+            // the artifact panel's header.
             <header className="z-(--z-header) h-12 shrink-0 border-b border-border px-4">
               <div className="mx-auto flex h-full w-full max-w-(--thread-max) items-center gap-4">
                 <ChatTitle title={title} />

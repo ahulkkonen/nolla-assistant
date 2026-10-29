@@ -72,6 +72,7 @@ export function BackLink({ onClick }: { onClick: () => void }) {
  */
 export function EditorPage({
   title,
+  eyebrow,
   heading,
   id,
   general,
@@ -84,6 +85,8 @@ export function EditorPage({
   children,
 }: {
   title: string;
+  /** A micro muted line above the heading that names the kind of file ("Tila"). */
+  eyebrow?: string;
   heading: string;
   /** Unset for a new file: the server makes the id from the name. */
   id: string | undefined;
@@ -113,6 +116,7 @@ export function EditorPage({
       <section aria-labelledby="editor-title" className="flex flex-col gap-4">
         <BackLink onClick={onDone} />
         <div className="min-w-0">
+          {eyebrow && <p className="text-micro text-muted-foreground">{eyebrow}</p>}
           <h2 id="editor-title" className="truncate text-heading">
             {heading}
           </h2>

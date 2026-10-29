@@ -422,7 +422,8 @@ export function AgentsScreen() {
     <Page
       title={AGENTS_TITLE}
       action={
-        <Button variant="outline" disabled={!list} onClick={() => setEditing('new')}>
+        // `sm` as "Uusi tila" (32 px; 44 and full width on phones).
+        <Button variant="outline" size="sm" disabled={!list} onClick={() => setEditing('new')}>
           <Plus size={16} />
           Uusi agentti
         </Button>
