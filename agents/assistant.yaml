@@ -11,3 +11,6 @@ approval:
   # web_search asks only when the query names a vault entity (phase-14 decision 7).
   never: [read, subagent, recall, memory, web_search]
 subagents: true
+# Phase-23 decision 3: the output modes of a chat without its own choice.
+modes:
+  default: [suora, perusteellinen]

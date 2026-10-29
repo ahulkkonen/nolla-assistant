@@ -12,6 +12,7 @@ import {
   cronToSchedule,
   decryptCommand,
   ExportStart,
+  ModeFile,
   ModelId,
   mermaidMeta,
   type Schedule,
@@ -144,7 +145,7 @@ describe('model messages (phase-10)', () => {
       agentId: 'assistant',
       pinned: false,
       archived: false,
-      confidence: false,
+      modes: null,
       updatedAt: new Date().toISOString(),
     };
     const policy = { modelId: null, reasoning: 'auto', dataPolicy: 'zdr' };
@@ -165,13 +166,38 @@ describe('confidence markers', () => {
     expect(stripConfidence('⟦0⟧ ⟦10⟧ ⟦x⟧ [5] ⟦5')).toBe('⟦0⟧ ⟦10⟧ ⟦x⟧ [5] ⟦5');
     expect(CONFIDENCE_MARK.exec('Lause.⟦7⟧')?.[1]).toBe('7');
   });
-  it('parses chat.setConfidence', () => {
+});
+
+describe('modes', () => {
+  it('parses chat.setModes with valid ids only', () => {
+    const msg = { type: 'chat.setModes', chatId: 'c1' };
+    expect(ClientMessage.safeParse({ ...msg, modes: ['suora', 'confidence'] }).success).toBe(true);
+    expect(ClientMessage.safeParse({ ...msg, modes: [] }).success).toBe(true);
+    expect(ClientMessage.safeParse({ ...msg, modes: ['Suora'] }).success).toBe(false);
+    expect(ClientMessage.safeParse({ ...msg, modes: ['x'.repeat(33)] }).success).toBe(false);
     expect(
       ClientMessage.safeParse({ type: 'chat.setConfidence', chatId: 'c1', on: true }).success,
-    ).toBe(true);
-    expect(ClientMessage.safeParse({ type: 'chat.setConfidence', chatId: 'c1' }).success).toBe(
-      false,
-    );
+    ).toBe(false);
+  });
+  it('ModeFile refuses an unknown key and renderer', () => {
+    expect(ModeFile.parse({ name: 'Suora' })).toEqual({ name: 'Suora', description: '' });
+    expect(ModeFile.safeParse({ name: 'L', renderer: 'confidence' }).success).toBe(true);
+    expect(ModeFile.safeParse({ name: 'L', renderer: 'emoji' }).success).toBe(false);
+    expect(ModeFile.safeParse({ name: 'L', extra: 1 }).success).toBe(false);
+  });
+  it('AgentFile without modes parses to { default: [] }', () => {
+    const base = {
+      id: 'a',
+      name: 'A',
+      model: 'zdr/fast',
+      prompt: 'prompts/a.md',
+      tools: { allow: ['read'] },
+    };
+    expect(AgentFile.parse(base).modes).toEqual({ default: [] });
+    expect(AgentFile.parse({ ...base, modes: { default: ['suora'] } }).modes).toEqual({
+      default: ['suora'],
+    });
+    expect(AgentFile.safeParse({ ...base, modes: { default: ['Bad id'] } }).success).toBe(false);
   });
 });
 

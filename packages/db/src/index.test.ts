@@ -137,3 +137,28 @@ test('migration 0010: old chats are not mined; automation chats are marked', () 
   ]);
   sqlite.close();
 });
+
+test('migration 0012: confidence 1 becomes the default modes plus confidence, 0 becomes null', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pa-db-'));
+  const old = join(dir, 'drizzle');
+  cpSync(fileURLToPath(new URL('../drizzle', import.meta.url)), old, { recursive: true });
+  const journal = join(old, 'meta', '_journal.json');
+  const j = JSON.parse(readFileSync(journal, 'utf8')) as { entries: { tag: string }[] };
+  j.entries = j.entries.filter((e) => e.tag < '0012');
+  writeFileSync(journal, JSON.stringify(j));
+  const path = join(dir, 't.db');
+  const before = openDb(path, old);
+  const at = '2026-10-01T10:00:00.000Z';
+  before.sqlite.exec(`
+    INSERT INTO chats (id, userId, sessionPath, confidence, createdAt, updatedAt) VALUES ('off', 'u1', 's', 0, '${at}', '${at}');
+    INSERT INTO chats (id, userId, sessionPath, confidence, createdAt, updatedAt) VALUES ('on', 'u1', 's', 1, '${at}', '${at}');
+  `);
+  before.sqlite.close();
+  const { db, sqlite } = openDb(path);
+  const rows = db.select().from(chats).orderBy(chats.id).all();
+  expect(rows.map((r) => [r.id, r.modes])).toEqual([
+    ['off', null],
+    ['on', ['suora', 'perusteellinen', 'confidence']],
+  ]);
+  sqlite.close();
+});

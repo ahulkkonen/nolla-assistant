@@ -76,6 +76,7 @@ export async function buildServer({
   | 'pseudo'
   | 'rooms'
   | 'agents'
+  | 'modes'
   | 'approvals'
   | 'automations'
   | 'sockets'
@@ -162,6 +163,7 @@ export async function buildServer({
     catalog: bridge.catalog,
     registry: bridge.registry,
     agents: bridge.agents,
+    modes: bridge.modes,
     reloadAgents,
     automations: bridge.automations,
     sendAll,

@@ -45,6 +45,8 @@ test('chat.fork copies the path to the fork point, runs the edited text, leaves 
   ]);
   await turn(c, chat.id, 'Ensimmäinen');
   await turn(c, chat.id, 'Toinen');
+  c.send({ type: 'chat.setModes', chatId: chat.id, modes: ['confidence'] });
+  await c.next('chat.updated');
   const before = await open(c, chat.id);
   const [user1, reply1, user2] = before.messages;
   const sourceFile = (await srv.registry.get(chat.id)).sessionManager.getSessionFile() ?? '';
@@ -54,7 +56,12 @@ test('chat.fork copies the path to the fork point, runs the edited text, leaves 
   const { chat: fork } = await c.next('chat.created');
   const state = await c.next('chat.state');
   expect(fork.id).not.toBe(chat.id);
-  expect(fork).toMatchObject({ title: null, usage: { costUsd: 0, tokens: 0 } });
+  // Phase-23 decision 6: the fork copies the modes.
+  expect(fork).toMatchObject({
+    title: null,
+    modes: ['confidence'],
+    usage: { costUsd: 0, tokens: 0 },
+  });
   expect(fork.modelPolicy.dataPolicy).toBe('zdr');
   expect(state.forkedFrom).toEqual({
     chatId: chat.id,

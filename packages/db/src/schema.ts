@@ -44,8 +44,8 @@ export const chats = sqliteTable(
     dataPolicy: text({ enum: ['zdr', 'open'] })
       .notNull()
       .default('zdr'),
-    // Phase-21 decision 4: the confidence trial (a prompt paragraph and inline markers).
-    confidence: integer({ mode: 'boolean' }).notNull().default(false),
+    // Phase-23 decision 4: the chat's output modes; null means the profile's `modes.default`.
+    modes: text({ mode: 'json' }).$type<string[]>(),
     // Phase-13 running totals of this chat's `usage` rows (decision 13).
     costUsd: real().notNull().default(0),
     tokens: integer().notNull().default(0),

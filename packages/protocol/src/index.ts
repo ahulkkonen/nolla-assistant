@@ -130,6 +130,39 @@ export const ForkLink = z.object({
 });
 export type ForkLink = z.infer<typeof ForkLink>;
 
+/** Phase-23 decision 1: the id of an output mode, the file `agents/modes/<id>.md`. */
+export const ModeId = z.string().regex(/^[a-z0-9-]{1,32}$/);
+export const ModeRenderer = z.enum(['confidence']);
+/** Frontmatter of `agents/modes/<id>.md` (phase-23 decision 1). */
+export const ModeFile = z
+  .object({
+    name: z.string().min(1).max(40),
+    description: z.string().max(200).default(''),
+    renderer: ModeRenderer.optional(),
+  })
+  .strict();
+export type ModeFile = z.infer<typeof ModeFile>;
+export const ModeInfo = ModeFile.extend({ id: ModeId });
+export type ModeInfo = z.infer<typeof ModeInfo>;
+/** The prompt paragraph of a mode file. */
+export const ModeBody = z.string().min(1).max(4000);
+/** One mode file as the editor gets it; `file` is null when the frontmatter fails. */
+export const ModeDoc = z.object({
+  id: ModeId,
+  file: ModeFile.nullable(),
+  body: z.string(),
+  raw: z.string(),
+  error: z.string().nullable(),
+});
+export type ModeDoc = z.infer<typeof ModeDoc>;
+/** Body of `POST /api/modes` and `PUT /api/modes/:id`: the raw file, or the form's fields. */
+export const ModeSave = z.union([
+  z.object({ raw: z.string().min(1).max(8000) }),
+  z.object({ file: z.record(z.string(), z.unknown()), body: ModeBody }),
+]);
+export type ModeSave = z.infer<typeof ModeSave>;
+const modeList = z.array(ModeId).max(16);
+
 export const ChatSummary = z.object({
   id: z.string(),
   title: z.string().nullable(),
@@ -142,8 +175,8 @@ export const ChatSummary = z.object({
   /** Phase-22 decision 3: the chat "Haarauta" started this one from; the sidebar marks it. */
   forkedFrom: id64.nullable().optional(),
   modelPolicy: ModelPolicy,
-  /** Phase-21 decision 4: the model marks each sentence with `⟦N⟧`. */
-  confidence: z.boolean(),
+  /** Phase-23 decision 4: the chat's output modes; null means the agent's `modes.default`. */
+  modes: modeList.nullable(),
   /** The server always sets it; optional for older fixtures. */
   usage: ChatUsage.optional(),
   updatedAt: z.iso.datetime(),
@@ -637,6 +670,11 @@ export const AgentFile = z
       .strict()
       .default({ always: [], never: [] }),
     subagents: z.boolean().default(false),
+    /** Phase-23 decision 3: the modes of a chat that has no choice of its own. */
+    modes: z
+      .object({ default: z.array(ModeId).max(8).default([]) })
+      .strict()
+      .default({ default: [] }),
   })
   .strict();
 export type AgentFile = z.infer<typeof AgentFile>;
@@ -666,7 +704,10 @@ export type AgentSave = z.infer<typeof AgentSave>;
 export const AgentList = z.object({
   defaultId: z.string(),
   agents: z.array(AgentDoc),
+  modes: z.array(ModeDoc),
   options: z.object({
+    /** The ids of the loaded modes. */
+    modes: z.array(ModeId),
     /** The tool names a profile can allow. */
     tools: z.array(z.string()),
     /** The servers of `infra/mcp.yaml`. */
@@ -784,12 +825,14 @@ export const ClientMessage = z.discriminatedUnion('type', [
     topicId: id64.optional(),
     /** Unset: Auto with automatic thinking. No `dataPolicy`: a new chat is always `zdr`. */
     model: ModelChoice.optional(),
+    /** Unset: the agent's `modes.default` (phase-23 decision 6). */
+    modes: modeList.optional(),
   }),
   z.object({ type: z.literal('chat.setModel'), chatId: id64, ...ModelChoice.shape }),
   /** `open` only after a recorded ZDR refusal for the chat's model (phase-10 decision 9). */
   z.object({ type: z.literal('chat.setDataPolicy'), chatId: id64, dataPolicy: DataPolicy }),
-  /** Phase-21 decision 4; like `chat.setModel`, it applies to the next turn. */
-  z.object({ type: z.literal('chat.setConfidence'), chatId: id64, on: z.boolean() }),
+  /** Phase-23 decision 6; like `chat.setModel`, it applies to the next turn. */
+  z.object({ type: z.literal('chat.setModes'), chatId: id64, modes: modeList }),
   z.object({ type: z.literal('chat.setAutoApprove'), chatId: id64, on: z.boolean() }),
   z.object({ type: z.literal('models.list') }),
   z.object({ type: z.literal('models.favorite'), modelId: ModelId, favorite: z.boolean() }),
@@ -924,8 +967,17 @@ export const ServerMessage = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('agents.state'),
     agents: z.array(
-      z.object({ id: id64, name: z.string(), model: z.string(), subagents: z.boolean() }),
+      z.object({
+        id: id64,
+        name: z.string(),
+        model: z.string(),
+        subagents: z.boolean(),
+        /** `modes.default` of the profile. */
+        modes: z.array(ModeId),
+      }),
     ),
+    /** Phase-23 decision 7: the loaded modes, without their prompt paragraphs. */
+    modes: z.array(ModeInfo),
   }),
   /** Answer to `models.list` and, to the sending socket only, to `models.favorite`. */
   z.object({
