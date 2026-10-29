@@ -507,8 +507,11 @@ type Props = {
   annotations?: Annotation[];
   attachments?: AttachmentRef[];
   tools?: ToolView[];
-  /** Still streaming: the caret shows and the action row is only reserved. */
-  live?: boolean;
+  /**
+   * Still streaming: the chat whose stream gives the text and the caret; the action row is only
+   * reserved. Phase 27: this view reads the stream itself, so the thread does not render per delta.
+   */
+  live?: string | undefined;
   /** While live, keep the empty action row (default); off when an approval card follows. */
   reserve?: boolean;
   /** Rendered after the text and before the action row, at the 8 px in-turn gap. */
@@ -604,8 +607,8 @@ function EditBox({
 export function MessageView({
   id,
   role,
-  text,
-  annotations = NONE,
+  text: given,
+  annotations: givenAnnotations = NONE,
   attachments = [],
   tools = [],
   live,
@@ -623,6 +626,9 @@ export function MessageView({
   receipt,
   onRetry,
 }: Props) {
+  const streamed = useStore((s) => (live ? s.streaming[live] : undefined));
+  const text = live ? (streamed?.text ?? '') : given;
+  const annotations = live ? (streamed?.annotations ?? NONE) : givenAnnotations;
   const fx = useStore((s) => s.fx);
   const user = role === 'user';
   const [saw, setSaw] = useState(false);
@@ -695,29 +701,30 @@ export function MessageView({
               {annotate(text, annotations)}
             </div>
           )
-        ) : live ? (
-          // Phase 26: the waiting line holds the first line (28 px, one line of prose); the first
-          // token fades in at its place while the line fades out, so nothing moves.
-          (text || waiting) && (
+        ) : (
+          // Phase 26: while live, the waiting line holds the first line (28 px, one line of prose);
+          // the first token fades in at its place while the line fades out, so nothing moves.
+          // Phase 27: one tree for the live and the final reply: the final swaps the text in place.
+          (text || (live && waiting)) && (
             <div className="relative min-h-7">
               {text && (
-                <div className="animate-fade-in">
-                  <MarkdownText text={text} annotations={annotations} live />
+                <div className={cn(live && 'animate-fade-in')}>
+                  <MarkdownText text={text} annotations={annotations} live={!!live} />
                 </div>
               )}
-              <div
-                aria-hidden="true"
-                className={cn(
-                  'absolute inset-x-0 top-0 flex h-7 items-center overflow-hidden transition-[opacity,visibility] duration-150 ease-out',
-                  text && 'invisible opacity-0',
-                )}
-              >
-                {waiting}
-              </div>
+              {live && (
+                <div
+                  aria-hidden="true"
+                  className={cn(
+                    'absolute inset-x-0 top-0 flex h-7 items-center overflow-hidden transition-[opacity,visibility] duration-150 ease-out',
+                    text && 'invisible opacity-0',
+                  )}
+                >
+                  {waiting}
+                </div>
+              )}
             </div>
           )
-        ) : (
-          text && <MarkdownText text={text} annotations={annotations} />
         )}
         {/* Turn extras (the memory chip) sit in the turn, above its action row. */}
         {footer}

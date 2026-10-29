@@ -526,14 +526,21 @@ export class Follow {
   }
 
   /**
-   * The thread itself changed height (phase 26: an Android keyboard, a taller composer); `delta`
-   * is the old height minus the new one. Pinned, it keeps the bottom; scrolled up, it keeps the
-   * reader's distance to the bottom. Either scroll is the follow's own, so no pill comes.
+   * The thread or its content changed height (phase 26: an Android keyboard, a taller composer;
+   * phase 27: the stream). `delta` is the thread's old height minus the new one. Pinned, it keeps
+   * the bottom; scrolled up, it keeps the reader's distance to the bottom (its own scroll). Returns
+   * whether the reader is away (the pill).
    */
   resized(el: Scroller, delta: number) {
-    if (this.pinned) return this.follow(el);
-    el.scrollTop += delta;
-    this.set = el.scrollTop;
+    if (this.pinned) {
+      this.follow(el);
+      return false;
+    }
+    if (delta) {
+      el.scrollTop += delta;
+      this.set = el.scrollTop;
+    }
+    return gapOf(el) > AWAY;
   }
 
   /** The pill or End: to the bottom, and the follow resumes. */
