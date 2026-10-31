@@ -163,8 +163,10 @@ Batch B, item 9:
    `useIterableCallbackReturn`, `noRedeclare`, `noCommentText`, `noUnusedVariables`,
    `noUnusedImports` and `noFocusedTests` (a function with the name `fit`). The 5
    `noExplicitAny` findings in product code have real types (`usage.ts`, `viz-runtime.ts`,
-   `plot-runtime.ts`, the subagent RPC records). The CSS changes compile to the same rules; only
-   the order of three selectors in one list changed. Two rules have options, not "off":
+   `plot-runtime.ts`, the subagent RPC records). The `tokens.css` changes compile to the same
+   CSS, except the order of three selectors in one list. In `kit.css` the subtitle rule moved
+   after the `p` rules; its selectors win by specificity in both places. Two rules have options,
+   not "off":
    `noLabelWithoutControl` knows the `Input` component, and `useValidAriaRole` ignores
    components (`<MessageView role="assistant">` is a prop). `noImportCycles` is on in addition,
    so that the cycles stay at 0. `npx madge@8.0.0 --circular` found 0 cycles in `apps/web/src`
@@ -186,7 +188,7 @@ Batch B, item 9:
      by field. A real body type gave about 50 type errors at about 140 reads, with no gain in
      safety for the product.
 
-   Suppressed on one line, with the reason in the comment: `noImportantStyles` (reduced motion
+   Suppressed in place, with the reason in the comment: `noImportantStyles` (reduced motion
    must win over every rule), `noAriaHiddenOnFocusable` (a `kbd` is not focusable),
    `useAriaPropsSupportedByRole` (the role is a prop with the default `group`) and
    `noStaticElementInteractions` (the model list catches the events of its row buttons).
