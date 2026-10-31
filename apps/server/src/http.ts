@@ -197,7 +197,7 @@ export async function buildServer({
       preValidation: async (req, reply) => {
         // Browsers always send Origin; non-browser clients may omit it.
         const origin = req.headers.origin;
-        if (origin !== undefined && origin !== config.authOrigin) return reply.code(403).send();
+        if (origin !== undefined && !config.wsOrigins.has(origin)) return reply.code(403).send();
         return auth(req, reply);
       },
     },

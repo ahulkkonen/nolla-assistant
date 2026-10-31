@@ -17,4 +17,14 @@ test('phase-22 decision 8: http on a LAN host only with AUTH_INSECURE_LAN=1', ()
   expect(() => loadConfig(env('http://192.168.1.20:3000', 'yes'))).toThrow('AUTH_INSECURE_LAN=1');
   const lan = loadConfig(env('http://laptop.local:3000', '1'));
   expect(lan).toMatchObject({ authOrigin: 'http://laptop.local:3000', cookieSecure: false });
+  expect([...lan.wsOrigins]).toEqual([
+    'http://laptop.local:3000',
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+    'http://::1:3000',
+    'http://[::1]:3000',
+  ]);
+  expect([...loadConfig(env('https://pa.example.test')).wsOrigins]).toEqual([
+    'https://pa.example.test',
+  ]);
 });

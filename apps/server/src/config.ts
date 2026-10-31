@@ -68,6 +68,14 @@ export function loadConfig(env: Env = process.env) {
     // Tests shorten it; the plan fixes 10 minutes.
     approvalTimeoutMs: Number(env.APPROVAL_TIMEOUT_MS) || 10 * 60_000,
     authOrigin: origin.origin,
+    // Browser origins the WebSocket accepts. On the wifi (phase-22 decision 8) the Mac itself still
+    // opens the app as localhost, so the loopback names on the same port count too.
+    wsOrigins: new Set([
+      origin.origin,
+      ...(env.AUTH_INSECURE_LAN === '1'
+        ? [...LOOPBACK].map((h) => `http://${h}${origin.port ? `:${origin.port}` : ''}`)
+        : []),
+    ]),
     passkeyRpId: env.AUTH_PASSKEY_RP_ID || origin.hostname,
     passwordHash: env.AUTH_PASSWORD_HASH || undefined,
     cookieSecret,
