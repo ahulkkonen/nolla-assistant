@@ -48,7 +48,7 @@ Phase 2 ships only `pa-server`. Later phases add services to `infra/compose.yaml
 
 1. In Coolify, add a new resource of type **Docker Compose** from this Git repository.
 2. Set the compose file path to `infra/compose.yaml`.
-3. Set the domain for the `pa-server` service, for example `https://assistant.example.fi`. Coolify issues the TLS certificate.
+3. Set the domain for the `pa-server` service, for example `https://assistant.example.fi`. Coolify issues the TLS certificate. Do not give a domain to another service. `pseudo-svc` has no authentication. Only the `pseudo` network (shared with `pa-server`, no internet) protects it. The Presidio containers are on the `presidio` network with `litellm` only.
 4. Add these environment variables in Coolify. Do not commit them.
 
    | Variable | Value |
