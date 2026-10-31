@@ -269,6 +269,7 @@ through OpenRouter's Exa plugin today), text-to-speech, and multi-user.
 Known limits, from the records: detection is not perfect, and nicknames outside the table or rare
 inflections can slip through; the vault screen says so. Images and voice audio reach the model
 unmasked, through ZDR endpoints. A web search query reaches Exa unmasked when it names no vault
-entity. The threat-model note that the plan asks for is not written yet.
+entity. The [threat model](docs/threat-model.md) states what the system protects, against whom,
+and the risks that stay.
 
 MIT license, see [`LICENSE`](LICENSE).

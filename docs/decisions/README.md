@@ -37,3 +37,4 @@ The build plan is `docs/plan.md`. Section numbers in records refer to it.
 - `phase-28-fixes.md`: MEMORY.md regeneration on activation, the Tila chip link to the mode editor, the relative Luottamus scale, pseudonym marks behind a setting.
 - `phase-30-audits.md`: the three audits before publication (`docs/audits/`) and their fixes in batches A (security) and B (architecture, lint, masked artifacts in a tainted chat).
 - `phase-31-publication.md`: license, CI, the history rewrite, supply-chain settings, synthetic names.
+- `../threat-model.md`: the threat-model note of plan §14 (assets, trust boundaries, attackers, controls, residual risks). It lives outside this folder because it is not a decision record.

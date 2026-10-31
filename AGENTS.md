@@ -77,7 +77,7 @@ skills/             vendored skills; see skills/README.md
 infra/              compose.yaml, compose.local.yaml, Dockerfiles, LiteLLM config, backup
 scripts/            hash-password, restore, restore-drill, download-models, build-skill-runner
 tests/              contract, e2e (Playwright), egress, fake-llm, masked-only, mcp, memory-eval, pii, sandbox
-docs/               plan.md, deploy.md, development.md, decisions/, audits/, media/ (README images)
+docs/               plan.md, deploy.md, development.md, threat-model.md, decisions/, audits/, media/ (README images)
 ```
 
 ## Commands
@@ -134,6 +134,7 @@ Start here for a topic. Each entry says what the document answers.
 | `docs/development.md` | How to develop and test, the test commands, the dependency policy, the status table per phase |
 | `docs/plan.md` | The full build plan: architecture (§3), protocol (§5), PII (§6), memory (§7), agents (§9), MCP (§10), UI spec (§11), phases (§13), quality gates (§14), pitfalls (§15) |
 | `docs/deploy.md` | Runbook for Coolify on a VPS, the local Docker run, the phone on the wifi, backups and restore, Google OAuth |
+| `docs/threat-model.md` | What the system protects, against whom, the controls with their files and tests, the residual risks (plan §14) |
 | `docs/decisions/README.md` | Index of every decision record and phase record |
 | `docs/decisions/0001-pi-1.3.0-contract.md`, `0009-pi-1.4.0.md` | The Pi API surface the code depends on; what changed in 1.4.0 |
 | `docs/decisions/0002-workflow-and-pins.md` | Git workflow without a remote, the 7-day pin rule, TypeScript version choice |
