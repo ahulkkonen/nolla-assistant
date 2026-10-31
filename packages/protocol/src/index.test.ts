@@ -33,6 +33,15 @@ import {
   WEB_SEARCH_TOOL,
 } from './index.ts';
 
+describe('error frame', () => {
+  it('keeps a known code and reads an unknown one as failed', () => {
+    const error = (code: string) =>
+      ServerMessage.parse({ type: 'error', code, message: 'x' }) as { code: string };
+    expect(error('not_found').code).toBe('not_found');
+    expect(error('code_from_a_newer_server').code).toBe('failed');
+  });
+});
+
 describe('ClientMessage', () => {
   it('parses a valid message and applies defaults', () => {
     const r = ClientMessage.safeParse({ type: 'user.message', chatId: 'c1', text: 'hei' });

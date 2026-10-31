@@ -1350,7 +1350,8 @@ export const ServerMessage = z.discriminatedUnion('type', [
   }),
   z.object({
     type: z.literal('error'),
-    code: ErrorCode,
+    /** A code this client does not know (an older cached PWA) reads as `failed`, the generic toast. */
+    code: ErrorCode.catch('failed'),
     message: z.string(),
     chatId: id64.optional(),
     requestId: id64.optional(),
