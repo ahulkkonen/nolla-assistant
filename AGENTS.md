@@ -63,8 +63,9 @@ section 2.
 
 ```
 apps/web            React 19 + Vite + Tailwind 4 + shadcn/ui PWA; zustand store (store.ts), ws.ts, router.ts
-apps/server         Fastify host (export .env before `dev`): auth/, bridge.ts (WebSocket), pi/ (registry, models, guard), approval.ts,
-                    harness.ts, fetch-tool.ts, modes.ts, versions.ts, claims.ts, export.ts, topics.ts
+apps/server         Fastify host (export .env before `dev`): auth/, bridge.ts (WebSocket dispatch), bridge/ (handlers per concern),
+                    socket.ts, history.ts, session-text.ts, restore.ts, llm.ts (module map: phase-30 record, item 10), pi/ (registry,
+                    models, guard), approval.ts, harness.ts, fetch-tool.ts, modes.ts, versions.ts, claims.ts, export.ts, topics.ts
 packages/protocol   zod schemas for every client-server message; the single source of truth for types
 packages/db         drizzle SQLite schema and migrations (drizzle/NNNN_*.sql)
 packages/pi-ext-*   Pi extensions: pseudo, memory, topics, subagents, sandbox (push lives in apps/server/src/push.ts)

@@ -151,7 +151,7 @@ Left as they are in item 10, on purpose:
   `memory.list`, `chat.focus`, `push.subscribe` and `automations.*` itself. Each is one service
   call or one guard.
 - `AGENTS.md` (layout) still names only `bridge.ts`. This branch changed only `apps/server/src`
-  and this record.
+  and this record. Done later on the branch `p30-b3`.
 
 Batch B, item 9:
 
