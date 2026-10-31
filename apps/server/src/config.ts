@@ -1,6 +1,6 @@
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { DEFAULT_MODELS_DIR } from './embeddings.ts';
 
 process.env.PI_OFFLINE = '1';
 process.env.PI_SKIP_VERSION_CHECK = '1';
@@ -13,7 +13,6 @@ type Env = Record<string, string | undefined>;
  * repository and outside any `DATA_DIR`, so dev, every test harness and the memory eval share one
  * download. Production requires `MODELS_DIR` (the image sets `/app/models`).
  */
-export const DEFAULT_MODELS_DIR = join(tmpdir(), 'pa-models');
 
 function required(env: Env, name: string): string {
   const v = env[name];

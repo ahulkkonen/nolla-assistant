@@ -9,8 +9,8 @@ import { startFakeBroker } from '@pa/pi-ext-sandbox/fake-broker';
 import type { ClientMessageInput, ServerMessage } from '@pa/protocol';
 import WebSocket from 'ws';
 import { hashPassword } from './auth/password.ts';
-import { BUNDLED_AGENTS, DEFAULT_MODELS_DIR, loadConfig } from './config.ts';
-import { loadModel, setModelsDir } from './embeddings.ts';
+import { BUNDLED_AGENTS, loadConfig } from './config.ts';
+import { DEFAULT_MODELS_DIR, loadModel, setModelsDir } from './embeddings.ts';
 import { start } from './main.ts';
 
 /** Shared server test harness. Each test file runs `afterEach(runCleanups)`. */

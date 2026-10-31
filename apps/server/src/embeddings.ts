@@ -1,12 +1,16 @@
 import { existsSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { env, type FeatureExtractionPipeline, pipeline } from '@huggingface/transformers';
-import { DEFAULT_MODELS_DIR } from './config.ts';
 
 export const MODEL = 'Xenova/multilingual-e5-small';
 export const DIMS = 384;
 
 let extractor: Promise<FeatureExtractionPipeline> | undefined;
+
+/** Outside production only; `Config` requires `MODELS_DIR` there. This module stays a leaf: the
+ * Docker model stage copies it alone. */
+export const DEFAULT_MODELS_DIR = join(tmpdir(), 'pa-models');
 
 let modelsDir = DEFAULT_MODELS_DIR;
 /** `start` passes `Config.modelsDir`; code that never starts a server keeps the default. */
