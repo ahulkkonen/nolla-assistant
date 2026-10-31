@@ -174,11 +174,6 @@ Batch B, item 9:
    cycle to break: all cycles of the report were in the server, and item 10 broke them.
 
    Rules that are off, with the reason:
-   - `useExhaustiveDependencies` (63 findings). The effects run when one value changes (the
-     chat id, `tick`, `rev`) and call the helpers of the latest render. The rule wants the
-     trigger out and each helper in. That changes when the effects run.
-   - `noArrayIndexKey` (10). These lists have no ids, and the position is the identity: split
-     text, table cells, the streamed Markdown blocks.
    - `noNoninteractiveTabindex` (10). Brief 7.8 and the axe rule `scrollable-region-focusable`
      need `tabIndex={0}` on a scrollable `pre` or region. Tooltip triggers on text take focus too.
    - `useSemanticElements` (12). For the ARIA roles on styled elements it proposes `fieldset`,
@@ -192,6 +187,13 @@ Batch B, item 9:
    must win over every rule), `noAriaHiddenOnFocusable` (a `kbd` is not focusable),
    `useAriaPropsSupportedByRole` (the role is a prop with the default `group`) and
    `noStaticElementInteractions` (the model list catches the events of its row buttons).
+
+   Review fix: `useExhaustiveDependencies` (63 findings at 33 effects) and `noArrayIndexKey` (10)
+   are on again. Each site has a `biome-ignore` with its reason, not a rule override. Each effect
+   runs when one value changes (the chat id, `tick`, `rev`) and reads the values of that render.
+   No effect had a stale closure: the long-lived listeners read only refs, state setters or one
+   object (`Follow`, `latest`). The lists without ids use the position as the identity: split
+   text, table cells, the streamed Markdown blocks.
 
 Decision 14:
 
@@ -209,15 +211,40 @@ Decision 14:
     in the panel, where its result shows. The panel shows the line on the Esikatselu tab only,
     because the Koodi tab shows the restored source. "Avaa uudessa ikkunassa" opens the masked
     page while the artifact is masked. The line reuses the tainted line of the approval card
-    (`TaintLine`). Tests: server 2 (`artifacts.test.ts`, `bridge/chats.test.ts`), web 3
-    (`ArtifactPanel.test.ts`), the e2e flow "tainted artifact" (`flows.spec.ts`), and the screens
-    `artifact-masked` and `artifact-reveal`.
+    (`TaintLine`). Tests: server 3 (`artifacts.test.ts`, `bridge/chats.test.ts`,
+    `pi/registry.test.ts`), web 4 (`ArtifactPanel.test.ts`), the e2e flow "tainted artifact"
+    (`flows.spec.ts`), and the screens `artifact-masked`, `artifact-masked-card` and
+    `artifact-reveal`.
+
+    On purpose, the Koodi tab, Kopioi, "Lataa lähdekoodi" and "Tallenna työkansioon" give the
+    restored source: they are text, and nothing runs them. "Avaa uudessa ikkunassa" opens the
+    document that the frame runs, so the masked one while the artifact is masked.
+
+    Code review fixes:
+    - `ChatSummary.tainted` (optional, so older servers still parse) tells the client the taint.
+      In a tainted chat, a page or a component without a masked source runs nothing and shows
+      the masked line, without the button: the code block that the card opens before its server
+      artifact comes (`local-`), or a reply without its entry id until the next `chat.state`.
+      The server artifact takes the panel over when it comes.
+    - When a run turns the chat tainted, the room gets `chat.updated` and the earlier pages and
+      components again (`artifact.upsert`) with their masked sources, built as `chat.state`
+      builds them (`history`, `messageArtifacts`, `maskedTexts`). `bridge/stream.ts` sees the
+      change at the next final, after the tool that tainted the turn ran.
+    - `chats.tainted` is written whenever `pseudo` runs (`onTaint` of the registry), with or
+      without the memory extension. Without `pseudo` nothing is masked, so nothing is marked.
+    - `revealed` is keyed by `chatId:artifactId`: a fork can keep the entry ids.
+    - The card of a block takes the first artifact of the chat with the same content
+      (`blockMasked`). Two pages with the same source share the line and the reveal.
+
+    UI review fixes: the notice text of the card starts on the title's edge (the shield in the
+    icon column, 12 px gap), and the card keeps 12 px at the bottom (74 px tall at 1024 and
+    1440). The screen `artifact-masked-card` shoots the card at every viewport, because on a
+    phone the sheet covers the thread. Not fixed here: the dialog title is 16/24, not the brief's
+    20/28 (`phase-9-ui.md` §7.5, confirm). It is the shared `AlertDialog` style of every
+    confirmation, not this batch.
 
 Left as they are in decision 14, on purpose:
 
-- A code block without a server artifact opens from its restored text: a block in the user's own
-  message, or a reply whose session entry was not found (until the next `chat.state`). The
-  client does not know the taint of a chat.
 - The artifact title (card, panel header, confirmation) comes from the restored text. The app
   shows it as text, and no code runs.
 - Markdown links in a reply are restored before rendering (the weaker form in the security
