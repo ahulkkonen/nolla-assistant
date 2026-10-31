@@ -1022,6 +1022,27 @@ export type ClientMessage = z.infer<typeof ClientMessage>;
 export type ClientMessageInput = z.input<typeof ClientMessage>;
 
 /** Server to client messages. */
+/**
+ * Every `error.code` the server sends. The server keeps an English text per code and the web a
+ * Finnish one (`Record<ErrorCode, string>`), so a new code needs both.
+ */
+export const ErrorCode = z.enum([
+  'bad_message',
+  'not_found',
+  'not_implemented',
+  'failed',
+  'prompt_failed',
+  'llm_failed',
+  'pseudo_down',
+  'held',
+  'memory_full',
+  'memory_conflict',
+  'memory_generated',
+  'invalid',
+  'zdr_unavailable',
+]);
+export type ErrorCode = z.infer<typeof ErrorCode>;
+
 export const ServerMessage = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('auth.state'),
@@ -1329,7 +1350,7 @@ export const ServerMessage = z.discriminatedUnion('type', [
   }),
   z.object({
     type: z.literal('error'),
-    code: z.string(),
+    code: ErrorCode,
     message: z.string(),
     chatId: id64.optional(),
     requestId: id64.optional(),

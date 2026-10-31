@@ -8,7 +8,7 @@ import {
 import { HttpError, me } from './api.ts';
 import {
   type ClaimChip,
-  errorText,
+  ERROR_TEXT,
   serverIdOf,
   shift,
   thinkingKey,
@@ -529,7 +529,7 @@ function closed(sock: WebSocket, opened: boolean, code: number) {
     });
   if (createWaiters.length) {
     failCreates();
-    useStore.getState().pushError(errorText('prompt_failed', ''));
+    useStore.getState().pushError(ERROR_TEXT.prompt_failed);
   }
   // The answer to a pending consent, retry, edit, switch, fork or thinking text may never come;
   // a reconnect starts clean.

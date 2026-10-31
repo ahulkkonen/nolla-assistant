@@ -120,6 +120,18 @@ Batch B, per item (branch `p30-b2` holds 8, 11, 12, 13 and the dependency follow
    statement. This compares columns, defaults, keys, foreign keys and indexes in one call, so
    the test does not compare `PRAGMA table_info` by hand. The raw FTS5 and vec0 tables stay out
    of the check, because the test runs drizzle's `migrate` and not `openDb`.
+12. Error codes: done. `ErrorCode` in `packages/protocol` is a `z.enum` of the 13 codes, and
+    `error.code` uses it. The wire format does not change. The web keeps
+    `ERROR_TEXT: Record<ErrorCode, string>` and gained Finnish texts for `memory_generated` and
+    `invalid`, which had none. The server's `errorMsg` returns a `ServerMessage`, so the compiler
+    already refuses a server code outside the enum. The server text map `ERRORS` is in
+    `bridge.ts`, which this batch must not edit during the split. Follow-up for the split:
+    `ERRORS satisfies Record<ErrorCode, string>`. The web key `pseudo_collision` was never an
+    error code: it is the toast text of the `chat.held` frame. It is now the constant
+    `COLLISION_TEXT` in `store.ts`, not an enum member. Kept on purpose: a cached PWA that is
+    older than the server drops an error frame with a code it does not know (zod refuses the
+    frame). Before, it showed the server's English text. A new code is rare, and the PWA
+    update replaces the old client.
 
 Left as they are in batch A, on purpose:
 

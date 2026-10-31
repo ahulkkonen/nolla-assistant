@@ -4,6 +4,7 @@ import type {
   AttachmentRef,
   AutoApprove,
   ChatSummary,
+  ErrorCode,
   ExportJob,
   FileRoot,
   ForkLink,
@@ -235,7 +236,7 @@ type State = {
    */
   claimAction: { id: number; undo?: { chatId: string; chip: ClaimChip } } | null;
   /** The last failed claim action: the card shows it inline (no toast). */
-  claimError: { id: number; code: string; message: string } | null;
+  claimError: { id: number; code: ErrorCode; message: string } | null;
   /** The Muisti screen's tab; "Avaa muisti" in a claim chip opens Havainnot. */
   memoryTab: 'profile' | 'claims';
 
@@ -472,11 +473,8 @@ const giveBack = (st: State, chatId: string): Partial<State> => {
   };
 };
 
-/** Finnish text for a server error code, else the server's own text. */
-export const errorText = (code: string, message: string) => ERROR_TEXT[code] ?? message;
-
-/** Finnish text per server error code; unknown codes show the server text. */
-const ERROR_TEXT: Record<string, string> = {
+/** Finnish text per server error code (the toast: at most 60 characters, brief 7.9). */
+export const ERROR_TEXT: Record<ErrorCode, string> = {
   llm_failed: 'Mallikutsu epäonnistui.',
   prompt_failed: 'Viestin lähetys epäonnistui.',
   not_found: 'Keskustelua ei löydy.',
@@ -484,13 +482,16 @@ const ERROR_TEXT: Record<string, string> = {
   not_implemented: 'Ei vielä tuettu.',
   failed: 'Toiminto epäonnistui.',
   pseudo_down: 'Pseudonymisointipalvelu ei vastaa.',
-  // A toast: at most 60 characters (brief 7.9); its action "Avaa Nimisuoja" says where.
-  pseudo_collision: 'Nimi on jo pseudonyymi. Vastaa Nimisuojassa.',
   held: 'Edellinen viesti odottaa Nimisuojaa.',
   memory_full: 'Muisti on täynnä.',
   memory_conflict: 'Teksti on muuttunut, lataa uudelleen.',
+  memory_generated: 'MEMORY.md syntyy havainnoista. Muokkaa havaintoja.',
+  invalid: 'Virheellinen arvo.',
   zdr_unavailable: 'Mallilla ei ole ZDR-reittiä. Avaa keskustelu ja valitse toinen malli.',
 };
+
+/** The `chat.held` toast (a frame, not an error code); its action "Avaa Nimisuoja" says where. */
+const COLLISION_TEXT = 'Nimi on jo pseudonyymi. Vastaa Nimisuojassa.';
 
 /** The toast of a `chat.version` that failed or never answered (phase 24). */
 export const VERSION_FAILED = 'Version vaihto epäonnistui. Yritä uudelleen.';
@@ -1073,7 +1074,7 @@ export const useStore = create<State>()((set, get) => {
             ...giveBack(st, msg.chatId),
           }));
           // A question, not a success: a warning toast that stays long enough to use its action.
-          toast.warning(ERROR_TEXT.pseudo_collision ?? msg.type, {
+          toast.warning(COLLISION_TEXT, {
             duration: 8000,
             action: { label: 'Avaa Nimisuoja', onClick: () => get().setScreen('vault') },
           });
@@ -1116,7 +1117,7 @@ export const useStore = create<State>()((set, get) => {
               claimError: {
                 id: action.id,
                 code: msg.code,
-                message: errorText(msg.code, msg.message),
+                message: ERROR_TEXT[msg.code],
               },
               errorCount: st.errorCount + 1,
               ...(action.undo
@@ -1140,7 +1141,7 @@ export const useStore = create<State>()((set, get) => {
             set({ pendingFork: null });
             return get().pushError(
               msg.code === 'pseudo_down'
-                ? (ERROR_TEXT.pseudo_down ?? msg.message)
+                ? ERROR_TEXT.pseudo_down
                 : 'Haarautus epäonnistui. Yritä uudelleen.',
             );
           }
@@ -1190,8 +1191,7 @@ export const useStore = create<State>()((set, get) => {
                 },
               },
             }));
-            if (chatId !== get().activeChatId)
-              return get().pushError(ERROR_TEXT.zdr_unavailable ?? msg.message);
+            if (chatId !== get().activeChatId) return get().pushError(ERROR_TEXT.zdr_unavailable);
             return set((st) => ({ errorCount: st.errorCount + 1 }));
           }
           if (msg.code === 'llm_failed' || msg.code === 'prompt_failed') {
@@ -1223,7 +1223,7 @@ export const useStore = create<State>()((set, get) => {
               title ? `Keskustelu ”${title}”` : 'Keskustelu',
             );
           }
-          return get().pushError(ERROR_TEXT[msg.code] ?? msg.message);
+          return get().pushError(ERROR_TEXT[msg.code]);
         }
         default:
           return;
