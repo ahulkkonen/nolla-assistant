@@ -17,18 +17,16 @@ nightly() {
   done
 }
 
-# Each database with its WAL, so commits not yet checkpointed are kept; tag = the database name.
-# At most one hour of changes can be lost. The nightly forget in backup-now.sh also thins these
-# snapshots (own path groups).
-# ponytail: a file copy of a live WAL database; a checkpoint between the two reads can lose the
-# commits of that moment. Use `sqlite3 .backup` (app.db) if a restore ever shows it.
+# A consistent copy of each database (db-copy.sh), tag = the database name. At most one hour of
+# changes can be lost. The nightly forget in backup-now.sh also thins these snapshots (own path
+# groups).
 hourly() {
   while :; do
     sleep 3600
     restic cat config >/dev/null 2>&1 || restic init >/dev/null 2>&1
     for db in app vault; do
       [ -e "/data/$db.db" ] || continue
-      if out=$(restic backup "/data/$db.db" $( [ -e "/data/$db.db-wal" ] && echo "/data/$db.db-wal" ) --tag "$db" 2>&1); then
+      if out=$(flock /data/.backup.lock sh -c "/db-copy.sh $db && restic backup /data/.backup/$db.db --tag $db" 2>&1); then
         echo "$(date -Iseconds) restic $db ok"
       else
         echo "$(date -Iseconds) restic $db FAILED: $(echo "$out" | tail -n 3 | tr '\n' ' ')"

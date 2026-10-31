@@ -84,9 +84,9 @@ Phase 2 ships only `pa-server`. Later phases add services to `infra/compose.yaml
 
 ## Backups
 
-The `backup` service uses restic only. Every hour it snapshots `app.db` (tag `app`) and `vault.db` (tag `vault`), each with its WAL file. Every night at 03:00 Europe/Helsinki it snapshots all of `/data` (tag `full`). The nightly snapshot includes the work dirs (`/data/work/<user>`, the Työkansio root of the Files screen) but not their `.trash` folders. Restic encrypts every snapshot with `RESTIC_PASSWORD`, so the bucket holds no plain data. At most one hour of changes to the databases can be lost. A lost vault mapping cannot be rebuilt: surrogates are seeded with a random secret that exists only inside the vault. The service mounts `/data` read-write because `scripts/restore.sh` runs in it.
+The `backup` service uses restic only. Every hour it snapshots `app.db` (tag `app`) and `vault.db` (tag `vault`). Every night at 03:00 Europe/Helsinki it snapshots all of `/data` (tag `full`). The nightly snapshot includes the work dirs (`/data/work/<user>`, the Työkansio root of the Files screen) but not their `.trash` folders. Restic encrypts every snapshot with `RESTIC_PASSWORD`, so the bucket holds no plain data. The service never copies a live database file. `infra/backup/db-copy.sh` first writes a consistent copy of each database to `/data/.backup` (SQLite online backup for `app.db`, `sqlcipher_export` for `vault.db`), and restic backs up the copy. For the vault copy, the service gets `PSEUDO_VAULT_KEY`. At most one hour of changes to the databases can be lost. A lost vault mapping cannot be rebuilt: surrogates are seeded with a random secret that exists only inside the vault. The service mounts `/data` read-write because `scripts/restore.sh` runs in it.
 
-Until phase 30, Litestream replicated `app.db` to the bucket as plain SQLite pages. Litestream 0.5 has no replica encryption. After you deploy this version, delete the `litestream/` prefix in the bucket and the `/data/.app.db-litestream` directory.
+Until phase 30, Litestream replicated `app.db` to the bucket as plain SQLite pages. Litestream 0.5 has no replica encryption. After you deploy this version, run `docker compose exec backup /backup-now.sh` once. A restore needs a snapshot that holds the `/data/.backup` copies. Then delete the `litestream/` prefix in the bucket and the `/data/.app.db-litestream` directory.
 
 ### Set up
 
@@ -119,7 +119,7 @@ The newest snapshot is less than one hour old. The log lines `restic app ok` and
    docker compose run --rm --no-deps backup /scripts/restore.sh
    ```
 
-   The script restores sessions, files, Pi state and `app.db` from the newest nightly snapshot. Then it restores `app.db` and `vault.db` from their newest hourly snapshots (tags `app` and `vault`). It prints each restored file. It stops if the volume already holds a database.
+   The script restores sessions, files and Pi state from the newest nightly snapshot. It restores each database from the newer of the nightly snapshot and the hourly one (tags `app` and `vault`), then runs `PRAGMA integrity_check` on it. It stops when a check does not return `ok`, when restic fails, or when the volume already holds a database. It prints each restored file.
 3. Start the stack: `docker compose up -d`.
 
 ### Restore drill

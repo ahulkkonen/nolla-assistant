@@ -234,6 +234,8 @@ services:
       AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY}
       AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY}
       BACKUP_RUN_NOW: ${BACKUP_RUN_NOW:-0}
+      # db-copy.sh opens vault.db (SQLCipher) for a consistent copy, and restore.sh checks it.
+      PSEUDO_VAULT_KEY: ${PSEUDO_VAULT_KEY:?set PSEUDO_VAULT_KEY}
     mem_limit: 128m
     networks: [internal]
 

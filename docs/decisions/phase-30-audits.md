@@ -23,9 +23,10 @@ what stays as it is.
 8. **Litestream removed; `app.db` hourly with restic** (decided by the user). Litestream wrote
    `app.db` to the bucket as plain SQLite pages, and the file holds real values (claims, evidence,
    restored titles). Litestream 0.5 has no replica encryption. Restic encrypts every snapshot.
-   The backup service now snapshots `app.db` and `vault.db` hourly (tags `app`, `vault`) and all
-   of `/data` nightly, WAL files included. `scripts/restore.sh` restores the nightly snapshot,
-   then the newest hourly snapshot of each database.
+   The backup service snapshots consistent copies of `app.db` (SQLite online backup) and
+   `vault.db` (`sqlcipher_export`, so the service gets `PSEUDO_VAULT_KEY`) hourly (tags `app`,
+   `vault`) and nightly with the rest of `/data`. `scripts/restore.sh` takes each database from
+   the newer snapshot and stops unless `PRAGMA integrity_check` returns `ok`.
 
 ## Batch B: architecture fixes
 
