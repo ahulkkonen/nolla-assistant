@@ -269,7 +269,10 @@
   /* Phone toasts: 16 px + safe area; above the composer while it shows (Composer.tsx). */
   --toast-bottom: calc(16px + env(safe-area-inset-bottom));
   color-scheme: light;
+}
 
+/* Dark values in a rule of their own: Biome reads a property set twice in one rule as an error. */
+:root {
   @variant dark {
     --background: #262624;
     --foreground: #ecebe4;
@@ -398,9 +401,11 @@
     *,
     *::before,
     *::after {
+      /* biome-ignore-start lint/complexity/noImportantStyles: reduced motion wins over every rule. */
       animation-duration: 0s !important;
       animation-iteration-count: 1 !important;
       transition-duration: 0s !important;
+      /* biome-ignore-end lint/complexity/noImportantStyles: reduced motion wins over every rule. */
     }
   }
 }
@@ -506,9 +511,9 @@
     display: inline;
   }
 }
+.md[data-conf-n] .conf-n,
 .md .conf-low > .conf-a > .conf-n,
-.md .conf[data-show] > .conf-a > .conf-n,
-.md[data-conf-n] .conf-n {
+.md .conf[data-show] > .conf-a > .conf-n {
   display: inline;
 }
 
