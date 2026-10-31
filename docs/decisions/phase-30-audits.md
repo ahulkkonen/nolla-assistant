@@ -51,7 +51,8 @@ what stays as it is.
 
 ## Status
 
-Open. Batch A is done on the branch `p30-sec` (2026-10-31). Batch B is not started.
+Open. Batch A is done on the branch `p30-sec` (2026-10-31). Batch B item 10 is done on the branch
+`p30-b1` (2026-10-31).
 
 Batch A, per item:
 
@@ -101,3 +102,41 @@ Left as they are in batch A, on purpose:
 - The backup service holds `PSEUDO_VAULT_KEY`, because a consistent copy of the SQLCipher vault
   needs the key. It already holds `app.db` and the memory files with real values.
 - `docs/plan.md` still describes Litestream. This record supersedes it.
+
+Batch B, item 10:
+
+10. Done. `bridge.ts` had 1828 lines; it now has 196 and only dispatches. No module imports
+    helpers from it: `http.ts` imports `attachBridge`, and nothing else imports the file. The
+    handlers take the socket context `Conn` instead of the closure. Message handling order and the
+    protocol did not change. `npx madge@8.0.0 --circular` on `apps/server/src` found 6 cycles
+    before and 0 after (type imports included). The server suite has 255 passed and 1 skipped
+    before and after; the tests of moved code sit next to their module. Module map (lines):
+    - `bridge.ts` (196): parses a client frame, dispatches it by type, maps handler errors to codes.
+    - `bridge/connection.ts` (129): `BridgeDeps`, the socket context `Conn`, attach and close,
+      `owned`, `update`, `notify`, `toAll`, `agentsState`.
+    - `bridge/stream.ts` (263): `join` and `forward` (Pi session events to frames), `reindex`.
+    - `bridge/accept.ts` (133): `message.accepted`, the stored entry of each prompt.
+    - `bridge/turns.ts` (477): `user.message`, `user.stop`, `user.retry`, `chat.edit`,
+      `chat.version`, `chat.fork`.
+    - `bridge/chats.ts` (276): chat create, list, open (`chat.state`), related, thinking text,
+      archive, rename, pin, model, modes, data policy, delete.
+    - `bridge/approvals.ts` (48): `approval.respond`, `chat.setAutoApprove`, `autoApproveOf`.
+    - `bridge/models.ts` (51): `models.state`, `models.favorite`, `validChoice`.
+    - `bridge/memory.ts` (58): `memory.*` and `claims.*` changes.
+    - `bridge/topics.ts` (68): `topic.accept`, `topic.reject`, `ownTopic`.
+    - `bridge/vault.ts` (92): `vault.*` frames, `vaultState`.
+    - `session-text.ts` (56): `textOf`, `thinkingOf`, `cutText`, `transcript`.
+    - `chats.ts` (76): `chatRow`, `summary`, `threadFiles`, `ownUsage`, `forkLink`.
+    - `restore.ts` (68): `restorer`, `release`.
+    - `history.ts` (164): a Pi branch as protocol messages (`history`, `toMessage`, tool rows).
+    - `socket.ts` (61): `Socket`, `send`, `broadcast`, the error codes, `NotFound`, `RunActive`.
+    - `llm.ts` (87): `taskSmall`, out of `topics.ts`. This closed the last cycle
+      (`claims` to `topics` to `pi/registry`). `topics.ts` re-exports it for `tests/memory-eval`.
+
+Left as they are in item 10, on purpose:
+
+- `bridge.ts` still answers `ping`, `usage.get`, `search.query`, `models.list`, `topic.list`,
+  `memory.list`, `chat.focus`, `push.subscribe` and `automations.*` itself. Each is one service
+  call or one guard.
+- `AGENTS.md` (layout) still names only `bridge.ts`. This branch changed only `apps/server/src`
+  and this record.
