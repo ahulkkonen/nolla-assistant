@@ -62,9 +62,12 @@ what stays as it is.
 
 ## Status
 
-Open. Batch A is done on the branch `p30-sec` (2026-10-31). Batch B item 10 is done on the branch
-`p30-b1` and items 8, 11, 12, 13 and the dependency follow-ups on the branch `p30-b2` (2026-10-31).
-Item 9 and decision 14 are done on the branch `p30-b3` (2026-10-31).
+Done 2026-10-31. All branches are merged to `main`.
+
+- Batch A (security, items 1 to 8): done on the branch `p30-sec`.
+- Batch B item 10 (the `bridge.ts` split): done on the branch `p30-b1`.
+- Batch B items 8, 11, 12, 13 and the dependency follow-ups: done on the branch `p30-b2`.
+- Batch B item 9 (Biome rules) and decision 14 (masked artifacts): done on the branch `p30-b3`.
 
 Batch A, per item:
 

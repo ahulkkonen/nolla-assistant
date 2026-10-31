@@ -1,0 +1,377 @@
+{
+  "url": "http://127.0.0.1:18000",
+  "seeded_via": "vault/seed",
+  "lines": 554,
+  "person_mentions": {
+    "vault_known": 149,
+    "unseen": 276
+  },
+  "unaligned": [],
+  "recall": {
+    "ADDRESS": {
+      "found": 82,
+      "total": 86,
+      "recall": 0.9535
+    },
+    "EMAIL": {
+      "found": 45,
+      "total": 45,
+      "recall": 1.0
+    },
+    "HETU": {
+      "found": 33,
+      "total": 33,
+      "recall": 1.0
+    },
+    "IBAN": {
+      "found": 29,
+      "total": 29,
+      "recall": 1.0
+    },
+    "PERSON": {
+      "found": 419,
+      "total": 425,
+      "recall": 0.9859
+    },
+    "PHONE": {
+      "found": 44,
+      "total": 44,
+      "recall": 1.0
+    },
+    "PLATE": {
+      "found": 10,
+      "total": 14,
+      "recall": 0.7143
+    },
+    "POSTCODE_CITY": {
+      "found": 38,
+      "total": 38,
+      "recall": 1.0
+    },
+    "codes": {
+      "found": 106,
+      "total": 106,
+      "recall": 1.0
+    },
+    "unseen_names": {
+      "found": 270,
+      "total": 276,
+      "recall": 0.9783
+    },
+    "vault_known_names": {
+      "found": 149,
+      "total": 149,
+      "recall": 1.0
+    }
+  },
+  "precision_by_kind": {
+    "ADDRESS": {
+      "tp": 82,
+      "predicted": 82,
+      "precision": 1.0
+    },
+    "EMAIL": {
+      "tp": 45,
+      "predicted": 45,
+      "precision": 1.0
+    },
+    "HETU": {
+      "tp": 33,
+      "predicted": 33,
+      "precision": 1.0
+    },
+    "IBAN": {
+      "tp": 29,
+      "predicted": 29,
+      "precision": 1.0
+    },
+    "PERSON": {
+      "tp": 421,
+      "predicted": 425,
+      "precision": 0.9906
+    },
+    "PHONE": {
+      "tp": 44,
+      "predicted": 44,
+      "precision": 1.0
+    },
+    "PLATE": {
+      "tp": 10,
+      "predicted": 10,
+      "precision": 1.0
+    },
+    "POSTCODE_CITY": {
+      "tp": 38,
+      "predicted": 38,
+      "precision": 1.0
+    }
+  },
+  "by_detector": {
+    "codes": {
+      "predicted": 281,
+      "tp": 281,
+      "precision": 1.0,
+      "gold_found_first": 281,
+      "recall_share": 0.3936
+    },
+    "gazetteer": {
+      "predicted": 167,
+      "tp": 166,
+      "precision": 0.994,
+      "gold_found_first": 164,
+      "recall_share": 0.2297
+    },
+    "ner": {
+      "predicted": 2,
+      "tp": 2,
+      "precision": 1.0,
+      "gold_found_first": 2,
+      "recall_share": 0.0028
+    },
+    "vault": {
+      "predicted": 256,
+      "tp": 253,
+      "precision": 0.9883,
+      "gold_found_first": 253,
+      "recall_share": 0.3543
+    }
+  },
+  "thresholds": {
+    "codes": {
+      "min": 1.0,
+      "value": 1.0,
+      "pass": true
+    },
+    "PERSON": {
+      "min": 0.98,
+      "value": 0.9859,
+      "pass": true
+    },
+    "EMAIL": {
+      "min": 0.95,
+      "value": 1.0,
+      "pass": true
+    },
+    "ADDRESS": {
+      "min": 0.95,
+      "value": 0.9535,
+      "pass": true
+    },
+    "POSTCODE_CITY": {
+      "min": 1.0,
+      "value": 1.0,
+      "pass": true
+    },
+    "precision PERSON": {
+      "min": 0.97,
+      "value": 0.9906,
+      "pass": true
+    },
+    "precision EMAIL": {
+      "min": 0.97,
+      "value": 1.0,
+      "pass": true
+    },
+    "precision ADDRESS": {
+      "min": 0.97,
+      "value": 1.0,
+      "pass": true
+    },
+    "precision POSTCODE_CITY": {
+      "min": 0.97,
+      "value": 1.0,
+      "pass": true
+    },
+    "precision HETU": {
+      "min": 0.97,
+      "value": 1.0,
+      "pass": true
+    },
+    "precision IBAN": {
+      "min": 0.97,
+      "value": 1.0,
+      "pass": true
+    },
+    "precision PHONE": {
+      "min": 0.97,
+      "value": 1.0,
+      "pass": true
+    }
+  },
+  "misses": [
+    {
+      "id": "c216",
+      "kind": "PLATE",
+      "surface": "CGN-47",
+      "groups": [
+        "PLATE"
+      ],
+      "partial": false
+    },
+    {
+      "id": "c217",
+      "kind": "PLATE",
+      "surface": "OLY-650",
+      "groups": [
+        "PLATE"
+      ],
+      "partial": false
+    },
+    {
+      "id": "c218",
+      "kind": "PLATE",
+      "surface": "TEV-3",
+      "groups": [
+        "PLATE"
+      ],
+      "partial": false
+    },
+    {
+      "id": "c219",
+      "kind": "PLATE",
+      "surface": "SUV-21",
+      "groups": [
+        "PLATE"
+      ],
+      "partial": false
+    },
+    {
+      "id": "c328",
+      "kind": "PERSON",
+      "surface": "hämäläistä",
+      "groups": [
+        "PERSON",
+        "unseen_names"
+      ],
+      "partial": false
+    },
+    {
+      "id": "c344",
+      "kind": "ADDRESS",
+      "surface": "kauppakadulta 14",
+      "groups": [
+        "ADDRESS"
+      ],
+      "partial": false
+    },
+    {
+      "id": "c351",
+      "kind": "PERSON",
+      "surface": "lahtiseksi",
+      "groups": [
+        "PERSON",
+        "unseen_names"
+      ],
+      "partial": false
+    },
+    {
+      "id": "c406",
+      "kind": "PERSON",
+      "surface": "Late",
+      "groups": [
+        "PERSON",
+        "unseen_names"
+      ],
+      "partial": false
+    },
+    {
+      "id": "c410",
+      "kind": "PERSON",
+      "surface": "Pirkkis",
+      "groups": [
+        "PERSON",
+        "unseen_names"
+      ],
+      "partial": false
+    },
+    {
+      "id": "c468",
+      "kind": "ADDRESS",
+      "surface": "koulutiellä 3",
+      "groups": [
+        "ADDRESS"
+      ],
+      "partial": false
+    },
+    {
+      "id": "c470",
+      "kind": "ADDRESS",
+      "surface": "puistokatu 12",
+      "groups": [
+        "ADDRESS"
+      ],
+      "partial": false
+    },
+    {
+      "id": "c472",
+      "kind": "ADDRESS",
+      "surface": "myllypiha 2",
+      "groups": [
+        "ADDRESS"
+      ],
+      "partial": false
+    },
+    {
+      "id": "c520",
+      "kind": "PERSON",
+      "surface": "Anu rannalle",
+      "groups": [
+        "PERSON",
+        "unseen_names"
+      ],
+      "partial": true
+    },
+    {
+      "id": "c544",
+      "kind": "PERSON",
+      "surface": "Mika salmelle",
+      "groups": [
+        "PERSON",
+        "unseen_names"
+      ],
+      "partial": true
+    }
+  ],
+  "false_positives": [
+    {
+      "id": "c233",
+      "kind": "PERSON",
+      "detector": "vault",
+      "surface": "Saaressa",
+      "non_target": false
+    },
+    {
+      "id": "c234",
+      "kind": "PERSON",
+      "detector": "vault",
+      "surface": "Niemen",
+      "non_target": false
+    },
+    {
+      "id": "c251",
+      "kind": "PERSON",
+      "detector": "gazetteer",
+      "surface": "Sinistä",
+      "non_target": false
+    },
+    {
+      "id": "c312",
+      "kind": "PERSON",
+      "detector": "vault",
+      "surface": "aino",
+      "non_target": false
+    }
+  ],
+  "decoy_hits": [
+    {
+      "id": "c233",
+      "decoy_kind": "PERSON",
+      "surface": "Saaressa"
+    },
+    {
+      "id": "c234",
+      "decoy_kind": "PERSON",
+      "surface": "Niemen"
+    }
+  ]
+}
