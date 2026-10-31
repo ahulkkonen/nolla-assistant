@@ -49,15 +49,20 @@ import { BadSubscription, type Push } from './push.ts';
 import { release, restorer } from './restore.ts';
 import { indexChat, related, search } from './search.ts';
 import { type AgentMessage, cutText, textOf, thinkingOf, transcript } from './session-text.ts';
+import {
+  broadcast,
+  type Code,
+  ERRORS,
+  errorMsg,
+  NotFound,
+  type Rooms,
+  RunActive,
+  type Socket,
+  send,
+} from './socket.ts';
 import { topicState } from './topics.ts';
 import { usageMonth } from './usage.ts';
 import { childrenOf, conversationAt, LEAF_MARK, newestLeaf, versionsOf } from './versions.ts';
-
-export type Socket = {
-  send(data: string): void;
-  on(event: 'message', fn: (data: unknown) => void): void;
-  on(event: 'close', fn: () => void): void;
-};
 
 export type BridgeDeps = {
   registry: SessionRegistry;
@@ -66,7 +71,7 @@ export type BridgeDeps = {
   dataDir: string;
   log: FastifyBaseLogger;
   /** chatId → sockets that have the chat open. Shared by all connections of one server. */
-  rooms: Map<string, Set<Socket>>;
+  rooms: Rooms;
   agents: () => Agents;
   /** Output modes (phase-23); `chat.setModes` and `chat.create` accept only these ids. */
   modes: () => Modes;
@@ -99,50 +104,6 @@ type Sent = {
   text: string;
   images: Extract<Extract<UserEntry['message']['content'], unknown[]>[number], { type: 'image' }>[];
 };
-
-/** Fixed client-facing text per error code; details stay in the server log. */
-const ERRORS = {
-  bad_message: 'Invalid message',
-  not_found: 'Chat not found',
-  not_implemented: 'Not implemented',
-  failed: 'Request failed',
-  prompt_failed: 'Prompt failed',
-  llm_failed: 'Model call failed',
-  pseudo_down: 'Pseudonymization service unavailable',
-  held: 'The previous message waits for an answer in the vault',
-  memory_full: 'Memory is full',
-  memory_conflict: 'Memory changed; the write no longer applies',
-  memory_generated: 'MEMORY.md is generated from claims; edit the claims in Muisti › Havainnot',
-  invalid: 'Invalid value',
-  zdr_unavailable: 'No zero-data-retention endpoint for this model',
-} as const;
-
-type Code = keyof typeof ERRORS;
-
-class NotFound extends Error {}
-/** A model or policy change while the chat runs (phase-10 decision 14); answers `failed`. */
-class RunActive extends Error {}
-
-const send = (socket: Socket, msg: ServerMessage) => socket.send(JSON.stringify(msg));
-export const errorMsg = (code: keyof typeof ERRORS, chatId?: string): ServerMessage => ({
-  type: 'error',
-  code,
-  message: ERRORS[code],
-  ...(chatId ? { chatId } : {}),
-});
-
-export function broadcast(rooms: BridgeDeps['rooms'], chatId: string, msg: ServerMessage) {
-  const room = rooms.get(chatId);
-  if (!room) return;
-  for (const s of room) {
-    try {
-      send(s, msg);
-    } catch {
-      room.delete(s);
-    }
-  }
-  if (room.size === 0) rooms.delete(chatId);
-}
 
 /** Reindexes the chat's shown branch in the background (embedding must not hold the caller). */
 const reindex = (

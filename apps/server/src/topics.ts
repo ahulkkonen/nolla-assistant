@@ -4,12 +4,12 @@ import type { ServerMessage } from '@pa/protocol';
 import { and, count, eq, like } from 'drizzle-orm';
 import type { FastifyBaseLogger } from 'fastify';
 import { z } from 'zod';
-import { type BridgeDeps, broadcast } from './bridge.ts';
 import { chatRow, summary } from './chats.ts';
 import { embed } from './embeddings.ts';
 import type { SessionRegistry } from './pi/registry.ts';
 import { indexChat } from './search.ts';
 import { transcript as branch } from './session-text.ts';
+import { broadcast, type Rooms } from './socket.ts';
 import { type RecordUsage, rawUsage } from './usage.ts';
 
 const DEBOUNCE_MS = 2000;
@@ -199,7 +199,7 @@ export function topicState(db: Db, userId: string): ServerMessage {
 export function titleJobs(deps: {
   db: Db;
   registry: SessionRegistry;
-  rooms: BridgeDeps['rooms'];
+  rooms: Rooms;
   userId: string;
   litellmUrl: string;
   litellmMasterKey: string;
