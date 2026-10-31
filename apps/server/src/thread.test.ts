@@ -1,13 +1,12 @@
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { chats, files, openDb } from '@pa/db';
+import { chats } from '@pa/db';
 import { startFakeSidecar } from '@pa/pi-ext-pseudo/fake-sidecar';
 import type { AttachmentRef, ChatExport } from '@pa/protocol';
 import { eq } from 'drizzle-orm';
 import sharp from 'sharp';
 import { afterEach, expect, test } from 'vitest';
-import { threadFiles } from './bridge.ts';
 import {
   api,
   bootChat,
@@ -17,7 +16,6 @@ import {
   login,
   runCleanups,
   sidecarProxy,
-  tempDir,
 } from './test-utils.ts';
 import { monthOf } from './usage.ts';
 
@@ -415,55 +413,6 @@ test('a fork of an open chat runs on zdr/ with the same bare model id', async ()
   await c.idle();
   expect(fork.modelPolicy).toMatchObject({ modelId: fable, dataPolicy: 'zdr' });
   expect(llm.requests.at(-1)?.body.model).toBe(`zdr/${fable}`);
-});
-
-test('threadFiles walks the fork chain, each source cut at the edited message', () => {
-  const { db, sqlite } = openDb(join(tempDir('pa-thread-'), 'app.db'));
-  cleanups.push(() => void sqlite.close());
-  const t = (h: number) => `2026-10-26T${String(h).padStart(2, '0')}:00:00.000Z`;
-  const chat = (id: string, from: string | null, forkedAt: string | null) =>
-    db
-      .insert(chats)
-      .values({
-        id,
-        userId: 'u1',
-        sessionPath: 's/',
-        forkedFromChatId: from,
-        forkedAt,
-        createdAt: t(0),
-        updatedAt: t(0),
-      })
-      .run();
-  const file = (id: string, chatId: string, h: number) =>
-    db
-      .insert(files)
-      .values({
-        id,
-        userId: 'u1',
-        chatId,
-        name: `${id}.txt`,
-        mime: 'text/plain',
-        size: 1,
-        path: `files/${id}`,
-        createdAt: t(h),
-      })
-      .run();
-  // G ← S (edited a G message of 05:00) ← R (edited an S message of 08:00).
-  chat('G', null, null);
-  chat('S', 'G', t(5));
-  chat('R', 'S', t(8));
-  file('g1', 'G', 4);
-  file('g2', 'G', 6); // after S's fork point: never on S or R
-  file('s1', 'S', 7);
-  file('s2', 'S', 9); // after R's fork point
-  file('r1', 'R', 10);
-  const row = (id: string) => db.select().from(chats).where(eq(chats.id, id)).get();
-  const ids = (id: string) => {
-    const r = row(id);
-    return r ? threadFiles(db, 'u1', r).map((f) => f.id) : [];
-  };
-  expect(ids('R')).toEqual(['g1', 's1', 'r1']);
-  expect(ids('S')).toEqual(['g1', 's1', 's2']);
 });
 
 // --- message.accepted: one queue per session, matched in store order --------------------------

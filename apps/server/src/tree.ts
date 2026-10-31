@@ -51,7 +51,8 @@ import {
 import { and, desc, eq, inArray, lt, notInArray, or, sql, sum } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, preHandlerHookHandler } from 'fastify';
 import { extractArtifacts } from './artifacts.ts';
-import { chatRow, restorer } from './bridge.ts';
+import { restorer } from './bridge.ts';
+import { chatRow } from './chats.ts';
 import { attachFile, MAX_FILE_BYTES, MAX_FILES, rfc5987 } from './files.ts';
 import { ChatNotFound, type SessionRegistry } from './pi/registry.ts';
 import { textOf } from './session-text.ts';

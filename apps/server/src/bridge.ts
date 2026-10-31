@@ -17,9 +17,7 @@ import {
 } from '@pa/pi-ext-pseudo';
 import {
   type Annotation,
-  type ChatSummary,
   ClientMessage,
-  type ForkLink,
   type Message,
   type ModelChoice,
   type ServerMessage,
@@ -34,6 +32,7 @@ import type { Agents } from './agents.ts';
 import { type Approvals, DENIED_REASON, TIMEOUT_REASON } from './approval.ts';
 import { extractArtifacts, messageArtifacts } from './artifacts.ts';
 import type { Automations } from './automations.ts';
+import { type ChatRow, chatRow, forkLink, ownUsage, summary, threadFiles } from './chats.ts';
 import type { CollisionWaits } from './collisions.ts';
 import { AttachmentNotFound, chatFiles, ingestAttachments, splitBlocks } from './files.ts';
 import type { Fx } from './fx.ts';
@@ -62,7 +61,7 @@ import {
   transcript,
 } from './session-text.ts';
 import { topicState } from './topics.ts';
-import { chatUsage, messageUsage, type PaMeta, usageMonth } from './usage.ts';
+import { messageUsage, type PaMeta, usageMonth } from './usage.ts';
 import { childrenOf, conversationAt, LEAF_MARK, newestLeaf, versionsOf } from './versions.ts';
 
 export type Socket = {
@@ -106,7 +105,6 @@ export type BridgeDeps = {
 
 type Entry = ReturnType<AgentSession['sessionManager']['getBranch']>[number];
 type UserEntry = Extract<Entry, { type: 'message' }> & { message: { role: 'user' } };
-type ChatRow = typeof chats.$inferSelect;
 /** A prompt to send: real text (the input hook masks it) and images. */
 type Sent = {
   text: string;
@@ -157,28 +155,6 @@ export function broadcast(rooms: BridgeDeps['rooms'], chatId: string, msg: Serve
   if (room.size === 0) rooms.delete(chatId);
 }
 
-export const chatRow = (db: Db, userId: string, chatId: string) =>
-  db
-    .select()
-    .from(chats)
-    .where(and(eq(chats.id, chatId), eq(chats.userId, userId)))
-    .get();
-
-export const summary = (r: ChatRow): ChatSummary => ({
-  id: r.id,
-  title: r.title,
-  topicId: r.topicId,
-  agentId: r.agentId,
-  pinned: r.pinned,
-  archived: r.archived,
-  titleLocked: r.titleLocked,
-  ...(r.forkedFromChatId ? { forkedFrom: r.forkedFromChatId } : {}),
-  modelPolicy: policyOf(r),
-  modes: r.modes,
-  usage: chatUsage(r),
-  updatedAt: r.updatedAt,
-});
-
 /** Reindexes the chat's shown branch in the background (embedding must not hold the caller). */
 const reindex = (
   { db, userId, log }: Pick<BridgeDeps, 'db' | 'userId' | 'log'>,
@@ -191,45 +167,6 @@ const reindex = (
 
 /** `thinking.get` cuts at most here, before the restore. */
 const THINKING_MAX = 50_000;
-
-/**
- * The files of a chat's thread. A fork also shows the files of its sources (a fork of a fork walks
- * the chain) up to the edited message's time (`forkedAt`), while each source exists (phase-13
- * decision 7).
- */
-export function threadFiles(db: Db, userId: string, r: ChatRow) {
-  const all = chatFiles(db, userId, r.id);
-  const seen = new Set([r.id]);
-  for (let at = r; at.forkedFromChatId && at.forkedAt && !seen.has(at.forkedFromChatId); ) {
-    const cut = at.forkedAt;
-    const source = chatRow(db, userId, at.forkedFromChatId);
-    if (!source) break;
-    seen.add(source.id);
-    all.push(...chatFiles(db, userId, source.id).filter((f) => f.createdAt <= cut));
-    // The source's own copied part ends earlier still.
-    at = source.forkedAt && source.forkedAt > cut ? { ...source, forkedAt: cut } : source;
-  }
-  return all.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-}
-
-/** A fork's copied replies cost in the source chat, not here (phase-13 decision 7). */
-export function ownUsage(messages: Message[], r: ChatRow) {
-  const { forkedAt } = r;
-  if (forkedAt) for (const m of messages) if (m.createdAt < forkedAt) delete m.usage;
-  return messages;
-}
-
-/** Where a forked chat came from; null for other chats. */
-function forkLink(db: Db, userId: string, r: ChatRow): ForkLink | null {
-  if (!r.forkedFromChatId || !r.forkedFromMessageId) return null;
-  const source = chatRow(db, userId, r.forkedFromChatId);
-  return {
-    chatId: r.forkedFromChatId,
-    messageId: r.forkedFromMessageId,
-    title: source?.title ?? null,
-    deleted: !source,
-  };
-}
 
 /** Text blocks of a Pi tool result (`{ content: [...] }`); never the raw object. */
 function resultText(result: unknown): string {

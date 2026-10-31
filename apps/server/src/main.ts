@@ -15,14 +15,8 @@ import { liveAgentId, loadAgents, watchAgents } from './agents.ts';
 import { approvals as approvalStore } from './approval.ts';
 import { purgeExpiredSessions } from './auth/session.ts';
 import { startAutomations } from './automations.ts';
-import {
-  agentsState,
-  type BridgeDeps,
-  broadcast,
-  chatRow,
-  errorMsg,
-  vaultState,
-} from './bridge.ts';
+import { agentsState, type BridgeDeps, broadcast, errorMsg, vaultState } from './bridge.ts';
+import { chatRow } from './chats.ts';
 import { branchPoint, claimStore } from './claims.ts';
 import { collisionWaits } from './collisions.ts';
 import { BUNDLED_AGENTS, BUNDLED_AUTOMATIONS, type Config, loadConfig } from './config.ts';
