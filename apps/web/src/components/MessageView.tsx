@@ -53,7 +53,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import { touch } from '../media.ts';
-import { type SubagentChild, type ToolView, useStore } from '../store.ts';
+import { blockMasked, type SubagentChild, type ToolView, useStore } from '../store.ts';
 import {
   endsInFence,
   mdBlocks,
@@ -62,6 +62,7 @@ import {
   type TextNode,
   withDefinitions,
 } from '../thread.ts';
+import { MaskedLine } from './ArtifactPanel.tsx';
 import { InlineFigure } from './Figure.tsx';
 import { IconButton, Tip } from './IconButton.tsx';
 import { MessageMeta, MetaLine } from './MessageMeta.tsx';
@@ -169,6 +170,8 @@ function Pre({ node, ...props }: ComponentProps<'pre'> & ExtraProps) {
     const a = o && s.artifacts[o.chatId]?.find((x) => x.id === o.id);
     return !!art && !!a && a.content.trimEnd() === source.trimEnd();
   });
+  // Phase-30 decision 14: the server's twin of this page runs its masked source.
+  const masked = useStore((s) => (art === 'html' || art === 'react') && blockMasked(s, source));
   if (!art) return <CodeBlock lang={lang}>{props.children}</CodeBlock>;
   if ((props as Record<string, unknown>)['data-streaming'])
     return <WritingCard kind={art} source={source} />;
@@ -187,7 +190,7 @@ function Pre({ node, ...props }: ComponentProps<'pre'> & ExtraProps) {
   if (art === 'vega-lite' || art === 'mermaid') return <InlineFigure a={a} onOpen={open} />;
   // A page or a component is a compact card in the thread; its code is in the panel's Koodi tab.
   return (
-    <div className={cn(CARD, shown ? 'bg-accent' : 'bg-muted')}>
+    <div className={cn(CARD, shown ? 'bg-accent' : 'bg-muted', masked && 'flex-wrap gap-y-1')}>
       <AppWindow size={16} className="shrink-0 text-muted-foreground" />
       <span className="min-w-0 flex-1 truncate font-sans text-ui">{a.title}</span>
       {shown ? (
@@ -200,6 +203,7 @@ function Pre({ node, ...props }: ComponentProps<'pre'> & ExtraProps) {
           Avaa paneelissa
         </Button>
       )}
+      {masked && <MaskedLine className="basis-full" />}
     </div>
   );
 }

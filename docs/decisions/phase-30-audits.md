@@ -41,11 +41,22 @@ what stays as it is.
 13. The committed model under `tests/masked-only/models/` leaves the tree and the history
     (phase 31 rewrites the history anyway).
 
+## Decision 14: artifacts of a tainted chat (decided by the user)
+
+14. **A page or a component of a tainted chat runs masked.** An HTML, JSX or TSX artifact can run
+    code, and a prompt-injected artifact can send real values out in a navigation (security
+    report, artifact exfiltration). `chats.tainted` is set when external content entered the
+    chat: `fetch_url`, MCP, search or an attachment (`turnTaint`). In an untainted chat the
+    artifact is built from the restored text, as before. In a tainted chat the frame runs the
+    masked text, so the page shows surrogates. The artifact card in the thread and the panel show
+    the line "Ulkoista sisältöä: oikeat arvot piilotettu". The panel also has the button "Näytä
+    oikeat arvot". The button opens a confirmation (`ConfirmDialog`) that says that the code of
+    the artifact can send the values out. After the confirmation the frame runs the restored text
+    of that artifact until the page reloads. Charts (`vega-lite`) and diagrams (`mermaid`) are
+    data, not code that runs, so they keep the restored text in both cases.
+
 ## Left as they are, with the reason
 
-- **Artifacts show real values.** An HTML or React artifact is built from the restored text, so a
-  prompt-injected artifact can carry real values in a navigation. Decision pending with the user:
-  masked artifacts, or restored with a warning on a tainted chat.
 - **`pnpm audit`:** 19 transitive advisories; the two highs sit inside the pinned Pi and the MCP
   SDK. Overrides when the patched versions are 7 days old.
 
@@ -53,7 +64,7 @@ what stays as it is.
 
 Open. Batch A is done on the branch `p30-sec` (2026-10-31). Batch B item 10 is done on the branch
 `p30-b1` and items 8, 11, 12, 13 and the dependency follow-ups on the branch `p30-b2` (2026-10-31).
-Item 9 is done on the branch `p30-b3` (2026-10-31).
+Item 9 and decision 14 are done on the branch `p30-b3` (2026-10-31).
 
 Batch A, per item:
 
@@ -179,6 +190,36 @@ Batch B, item 9:
    must win over every rule), `noAriaHiddenOnFocusable` (a `kbd` is not focusable),
    `useAriaPropsSupportedByRole` (the role is a prop with the default `group`) and
    `noStaticElementInteractions` (the model list catches the events of its row buttons).
+
+Decision 14:
+
+14. Done. Wire: `Artifact.masked`, an optional string with the masked source. `content` stays
+    the restored text, so the copy, "Lataa lähdekoodi", "Tallenna työkansioon", the Koodi tab and
+    the export do not change. An older client does not know the field (zod drops it) and builds
+    from `content`, as before. One optional field is the smaller change; a flag and a second text
+    are two. Server: `extractArtifacts(id, text, masked)` takes the text before the restore and
+    matches the blocks by position. Another block at that position gives an empty masked source,
+    never the restored one. `bridge/stream.ts` reads `chats.tainted` at each final, and a chat row
+    that is gone counts as tainted. `chat.state` reads the masked text from the branch entries.
+    The flag belongs to the chat: after the first tainted turn, every page of the chat runs
+    masked, also the older ones. Web: `maskedSource` and `revealed` in `store.ts`; `revealed`
+    is in memory only. The card shows only the line, because it runs no artifact; the button is
+    in the panel, where its result shows. The panel shows the line on the Esikatselu tab only,
+    because the Koodi tab shows the restored source. "Avaa uudessa ikkunassa" opens the masked
+    page while the artifact is masked. The line reuses the tainted line of the approval card
+    (`TaintLine`). Tests: server 2 (`artifacts.test.ts`, `bridge/chats.test.ts`), web 3
+    (`ArtifactPanel.test.ts`), the e2e flow "tainted artifact" (`flows.spec.ts`), and the screens
+    `artifact-masked` and `artifact-reveal`.
+
+Left as they are in decision 14, on purpose:
+
+- A code block without a server artifact opens from its restored text: a block in the user's own
+  message, or a reply whose session entry was not found (until the next `chat.state`). The
+  client does not know the taint of a chat.
+- The artifact title (card, panel header, confirmation) comes from the restored text. The app
+  shows it as text, and no code runs.
+- Markdown links in a reply are restored before rendering (the weaker form in the security
+  report). This decision does not change them.
 
 Batch B, per item (branch `p30-b2` holds 8, 11, 12, 13 and the dependency follow-ups):
 

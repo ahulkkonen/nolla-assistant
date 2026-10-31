@@ -2,8 +2,10 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { chats, files } from '@pa/db';
+import { startFakeSidecar } from '@pa/pi-ext-pseudo/fake-sidecar';
+import { eq } from 'drizzle-orm';
 import { afterEach, expect, test } from 'vitest';
-import { bootChat, connect, runCleanups } from '../test-utils.ts';
+import { bootChat, cleanups, connect, runCleanups } from '../test-utils.ts';
 
 afterEach(runCleanups);
 
@@ -35,6 +37,42 @@ test('titleLocked on the wire; artifacts after the final and in chat.state', {
   expect(state.messages.at(-1)?.id).toBe(final.message.id);
   c2.send({ type: 'chat.list' });
   expect((await c2.next('chat.list')).chats[0]?.titleLocked).toBe(true);
+});
+
+test('phase-30 decision 14: a tainted chat sends the masked source of a page; untainted does not', {
+  timeout: 30_000,
+}, async () => {
+  const sc = await startFakeSidecar({ 'Matti Virtanen': 'Pekka Laaksonen' });
+  cleanups.push(sc.close);
+  const page = (name: string) => `Tässä:\n\n\`\`\`html\n<h1>${name}</h1>\n\`\`\``;
+  const { c, chat, config, srv } = await bootChat(
+    [{ text: page('Pekka Laaksonen') }, { text: page('Pekka Laaksonen') }],
+    { PSEUDO_URL: sc.url },
+  );
+  c.send({ type: 'user.message', chatId: chat.id, text: 'Tee sivu' });
+  const plain = (await c.next('artifact.upsert')).artifact;
+  expect(plain.content).toBe('<h1>Matti Virtanen</h1>');
+  expect(plain).not.toHaveProperty('masked');
+  await c.idle();
+
+  srv.db.update(chats).set({ tainted: true }).where(eq(chats.id, chat.id)).run();
+  c.send({ type: 'user.message', chatId: chat.id, text: 'Tee toinen' });
+  const masked = (await c.next('artifact.upsert')).artifact;
+  expect(masked).toMatchObject({
+    content: '<h1>Matti Virtanen</h1>',
+    masked: '<h1>Pekka Laaksonen</h1>',
+  });
+  await c.idle();
+
+  const c2 = await connect(config.port);
+  c2.send({ type: 'chat.open', chatId: chat.id });
+  const { artifacts } = await c2.next('chat.state');
+  // The flag belongs to the chat: both pages now carry the masked source.
+  expect(artifacts?.map((a) => a.masked)).toEqual([
+    '<h1>Pekka Laaksonen</h1>',
+    '<h1>Pekka Laaksonen</h1>',
+  ]);
+  expect(artifacts?.[1]).toEqual(masked);
 });
 
 test('chat.delete removes only its own row, files, and session; all sockets hear it', {

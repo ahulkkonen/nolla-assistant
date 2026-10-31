@@ -244,6 +244,8 @@ type State = {
   artifacts: Record<string, Artifact[]>;
   /** The artifact of the panel (`shownArtifact`); closed when null or on another chat. */
   openArtifact: { chatId: string; id: string } | null;
+  /** Phase-30 decision 14: artifacts confirmed with "Näytä oikeat arvot", until the page reloads. */
+  revealed: Record<string, true>;
   paletteOpen: boolean;
   settingsOpen: boolean;
   shortcutsOpen: boolean;
@@ -449,6 +451,25 @@ function mergeArtifacts(
   return adopt(st, chatId, [...server, ...local], !st.artifacts[chatId] || !!switched);
 }
 
+/**
+ * Phase-30 decision 14: the masked source that the frame of `a` runs (a page or a component of a
+ * tainted chat), until the user reveals its real values; else undefined.
+ */
+export const maskedSource = (s: Pick<State, 'revealed'>, a: Artifact | undefined) =>
+  a?.masked !== undefined && !s.revealed[a.id] ? a.masked : undefined;
+/** Whether the active chat's artifact of a page block with `source` runs its masked source. */
+export const blockMasked = (
+  s: Pick<State, 'activeChatId' | 'artifacts' | 'revealed'>,
+  source: string,
+) => {
+  const list = s.activeChatId ? s.artifacts[s.activeChatId] : undefined;
+  const twin = list?.find((x) => x.content.trimEnd() === source.trimEnd());
+  return maskedSource(s, twin) !== undefined;
+};
+/** "Näytä oikeat arvot", confirmed: the frame of artifact `id` runs the restored text. */
+export const revealArtifact = (id: string) =>
+  useStore.setState((s) => ({ revealed: { ...s.revealed, [id]: true } }));
+
 /** The artifact the panel shows: only on the chat screen, only of the chat on it (decision 12). */
 export const shownArtifact = (s: State) =>
   s.screen === 'chat' && s.openArtifact?.chatId === s.activeChatId ? s.openArtifact : null;
@@ -612,6 +633,7 @@ export const useStore = create<State>()((set, get) => {
     memoryTab: 'profile',
     artifacts: {},
     openArtifact: null,
+    revealed: {},
     paletteOpen: false,
     settingsOpen: false,
     shortcutsOpen: false,

@@ -39,6 +39,7 @@ import {
   seedClaims,
   sendMessage,
   showSidebar,
+  TAINTED_PAGE_REPLY,
   TAX,
   THINKING_TURN,
   taxChat,
@@ -291,6 +292,28 @@ for (const scheme of ['light', 'dark'] as const) {
           frame.contentFrame().getByRole('heading', { name: 'Hei artefakti' }),
         ).toBeVisible();
         await shot(page, 'artifact-panel', vp.width, scheme);
+      });
+
+      test.describe('tainted', () => {
+        test.use({ pseudo: 'full' });
+
+        // Phase-30 decision 14: the masked line on the card and the panel, then the confirm.
+        test('artifact-masked', async ({ app, page }) => {
+          searchTurns(app, 'sää', TAINTED_PAGE_REPLY);
+          await app.login(page);
+          await sendMessage(page, 'Hae sää ja tee sivu Matti Virtasesta');
+          const panel = page.getByRole('complementary', { name: 'Artefaktit' });
+          await expect(
+            panel
+              .locator('iframe')
+              .contentFrame()
+              .getByRole('heading', { name: 'Pekka Laaksonen' }),
+          ).toBeVisible();
+          await shot(page, 'artifact-masked', vp.width, scheme);
+          await panel.getByRole('button', { name: 'Näytä oikeat arvot' }).click();
+          await expect(page.getByRole('alertdialog')).toBeVisible();
+          await shot(page, 'artifact-reveal', vp.width, scheme);
+        });
       });
 
       test('chat-header', async ({ app, page }) => {

@@ -137,6 +137,12 @@ function seedWork(dir: string) {
 /** An assistant reply with one HTML block (an artifact). */
 export const HTML_REPLY =
   'Tässä sivu:\n\n```html\n<h1>Hei artefakti</h1>\n<p>Tämä sivu toimii hiekkalaatikossa.</p>\n```';
+/**
+ * Phase-30 decision 14: a page that names a vault person, as the model writes it (the surrogate of
+ * Matti Virtanen). After `searchTurns` the chat is tainted, so the frame shows the surrogate.
+ */
+export const TAINTED_PAGE_REPLY =
+  'Tässä sivu:\n\n```html\n<h1>Pekka Laaksonen</h1>\n<p>Sivun tiedot tulivat hausta.</p>\n```';
 const block = (lang: string, body: unknown) =>
   `\`\`\`${lang}\n${typeof body === 'string' ? body : JSON.stringify(body, null, 2)}\n\`\`\``;
 const MONTHS = 'tammi helmi maalis huhti touko kesä heinä elo syys loka marras joulu'.split(' ');

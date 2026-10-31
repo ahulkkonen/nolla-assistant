@@ -11,6 +11,7 @@ import {
   X,
 } from 'lucide-react';
 import { useState } from 'react';
+import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,14 +25,47 @@ import { saveArtifact } from '../api.ts';
 import { fileError, showInFiles } from '../files.ts';
 import { useMobile } from '../media.ts';
 import { stem } from '../render.ts';
-import { shownArtifact, useStore } from '../store.ts';
+import { maskedSource, revealArtifact, shownArtifact, useStore } from '../store.ts';
 import { ActionMenu } from './Actions.tsx';
+import { TaintLine } from './ApprovalCard.tsx';
+import { ConfirmDialog } from './ConfirmDialog.tsx';
 import { ChartFallback, useFigure } from './Figure.tsx';
 import { IconButton } from './IconButton.tsx';
 import { postWhenReady, SANDBOX_URL, SandboxFrame } from './Sandbox.tsx';
 import { SidePanel } from './SidePanel.tsx';
 
 const EMPTY: Artifact[] = [];
+
+/** Phase-30 decision 14: the card and the panel say that the frame shows surrogates. */
+export const MaskedLine = ({ className }: { className?: string }) => (
+  <TaintLine className={className}>Ulkoista sisältöä: oikeat arvot piilotettu</TaintLine>
+);
+
+/**
+ * The panel's masked line with "Näytä oikeat arvot". The confirm says what the code can do; yes
+ * re-renders this artifact from the restored text until the page reloads.
+ */
+export function RevealBar({ title, onReveal }: { title: string; onReveal: () => void }) {
+  const [asking, setAsking] = useState(false);
+  return (
+    <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 border-b px-4 py-2">
+      {/* The line keeps one row: the button wraps under it first. */}
+      <MaskedLine className="grow" />
+      <Button variant="outline" size="sm" onClick={() => setAsking(true)}>
+        Näytä oikeat arvot
+      </Button>
+      <ConfirmDialog
+        open={asking}
+        title={`Näytetäänkö oikeat arvot artefaktissa ”${title}”?`}
+        action="Näytä oikeat arvot"
+        onConfirm={onReveal}
+        onClose={() => setAsking(false)}
+      >
+        Keskustelussa on ulkoista sisältöä. Artefaktin koodi voi lähettää oikeat arvot ulkopuolelle.
+      </ConfirmDialog>
+    </div>
+  );
+}
 
 function download(a: Artifact) {
   saveFile(new Blob([a.content], { type: 'text/plain' }), `${stem(a)}.${artifactExt(a)}`);
@@ -69,7 +103,9 @@ export function ArtifactPanel() {
   const list = useStore((s) => (open ? s.artifacts[open.chatId] : undefined));
   const artifacts = list ?? EMPTY;
   const a = artifacts.find((x) => x.id === open?.id);
-  const { doc: ready, frame, onLoad, canExport, exportAs } = useFigure(a, true);
+  const masked = useStore((s) => maskedSource(s, a));
+  const run = a && masked !== undefined ? { ...a, content: masked } : a;
+  const { doc: ready, frame, onLoad, canExport, exportAs } = useFigure(run, true);
   const [copied, setCopied] = useState(false);
   const [tab, setTab] = useState<'preview' | 'code'>('preview');
   const mobile = useMobile();
@@ -191,6 +227,9 @@ export function ArtifactPanel() {
             </IconButton>
           </div>
         </div>
+        {tab === 'preview' && masked !== undefined && (
+          <RevealBar title={a.title} onReveal={() => revealArtifact(a.id)} />
+        )}
         <TabsContent value="preview" className={cn('min-h-0 flex-1', !ready?.html && 'p-3')}>
           {preview}
         </TabsContent>

@@ -361,6 +361,11 @@ export const Artifact = z.object({
   title: z.string(),
   language: z.string().optional(),
   content: z.string(),
+  /**
+   * Phase-30 decision 14: in a tainted chat, the masked source of a page or a component. The
+   * frame runs it, not `content`, until the user confirms "Näytä oikeat arvot".
+   */
+  masked: z.string().optional(),
 });
 export type Artifact = z.infer<typeof Artifact>;
 

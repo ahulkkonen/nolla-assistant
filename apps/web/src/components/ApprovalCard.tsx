@@ -288,6 +288,22 @@ const show = (v: unknown) => (typeof v === 'string' ? v : JSON.stringify(v, null
 const clock = (iso: string) =>
   new Date(iso).toLocaleTimeString('fi-FI', { hour: '2-digit', minute: '2-digit' });
 
+/** The line that external content entered the turn or chat: `ShieldAlert` and meta in --warning. */
+export function TaintLine({
+  className,
+  children,
+}: {
+  className?: string | undefined;
+  children: ReactNode;
+}) {
+  return (
+    <p className={cn('flex items-start gap-2 text-meta text-pretty text-warning', className)}>
+      <ShieldAlert size={16} className="mt-px shrink-0" />
+      <span>{children}</span>
+    </p>
+  );
+}
+
 /**
  * The real (unmasked) arguments of a gated tool call, inline in the thread. Focus stays where it
  * is, so a typed Enter never approves; the thread announces the request (Thread.tsx). After a
@@ -357,13 +373,10 @@ export function ApprovalCard({ a }: { a: Approval }) {
       </h2>
       {a.tainted && (
         // Under the title, before the body: 8 px above and below, the card's 12 px gap less 4.
-        <p className="-my-1 flex items-start gap-2 text-meta text-pretty text-warning">
-          <ShieldAlert size={16} className="mt-px shrink-0" />
-          <span>
-            Tämä vuoro luki ulkopuolista sisältöä. Hyväksy vain, jos pyysit{' '}
-            {a.tool === 'chat_read' ? 'lukemista' : 'muutosta'} itse.
-          </span>
-        </p>
+        <TaintLine className="-my-1">
+          Tämä vuoro luki ulkopuolista sisältöä. Hyväksy vain, jos pyysit{' '}
+          {a.tool === 'chat_read' ? 'lukemista' : 'muutosta'} itse.
+        </TaintLine>
       )}
       {reason && <p className="text-meta text-muted-foreground">{reason}</p>}
       {guard ? (

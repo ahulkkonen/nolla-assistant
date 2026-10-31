@@ -41,6 +41,7 @@ import {
   searchTurns,
   secondDevice,
   seedClaims,
+  TAINTED_PAGE_REPLY,
   TAX,
   THINKING_TURN,
   taxChat,
@@ -1936,6 +1937,45 @@ test('artifact panel: an html reply opens in a sandboxed iframe', async ({ app, 
   await expect(panel).toHaveCount(0);
   await page.getByRole('button', { name: 'Avaa paneelissa' }).click();
   await expect(panel).toBeVisible();
+});
+
+test.describe('tainted artifact', () => {
+  test.use({ pseudo: 'full' });
+
+  test('a page of a tainted chat shows surrogates until "Näytä oikeat arvot" is confirmed', async ({
+    app,
+    page,
+  }) => {
+    // Phase-30 decision 14: the web search taints the chat; the page names Matti Virtanen.
+    searchTurns(app, 'sää', TAINTED_PAGE_REPLY);
+    await app.login(page);
+    await send(page, 'Hae sää ja tee sivu Matti Virtasesta');
+    const panel = page.getByRole('complementary', { name: 'Artefaktit' });
+    const frame = panel.locator('iframe').contentFrame();
+    const line = 'Ulkoista sisältöä: oikeat arvot piilotettu';
+    await expect(frame.getByRole('heading', { name: 'Pekka Laaksonen' })).toBeVisible();
+    await expect(panel).toContainText(line);
+    await expect(thread(page)).toContainText(line);
+    // The code tab and the copy keep the restored source.
+    await panel.getByRole('tab', { name: 'Koodi' }).click();
+    await expect(panel.locator('pre')).toContainText('Matti Virtanen');
+    await expect(panel).not.toContainText(line);
+    await panel.getByRole('tab', { name: 'Esikatselu' }).click();
+
+    await panel.getByRole('button', { name: 'Näytä oikeat arvot' }).click();
+    const dialog = page.getByRole('alertdialog');
+    await expect(dialog).toContainText('Artefaktin koodi voi lähettää oikeat arvot ulkopuolelle.');
+    await dialog.getByRole('button', { name: 'Näytä oikeat arvot' }).click();
+    await expect(frame.getByRole('heading', { name: 'Matti Virtanen' })).toBeVisible();
+    await expect(panel).not.toContainText(line);
+    await expect(thread(page)).not.toContainText(line);
+
+    // Until the page reloads.
+    await page.reload();
+    await thread(page).getByRole('button', { name: 'Avaa paneelissa' }).click();
+    await expect(frame.getByRole('heading', { name: 'Pekka Laaksonen' })).toBeVisible();
+    await expect(panel).toContainText(line);
+  });
 });
 
 /** Lowest opacity of the thread's last article, sampled per frame until `stop` (phase 27). */

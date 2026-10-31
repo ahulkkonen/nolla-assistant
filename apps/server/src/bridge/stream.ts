@@ -117,12 +117,15 @@ function forward(
       );
     log.debug({ chatId, length: textOf(m).length }, 'message.final');
     const message = toMessage(entry?.id ?? streamId, m, toolRows(m, statuses, searches));
+    const masked = message.text;
     ({ text: message.text, annotations: message.annotations } = await restore(message.text));
     emit({ type: 'message.final', chatId, message });
+    if (!entry) return;
     // Ids must match `chat.state`; without the entry id the next `chat.state` carries them.
-    if (entry)
-      for (const artifact of extractArtifacts(entry.id, message.text))
-        emit({ type: 'artifact.upsert', chatId, artifact });
+    // Phase-30 decision 14: a tainted chat (or one gone meanwhile) sends the masked sources too.
+    const tainted = chatRow(db, userId, chatId)?.tainted !== false;
+    for (const artifact of extractArtifacts(entry.id, message.text, tainted ? masked : undefined))
+      emit({ type: 'artifact.upsert', chatId, artifact });
   };
 
   const handle = async (e: ChatEvent) => {
