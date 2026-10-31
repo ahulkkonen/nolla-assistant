@@ -1,4 +1,3 @@
-import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DEFAULT_MODELS_DIR } from './embeddings.ts';
 
