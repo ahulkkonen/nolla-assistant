@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { existsSync, rmSync } from 'node:fs';
-import { join as joinPath, resolve, sep } from 'node:path';
+import { resolve, sep } from 'node:path';
 import {
   type AgentSession,
   type AgentSessionEvent,
@@ -17,10 +17,8 @@ import {
 } from '@pa/pi-ext-pseudo';
 import {
   ClientMessage,
-  type Message,
   type ModelChoice,
   type ServerMessage,
-  type ToolRow,
   ToolSearch,
   type ToolStatus,
   WEB_SEARCH_TOOL,
@@ -28,16 +26,16 @@ import {
 import { and, asc, desc, eq } from 'drizzle-orm';
 import type { FastifyBaseLogger } from 'fastify';
 import type { Agents } from './agents.ts';
-import { type Approvals, DENIED_REASON, TIMEOUT_REASON } from './approval.ts';
+import type { Approvals } from './approval.ts';
 import { extractArtifacts, messageArtifacts } from './artifacts.ts';
 import type { Automations } from './automations.ts';
 import { type ChatRow, chatRow, forkLink, ownUsage, summary, threadFiles } from './chats.ts';
 import type { CollisionWaits } from './collisions.ts';
-import { AttachmentNotFound, chatFiles, ingestAttachments, splitBlocks } from './files.ts';
+import { AttachmentNotFound, ingestAttachments, splitBlocks } from './files.ts';
 import type { Fx } from './fx.ts';
+import { filesOf, history, searchView, toMessage, toolRows, toolStatus } from './history.ts';
 import { GENERATED, MemoryError, type MemoryStore } from './memory.ts';
 import { type Modes, modeInfos } from './modes.ts';
-import { GUARD_REASON } from './pi/guard.ts';
 import {
   AUTO_MODEL,
   type Catalog,
@@ -48,12 +46,11 @@ import {
 } from './pi/models.ts';
 import { type ChatEvent, ChatNotFound, type SessionRegistry } from './pi/registry.ts';
 import { BadSubscription, type Push } from './push.ts';
-import { type Restore, release, restorer } from './restore.ts';
+import { release, restorer } from './restore.ts';
 import { indexChat, related, search } from './search.ts';
-import { SEARCH_DENIED, SEARCH_UNATTENDED } from './search-tool.ts';
 import { type AgentMessage, cutText, textOf, thinkingOf, transcript } from './session-text.ts';
 import { topicState } from './topics.ts';
-import { messageUsage, type PaMeta, usageMonth } from './usage.ts';
+import { usageMonth } from './usage.ts';
 import { childrenOf, conversationAt, LEAF_MARK, newestLeaf, versionsOf } from './versions.ts';
 
 export type Socket = {
@@ -171,41 +168,10 @@ function resultText(result: unknown): string {
     .join('\n');
 }
 
-const DENY_REASONS = [
-  GUARD_REASON,
-  DENIED_REASON,
-  TIMEOUT_REASON,
-  SEARCH_DENIED,
-  SEARCH_UNATTENDED,
-];
-const toolStatus = (isError: boolean, text: string): ToolStatus =>
-  !isError ? 'ok' : DENY_REASONS.some((r) => text.includes(r)) ? 'denied' : 'error';
-
 const argsPreview = (args: unknown) =>
   Object.entries((args ?? {}) as Record<string, unknown>)
     .map(([k, v]) => `${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`)
     .join(', ');
-
-/**
- * A `web_search` result's `details` (masked in the session) for its tool row, through `restore`:
- * real values, or masked ones when `restore` does not restore (a masked export).
- */
-async function searchView(details: unknown, restore: Restore): Promise<ToolSearch | undefined> {
-  const d = ToolSearch.safeParse(details);
-  if (!d.success) return undefined;
-  const { query, results } = d.data;
-  // One sidecar call: no part holds a newline (search-tool.ts collapses whitespace).
-  const parts = [query, ...results.flatMap((r) => [r.title, r.url])];
-  const lines = (await restore(parts.join('\n'))).text.split('\n');
-  if (lines.length !== parts.length) return d.data;
-  return {
-    query: lines[0] ?? query,
-    results: results.map((r, i) => ({
-      title: lines[1 + 2 * i] ?? r.title,
-      url: lines[2 + 2 * i] ?? r.url,
-    })),
-  };
-}
 
 /**
  * `message.accepted` (phase 13): the prompts of a session whose user entry is not stored yet, in
@@ -1552,111 +1518,4 @@ export async function vaultState(pseudo: PseudoClient): Promise<ServerMessage> {
     entities: entities.map(vaultEntity),
     pending: pending.map(vaultPending),
   };
-}
-
-function toolRows(
-  m: AgentMessage,
-  statuses: Map<string, ToolStatus>,
-  searches: Map<string, ToolSearch>,
-): ToolRow[] {
-  if (m.role !== 'assistant') return [];
-  return m.content.flatMap((b) => {
-    if (b.type !== 'toolCall') return [];
-    const search = searches.get(b.id);
-    const row = {
-      callId: b.id,
-      name: b.name,
-      status: statuses.get(b.id) ?? 'running',
-      summary: '',
-    };
-    return [search ? { ...row, search } : row];
-  });
-}
-
-function toMessage(id: string, m: AgentMessage, tools: ToolRow[]): Message {
-  const msg: Message = {
-    id,
-    role: m.role === 'user' ? 'user' : 'assistant',
-    text: textOf(m),
-    annotations: [],
-    attachments: [],
-    tools,
-    createdAt: new Date(m.timestamp).toISOString(),
-  };
-  // Phase 13: cost and tokens per call, and whether the row "Ajatteli … s" has a text to load.
-  const usage = messageUsage(m);
-  if (usage) msg.usage = usage;
-  const pa = (m as { pa?: PaMeta }).pa;
-  if (thinkingOf(m)) msg.thinking = { ms: pa?.thinkingMs ?? null };
-  // Phase 26: the receipt's queue and writing times.
-  if (pa?.queueMs !== undefined || pa?.writeMs !== undefined)
-    msg.phases = {
-      ...(pa.queueMs !== undefined ? { queueMs: pa.queueMs } : {}),
-      ...(pa.writeMs !== undefined ? { writeMs: pa.writeMs } : {}),
-    };
-  return msg;
-}
-
-/**
- * The files of the user message at `at`: uploaded after `prev` (the previous user message) and up
- * to its own time.
- */
-// ponytail: timestamp window, not a stored message link; a file uploaded but sent with a later message shows on the earlier one. Add files.messageId if that happens.
-function filesOf(files: ReturnType<typeof chatFiles>, prev: string, at: string) {
-  return files
-    .filter((f) => f.createdAt > prev && f.createdAt <= at)
-    .map(({ createdAt: _, ...ref }) => ref);
-}
-
-/**
- * Rebuilds messages from the Pi branch. A user message gets the chat's files uploaded after the
- * previous user message and up to its own timestamp; the appended `[Liite: ...]` blocks are cut
- * from its text (`splitBlocks`); `blocks` gets their names per message id, as the text has them
- * (masked when `restore` does not restore). The export (export.ts) uses both.
- */
-export async function history(
-  session: Pick<AgentSession, 'sessionManager'>,
-  files: ReturnType<typeof chatFiles>,
-  restore: Restore,
-  blocks?: Map<string, string[]>,
-): Promise<Message[]> {
-  const entries = session.sessionManager.getBranch();
-  const statuses = new Map<string, ToolStatus>();
-  const searches = new Map<string, ToolSearch>();
-  for (const e of entries) {
-    if (e.type === 'message' && e.message.role === 'toolResult') {
-      const r = e.message;
-      statuses.set(r.toolCallId, toolStatus(r.isError, textOf(r)));
-      const found =
-        r.toolName === WEB_SEARCH_TOOL && !r.isError && (await searchView(r.details, restore));
-      if (found) searches.set(r.toolCallId, found);
-    }
-  }
-  const versions = versionsOf(session.sessionManager);
-  let prev = '';
-  const messages = entries.flatMap((e) => {
-    if (e.type !== 'message' || (e.message.role !== 'user' && e.message.role !== 'assistant'))
-      return [];
-    const m = toMessage(e.id, e.message, toolRows(e.message, statuses, searches));
-    if (m.role === 'user') {
-      m.attachments = filesOf(files, prev, m.createdAt);
-      prev = m.createdAt;
-      const v = versions.get(e.id);
-      if (v) m.versions = { index: v.index, count: v.count };
-    }
-    return [m];
-  });
-  // ponytail: 8 /unmask calls at a time; a batch endpoint in the sidecar would cut the round trips.
-  for (let i = 0; i < messages.length; i += 8)
-    await Promise.all(
-      messages.slice(i, i + 8).map(async (m) => {
-        const { text, annotations } = await restore(m.text);
-        const docs = m.attachments.filter((a) => a.kind === 'document').map((a) => a.name);
-        const { own, names } = splitBlocks(text, docs);
-        m.text = own;
-        m.annotations = annotations.filter((a) => a.end <= own.length);
-        if (names.length) blocks?.set(m.id, names);
-      }),
-    );
-  return messages;
 }

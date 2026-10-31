@@ -12,8 +12,9 @@ import {
 import { and, eq } from 'drizzle-orm';
 import type { FastifyInstance, preHandlerHookHandler } from 'fastify';
 import { extractArtifacts } from './artifacts.ts';
-import { type BridgeDeps, history } from './bridge.ts';
+import type { BridgeDeps } from './bridge.ts';
 import { chatRow, ownUsage, threadFiles } from './chats.ts';
+import { history } from './history.ts';
 import { ChatNotFound } from './pi/registry.ts';
 import { restorer } from './restore.ts';
 import { transcript } from './session-text.ts';
