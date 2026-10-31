@@ -196,7 +196,7 @@ export function claimStore(deps: {
   pseudo?: PseudoClient | undefined;
   /** `taskSmall(...)`: the extraction call. */
   ask?: ReturnType<typeof taskSmall> | undefined;
-  /** Decision 28 amended: MEMORY.md is regenerated after every review change. */
+  /** Decision 28 amended: MEMORY.md is regenerated after every change to the active claims. */
   onProfileChange?: (() => void | Promise<void>) | undefined;
 }) {
   const { db, userId, warn, pseudo } = deps;
@@ -628,6 +628,8 @@ export function claimStore(deps: {
         if (c?.status === 'active') done.activated.push({ id, kind: c.kind, text: c.text });
       });
     }
+    // Phase-28 decision 1: an auto-activated claim regenerates MEMORY.md like a review does.
+    if (done.activated.length) await changed();
     return done;
   };
 

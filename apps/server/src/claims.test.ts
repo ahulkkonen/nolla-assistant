@@ -64,12 +64,14 @@ async function extraction(
   const warnings: string[] = [];
   const pseudo = new PseudoClient(sc.url, 'aleksi');
   wrap(pseudo);
+  const profile = { changes: 0 };
   const s = claimStore({
     db,
     userId: 'aleksi',
     warn: (msg) => void warnings.push(msg),
     pseudo,
     ask: taskSmall(llm.url, 'k'),
+    onProfileChange: () => void profile.changes++,
   });
   const chat = (
     id: string,
@@ -102,7 +104,7 @@ async function extraction(
       now,
     );
   const all = () => db.select().from(claims).orderBy(claims.id).all();
-  return { llm, sc, db, s, chat, sweep, all, activated, asked, warnings };
+  return { llm, sc, db, s, chat, sweep, all, activated, asked, warnings, profile };
 }
 
 const PREF = {
@@ -202,6 +204,15 @@ test('extraction: a tainted chat proposes; an unresolved surrogate rejects the c
   expect(x.asked).toEqual(['t']);
   expect(x.all().map((r) => [r.kind, r.status])).toEqual([['preference', 'proposed']]);
   expect(x.activated).toEqual([]);
+  expect(x.profile.changes).toBe(0);
+});
+
+test('extraction: an auto-activated claim regenerates MEMORY.md', { timeout: 60_000 }, async () => {
+  const x = await extraction([reply({ claims: [PREF], confirms: [], supersedes: [] })]);
+  x.chat('c1');
+  await x.sweep(MSGS);
+  expect(x.all().map((r) => [r.status, r.activatedBy])).toEqual([['active', 'auto']]);
+  expect(x.profile.changes).toBe(1);
 });
 
 test.skipIf(!modelOk)(
