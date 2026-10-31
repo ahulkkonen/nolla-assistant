@@ -77,7 +77,7 @@ skills/             vendored skills; see skills/README.md
 infra/              compose.yaml, compose.local.yaml, Dockerfiles, LiteLLM config, backup
 scripts/            hash-password, restore, restore-drill, download-models, build-skill-runner
 tests/              contract, e2e (Playwright), egress, fake-llm, masked-only, mcp, memory-eval, pii, sandbox
-docs/               plan.md, deploy.md, development.md, decisions/, audits/, media/ (README images)
+docs/               plan.md, deploy.md, development.md, overview.md, decisions/, audits/, media/ (README images)
 ```
 
 ## Commands
@@ -130,7 +130,8 @@ Start here for a topic. Each entry says what the document answers.
 
 | Document | Answers |
 |---|---|
-| `README.md` | What the project is and why, screenshots, the architecture diagram, how it was built, how to run it |
+| `README.md` | The short form: what the project is, the masking screenshots, the architecture diagram, how to run it |
+| `docs/overview.md` | The long form of the README: each claim with its proof, the architecture, the tour, how it was built, the test table |
 | `docs/development.md` | How to develop and test, the test commands, the dependency policy, the status table per phase |
 | `docs/plan.md` | The full build plan: architecture (§3), protocol (§5), PII (§6), memory (§7), agents (§9), MCP (§10), UI spec (§11), phases (§13), quality gates (§14), pitfalls (§15) |
 | `docs/deploy.md` | Runbook for Coolify on a VPS, the local Docker run, the phone on the wifi, backups and restore, Google OAuth |
