@@ -12,7 +12,7 @@ const html = (md: string) =>
 // Phase-23 decision 9: each span ends with its N, which CSS shows on hover, a tap or "Näytä luvut".
 // Phase-28 decision 3: N up to 6 adds `conf-low` (the underline and a visible N).
 const conf = (n: number, text: string) =>
-  `<span class="conf${n <= 6 ? ' conf-low' : ''}" title="Luottamus ${n}/9">${text}<span class="conf-a"><sup class="conf-n">${n}</sup></span></span>`;
+  `<span class="conf${n <= 6 ? ' conf-low' : ''}" title="Luottamus ${n}/9">${text}<span class="conf-a"><span class="conf-n">${n}</span></span></span>`;
 
 test('rehypeConfidence: each sentence before its marker gets its N, up to 6 conf-low; the marker goes', () => {
   expect(html('Varma.⟦9⟧ Arvaus.⟦1⟧ Keskeltä.⟦6⟧ Melko.⟦7⟧ Loppu ilman')).toBe(
@@ -38,11 +38,14 @@ const view = (role: 'user' | 'assistant', text: string) =>
 
 test('legend: a reply with markers shows the scale and "Näytä luvut"; others have none', () => {
   const html = view('assistant', 'Varma.⟦9⟧ Arvaus.⟦1⟧');
-  expect(html).toContain('<span>Luottamus</span>');
   // Phase-28 decision 3: the shading and its swatches went; the scale is words.
   expect(html).not.toContain('conf-swatch');
   expect(html).not.toContain('--conf');
-  expect(html.replace(/<[^>]+>/g, '')).toContain('Luottamus1 arvaus–9 varmaNäytä luvut');
+  // Phase-28 UI review: the legend says what the underline means; the word is a sample of it.
+  expect(html.replace(/<[^>]+>/g, '')).toContain(
+    'Luottamus ·\u00a0alleviivattu ≤\u00a06 ·\u00a09 varmaNäytä luvut',
+  );
+  expect(html).toContain('<span class="conf-sample">alleviivattu</span>');
   // The pill's width comes from an invisible checked copy that screen readers skip.
   expect(html).toMatch(
     /<button type="button" aria-pressed="false"[^>]*><span aria-hidden="true" class="invisible[^"]*"><svg[^>]*>.*?<\/svg>Näytä luvut<\/span><span[^>]*>Näytä luvut<\/span><\/button>/,

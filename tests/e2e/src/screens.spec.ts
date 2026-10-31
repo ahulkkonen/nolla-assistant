@@ -416,19 +416,19 @@ for (const scheme of ['light', 'dark'] as const) {
         await flipMode(page, 'Luottamus', true);
         await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
         const box = (l: Locator) => l.evaluate((el) => el.getBoundingClientRect().toJSON());
-        // P1 and UI review: the legend row is 28 px, the button's pill (phones too: without the
-        // swatches it fits one line at 390), 8 px to the text above and to the action row below.
+        // P1 and phase-28 UI review: the legend is one 32 px row (the `sm` pill) at every width,
+        // 8 px to the text above and to the action row below.
         const legend = page.getByRole('button', { name: 'Näytä luvut' }).locator('..');
         const row = await box(legend);
-        expect(row.height).toBe(28);
+        expect(row.height).toBe(32);
         expect(row.top - (await box(reply)).bottom).toBe(8);
         expect(
           (await box(legend.locator('xpath=following-sibling::div[1]'))).top - row.bottom,
         ).toBe(8);
-        // A 28 px pill, as wide on as off; its target is 44 px (`::after`).
+        // A 32 px pill, as wide on as off; its target is 44 px (`::after`).
         const button = page.getByRole('button', { name: 'Näytä luvut' });
         const off = await box(button);
-        expect(off.height).toBe(28);
+        expect(off.height).toBe(32);
         expect(
           await button.evaluate((el) => {
             const after = getComputedStyle(el, '::after');
@@ -443,7 +443,7 @@ for (const scheme of ['light', 'dark'] as const) {
         const sentence = reply.locator('span.conf').nth(1);
         if (vp.width < 768) await sentence.tap();
         else await sentence.hover();
-        await expect(sentence.locator('sup.conf-n')).toBeVisible();
+        await expect(sentence.locator('.conf-n')).toBeVisible();
         await shot(page, 'chat-confidence', vp.width, scheme);
       });
 
@@ -451,7 +451,7 @@ for (const scheme of ['light', 'dark'] as const) {
       test('chat-confidence-numbers', async ({ app, page }) => {
         await confidenceReply(app, page);
         await page.getByRole('button', { name: 'Näytä luvut' }).click();
-        await expect(page.locator('.md sup.conf-n').last()).toBeVisible();
+        await expect(page.locator('.md .conf-n').last()).toBeVisible();
         await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
         await page.mouse.move(vp.width - 8, 8);
         await shot(page, 'chat-confidence-numbers', vp.width, scheme);
@@ -529,6 +529,10 @@ for (const scheme of ['light', 'dark'] as const) {
           // P1: the 44 px SwitchRow.
           for (const r of await page.getByRole('group', { name: 'Tila' }).locator('label').all())
             expect((await box(r)).height).toBeGreaterThanOrEqual(44);
+          // Phase-28 decision 2: the last row of the group.
+          const edit = page.getByRole('group', { name: 'Tila' }).getByRole('button').last();
+          await expect(edit).toHaveText('Muokkaa tiloja…');
+          expect((await box(edit)).height).toBe(44);
         } else {
           const chip = page.getByRole('button', { name: /^Tila/ });
           const model = page.getByRole('button', { name: /^Malli: / });
@@ -1518,7 +1522,9 @@ for (const scheme of ['light', 'dark'] as const) {
             await expect(page.locator('.md span[title="Malli näki: Pekka Laaksonen"]')).toHaveText(
               'Matti Virtanen',
             );
-            await setting('Näytä pseudonymoinnit');
+            await page.mouse.move(vp.width - 8, 8);
+            await shot(page, 'chat-annotated', vp.width, scheme);
+            await setting('Merkitse suojatut nimet');
             const masked = page.locator('.md span[tabindex="0"]').first();
             if (vp.width === 390) {
               // Touch: a tap opens the hint; there is no hover tooltip.
@@ -1537,7 +1543,7 @@ for (const scheme of ['light', 'dark'] as const) {
               // The hetu's tooltip from the Tab has faded.
               await expect(page.getByRole('tooltip')).toHaveCount(1);
             }
-            await shot(page, 'chat-annotated', vp.width, scheme);
+            await shot(page, 'chat-annotated-marks', vp.width, scheme);
             await setting('Näytä mitä malli näki');
             await expect(page.locator('.md').last()).toHaveText(
               'Hei Pekka Laaksonen! Hetu 010190-900B on tallessa.',

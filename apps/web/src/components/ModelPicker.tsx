@@ -58,7 +58,7 @@ import { aliasName, EFFORT_LABEL, shortName, useModel } from '../useModel.ts';
 import { send, setDataPolicy } from '../ws.ts';
 import { useAgent } from './AgentPicker.tsx';
 import { Tip } from './IconButton.tsx';
-import { openModes } from './ModesEditor.tsx';
+import { useOpenModes } from './ModesEditor.tsx';
 
 /** "1 M", "200 k": a context length. */
 const tokens = (n: number) =>
@@ -209,7 +209,7 @@ export function ModesChip({
 }) {
   const { all, active, names, toggle } = useModes(chatId);
   const label = useRef<HTMLSpanElement>(null);
-  const leaving = useRef(false);
+  const edit = useOpenModes();
   // Called before the early return: the modes may load after the first render.
   const fits = useFits(label, names, 200, all.length > 0);
   if (!all.length) return null;
@@ -239,13 +239,7 @@ export function ModesChip({
         align="start"
         collisionPadding={8}
         className="w-[320px]"
-        // "Muokkaa tiloja…" leaves the chat once the menu is gone, so the focus stays on Tilat.
-        onCloseAutoFocus={(e) => {
-          if (!leaving.current) return;
-          leaving.current = false;
-          e.preventDefault();
-          openModes();
-        }}
+        onCloseAutoFocus={edit.onCloseAutoFocus}
       >
         <DropdownMenuLabel className="text-micro text-muted-foreground">Tila</DropdownMenuLabel>
         {all.map((m) => (
@@ -260,11 +254,7 @@ export function ModesChip({
           </DropdownMenuCheckboxItem>
         ))}
         <DropdownMenuSeparator />
-        <DropdownMenuItem
-          onSelect={() => {
-            leaving.current = true;
-          }}
-        >
+        <DropdownMenuItem onSelect={edit.mark}>
           <Pencil size={16} className="text-muted-foreground" />
           Muokkaa tiloja…
         </DropdownMenuItem>
@@ -346,6 +336,7 @@ export function ModelPicker() {
   const pickEffort = (value: string) =>
     policy.modelId !== null &&
     choose({ modelId: policy.modelId, reasoning: value as ModelChoice['reasoning'] });
+  const editModes = useOpenModes();
   const openCatalog = () => {
     setOpen(false);
     setCatalogOpen(true);
@@ -383,6 +374,7 @@ export function ModelPicker() {
           <SheetContent
             side="bottom"
             showCloseButton={false}
+            onCloseAutoFocus={editModes.onCloseAutoFocus}
             className="max-h-[85dvh] gap-1 overflow-y-auto rounded-t-xl px-2 pt-4 pb-[max(env(safe-area-inset-bottom),8px)]"
           >
             <SheetTitle className="sr-only">Mallin valinta</SheetTitle>
@@ -450,7 +442,13 @@ export function ModelPicker() {
                 </Button>
               </>
             )}
-            <ChatSwitches chatId={chatId} />
+            <ChatSwitches
+              chatId={chatId}
+              onEditModes={() => {
+                editModes.mark();
+                setOpen(false);
+              }}
+            />
           </SheetContent>
         </Sheet>
       </>
@@ -589,7 +587,7 @@ function Choices({
  * decision 8; a new chat too), then "Tässä keskustelussa" with auto-approve (a started chat). Every
  * label starts at the rows' text edge; the shield sits beside the switch.
  */
-function ChatSwitches({ chatId }: { chatId: string | null }) {
+function ChatSwitches({ chatId, onEditModes }: { chatId: string | null; onEditModes: () => void }) {
   const modes = useModes(chatId);
   const auto = useAutoApprove(chatId ?? '');
   return (
@@ -605,6 +603,16 @@ function ChatSwitches({ chatId }: { chatId: string | null }) {
               onToggle={() => modes.toggle(m.id)}
             />
           ))}
+          {/* Phase-28 decision 2: as the chip's last row. */}
+          <div className="mx-3 my-1 h-px bg-border" />
+          <Button
+            variant="ghost"
+            className="h-11 justify-start gap-3 font-normal"
+            onClick={onEditModes}
+          >
+            <Pencil size={16} className="text-muted-foreground" />
+            Muokkaa tiloja…
+          </Button>
         </SheetGroup>
       )}
       {auto && (

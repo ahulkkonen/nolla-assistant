@@ -319,14 +319,21 @@ export function SettingsDialog() {
               >
                 <Switch id="model-saw" checked={showModelSaw} onCheckedChange={setShowModelSaw} />
               </Row>
+              {/* Phase-28 decision 4: the model's text always keeps its marks. */}
               <Row
-                label="Näytä pseudonymoinnit"
+                label="Merkitse suojatut nimet"
                 htmlFor="show-pseudonyms"
-                helper="Tunnistetut nimet näkyvät viesteissä merkittyinä."
+                helper={
+                  showModelSaw
+                    ? 'Päällä, kun mallin näkemä teksti näytetään.'
+                    : 'Suojatut nimet saavat viesteissä värillisen merkin.'
+                }
               >
                 <Switch
                   id="show-pseudonyms"
-                  checked={showPseudonyms}
+                  checked={showPseudonyms || showModelSaw}
+                  disabled={showModelSaw}
+                  aria-describedby="show-pseudonyms-help"
                   onCheckedChange={setShowPseudonyms}
                 />
               </Row>

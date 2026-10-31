@@ -172,10 +172,30 @@ function deleteError(err: unknown, list: AgentList) {
 const MODES_HASH = '#tilat';
 
 /** Opens Agentit at the Tilat section (the Tila chip's "Muokkaa tiloja…"). */
-export function openModes() {
+function openModes() {
   useStore.setState({ screen: 'agents', settingsOpen: false });
   // The router pushed `/agents`; the hash marks that entry only.
   history.replaceState(history.state, '', `${location.pathname}${MODES_HASH}`);
+}
+
+/**
+ * "Muokkaa tiloja…" in a menu or sheet: `mark` on the row, `onCloseAutoFocus` on the content. The
+ * screen changes once the menu or sheet is gone, so its focus return does not take the focus from
+ * Tilat.
+ */
+export function useOpenModes() {
+  const leaving = useRef(false);
+  return {
+    mark: () => {
+      leaving.current = true;
+    },
+    onCloseAutoFocus: (e: Event) => {
+      if (!leaving.current) return;
+      leaving.current = false;
+      e.preventDefault();
+      openModes();
+    },
+  };
 }
 
 /**
