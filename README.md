@@ -32,19 +32,18 @@ packages/
   db/               SQLite schema and migrations
   pi-ext-pseudo/    masks at ingest, unmasks at tool calls, leak scan
   pi-ext-memory/    USER.md and MEMORY.md injection, memory tools
-  pi-ext-topics/    titles and topics after agent_settled
-  pi-ext-notify/    Web Push
+  pi-ext-topics/    reports agent_settled; the title and topic jobs live in the server
   pi-ext-subagents/ child Pi processes
   pi-ext-sandbox/   bash tool that runs in sibling containers
 services/
   pseudo-svc/       Python FastAPI: /mask /unmask /scan and the vault
   sandbox-broker/   Node service that runs skill commands in containers
-skills/             vendored skills
+skills/             vendored skills (none yet; see skills/README.md)
 agents/             agent profiles (YAML) and prompts
 automations/        cron automations
 infra/              compose.yaml, Dockerfiles, LiteLLM, backup, MCP config
-scripts/            password hash, restore, restore drill, model download
-tests/              contract, e2e, egress, fake-llm, masked-only, mcp, pii, sandbox
+scripts/            password hash, restore, restore drill, model download, skill-runner image
+tests/              contract, e2e, egress, fake-llm, masked-only, mcp, memory-eval, pii, sandbox
 docs/               plan.md, deploy.md, decisions/
 ```
 
@@ -66,9 +65,11 @@ pnpm install
 Copy `.env.example` to `.env` and fill in the values.
 The file explains each variable. Production secrets live in Coolify, never in the repository.
 
-Run the server. It reads `.env` from the environment:
+Run the server. Nothing loads `.env` for you, so export its variables first.
+`AUTH_PASSWORD_HASH` in `.env` has `$$` for compose; the shell needs a single `$`, so set that one by hand:
 
 ```sh
+set -a; source .env; set +a
 pnpm --filter @pa/server dev
 ```
 
@@ -89,7 +90,7 @@ Other root commands: `pnpm typecheck`, `pnpm lint`, `pnpm lint:fix`, `pnpm build
 
 | Command | What it runs | Needs |
 |---|---|---|
-| `pnpm test` | All workspace suites, including contract, masked-only, mcp, and Playwright e2e | No Docker |
+| `pnpm test` | Workspace vitest suites, contract, masked-only, mcp, and the Playwright `chromium` flows; egress and sandbox excluded | No Docker |
 | `pnpm test:contract` | Pi contract tests only | No Docker |
 | `pnpm test:egress` | LiteLLM and Presidio against a mock OpenRouter | Docker |
 | `pnpm test:sandbox` | Broker and skill-runner containers | Docker |
@@ -115,7 +116,9 @@ The runbook also covers backups, restore, the sandbox, and the Google integratio
 Only you can do these steps:
 
 - Create the Coolify resource and set its environment variables.
-- Set the OpenRouter ZDR toggles and create the key with a ZDR guardrail.
+- Turn the OpenRouter account ZDR toggles off and create the key under a ZDR guardrail.
+- Create the S3 bucket and set the `S3_*` and `RESTIC_PASSWORD` variables.
+- Build the `pa-skill-runner` image on the Docker host (`scripts/build-skill-runner.sh`).
 - Create the Google OAuth client and connect your account.
 - Install the app on the iPhone from Safari.
 - Register a passkey after the first password login.
@@ -142,16 +145,9 @@ Only you can do these steps:
 `docs/decisions/` holds the decision records and the per-phase notes.
 The index is in `docs/decisions/README.md`.
 
-- `0001`: Pi 1.3.0 API contract.
-- `0002`: workflow, git, and dependency pins.
-- `0003`: Finnish PII stack for `pseudo-svc`.
-- `0004`: LiteLLM, OpenRouter ZDR, and the Presidio backstop.
-- `0005`: MCP integrations (phase 6).
-- `phase-1.md` to `phase-5.md`, `phase-7.md`, `phase-8.md`: tasks, decisions, and gates per phase.
-
 ## Status
 
-Status on 2026-10-25. The plan, section 13, defines each gate.
+Status on 2026-10-29. The plan, section 13, defines each gate.
 
 | Phase | Scope | Status |
 |---|---|---|

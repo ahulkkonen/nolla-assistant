@@ -10,7 +10,7 @@ version in `apps/server/package.json`) is the agent runtime. A React PWA is the 
 traffic leaves the box pseudonymized and goes through one LiteLLM proxy to OpenRouter with zero
 data retention (ZDR). The user interface is in Finnish.
 
-The build plan is `docs/plan.md`. The plan's section numbers are cited in every decision record.
+The build plan is `docs/plan.md`. Decision records cite its section numbers (`§N`) where they apply.
 
 ## Invariants
 
@@ -25,7 +25,8 @@ section 2.
    events never reach the browser.
 4. **Pinned Pi.** Exact version, guarded by `tests/contract`. Hook payload field names come from the
    contract notes (`docs/decisions/0001-*.md`, `0009-*.md`), not from memory.
-5. **TypeScript everywhere Pi touches.** Python only in `services/pseudo-svc`.
+5. **TypeScript everywhere Pi touches.** Python only in `services/pseudo-svc`, the LiteLLM guard
+   (`infra/litellm/zdr_guard.py`) and the PII harness (`tests/pii`).
 6. **`user_id` on every row** and per-user Pi directories.
 7. **Skills only from this repository.** No runtime install.
 8. **No Docker socket in app containers**, except `services/sandbox-broker`.
@@ -44,9 +45,11 @@ section 2.
 - **Finnish strings in the UI.** New user-facing text follows the existing wording. Keep the
   typographic conventions of the thread: numbers through the `fi` formatter `count` in
   `apps/web/src/thread.ts`, the separator " ·" with a no-break space after it.
-- **Decision records.** Each phase has `docs/decisions/phase-N-*.md` with Decisions, Status and
-  deliberate non-fixes. Read the record of the area you touch before you change it. Add to it when
-  you decide something a reader cannot derive from the code.
+- **Decision records.** Each phase has a record under `docs/decisions/` (`phase-N.md` for phases 1
+  to 8, `phase-N-<slug>.md` after that; phase 18 was deferred and has none). Newer records list the
+  decisions, a status and the review findings that were left as they are, on purpose. Read the
+  record of the area you touch before you change it. Add to it when you decide something a reader
+  cannot derive from the code.
 - **Documentation prose** follows ASD-STE100 (Simplified Technical English): short sentences, one
   instruction per sentence, active voice.
 - **Code style.** Biome formats and lints (`pnpm lint`, `pnpm lint:fix`); line width 100, two
@@ -60,11 +63,11 @@ section 2.
 
 ```
 apps/web            React 19 + Vite + Tailwind 4 + shadcn/ui PWA; zustand store (store.ts), ws.ts, router.ts
-apps/server         Fastify host: auth/, bridge.ts (WebSocket), pi/ (registry, models, guard), approval.ts,
+apps/server         Fastify host (export .env before `dev`): auth/, bridge.ts (WebSocket), pi/ (registry, models, guard), approval.ts,
                     harness.ts, fetch-tool.ts, modes.ts, versions.ts, claims.ts, export.ts, topics.ts
 packages/protocol   zod schemas for every client-server message; the single source of truth for types
 packages/db         drizzle SQLite schema and migrations (drizzle/NNNN_*.sql)
-packages/pi-ext-*   Pi extensions: pseudo, memory, topics, notify, subagents, sandbox
+packages/pi-ext-*   Pi extensions: pseudo, memory, topics, subagents, sandbox (push lives in apps/server/src/push.ts)
 services/pseudo-svc Python FastAPI: /mask /unmask /scan and the vault
 services/sandbox-broker  runs skill commands in throwaway containers; net.ts holds the private-address rule
 agents/             assistant.yaml (profile), prompts/assistant.md, modes/*.md (output modes)
@@ -80,11 +83,11 @@ docs/               plan.md, deploy.md, decisions/
 
 ```sh
 pnpm install
-pnpm --filter @pa/server dev            # reads .env
+set -a; source .env; set +a; pnpm --filter @pa/server dev
 pnpm --filter @pa/web dev
-pnpm --workspace-concurrency=1 -r typecheck   # plain -r typecheck can be killed under load
+pnpm typecheck                          # add --workspace-concurrency=1 if the machine is loaded
 pnpm lint
-pnpm test                               # every workspace suite without Docker, including Playwright chromium
+pnpm test                               # workspace vitest suites and Playwright chromium; egress and sandbox (Docker) excluded
 pnpm test:contract                      # Pi contract tests
 pnpm --filter @pa/e2e exec playwright test --project screens   # screenshots at 390/1024/1440, light and dark, axe strict
 pnpm test:webkit
@@ -116,8 +119,8 @@ axe strict. `pnpm test:sandbox` when the broker or the sandbox extension changed
 The design brief is `docs/decisions/phase-9-ui.md` section 7. The bar is "as polished as Claude Web
 and ChatGPT", not "clean shadcn defaults" (`docs/decisions/0006-ui-reference.md` is the reference
 research). The process: build to the brief, run the `screens` project, then a reviewer who has not
-seen the diff scores every screenshot on six criteria 1 to 5; fix every 🔴 and 🟡; act on each 🟠 or
-record it as a deliberate non-fix in the phase record. Keep the 390 px screenshots under touch
+seen the diff scores every screenshot on six criteria 1 to 5; fix every blocking and should-fix
+finding; act on each nice-to-have or record in the phase record why it stays. Keep the 390 px screenshots under touch
 emulation.
 
 ## Document index
@@ -128,8 +131,8 @@ Start here for a topic. Each entry says what the document answers.
 |---|---|
 | `README.md` | What the project is, how to develop and test, the status table per phase |
 | `docs/plan.md` | The full build plan: architecture (§3), protocol (§5), PII (§6), memory (§7), agents (§9), MCP (§10), UI spec (§11), phases (§13), quality gates (§14), pitfalls (§15) |
-| `docs/deploy.md` | Runbook for Coolify on a VPS, the local Docker run, the phone on the wifi, backups and restore, Google OAuth, user-only steps |
-| `docs/decisions/README.md` | Index of every decision record and phase record, one line each |
+| `docs/deploy.md` | Runbook for Coolify on a VPS, the local Docker run, the phone on the wifi, backups and restore, Google OAuth |
+| `docs/decisions/README.md` | Index of every decision record and phase record |
 | `docs/decisions/0001-pi-1.3.0-contract.md`, `0009-pi-1.4.0.md` | The Pi API surface the code depends on; what changed in 1.4.0 |
 | `docs/decisions/0002-workflow-and-pins.md` | Git workflow without a remote, the 7-day pin rule, TypeScript version choice |
 | `docs/decisions/0003-finnish-pii-stack.md`, `phase-12-pseudo.md` | How Finnish names, addresses and emails are recognised and replaced; surrogates, collisions, the corpus gate |
