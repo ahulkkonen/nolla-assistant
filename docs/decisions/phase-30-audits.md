@@ -106,6 +106,13 @@ Batch B, per item (branch `p30-b2` holds 8, 11, 12, 13 and the dependency follow
    answers the oldest wait, the same send order that `chat.created` already uses. A refused
    create never names a chat. Follow-up after the split: a `localId` on `chat.create`, echoed in
    `chat.created` and in the error.
+   Liveness: each ping (every 25 s) arms a 10 s timer, and any frame clears it. When no frame
+   comes, the socket counts as closed at once and the client reconnects. The server refuses an
+   unauthenticated upgrade with HTTP 401 and sends no 4401 then; the browser reports 1006 only.
+   So a close before `onopen` asks `/api/auth/me`. A 401 there signs out and shows Login, with
+   no more retries. Any other answer, or no answer, keeps the backoff. This differs from the
+   report (three closes, then `me()`): one check per failed open is simpler, and the backoff
+   already caps it at one call per 10 s.
 
 Left as they are in batch A, on purpose:
 

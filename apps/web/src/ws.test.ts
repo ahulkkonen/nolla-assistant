@@ -379,6 +379,57 @@ describe('ws client', () => {
     push.mockRestore();
   });
 
+  it('a ping without an answer in 10 s counts as a close and reconnects; any frame keeps it', () => {
+    vi.useFakeTimers();
+    const { sock, frame, sent } = chat();
+    vi.advanceTimersByTime(25_000);
+    expect(sent('ping')).toHaveLength(1);
+    frame({ type: 'pong' });
+    vi.advanceTimersByTime(20_000);
+    expect(FakeWebSocket.last).toBe(sock);
+    vi.advanceTimersByTime(5_000);
+    expect(sent('ping')).toHaveLength(2);
+    vi.advanceTimersByTime(10_000);
+    // Lost: the next send waits for the new socket, which opens after the backoff.
+    send({ type: 'chat.list' });
+    expect(sent('chat.list')).toEqual([]);
+    vi.advanceTimersByTime(500);
+    const next = FakeWebSocket.last;
+    expect(next).not.toBe(sock);
+    next.open();
+    expect(next.sent.map((d) => JSON.parse(d))).toContainEqual({ type: 'chat.list' });
+    vi.useRealTimers();
+  });
+
+  it('a reconnect refused before open shows Login only when /api/auth/me answers 401', async () => {
+    vi.useFakeTimers();
+    let status = 503;
+    const fetch = vi.fn(async () => new Response(null, { status }));
+    vi.stubGlobal('fetch', fetch);
+    const { sock } = chat();
+    useStore.setState({ auth: 'in' });
+    sock.onclose?.({ code: 1006 });
+    expect(fetch).not.toHaveBeenCalled();
+    // The reconnect fails before open: the server is down, so the client keeps trying.
+    await vi.advanceTimersByTimeAsync(500);
+    FakeWebSocket.last.onclose?.({ code: 1006 });
+    await vi.advanceTimersByTimeAsync(0);
+    expect([fetch.mock.calls.length, useStore.getState().auth]).toEqual([1, 'in']);
+    // The next one: this device was revoked.
+    status = 401;
+    await vi.advanceTimersByTimeAsync(1000);
+    const last = FakeWebSocket.last;
+    last.onclose?.({ code: 1006 });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(useStore.getState().auth).toBe('out');
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(FakeWebSocket.last).toBe(last);
+    useStore.setState({ auth: 'in' });
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.stubGlobal('WebSocket', FakeWebSocket);
+  });
+
   it('a sign-out drops the deltas that wait for their frame: nothing lands after the wipe', () => {
     const frames: FrameRequestCallback[] = [];
     const cancel = vi.fn();

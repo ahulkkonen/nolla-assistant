@@ -5,6 +5,7 @@ import {
   type ModelPolicy,
   ServerMessage,
 } from '@pa/protocol';
+import { HttpError, me } from './api.ts';
 import {
   type ClaimChip,
   errorText,
@@ -22,6 +23,7 @@ let backoff = 500;
 let stopped = true;
 let pingTimer: ReturnType<typeof setInterval> | undefined;
 let retryTimer: ReturnType<typeof setTimeout> | undefined;
+let pongTimer: ReturnType<typeof setTimeout> | undefined;
 /** Pending `chat.create` calls, oldest first: `chat.created` or an error answers in send order. */
 let createWaiters: Array<{ resolve: (chatId: string) => void; reject: () => void }> = [];
 let forkTimer: ReturnType<typeof setTimeout> | undefined;
@@ -92,6 +94,7 @@ export function disconnect() {
   editRefresh = null;
   clearTimeout(retryTimer);
   clearInterval(pingTimer);
+  clearTimeout(pongTimer);
   failCreates();
   queue = [];
   // Phase 27: deltas still waiting for their frame never land after a sign-out's wipe.
@@ -448,15 +451,30 @@ function flushDeltas() {
   for (const d of list) useStore.getState().apply(d);
 }
 
+/** How long the answer to a ping may take before the socket counts as lost. */
+const PONG_TIMEOUT_MS = 10_000;
+
 function open() {
   const sock = new WebSocket(url);
   ws = sock;
+  let opened = false;
   sock.onopen = () => {
+    opened = true;
     backoff = 500;
     for (const data of queue) sock.send(data);
     queue = [];
     clearInterval(pingTimer);
-    pingTimer = setInterval(() => send({ type: 'ping' }), 25_000);
+    pingTimer = setInterval(() => {
+      send({ type: 'ping' });
+      // A half-open socket (a network switch) stays OPEN: no frame in time, and it counts as
+      // closed now, so the frames sent after it are queued for the next socket.
+      clearTimeout(pongTimer);
+      pongTimer = setTimeout(() => {
+        sock.onclose = null;
+        sock.close();
+        closed(sock, opened, 1006);
+      }, PONG_TIMEOUT_MS);
+    }, 25_000);
   };
   sock.onmessage = (e) => {
     let raw: unknown;
@@ -467,6 +485,8 @@ function open() {
     }
     const parsed = ServerMessage.safeParse(raw);
     if (!parsed.success) return;
+    // Any frame shows the socket is alive.
+    clearTimeout(pongTimer);
     const msg = parsed.data;
     if (msg.type === 'message.delta') return queueDelta(msg);
     // Any other frame comes after the deltas before it (a final, a tool row, the idle status).
@@ -493,25 +513,34 @@ function open() {
         if (chatId) send({ type: 'chat.open', chatId });
     }
   };
-  sock.onclose = (e) => {
-    clearInterval(pingTimer);
-    // 4401: this device's session was revoked (Laitteet, phase 15): signed out, no reconnect.
-    if (e.code === 4401) return signedOut();
-    if (createWaiters.length) {
-      failCreates();
-      useStore.getState().pushError(errorText('prompt_failed', ''));
-    }
-    // The answer to a pending consent, retry, edit, switch, fork or thinking text may never come;
-    // a reconnect starts clean.
-    policyIntent = null;
-    endRetry();
-    editRefresh = null;
-    if (useStore.getState().pendingFork) useStore.setState({ pendingFork: null });
-    if (useStore.getState().pendingVersion) useStore.setState({ pendingVersion: null });
-    failThinking();
-    if (ws !== sock || stopped) return;
-    ws = null;
-    retryTimer = setTimeout(open, backoff);
-    backoff = Math.min(backoff * 2, 10_000);
-  };
+  sock.onclose = (e) => closed(sock, opened, e.code);
+}
+
+function closed(sock: WebSocket, opened: boolean, code: number) {
+  clearInterval(pingTimer);
+  clearTimeout(pongTimer);
+  // 4401: this device's session was revoked (Laitteet, phase 15): signed out, no reconnect.
+  if (code === 4401) return signedOut();
+  // A refused upgrade (revoked while offline) closes as 1006 before `onopen`: the browser hides
+  // the HTTP 401. `/api/auth/me` tells it apart from a server that is down.
+  if (!opened && !stopped)
+    me().catch((err: unknown) => {
+      if (err instanceof HttpError && err.status === 401 && !stopped) signedOut();
+    });
+  if (createWaiters.length) {
+    failCreates();
+    useStore.getState().pushError(errorText('prompt_failed', ''));
+  }
+  // The answer to a pending consent, retry, edit, switch, fork or thinking text may never come;
+  // a reconnect starts clean.
+  policyIntent = null;
+  endRetry();
+  editRefresh = null;
+  if (useStore.getState().pendingFork) useStore.setState({ pendingFork: null });
+  if (useStore.getState().pendingVersion) useStore.setState({ pendingVersion: null });
+  failThinking();
+  if (ws !== sock || stopped) return;
+  ws = null;
+  retryTimer = setTimeout(open, backoff);
+  backoff = Math.min(backoff * 2, 10_000);
 }
