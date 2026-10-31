@@ -217,7 +217,8 @@ function harness(
     return undefined;
   };
   const end = async (id: string) => {
-    for (const h of handlers.get('tool_execution_end') ?? []) await h({ toolCallId: id }, {});
+    for (const h of handlers.get('tool_execution_end') ?? [])
+      await h({ toolName: 'web_search', toolCallId: id }, {});
   };
   const execute = (query: string) => registered.execute('t1', { query }, undefined);
   return { ask, call, end, execute, record, guard: after[0], approved };

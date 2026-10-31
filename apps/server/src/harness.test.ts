@@ -8,7 +8,7 @@ import { HARNESS_TOOLS } from '@pa/protocol';
 import { afterEach, expect, test, vi } from 'vitest';
 import { adminWriters } from './admin.ts';
 import { loadAgents } from './agents.ts';
-import type { View } from './approval.ts';
+import { callKey, type View } from './approval.ts';
 import {
   AGENT_FIXED,
   CHAT_MAX,
@@ -116,13 +116,13 @@ function setup(o: { pseudo?: unknown; allow?: string[]; reader?: () => never } =
     log,
   });
   const tools = new Map<string, Tool>();
-  const ends: ((e: { toolCallId: string }) => void)[] = [];
+  const ends: ((e: { toolName: string; toolCallId: string }) => void)[] = [];
   h.tools({
     on: (_: string, f: (typeof ends)[number]) => ends.push(f),
     registerTool: (t: Tool & { name: string }) => tools.set(t.name, t),
   } as never);
-  const end = (toolCallId: string) => {
-    for (const f of ends) f({ toolCallId });
+  const end = (toolName: string, toolCallId: string) => {
+    for (const f of ends) f({ toolName, toolCallId });
   };
   const view = (tool: string, input: object, id = 't1') =>
     (h.views[tool] as View)(input as never, id);
@@ -191,7 +191,7 @@ test('profile_edit: stale refusal; a vault name blocks with the fixed reason', a
   expect(readFileSync(prompt, 'utf8')).toBe('Joku muutti tämän.\n');
   // No card shown for this call id: refused too.
   expect(await s.exec('profile_edit', { file: 'prompt', content }, 'x')).toBe(STALE);
-  s.masked.set('t3', `Olet ${MASKED}n avustaja.`);
+  s.masked.set(callKey('profile_edit', 't3'), `Olet ${MASKED}n avustaja.`);
   expect(
     await s.view('profile_edit', { file: 'prompt', content: `Olet ${REAL}n avustaja.` }, 't3'),
   ).toEqual({ error: NO_PII });
@@ -330,7 +330,7 @@ test('profile_edit: the sidecar probe refuses a real name the model wrote; a dow
   cleanups(sc.close);
   const s = setup({ pseudo: new PseudoClient(sc.url, 'u1') });
   // Written as is, not masked: the recorder sees the same text.
-  s.masked.set('t1', `Olet ${REAL}n avustaja.`);
+  s.masked.set(callKey('profile_edit', 't1'), `Olet ${REAL}n avustaja.`);
   expect(
     await s.view('profile_edit', { file: 'prompt', content: `Olet ${REAL}n avustaja.` }),
   ).toEqual({ error: NO_PII });
@@ -358,7 +358,7 @@ test('a call that ends without execute drops its stamp', async () => {
   const s = setup();
   const content = 'Uusi ohje.';
   await s.view('profile_edit', { file: 'prompt', content });
-  s.end('t1');
+  s.end('profile_edit', 't1');
   expect(await s.exec('profile_edit', { file: 'prompt', content })).toBe(STALE);
 });
 

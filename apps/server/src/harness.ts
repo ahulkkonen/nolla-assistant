@@ -11,7 +11,7 @@ import { and, desc, eq, ne } from 'drizzle-orm';
 import { Type } from 'typebox';
 import { parse } from 'yaml';
 import { type Answer, type adminWriters, badPath } from './admin.ts';
-import type { View } from './approval.ts';
+import { callKey, type View } from './approval.ts';
 import { AutomationFile, nextRuns } from './automations.ts';
 import { chatRow, cutText, restorer, transcript } from './bridge.ts';
 import { modesDir } from './modes.ts';
@@ -128,7 +128,7 @@ export function harness(deps: HarnessDeps): {
 
   const profileView: View = async (input, callId) => {
     const p = input as ProfileArgs;
-    const masked = deps.masked.get(callId);
+    const masked = deps.masked.get(callKey('profile_edit', callId));
     if (masked !== undefined && masked !== p.content) return { error: NO_PII };
     // A real name the model wrote itself is not in the masked argument: probe it with the
     // sidecar. Down: refuse rather than skip. No sidecar at all: no vault, nothing to find.
@@ -146,7 +146,7 @@ export function harness(deps: HarnessDeps): {
     const before = existsSync(path) ? readFileSync(path, 'utf8') : '';
     const after = asWritten(p.content);
     if (before === after) return { error: SAME };
-    stamps.set(callId, { file, path, hash: sha(path) });
+    stamps.set(callKey('profile_edit', callId), { file, path, hash: sha(path) });
     const view: ApprovalView = {
       kind: 'diff',
       file,
@@ -195,7 +195,7 @@ export function harness(deps: HarnessDeps): {
     const a = AutomationFile.parse(parse(yaml));
     const file = `automations/${id}.yaml`;
     const path = join(deps.automationsDir, `${id}.yaml`);
-    stamps.set(callId, { file, path, hash: sha(path) });
+    stamps.set(callKey('automation_edit', callId), { file, path, hash: sha(path) });
     const view: ApprovalView = {
       kind: 'yaml',
       file,
@@ -211,8 +211,8 @@ export function harness(deps: HarnessDeps): {
 
   /** The stale check (decision 6), then the write and its log line. */
   const commit = (tool: string, callId: string, write: (n: string) => Answer) => {
-    const stamp = stamps.get(callId);
-    stamps.delete(callId);
+    const stamp = stamps.get(callKey(tool, callId));
+    stamps.delete(callKey(tool, callId));
     if (!stamp || sha(stamp.path) !== stamp.hash) return text(STALE, true);
     const r = run(() => write(`${tool} ${stamp.file} (chat ${chatId.slice(0, 8)})`), log);
     if ('error' in r) return text(r.error, true);
@@ -322,7 +322,7 @@ export function harness(deps: HarnessDeps): {
   const allowed = new Set(deps.allow);
   const tools: ExtensionFactory = (pi) => {
     // Every end (run, denied, expired, failed) drops the call's stamp.
-    pi.on('tool_execution_end', (event) => void stamps.delete(event.toolCallId));
+    pi.on('tool_execution_end', (e) => void stamps.delete(callKey(e.toolName, e.toolCallId)));
     const registerTool: typeof pi.registerTool = (t) => {
       if (allowed.has(t.name)) pi.registerTool(t);
     };
