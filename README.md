@@ -104,6 +104,11 @@ Playwright needs Chromium. Install it once:
 pnpm --filter @pa/e2e exec playwright install chromium
 ```
 
+The first server test run downloads the embedding model once (`Xenova/multilingual-e5-small`,
+about 130 MB) to `MODELS_DIR`, by default `$TMPDIR/pa-models`. Without the model, the search,
+claims and memory tests fail. Set `PA_SKIP_MODEL_TESTS=1` to skip them when you work offline.
+CI must not set it.
+
 Set `PSEUDO_URL` for the PII harness, for example `PSEUDO_URL=http://localhost:8000`.
 Use `--dry-run` to check the corpus without a sidecar.
 See `tests/pii/README.md`.
@@ -135,7 +140,15 @@ Only you can do these steps:
   ```
 
   The command prints the publish date. Pin only if it is at least 7 days old.
-- Check Python packages on PyPI in the same way.
+- Check Python packages on PyPI in the same way. Build `services/pseudo-svc/requirements.lock`
+  with a cut-off that is a full UTC timestamp at least 7 days ago. uv reads a bare date as the
+  end of that day.
+
+  ```sh
+  cd services/pseudo-svc
+  uv pip compile pyproject.toml --universal --python-version 3.12 \
+    --exclude-newer 2026-10-24T00:00:00Z --generate-hashes -o requirements.lock
+  ```
 - A version bump is its own change.
   The contract tests and the PII suite are the gate.
 - Pi is pinned exactly; a bump is its own task (`docs/decisions/0002-workflow-and-pins.md`, `0009-pi-1.4.0.md`).

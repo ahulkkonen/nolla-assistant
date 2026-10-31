@@ -26,6 +26,8 @@ services:
       # on each save (docs/decisions/phase-15-admin.md, decision 4).
       AGENTS_DIR: /data/agents
       AUTOMATIONS_DIR: /data/automations
+      # No Pi install ping to pi.dev (invariant 2). config.ts also sets it, but only once it loads.
+      PI_OFFLINE: "1"
     # ports: no mapping. Coolify's proxy attaches to container port 3000.
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]

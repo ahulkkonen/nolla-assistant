@@ -1,3 +1,5 @@
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 process.env.PI_OFFLINE = '1';
@@ -5,6 +7,13 @@ process.env.PI_SKIP_VERSION_CHECK = '1';
 process.env.PI_TELEMETRY = '0';
 
 type Env = Record<string, string | undefined>;
+
+/**
+ * The embedding model's folder without `MODELS_DIR`, outside production only: outside the
+ * repository and outside any `DATA_DIR`, so dev, every test harness and the memory eval share one
+ * download. Production requires `MODELS_DIR` (the image sets `/app/models`).
+ */
+export const DEFAULT_MODELS_DIR = join(tmpdir(), 'pa-models');
 
 function required(env: Env, name: string): string {
   const v = env[name];
@@ -59,11 +68,14 @@ export function loadConfig(env: Env = process.env) {
     if (!env.PSEUDO_URL) throw new Error('PSEUDO_URL is required in production (invariant 1)');
     if ((env.LITELLM_MASTER_KEY ?? '').length < 32)
       throw new Error('LITELLM_MASTER_KEY must be at least 32 characters in production');
+    // A shared /tmp would let another local user plant the model; the image sets /app/models.
+    if (!env.MODELS_DIR) throw new Error('MODELS_DIR is required in production');
   }
   return Object.freeze({
     port,
     host: env.HOST ?? '127.0.0.1',
     dataDir: required(env, 'DATA_DIR'),
+    modelsDir: env.MODELS_DIR || DEFAULT_MODELS_DIR,
     litellmUrl: required(env, 'LITELLM_URL'),
     litellmMasterKey: required(env, 'LITELLM_MASTER_KEY'),
     userId,

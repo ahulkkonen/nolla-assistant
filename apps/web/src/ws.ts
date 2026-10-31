@@ -5,8 +5,10 @@ import {
   type ModelPolicy,
   ServerMessage,
 } from '@pa/protocol';
+import { HttpError, me } from './api.ts';
 import {
   type ClaimChip,
+  ERROR_TEXT,
   serverIdOf,
   shift,
   thinkingKey,
@@ -21,7 +23,20 @@ let backoff = 500;
 let stopped = true;
 let pingTimer: ReturnType<typeof setInterval> | undefined;
 let retryTimer: ReturnType<typeof setTimeout> | undefined;
-let createWaiters: Array<(chatId: string) => void> = [];
+let pongTimer: ReturnType<typeof setTimeout> | undefined;
+/**
+ * Pending `chat.create` calls, oldest first: `chat.created` or an error answers in send order.
+ * `reject(true)`: signed out, the text goes nowhere.
+ */
+let createWaiters: Array<{ resolve: (chatId: string) => void; reject: (drop?: boolean) => void }> =
+  [];
+/**
+ * The codes a refused `chat.create` sends (server `handle`: agent or topic lookup, model and
+ * modes check, session build). They name no chat, so they answer the oldest pending create; an
+ * error of another request with one of these codes still can (phase-30 item 8: a `localId` echo
+ * is the follow-up).
+ */
+const CREATE_REFUSALS = new Set(['bad_message', 'not_found', 'failed', 'pseudo_down']);
 let forkTimer: ReturnType<typeof setTimeout> | undefined;
 let versionTimer: ReturnType<typeof setTimeout> | undefined;
 /**
@@ -44,6 +59,17 @@ let retryIntent: {
  * shown are the server's and a version guessed here cannot stay.
  */
 let editRefresh: string | null = null;
+/**
+ * Every pending `chat.create` fails: its text goes back to the composer (`sendUserMessage`),
+ * unless `drop` (a sign-out). A create still in the queue is never sent: its chat would have no
+ * waiter, and its `chat.created` would answer the next create.
+ */
+const failCreates = (drop = false) => {
+  const waiters = createWaiters;
+  createWaiters = [];
+  queue = queue.filter((data) => (JSON.parse(data) as { type: string }).type !== 'chat.create');
+  for (const w of waiters) w.reject(drop);
+};
 /** The pending retry or edit is over: its edit box stops waiting. */
 const endRetry = () => {
   retryIntent = null;
@@ -84,6 +110,8 @@ export function disconnect() {
   editRefresh = null;
   clearTimeout(retryTimer);
   clearInterval(pingTimer);
+  clearTimeout(pongTimer);
+  failCreates(true);
   queue = [];
   // Phase 27: deltas still waiting for their frame never land after a sign-out's wipe.
   if (frame) cancelAnimationFrame(frame);
@@ -144,11 +172,12 @@ export function openChat(chatId: string, messageId?: string | null) {
 
 /**
  * Sends `chat.create` with the picked agent, model and modes (phase-23 decision 8: unset modes are
- * the agent's default); resolves with the id from the next `chat.created`.
+ * the agent's default); resolves with the id from the next `chat.created`. Rejects on the next
+ * error without a chat (a refused create never names one) or when the socket closes.
  */
 export function createChat(): Promise<string> {
-  return new Promise((resolve) => {
-    createWaiters.push(resolve);
+  return new Promise((resolve, reject) => {
+    createWaiters.push({ resolve, reject });
     const st = useStore.getState();
     // A mode deleted since the toggle would refuse the whole create.
     const modes = st.pendingModes?.filter((id) => st.modes.some((m) => m.id === id));
@@ -172,7 +201,15 @@ export async function sendUserMessage(
   chatId: string | null = useStore.getState().activeChatId,
 ) {
   if (chatId && useStore.getState().pendingEdit?.chatId === chatId) return;
-  const id = chatId ?? (await createChat());
+  let id = chatId;
+  try {
+    id ??= await createChat();
+  } catch (drop) {
+    // No chat: the text and files go back to the new-chat composer; the error toast says why.
+    // After a sign-out they go nowhere: the next user must not see them.
+    if (!drop) useStore.setState({ draft: { chatId: null, text, attachments } });
+    return;
+  }
   // A new turn ends a pending consent or retry of its chat: neither may act on it.
   if (policyIntent?.chatId === id) policyIntent = null;
   if (retryIntent?.chatId === id) endRetry();
@@ -431,15 +468,30 @@ function flushDeltas() {
   for (const d of list) useStore.getState().apply(d);
 }
 
+/** How long the answer to a ping may take before the socket counts as lost. */
+const PONG_TIMEOUT_MS = 10_000;
+
 function open() {
   const sock = new WebSocket(url);
   ws = sock;
+  let opened = false;
   sock.onopen = () => {
+    opened = true;
     backoff = 500;
     for (const data of queue) sock.send(data);
     queue = [];
     clearInterval(pingTimer);
-    pingTimer = setInterval(() => send({ type: 'ping' }), 25_000);
+    pingTimer = setInterval(() => {
+      send({ type: 'ping' });
+      // A half-open socket (a network switch) stays OPEN: no frame in time, and it counts as
+      // closed now, so the frames sent after it are queued for the next socket.
+      clearTimeout(pongTimer);
+      pongTimer = setTimeout(() => {
+        sock.onclose = null;
+        sock.close();
+        closed(sock, opened, 1006);
+      }, PONG_TIMEOUT_MS);
+    }, 25_000);
   };
   sock.onmessage = (e) => {
     let raw: unknown;
@@ -449,7 +501,10 @@ function open() {
       return;
     }
     const parsed = ServerMessage.safeParse(raw);
-    if (!parsed.success) return;
+    // A socket that counts as closed (no pong) may still deliver: its answers belong to nothing.
+    if (!parsed.success || ws !== sock) return;
+    // Any frame shows the socket is alive.
+    clearTimeout(pongTimer);
     const msg = parsed.data;
     if (msg.type === 'message.delta') return queueDelta(msg);
     // Any other frame comes after the deltas before it (a final, a tool row, the idle status).
@@ -460,10 +515,9 @@ function open() {
     settlePolicy(msg, was);
     settleRetry(msg);
     sendQueued(msg);
-    if (msg.type === 'chat.created') {
-      const waiter = createWaiters.shift();
-      waiter?.(msg.chat.id);
-    }
+    if (msg.type === 'chat.created') createWaiters.shift()?.resolve(msg.chat.id);
+    if (msg.type === 'error' && !msg.chatId && CREATE_REFUSALS.has(msg.code))
+      createWaiters.shift()?.reject();
     if (msg.type === 'auth.state' && !msg.authenticated) disconnect();
     if (msg.type === 'auth.state' && msg.authenticated) {
       send({ type: 'chat.list', archived: store.archivedView });
@@ -478,21 +532,34 @@ function open() {
         if (chatId) send({ type: 'chat.open', chatId });
     }
   };
-  sock.onclose = (e) => {
-    clearInterval(pingTimer);
-    // 4401: this device's session was revoked (Laitteet, phase 15): signed out, no reconnect.
-    if (e.code === 4401) return signedOut();
-    // The answer to a pending consent, retry, edit, switch, fork or thinking text may never come;
-    // a reconnect starts clean.
-    policyIntent = null;
-    endRetry();
-    editRefresh = null;
-    if (useStore.getState().pendingFork) useStore.setState({ pendingFork: null });
-    if (useStore.getState().pendingVersion) useStore.setState({ pendingVersion: null });
-    failThinking();
-    if (ws !== sock || stopped) return;
-    ws = null;
-    retryTimer = setTimeout(open, backoff);
-    backoff = Math.min(backoff * 2, 10_000);
-  };
+  sock.onclose = (e) => closed(sock, opened, e.code);
+}
+
+function closed(sock: WebSocket, opened: boolean, code: number) {
+  clearInterval(pingTimer);
+  clearTimeout(pongTimer);
+  // 4401: this device's session was revoked (Laitteet, phase 15): signed out, no reconnect.
+  if (code === 4401) return signedOut();
+  // A refused upgrade (revoked while offline) closes as 1006 before `onopen`: the browser hides
+  // the HTTP 401. `/api/auth/me` tells it apart from a server that is down.
+  if (!opened && !stopped && globalThis.navigator?.onLine !== false)
+    me().catch((err: unknown) => {
+      if (err instanceof HttpError && err.status === 401 && !stopped) signedOut();
+    });
+  if (createWaiters.length) {
+    failCreates();
+    useStore.getState().pushError(ERROR_TEXT.prompt_failed);
+  }
+  // The answer to a pending consent, retry, edit, switch, fork or thinking text may never come;
+  // a reconnect starts clean.
+  policyIntent = null;
+  endRetry();
+  editRefresh = null;
+  if (useStore.getState().pendingFork) useStore.setState({ pendingFork: null });
+  if (useStore.getState().pendingVersion) useStore.setState({ pendingVersion: null });
+  failThinking();
+  if (ws !== sock || stopped) return;
+  ws = null;
+  retryTimer = setTimeout(open, backoff);
+  backoff = Math.min(backoff * 2, 10_000);
 }

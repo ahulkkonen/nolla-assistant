@@ -29,12 +29,12 @@ test('phase-22 decision 8: http on a LAN host only with AUTH_INSECURE_LAN=1', ()
   ]);
 });
 
-test('production fails closed without PSEUDO_URL or with a short LiteLLM key', () => {
-  const prod = { ...env('https://pa.example.test'), NODE_ENV: 'production' };
+test('production fails closed without PSEUDO_URL, MODELS_DIR or with a short LiteLLM key', () => {
+  const prod = { ...env('https://pa.example.test'), NODE_ENV: 'production', MODELS_DIR: '/m' };
   const key = 'k'.repeat(32);
   expect(() => loadConfig({ ...prod, LITELLM_MASTER_KEY: key })).toThrow('PSEUDO_URL');
   expect(() => loadConfig({ ...prod, PSEUDO_URL: 'http://p' })).toThrow('LITELLM_MASTER_KEY');
-  expect(loadConfig({ ...prod, PSEUDO_URL: 'http://p', LITELLM_MASTER_KEY: key }).pseudoUrl).toBe(
-    'http://p',
-  );
+  const ok = { ...prod, PSEUDO_URL: 'http://p', LITELLM_MASTER_KEY: key };
+  expect(loadConfig(ok)).toMatchObject({ pseudoUrl: 'http://p', modelsDir: '/m' });
+  expect(() => loadConfig({ ...ok, MODELS_DIR: '' })).toThrow('MODELS_DIR');
 });

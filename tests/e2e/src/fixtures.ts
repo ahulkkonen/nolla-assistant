@@ -15,9 +15,6 @@ import { seedAgents } from '@pa/server/src/test-utils.ts';
 import { type Browser, test as base, expect, type Page } from '@playwright/test';
 import { WEB } from './global-setup.ts';
 
-// One embedding model cache for all runs, outside the per-test DATA_DIR (downloaded once).
-process.env.MODELS_DIR ||= join(tmpdir(), 'pa-models');
-
 export const PASSWORD = 'salasana';
 
 const ecdh = createECDH('prime256v1');
@@ -447,6 +444,7 @@ export const test = base.extend<{
     const srv = await start(
       loadConfig({
         DATA_DIR: dataDir,
+        MODELS_DIR: process.env.MODELS_DIR,
         LITELLM_URL: llm.url,
         LITELLM_MASTER_KEY: KEY,
         // Model catalog from the fake (phase-10): Auto is a catalog model.

@@ -407,6 +407,8 @@ export class SessionRegistry {
     await this.drop(chatId);
     const path = SessionManager.findById(this.cwd, chatId, this.sessionDir);
     if (path) rmSync(path, { force: true });
+    // The subagent children's JSONL (`<chatId>/sub/`, pi-ext-subagents) goes with the chat.
+    rmSync(resolve(this.sessionDir, chatId), { recursive: true, force: true });
   }
 
   /** Shared model runtime. Pi cannot create one without built-in providers, so the test asserts only `zdr` and `open` resolve credentials (invariant 2 guard). */

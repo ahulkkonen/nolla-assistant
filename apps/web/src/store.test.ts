@@ -150,7 +150,7 @@ describe('store reducers', () => {
     const toastError = vi.spyOn(toast, 'error');
     const msg = {
       type: 'error' as const,
-      code: 'llm_failed',
+      code: 'llm_failed' as const,
       message: 'Model call failed',
       status: 404,
       detail: 'No endpoints found',

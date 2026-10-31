@@ -347,6 +347,164 @@ describe('ws client', () => {
     expect(useStore.getState().queued.c2).toBeUndefined();
   });
 
+  it('a refused chat.create, or a close before chat.created, gives the text back to the composer', async () => {
+    const push = vi.spyOn(useStore.getState(), 'pushError').mockImplementation(() => {});
+    const file = { id: 'f1', name: 'kuva.png', mime: 'image/png', size: 1, kind: 'image' as const };
+    const { sock, frame, sent } = chat();
+    useStore.getState().setActive(null);
+    // The server refuses: an error without a chat.
+    const refused = sendUserMessage('Eka', [file]);
+    expect(sent('chat.create')).toHaveLength(1);
+    frame({ type: 'error', code: 'bad_message', message: 'x' });
+    await refused;
+    expect(useStore.getState().draft).toEqual({ chatId: null, text: 'Eka', attachments: [file] });
+    expect(push).toHaveBeenCalledWith('Virheellinen viesti.');
+    useStore.setState({ draft: null });
+    // The socket closes before the answer.
+    const lost = sendUserMessage('Toka');
+    sock.onclose?.({ code: 1006 });
+    await lost;
+    expect(useStore.getState().draft).toMatchObject({ chatId: null, text: 'Toka' });
+    expect(push).toHaveBeenLastCalledWith('Viestin lähetys epäonnistui.');
+    useStore.setState({ draft: null });
+    // No stale waiter: the next chat.created answers only its own create.
+    disconnect();
+    const next = chat();
+    useStore.getState().setActive(null);
+    const third = sendUserMessage('Kolmas');
+    next.frame({ type: 'chat.created', chat: { ...useStore.getState().chats[0], id: 'c9' } });
+    await third;
+    expect(next.sent('user.message')).toMatchObject([{ chatId: 'c9', text: 'Kolmas' }]);
+    expect(sent('user.message')).toEqual([]);
+    push.mockRestore();
+  });
+
+  it('only a code a refused create can send ends the wait; a sign-out drops the text', async () => {
+    const push = vi.spyOn(useStore.getState(), 'pushError').mockImplementation(() => {});
+    const { frame } = chat();
+    useStore.getState().setActive(null);
+    const pending = sendUserMessage('Eka');
+    // An error of another request (a memory edit) leaves the create waiting.
+    frame({ type: 'error', code: 'memory_conflict', message: 'x' });
+    frame({ type: 'chat.created', chat: { ...useStore.getState().chats[0], id: 'c7' } });
+    await pending;
+    expect(useStore.getState().messages.c7?.map((m) => m.text)).toEqual(['Eka']);
+    // Signed out while a create waits: the next user's composer gets nothing.
+    useStore.getState().setActive(null);
+    const lost = sendUserMessage('Salainen');
+    signedOut();
+    await lost;
+    expect(useStore.getState().draft).toBeNull();
+    useStore.setState({ auth: 'in' });
+    push.mockRestore();
+  });
+
+  it('a create that never left the queue is not sent; a lost socket answers nothing', async () => {
+    vi.useFakeTimers();
+    const push = vi.spyOn(useStore.getState(), 'pushError').mockImplementation(() => {});
+    // Not open yet: the create waits in the queue, then the socket closes.
+    connect('ws://test/ws');
+    const first = FakeWebSocket.last;
+    const queued = sendUserMessage('Jonossa', [], null);
+    first.onclose?.({ code: 1006 });
+    await queued;
+    expect(useStore.getState().draft).toMatchObject({ text: 'Jonossa' });
+    useStore.setState({ draft: null });
+    await vi.advanceTimersByTimeAsync(500);
+    const second = FakeWebSocket.last;
+    second.open();
+    const types = (sock: FakeWebSocket) => sock.sent.map((d) => JSON.parse(d).type);
+    expect(types(second)).not.toContain('chat.create');
+    // A socket lost to a missing pong may still deliver the answer to a create sent on it.
+    const sentOnLost = sendUserMessage('Kadonnut', [], null);
+    await vi.advanceTimersByTimeAsync(35_500);
+    await sentOnLost;
+    useStore.setState({ draft: null });
+    const third = FakeWebSocket.last;
+    expect(third).not.toBe(second);
+    third.open();
+    const next = sendUserMessage('Oikea', [], null);
+    const summary = {
+      title: 'Hei',
+      topicId: null,
+      agentId: 'assistant',
+      pinned: false,
+      archived: false,
+      modelPolicy: { modelId: 'auto', reasoning: 'auto', dataPolicy: 'zdr' },
+      modes: null,
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    };
+    const created = (id: string) =>
+      JSON.stringify({ type: 'chat.created', chat: { ...summary, id } });
+    second.onmessage?.({ data: created('ghost') });
+    third.onmessage?.({ data: created('c8') });
+    await next;
+    expect(
+      third.sent.map((d) => JSON.parse(d)).filter((m) => m.type === 'user.message'),
+    ).toMatchObject([{ chatId: 'c8', text: 'Oikea' }]);
+    expect(useStore.getState().chats.some((c) => c.id === 'ghost')).toBe(false);
+    push.mockRestore();
+    vi.useRealTimers();
+  });
+
+  it('a ping without an answer in 10 s counts as a close and reconnects; any frame keeps it', () => {
+    vi.useFakeTimers();
+    const { sock, frame, sent } = chat();
+    vi.advanceTimersByTime(25_000);
+    expect(sent('ping')).toHaveLength(1);
+    frame({ type: 'pong' });
+    vi.advanceTimersByTime(20_000);
+    expect(FakeWebSocket.last).toBe(sock);
+    vi.advanceTimersByTime(5_000);
+    expect(sent('ping')).toHaveLength(2);
+    vi.advanceTimersByTime(10_000);
+    // Lost: the next send waits for the new socket, which opens after the backoff.
+    send({ type: 'chat.list' });
+    expect(sent('chat.list')).toEqual([]);
+    vi.advanceTimersByTime(500);
+    const next = FakeWebSocket.last;
+    expect(next).not.toBe(sock);
+    next.open();
+    expect(next.sent.map((d) => JSON.parse(d))).toContainEqual({ type: 'chat.list' });
+    vi.useRealTimers();
+  });
+
+  it('a reconnect refused before open shows Login only when /api/auth/me answers 401', async () => {
+    vi.useFakeTimers();
+    let status = 503;
+    const fetch = vi.fn(async () => new Response(null, { status }));
+    vi.stubGlobal('fetch', fetch);
+    const { sock } = chat();
+    useStore.setState({ auth: 'in' });
+    sock.onclose?.({ code: 1006 });
+    expect(fetch).not.toHaveBeenCalled();
+    // Offline: the failed open is no news, so no check.
+    vi.stubGlobal('navigator', { onLine: false });
+    await vi.advanceTimersByTimeAsync(500);
+    FakeWebSocket.last.onclose?.({ code: 1006 });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetch).not.toHaveBeenCalled();
+    vi.stubGlobal('navigator', { onLine: true });
+    // The reconnect fails before open: the server is down, so the client keeps trying.
+    await vi.advanceTimersByTimeAsync(1000);
+    FakeWebSocket.last.onclose?.({ code: 1006 });
+    await vi.advanceTimersByTimeAsync(0);
+    expect([fetch.mock.calls.length, useStore.getState().auth]).toEqual([1, 'in']);
+    // The next one: this device was revoked.
+    status = 401;
+    await vi.advanceTimersByTimeAsync(2000);
+    const last = FakeWebSocket.last;
+    last.onclose?.({ code: 1006 });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(useStore.getState().auth).toBe('out');
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(FakeWebSocket.last).toBe(last);
+    useStore.setState({ auth: 'in' });
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.stubGlobal('WebSocket', FakeWebSocket);
+  });
+
   it('a sign-out drops the deltas that wait for their frame: nothing lands after the wipe', () => {
     const frames: FrameRequestCallback[] = [];
     const cancel = vi.fn();

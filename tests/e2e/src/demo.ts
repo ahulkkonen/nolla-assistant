@@ -16,7 +16,6 @@ const port = process.env.PORT || '3000';
 const dataDir = process.env.DEMO_DATA_DIR || join(tmpdir(), 'pa-demo');
 mkdirSync(join(dataDir, 'work/aleksi'), { recursive: true });
 mkdirSync(join(dataDir, 'automations'), { recursive: true });
-process.env.MODELS_DIR ||= join(tmpdir(), 'pa-models');
 
 const DICT = {
   'Matti Virtanen': 'Pekka Laaksonen',
@@ -56,6 +55,7 @@ process.env.LITELLM_MASTER_KEY = KEY;
 await start(
   loadConfig({
     DATA_DIR: dataDir,
+    MODELS_DIR: process.env.MODELS_DIR,
     LITELLM_URL: llm.url,
     LITELLM_MASTER_KEY: KEY,
     OPENROUTER_CATALOG: llm.url,

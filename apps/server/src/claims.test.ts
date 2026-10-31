@@ -8,9 +8,8 @@ import { startFakeSidecar } from '@pa/pi-ext-pseudo/fake-sidecar';
 import { eq, inArray } from 'drizzle-orm';
 import { afterEach, expect, test } from 'vitest';
 import { branchPoint, type ChatMsg, claimStore } from './claims.ts';
-import { loadModel } from './embeddings.ts';
 import { taskSmall } from './llm.ts';
-import { bootPseudo, cleanups, runCleanups, tempDir } from './test-utils.ts';
+import { bootPseudo, cleanups, modelReady, runCleanups, tempDir } from './test-utils.ts';
 
 afterEach(runCleanups);
 
@@ -38,10 +37,7 @@ test('import turns MEMORY.md lines into active claims, once', { timeout: 60_000 
 
 // --- S2: extraction --------------------------------------------------------------------------
 
-const modelOk = await loadModel().then(
-  () => true,
-  () => false,
-);
+const modelOk = await modelReady();
 const MIN = 60_000;
 const DICT = { 'Mikko Virtanen': 'Kalle Laaksonen' };
 type Turn = FakeTurn;

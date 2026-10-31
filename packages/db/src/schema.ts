@@ -85,15 +85,21 @@ const chatRef = () =>
     .notNull()
     .references(() => chats.id, { onDelete: 'cascade' });
 
-export const topicProposals = sqliteTable('topicProposals', {
-  id: integer().primaryKey({ autoIncrement: true }),
-  userId: text().notNull(),
-  chatId: chatRef(),
-  name: text().notNull(),
-  why: text().notNull(),
-  status: text().notNull().default('pending'),
-  createdAt: text().notNull(),
-});
+// Each `chatRef` child table has an index that starts with `chatId`: a chat delete cascades
+// through them without a full scan (phase-30 item 11).
+export const topicProposals = sqliteTable(
+  'topicProposals',
+  {
+    id: integer().primaryKey({ autoIncrement: true }),
+    userId: text().notNull(),
+    chatId: chatRef(),
+    name: text().notNull(),
+    why: text().notNull(),
+    status: text().notNull().default('pending'),
+    createdAt: text().notNull(),
+  },
+  (t) => [index('topic_proposals_chat_idx').on(t.chatId)],
+);
 
 export const tags = sqliteTable(
   'tags',
@@ -125,7 +131,11 @@ export const chunks = sqliteTable(
     text: text().notNull(),
     createdAt: text().notNull(),
   },
-  (t) => [index('chunks_user_chat_idx').on(t.userId, t.chatId)],
+  (t) => [
+    index('chunks_user_chat_idx').on(t.userId, t.chatId),
+    // The reindex after every turn reads and deletes by chat and kind, newest `seq` first.
+    index('chunks_chat_kind_seq_idx').on(t.chatId, t.kind, t.seq),
+  ],
 );
 
 export const pushSubscriptions = sqliteTable('pushSubscriptions', {
@@ -136,21 +146,25 @@ export const pushSubscriptions = sqliteTable('pushSubscriptions', {
   createdAt: text(),
 });
 
-export const memoryPending = sqliteTable('memoryPending', {
-  id: integer().primaryKey({ autoIncrement: true }),
-  userId: text().notNull(),
-  chatId: chatRef(),
-  action: text({ enum: ['add', 'replace', 'remove'] }).notNull(),
-  target: text({ enum: ['user', 'memory'] }).notNull(),
-  text: text().notNull(),
-  // The text `replace` swaps out; null for add and remove.
-  replace: text(),
-  // failed: approved, but the write no longer applied (text gone or memory full).
-  status: text({ enum: ['pending', 'applied', 'rejected', 'failed'] })
-    .notNull()
-    .default('pending'),
-  createdAt: text().notNull(),
-});
+export const memoryPending = sqliteTable(
+  'memoryPending',
+  {
+    id: integer().primaryKey({ autoIncrement: true }),
+    userId: text().notNull(),
+    chatId: chatRef(),
+    action: text({ enum: ['add', 'replace', 'remove'] }).notNull(),
+    target: text({ enum: ['user', 'memory'] }).notNull(),
+    text: text().notNull(),
+    // The text `replace` swaps out; null for add and remove.
+    replace: text(),
+    // failed: approved, but the write no longer applied (text gone or memory full).
+    status: text({ enum: ['pending', 'applied', 'rejected', 'failed'] })
+      .notNull()
+      .default('pending'),
+    createdAt: text().notNull(),
+  },
+  (t) => [index('memory_pending_chat_idx').on(t.chatId)],
+);
 
 /** Weekly consolidation proposals (phase-8 decision 4); texts and `diff` are restored (real). */
 export const memoryConsolidations = sqliteTable('memoryConsolidations', {
@@ -168,16 +182,20 @@ export const memoryConsolidations = sqliteTable('memoryConsolidations', {
   createdAt: text().notNull(),
 });
 
-export const files = sqliteTable('files', {
-  id: text().primaryKey(),
-  userId: text().notNull(),
-  chatId: text().references(() => chats.id, { onDelete: 'cascade' }),
-  name: text().notNull(),
-  mime: text().notNull(),
-  size: integer().notNull(),
-  path: text().notNull(),
-  createdAt: text().notNull(),
-});
+export const files = sqliteTable(
+  'files',
+  {
+    id: text().primaryKey(),
+    userId: text().notNull(),
+    chatId: text().references(() => chats.id, { onDelete: 'cascade' }),
+    name: text().notNull(),
+    mime: text().notNull(),
+    size: integer().notNull(),
+    path: text().notNull(),
+    createdAt: text().notNull(),
+  },
+  (t) => [index('files_chat_idx').on(t.chatId)],
+);
 
 /** The chat and message whose `write`/`edit` call or saved artifact last wrote a work-dir file (phase-11 decision 6). */
 export const fileOrigins = sqliteTable(
@@ -191,7 +209,7 @@ export const fileOrigins = sqliteTable(
     messageId: text(),
     updatedAt: text().notNull(),
   },
-  (t) => [primaryKey({ columns: [t.userId, t.path] })],
+  (t) => [primaryKey({ columns: [t.userId, t.path] }), index('file_origins_chat_idx').on(t.chatId)],
 );
 
 /** Where each `.trash` entry came from, for "Palauta" (phase-11 decision 5). */
