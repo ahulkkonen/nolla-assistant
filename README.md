@@ -20,7 +20,7 @@ A personal assistant for one person, on one small server. You talk to it in Finn
 a desktop browser; it searches the web, works with your files, draws charts and diagrams, remembers
 what you approve, and runs scheduled tasks. Before any model sees a message, the names, ID numbers,
 addresses and emails in it become realistic surrogates. All model traffic leaves through one proxy,
-to OpenRouter endpoints with zero data retention (ZDR). It is a thin custom build around
+to OpenRouter endpoints with zero data retention (ZDR). It is built on
 [Pi](https://www.npmjs.com/package/@earendil-works/pi-coding-agent), the agent runtime
 (`@earendil-works/pi-coding-agent` 1.4.0). It exists because nothing off the shelf combined frontier
 models, Finnish pseudonymization and data that stays on a box you own.
@@ -65,7 +65,7 @@ automation does not list. A message whose tool calls repeat or lack an id is ref
 ([`search-tool.ts`](apps/server/src/search-tool.ts)). A harness card in a turn that read outside
 content says so.
 
-**SSRF-safe `fetch_url`.** It sends one GET with no body, cookie or key, to ports 80 and 443 only,
+**`fetch_url` with an SSRF guard.** It sends one GET with no body, cookie or key, to ports 80 and 443 only,
 through a DNS-pinned lookup that refuses private addresses
 ([`net.ts`](services/sandbox-broker/src/net.ts)). Each redirect is checked again, the body is capped
 at 2 MB, and a URL that you did not write waits for a card
@@ -218,8 +218,8 @@ One person and Claude Code, in more than 370 commits.
   architecture findings; [its record](docs/decisions/phase-30-audits.md) lists each fix and what
   stays.
 
-No CI test needs a model key; the memory eval is the exception, because it asks a real model through
-LiteLLM. [`tests/fake-llm`](tests/fake-llm/src/index.ts) is an in-process OpenAI-compatible server
+No CI test needs a model key. Only the memory eval does: it asks a real model through LiteLLM and
+runs locally. [`tests/fake-llm`](tests/fake-llm/src/index.ts) is an in-process OpenAI-compatible server
 with scripted turns, and fakes stand in for `pseudo-svc` and the sandbox broker.
 
 | Suite | What it checks | Size or result |
@@ -228,7 +228,7 @@ with scripted turns, and fakes stand in for `pseudo-svc` and the sandbox broker.
 | [`tests/contract`](tests/contract/src/hooks.test.ts) | the hook payloads and session behaviour of the pinned Pi version | 28 tests |
 | [`tests/masked-only`](tests/masked-only/src/masked-only.test.ts) | no real value in sessions, model requests or the server log | a 10-turn tool conversation and a restart |
 | Playwright `chromium` ([flows](tests/e2e/src/flows.spec.ts), [screens](tests/e2e/src/screens.spec.ts)) | user flows, and every screen at 390, 1024 and 1440 px, light and dark, with strict axe checks | 86 flows and 582 screen tests: 658 pass, 10 skip by design |
-| [`tests/pii`](tests/pii/README.md) | recall and precision gates on 554 labelled Finnish texts ([last run](tests/pii/last-run.json)) | ID numbers, IBANs, phones, emails, postcodes: 100 % recall. Names: 0.986 recall (0.978 for names the vault has not seen), 0.991 precision. Addresses: 0.954 recall. Plates: 0.714 recall, no gate |
+| [`tests/pii`](tests/pii/README.md) | recall and precision gates on 554 labelled Finnish texts ([last run](tests/pii/last-run.json)) | ID numbers, IBANs, phones, emails, postcodes: 100 % recall. Names: 0.986 recall (0.978 for names the vault has not seen), 0.991 precision. Addresses: 0.953 recall. Plates: 0.714 recall, no gate |
 | [`tests/memory-eval`](tests/memory-eval/src/run.ts) | 100 questions over 30 synthetic Finnish chats, with a real `pseudo-svc` and model ([result](tests/memory-eval/results/2026-10-27-real.json)) | gold evidence reaches the model: 0.988; answer accuracy 0.72 to 0.82 over six runs |
 | [`tests/egress`](tests/egress/src/egress.test.ts), [`tests/sandbox`](tests/sandbox/src/sandbox.test.ts) | LiteLLM and Presidio against a mock OpenRouter; the broker with real containers (Docker) | 25 and 19 tests |
 
