@@ -13,9 +13,6 @@ import { transcript as branch } from './session-text.ts';
 import { broadcast, type Rooms } from './socket.ts';
 import type { RecordUsage } from './usage.ts';
 
-// tests/memory-eval imports `taskSmall` from here; it lives in llm.ts.
-export { taskSmall };
-
 const DEBOUNCE_MS = 2000;
 /** ~4 chars per token: rerun after ~3K new tokens, send the last ~2K tokens. */
 const RERUN_CHARS = 12_000;

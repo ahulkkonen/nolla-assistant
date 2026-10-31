@@ -131,7 +131,7 @@ Batch B, item 10:
     - `history.ts` (164): a Pi branch as protocol messages (`history`, `toMessage`, tool rows).
     - `socket.ts` (61): `Socket`, `send`, `broadcast`, the error codes, `NotFound`, `RunActive`.
     - `llm.ts` (87): `taskSmall`, out of `topics.ts`. This closed the last cycle
-      (`claims` to `topics` to `pi/registry`). `topics.ts` re-exports it for `tests/memory-eval`.
+      (`claims` to `topics` to `pi/registry`).
 
 Left as they are in item 10, on purpose:
 
