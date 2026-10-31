@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { chats, files } from '@pa/db';
@@ -120,8 +121,16 @@ test('chat.delete while a reply streams and a subagent runs leaves nothing behin
   process.on('unhandledRejection', onRejection);
   c.send({ type: 'user.message', chatId: chat.id, text: 'Tutki' });
   while (!(await c.next('subagent.state')).children.some((ch) => ch.status === 'running'));
+  const children = () =>
+    execFileSync('ps', ['-A', '-o', 'ppid=,args='], { encoding: 'utf8' })
+      .split('\n')
+      .filter((l) => l.trim().startsWith(`${process.pid} `) && l.includes('--mode rpc'));
+  expect(children()).toHaveLength(1);
   c.send({ type: 'chat.delete', chatId: chat.id });
   await c.next('chat.deleted');
+  // The delete waits for the child to exit (Pi's abort waits for the subagent tool, which ends on
+  // the child's "close"), so no child can write JSONL after the folder is gone.
+  expect(children()).toEqual([]);
   // Past the child's reply and the settle that reindexes the chat.
   await new Promise((r) => setTimeout(r, 5000));
   process.off('unhandledRejection', onRejection);
