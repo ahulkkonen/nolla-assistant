@@ -109,15 +109,24 @@ Batch B, per item (branch `p30-b2` holds 8, 11, 12, 13 and the dependency follow
    `sendUserMessage` then gives the text and the files back as a `draft` with `chatId: null`
    (the new-chat composer). A refusal shows the toast of its code; a close shows "Viestin
    lähetys epäonnistui.". The server does not echo a request id for `chat.create`, and the fix
-   must not touch `bridge.ts` while the split runs. So the next error without a `chatId`
-   answers the oldest wait, the same send order that `chat.created` already uses. A refused
-   create never names a chat. Follow-up after the split: a `localId` on `chat.create`, echoed in
-   `chat.created` and in the error.
+   must not touch `bridge.ts` while the split runs. So the next error without a `chatId` and
+   with a code that a refused create sends (`bad_message`, `not_found`, `failed`,
+   `pseudo_down`; from the agent and topic lookup, the model and modes check and the session
+   build) answers the oldest wait. This is the same send order that `chat.created` already
+   uses. A refused create never names a chat. Kept on purpose until the follow-up: an error of
+   another request with one of these codes can still end a create wait. Follow-up after the
+   split: a `localId` on `chat.create`, echoed in `chat.created` and in the error.
+   Review fixes: a sign-out drops the text of a pending create, so the next user never sees it.
+   A `chat.create` that is still in the queue when its wait fails is removed from the queue.
+   Frames from a socket that is no longer current (lost to a missing pong) are ignored, so the
+   late `chat.created` of a create sent on it cannot answer the next create. A `chat.created`
+   without a wait still opens its chat: a fork's new chat arrives that way.
    Liveness: each ping (every 25 s) arms a 10 s timer, and any frame clears it. When no frame
    comes, the socket counts as closed at once and the client reconnects. The server refuses an
    unauthenticated upgrade with HTTP 401 and sends no 4401 then; the browser reports 1006 only.
    So a close before `onopen` asks `/api/auth/me`. A 401 there signs out and shows Login, with
-   no more retries. Any other answer, or no answer, keeps the backoff. This differs from the
+   no more retries. Any other answer, or no answer, keeps the backoff. When
+   `navigator.onLine` is false, the check does not run. This differs from the
    report (three closes, then `me()`): one check per failed open is simpler, and the backoff
    already caps it at one call per 10 s.
 11. Done. Migration `0013_curvy_mimic.sql` adds `chunks(chatId, kind, seq)`, `files(chatId)`,
@@ -135,10 +144,9 @@ Batch B, per item (branch `p30-b2` holds 8, 11, 12, 13 and the dependency follow
     `bridge.ts`, which this batch must not edit during the split. Follow-up for the split:
     `ERRORS satisfies Record<ErrorCode, string>`. The web key `pseudo_collision` was never an
     error code: it is the toast text of the `chat.held` frame. It is now the constant
-    `COLLISION_TEXT` in `store.ts`, not an enum member. Kept on purpose: a cached PWA that is
-    older than the server drops an error frame with a code it does not know (zod refuses the
-    frame). Before, it showed the server's English text. A new code is rare, and the PWA
-    update replaces the old client.
+    `COLLISION_TEXT` in `store.ts`, not an enum member. The schema is
+    `ErrorCode.catch('failed')`: a cached PWA that is older than the server reads a code it does
+    not know as `failed`. It shows the generic toast, and a pending create wait ends.
     Model tests: done. `modelReady()` in `apps/server/src/test-utils.ts` loads the model for
     `search.test.ts`, `claims.test.ts` and `memory.test.ts`. When the model does not load, the
     file fails with the cause and the name of the skip variable. Only `PA_SKIP_MODEL_TESTS=1`
@@ -154,12 +162,23 @@ Batch B, per item (branch `p30-b2` holds 8, 11, 12, 13 and the dependency follow
     download. `scripts/download-models.mjs` calls `setModelsDir`. Changed on purpose: dev without
     `MODELS_DIR` now keeps the model in `$TMPDIR/pa-models`, not in `DATA_DIR/models`. One default
     for every run is simpler than one per `DATA_DIR`, and it is never inside the repository.
+    Review fixes: with `NODE_ENV=production`, `loadConfig` requires `MODELS_DIR`, because a shared
+    `/tmp` would let another local user plant the model. The image sets `/app/models`.
+    `tests/masked-only` passed offline without the model: an embed failure during indexing only
+    logs a warning, and the test does not check the log levels. But `app.db` then holds no
+    chunks, so the scan for real values covers less. The test now calls `modelReady()` and
+    fails without the model, as the server suite does (`PA_SKIP_MODEL_TESTS=1` skips).
 
 Missing test 2 of the architecture report: done. `chats.test.ts` deletes a chat while its reply
 streams and a subagent child runs. It expects no chat row, no `chunks`, `chat_fts` or `chunk_vec`
 row, no session file or folder, no unhandled rejection and no error log line. The test found a
 bug: `registry.remove` deleted the chat's JSONL but kept `sessions/<user>/<chatId>/sub/` with
-the children's masked JSONL. `remove` now deletes that folder too. Not covered: the vault scope
+the children's masked JSONL. `remove` now deletes that folder too. Review question: can a
+child write during its SIGTERM grace time after the folder is gone? No. `drop` awaits Pi's
+`abort`, which waits until the run is idle. The run waits for the subagent tool, and the tool
+ends only on the child's `close` event. So the child has exited before `rmSync` runs. The test
+now checks with `ps` that the child runs before the delete and that no child runs when
+`chat.deleted` arrives. No code change was needed. Not covered: the vault scope
 (only a fork has its own scope, and `chat.delete` already drops it) and push (off in the test
 setup).
 
