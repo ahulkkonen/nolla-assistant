@@ -26,7 +26,8 @@ test('thinking: live state, Message.thinking with ms, thinking.get restores the 
   expect(live).toEqual([true, false]);
   const final = c.inbox.findLast((m) => m.type === 'message.final');
   const message = final?.type === 'message.final' ? final.message : undefined;
-  expect(message?.thinking?.ms).toBeGreaterThanOrEqual(50);
+  // The fake model thinks for 50 ms; timer granularity under load has measured 43 and 48.
+  expect(message?.thinking?.ms).toBeGreaterThanOrEqual(40);
   c.send({ type: 'thinking.get', chatId: chat.id, messageId: message?.id ?? '' });
   const t = await c.next('thinking.text');
   expect(t.text).toBe(`Mietin ${REAL} asiaa.`);
