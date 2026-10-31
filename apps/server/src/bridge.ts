@@ -7,7 +7,7 @@ import {
   type PromptOptions,
   SessionManager,
 } from '@earendil-works/pi-coding-agent';
-import { chats, type Db, files, modelFavorites, topicProposals, topics } from '@pa/db';
+import { chats, files, modelFavorites, topicProposals, topics } from '@pa/db';
 import { FULL } from '@pa/pi-ext-memory';
 import {
   type PseudoClient,
@@ -24,28 +24,23 @@ import {
   WEB_SEARCH_TOOL,
 } from '@pa/protocol';
 import { and, asc, desc, eq } from 'drizzle-orm';
-import type { FastifyBaseLogger } from 'fastify';
-import type { Agents } from './agents.ts';
-import type { Approvals } from './approval.ts';
 import { extractArtifacts, messageArtifacts } from './artifacts.ts';
-import type { Automations } from './automations.ts';
-import { type ChatRow, chatRow, forkLink, ownUsage, summary, threadFiles } from './chats.ts';
-import type { CollisionWaits } from './collisions.ts';
-import { AttachmentNotFound, ingestAttachments, splitBlocks } from './files.ts';
-import type { Fx } from './fx.ts';
-import { filesOf, history, searchView, toMessage, toolRows, toolStatus } from './history.ts';
-import { GENERATED, MemoryError, type MemoryStore } from './memory.ts';
-import { type Modes, modeInfos } from './modes.ts';
 import {
-  AUTO_MODEL,
-  type Catalog,
-  isZdrRefusal,
-  policyOf,
-  providerStatus,
-  resolveModelId,
-} from './pi/models.ts';
-import { type ChatEvent, ChatNotFound, type SessionRegistry } from './pi/registry.ts';
-import { BadSubscription, type Push } from './push.ts';
+  type BridgeDeps,
+  connect,
+  disconnect,
+  notify,
+  owned,
+  toAll,
+  update,
+} from './bridge/connection.ts';
+import { type ChatRow, chatRow, forkLink, ownUsage, summary, threadFiles } from './chats.ts';
+import { AttachmentNotFound, ingestAttachments, splitBlocks } from './files.ts';
+import { filesOf, history, searchView, toMessage, toolRows, toolStatus } from './history.ts';
+import { GENERATED, MemoryError } from './memory.ts';
+import { AUTO_MODEL, isZdrRefusal, policyOf, providerStatus, resolveModelId } from './pi/models.ts';
+import { type ChatEvent, ChatNotFound } from './pi/registry.ts';
+import { BadSubscription } from './push.ts';
 import { release, restorer } from './restore.ts';
 import { indexChat, related, search } from './search.ts';
 import { type AgentMessage, cutText, textOf, thinkingOf, transcript } from './session-text.ts';
@@ -55,7 +50,6 @@ import {
   ERRORS,
   errorMsg,
   NotFound,
-  type Rooms,
   RunActive,
   type Socket,
   send,
@@ -63,39 +57,6 @@ import {
 import { topicState } from './topics.ts';
 import { usageMonth } from './usage.ts';
 import { childrenOf, conversationAt, LEAF_MARK, newestLeaf, versionsOf } from './versions.ts';
-
-export type BridgeDeps = {
-  registry: SessionRegistry;
-  db: Db;
-  userId: string;
-  dataDir: string;
-  log: FastifyBaseLogger;
-  /** chatId → sockets that have the chat open. Shared by all connections of one server. */
-  rooms: Rooms;
-  agents: () => Agents;
-  /** Output modes (phase-23); `chat.setModes` and `chat.create` accept only these ids. */
-  modes: () => Modes;
-  approvals: Approvals;
-  /** Every open socket of this server (for `agents.state` after a profile reload). */
-  sockets: Set<Socket>;
-  /** Unset until the runner has started. */
-  automations: () => Automations | undefined;
-  memory: MemoryStore;
-  push: Push;
-  /** Restores surrogates for display. Unset in dev (no masking, see config `pseudoUrl`). */
-  pseudo?: PseudoClient;
-  /** OpenRouter model catalog (phase-10 decision 8). */
-  catalog: Catalog;
-  /**
-   * chatId → the stored `modelId` of its last classified ZDR refusal (phase-10 decision 9). In
-   * memory: a restart clears it. Shared by all connections of one server.
-   */
-  refusals: Map<string, string>;
-  /** User inputs held by a surrogate collision (phase-12 decision 8); answered via the vault. */
-  collisions: CollisionWaits;
-  /** ECB USD/EUR rate for `fx.state` (phase-13 decision 16). */
-  fx: Pick<Fx, 'get'>;
-};
 
 type Entry = ReturnType<AgentSession['sessionManager']['getBranch']>[number];
 type UserEntry = Extract<Entry, { type: 'message' }> & { message: { role: 'user' } };
@@ -254,18 +215,6 @@ function trackAccept(session: AgentSession, notify?: (entryId: string) => void) 
   return { preflightResult, failed: drop };
 }
 
-export const agentsState = (agents: Agents, modes: Modes): ServerMessage => ({
-  type: 'agents.state',
-  agents: [...agents.values()].map((p) => ({
-    id: p.id,
-    name: p.name,
-    model: p.model,
-    subagents: p.subagents,
-    modes: p.modes.default,
-  })),
-  modes: modeInfos(modes),
-});
-
 export function attachBridge(socket: Socket, deps: BridgeDeps) {
   const {
     registry,
@@ -278,24 +227,14 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
     agents,
     modes,
     approvals,
-    sockets,
     memory,
     push,
     catalog,
     refusals,
     collisions,
-    fx,
   } = deps;
-  const open = new Set<string>();
-  sockets.add(socket);
-  /** Per-user state goes to every open screen. */
-  const toAll = (msg: ServerMessage) => {
-    for (const s of sockets)
-      try {
-        send(s, msg);
-      } catch {}
-  };
-  const memoryToAll = () => toAll(memory.state());
+  const conn = connect(socket, deps);
+  const memoryToAll = () => toAll(conn, memory.state());
 
   const modelsState = (): ServerMessage => ({
     type: 'models.state',
@@ -329,13 +268,6 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
   const assertIdle = (chatId: string) => {
     if (registry.running(chatId)) throw new RunActive();
   };
-  send(socket, agentsState(agents(), modes()));
-  send(socket, { type: 'fx.state', rate: fx.get() });
-  // A reload must not lose open approvals.
-  for (const r of approvals.list()) send(socket, r);
-  // Nor held messages (phase-12 decision 8), nor the drops a restart caused.
-  for (const m of collisions.list()) send(socket, m);
-
   const ownTopic = (topicId: string) => {
     const t = db
       .select({ id: topics.id })
@@ -343,29 +275,6 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
       .where(and(eq(topics.id, topicId), eq(topics.userId, userId)))
       .get();
     if (!t) throw new NotFound();
-  };
-
-  const owned = (chatId: string) => {
-    const r = chatRow(db, userId, chatId);
-    if (!r) throw new NotFound();
-    return r;
-  };
-
-  /** To the chat's room, and to this socket when it has not joined the room. */
-  const notify = (chatId: string, msg: ServerMessage) => {
-    broadcast(rooms, chatId, msg);
-    if (!rooms.get(chatId)?.has(socket)) send(socket, msg);
-  };
-
-  const update = (chatId: string, set: Partial<ChatRow>) => {
-    const r = db
-      .update(chats)
-      .set({ ...set, updatedAt: new Date().toISOString() })
-      .where(and(eq(chats.id, chatId), eq(chats.userId, userId)))
-      .returning()
-      .get();
-    if (!r) throw new NotFound();
-    notify(chatId, { type: 'chat.updated', chat: summary(r) });
   };
 
   /** Moves a pending proposal of this user to `status`. */
@@ -387,7 +296,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
   };
 
   const join = (chatId: string, session: AgentSession) => {
-    open.add(chatId);
+    conn.open.add(chatId);
     let room = rooms.get(chatId);
     if (!room) rooms.set(chatId, (room = new Set()));
     room.add(socket);
@@ -454,7 +363,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
    * thread and the model then hold that message once. Returns the refusal code, if any.
    */
   const retry = async (chatId: string, localId?: string): Promise<Code | undefined> => {
-    owned(chatId);
+    owned(conn, chatId);
     const session = await registry.get(chatId);
     // Synchronous from this check to the hold: no prompt or policy change starts in between.
     if (registry.running(chatId)) return 'failed';
@@ -478,7 +387,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
    * same session. The old version stays as a sibling; the edited text masks and runs as a retry.
    */
   const edit = async (msg: Extract<ClientMessage, { type: 'chat.edit' }>) => {
-    const src = owned(msg.chatId);
+    const src = owned(conn, msg.chatId);
     const session = await registry.get(msg.chatId);
     // Synchronous from this check to the hold.
     if (registry.running(msg.chatId)) return 'failed';
@@ -500,7 +409,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
   const version = async (
     msg: Extract<ClientMessage, { type: 'chat.version' }>,
   ): Promise<Code | undefined> => {
-    const r = owned(msg.chatId);
+    const r = owned(conn, msg.chatId);
     const session = await registry.get(msg.chatId);
     if (registry.running(msg.chatId)) return 'failed';
     const sm = session.sessionManager;
@@ -519,7 +428,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
     });
     if (!moved) return 'failed';
     join(msg.chatId, session);
-    notify(msg.chatId, await chatState(r, session, true));
+    notify(conn, msg.chatId, await chatState(r, session, true));
     reindex(deps, msg.chatId, session);
     return undefined;
   };
@@ -659,7 +568,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
    * Held like `retry`: no policy change starts on the source meanwhile.
    */
   const fork = async (msg: Extract<ClientMessage, { type: 'chat.fork' }>) => {
-    const src = owned(msg.chatId);
+    const src = owned(conn, msg.chatId);
     const session = await registry.get(msg.chatId);
     // Synchronous from this check to the hold.
     if (registry.running(msg.chatId)) return send(socket, errorMsg('failed', msg.chatId));
@@ -846,7 +755,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
         return send(socket, { type: 'chat.list', chats: rows.map(summary) });
       }
       case 'chat.open': {
-        const r = owned(msg.chatId);
+        const r = owned(conn, msg.chatId);
         const session = await registry.get(msg.chatId);
         join(msg.chatId, session);
         send(socket, await chatState(r, session));
@@ -862,7 +771,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
       case 'chat.fork':
         return fork(msg);
       case 'thinking.get': {
-        owned(msg.chatId);
+        owned(conn, msg.chatId);
         const entry = (await registry.get(msg.chatId)).sessionManager.getEntry(msg.messageId);
         const thinking = entry?.type === 'message' ? thinkingOf(entry.message) : '';
         if (!thinking) throw new NotFound();
@@ -882,7 +791,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
       case 'usage.get':
         return send(socket, usageMonth(db, userId, msg.month, catalog));
       case 'chat.related':
-        owned(msg.chatId);
+        owned(conn, msg.chatId);
         return send(socket, {
           type: 'chat.related',
           chatId: msg.chatId,
@@ -895,52 +804,60 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
           results: await search(db, userId, msg.q, msg.limit, pseudo),
         });
       case 'chat.archive':
-        return update(msg.chatId, { archived: msg.archived });
+        return update(conn, msg.chatId, { archived: msg.archived });
       case 'chat.rename': {
-        owned(msg.chatId);
+        owned(conn, msg.chatId);
         const titleMasked = pseudo ? (await pseudo.mask(msg.chatId, msg.title)).masked : msg.title;
-        return update(msg.chatId, { title: msg.title, titleMasked, titleLocked: true });
+        return update(conn, msg.chatId, { title: msg.title, titleMasked, titleLocked: true });
       }
       case 'chat.pin':
-        return update(msg.chatId, { pinned: msg.pinned });
+        return update(conn, msg.chatId, { pinned: msg.pinned });
       // Row first, then the stale session: a message in between already builds from the new row.
       case 'chat.setModel': {
-        owned(msg.chatId);
+        owned(conn, msg.chatId);
         if (!validChoice(msg)) return send(socket, errorMsg('bad_message'));
         // Also during a run (phase-20 decision 15): the running session ends its turn, and
         // `registry.get` rebuilds it with the new row once it settles.
         // Consent was for one model: a change ends it (phase-10 decision 9).
         refusals.delete(msg.chatId);
-        update(msg.chatId, { modelId: msg.modelId, reasoning: msg.reasoning, dataPolicy: 'zdr' });
+        update(conn, msg.chatId, {
+          modelId: msg.modelId,
+          reasoning: msg.reasoning,
+          dataPolicy: 'zdr',
+        });
         await registry.evict(msg.chatId);
         return;
       }
       // Phase-23 decision 6: as `chat.setModel`, also during a run; the next turn has the prompt.
       case 'chat.setModes':
-        owned(msg.chatId);
+        owned(conn, msg.chatId);
         if (!knownModes(msg.modes)) return send(socket, errorMsg('bad_message', msg.chatId));
-        update(msg.chatId, { modes: [...new Set(msg.modes)] });
+        update(conn, msg.chatId, { modes: [...new Set(msg.modes)] });
         await registry.evict(msg.chatId);
         return;
       // Also during a run: the next tool call reads it; an open card stays open.
       case 'chat.setAutoApprove': {
-        const r = owned(msg.chatId);
+        const r = owned(conn, msg.chatId);
         // A running automation keeps its own `autoApprove` list (phase-14 decision 9).
         if (approvals.unattended.has(msg.chatId))
           return send(socket, errorMsg('bad_message', msg.chatId));
         if (msg.on) approvals.autoApprove.add(msg.chatId);
         else approvals.autoApprove.delete(msg.chatId);
-        return notify(msg.chatId, { type: 'chat.autoApprove', chatId: r.id, ...autoApproveOf(r) });
+        return notify(conn, msg.chatId, {
+          type: 'chat.autoApprove',
+          chatId: r.id,
+          ...autoApproveOf(r),
+        });
       }
       case 'chat.setDataPolicy': {
-        const r = owned(msg.chatId);
+        const r = owned(conn, msg.chatId);
         if (
           msg.dataPolicy === 'open' &&
           (r.modelId === null || refusals.get(msg.chatId) !== r.modelId)
         )
           return send(socket, errorMsg('bad_message'));
         assertIdle(msg.chatId);
-        update(msg.chatId, { dataPolicy: msg.dataPolicy });
+        update(conn, msg.chatId, { dataPolicy: msg.dataPolicy });
         await registry.evict(msg.chatId);
         return;
       }
@@ -961,7 +878,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
         return send(socket, modelsState());
       case 'chat.delete': {
         const { chatId } = msg;
-        const deleted = owned(chatId);
+        const deleted = owned(conn, chatId);
         approvals.autoApprove.delete(chatId);
         // Row first: a concurrent `registry.get` then fails instead of reviving the chat.
         const paths = db.transaction((tx) => {
@@ -1013,7 +930,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
                 'fork scope drop failed',
               ),
             );
-        return toAll({ type: 'chat.deleted', chatId });
+        return toAll(conn, { type: 'chat.deleted', chatId });
       }
       case 'chat.focus':
         return push.setFocus(socket, msg.chatId);
@@ -1030,7 +947,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
         // between `registry.get` and `hold`: a policy change (a socket message) cannot run in
         // between, and a stale session is rebuilt inside `get`.
         const { chatId } = msg;
-        owned(chatId);
+        owned(conn, chatId);
         // A held message comes first (phase-12 decision 8): nothing may run ahead of it.
         if (collisions.held(chatId)) return send(socket, errorMsg('held', chatId));
         const { images, text } = await ingestAttachments(
@@ -1091,7 +1008,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
         });
       }
       case 'user.stop':
-        owned(msg.chatId);
+        owned(conn, msg.chatId);
         collisions.cancel(msg.chatId); // a message held by a collision is dropped
         if (registry.has(msg.chatId)) await (await registry.get(msg.chatId)).abort();
         return;
@@ -1121,8 +1038,8 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
             })
             .run();
         }
-        update(p.chatId, { topicId });
-        return notify(p.chatId, topicState(db, userId));
+        update(conn, p.chatId, { topicId });
+        return notify(conn, p.chatId, topicState(db, userId));
       }
       case 'topic.reject':
         resolveProposal(msg.proposalId, 'rejected');
@@ -1148,7 +1065,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
         if (r === 'invalid') return send(socket, errorMsg('invalid'));
         // MEMORY.md may have changed (decision 28 amended).
         memoryToAll();
-        return toAll(c.state());
+        return toAll(conn, c.state());
       }
       case 'memory.edit':
         memory.edit(msg.target, msg.text);
@@ -1214,15 +1131,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
     });
   });
 
-  socket.on('close', () => {
-    sockets.delete(socket);
-    push.setFocus(socket, null);
-    for (const chatId of open) {
-      const room = rooms.get(chatId);
-      room?.delete(socket);
-      if (room?.size === 0) rooms.delete(chatId);
-    }
-  });
+  socket.on('close', () => disconnect(conn));
 }
 
 /**
