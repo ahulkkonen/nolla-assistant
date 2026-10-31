@@ -156,6 +156,8 @@ The `bash` tool runs each command in a throwaway `pa-skill-runner` container. Th
 
 3. Deploy. Compose creates the `pa-skill-egress` and `pa-skill-proxy-only` networks. A skill with `network: [hosts]` runs on `pa-skill-proxy-only` and reaches the listed hosts through the broker's proxy.
 
+The runner's seccomp profile (`services/sandbox-broker/src/seccomp.json`) blocks `symlink` and `symlinkat` on purpose (phase 30). `ln -s` fails inside a runner with "Operation not permitted". A skill that creates links inside `/work` does not work.
+
 ## Integrations
 
 The `mcp-workspace` service gives the agents Google Calendar (read and write), Google Drive (read) and Gmail (read). Decision `docs/decisions/0005-mcp-integrations.md` records the pin and the flags. `infra/mcp.yaml` lists the tools that the agents can use. `manage_event` always needs your approval.

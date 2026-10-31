@@ -58,32 +58,46 @@ Batch A, per item:
 1. Done. The handler counts the attempt (IP key and the key `global`, 10 per minute) before the
    verify. A module-level promise chain runs one scrypt verify at a time. A successful login now
    counts too. Test: 30 parallel wrong passwords give at most 5 verifications, the rest 429.
+   Review: a flood locks the owner out of password login too (global key; behind a CDN also the
+   IP key). Kept on purpose: `docs/deploy.md` names the passkey as the recovery path and says to
+   remove `AUTH_PASSWORD_HASH` after the passkey works.
 2. Done. The topic list goes through `pseudo.mask` before the call. Without `pseudo` the job
    sends an empty topic list, but it still runs: the title job also runs in the dev and test
    setup without the sidecar, and production cannot start without `PSEUDO_URL` (item 7).
+   Review fix: only names and descriptions go through the mask, so the ids stay exact. The
+   proposed topic (`name`, `why`) is unmasked before it is stored and compared with real names.
 3. Done. `callKey(tool, id)` keys the approved set, the masked arguments and the harness stamps.
    The `maskedArgs` extension (first in the chain) reads each assistant message on `message_end`
-   and blocks every call of a message whose tool call ids repeat or are empty.
+   and blocks every call of a message whose tool call ids repeat or are empty. This depends on
+   Pi awaiting `message_end` before the `tool_call` hooks (recorded in `0009-pi-1.4.0.md`).
 4. Done. `services/sandbox-broker/src/seccomp.json` is Docker's default profile
    (moby/profiles `seccomp/v0.1.0`, the one Docker 29.1 uses) without `symlink` and `symlinkat`.
    `Dockerfile.broker` already copies the whole broker folder, so it did not change. The child
    checks paths after the card. `pnpm test:sandbox` ran with Docker, with a new symlink test.
+   `ln -s` fails inside runners on purpose (`docs/deploy.md`, Sandbox).
 5. Done. The `req` serializer logs the method and the path without the query string.
 6. Done. Networks `pseudo` (pa-server, pseudo-svc) and `presidio` (litellm, presidio-*), both
    `internal: true`. `pseudo-svc` is not on `presidio`: it runs Presidio in process and calls no
    other service. The compose smoke (project `pa-p30`) came up healthy. Every service URL resolved.
    pseudo-svc and Presidio had no internet access. litellm and the broker could not reach
    pseudo-svc.
-7. Done. Passkey options count against the limiter. Added `::/96`, `::ffff:0:0:0/96` and
+7. Done. Passkey options have their own limiter (30 per minute per IP, still bounded by
+   `MAX_CHALLENGES`); failed verifies keep the strict one (5 per minute). Added `::/96`, `::ffff:0:0:0/96` and
    `64:ff9b:1::/48` to `net.ts`. YAML errors log the error name, the line and the Zod field paths.
    The cookie is `__Host-pa_session` on https; sessions with the old name end once after the
    deploy. In the image (`NODE_ENV=production`) pa-server refuses to start without `PSEUDO_URL`
    or with a LiteLLM key under 32 characters, and the broker refuses to start without
-   `HOST_DATA_DIR`. `compose.local.yaml` sets `HOST_DATA_DIR` to the Docker Desktop volume path.
-8. Done. The restore drill passed with the new backup service.
+   `HOST_DATA_DIR`. `compose.local.yaml` fixes the project name `pa-local` and sets
+   `HOST_DATA_DIR` to `/var/lib/docker/volumes/pa-local_pa-data/_data` (default data-root).
+8. Done. Review fix: no live database file is copied. `infra/backup/db-copy.sh` writes a
+   consistent copy first (`sqlite3 .backup`, `sqlcipher_export` for the vault). `restore.sh`
+   stops on a failed snapshot listing, takes each database from the newer snapshot (restic
+   `latest` over both tags) and stops unless `PRAGMA integrity_check` returns `ok`. The restore
+   drill passed. It covers an hourly snapshot newer than the nightly one and the reverse, and a
+   SQLCipher vault.
 
 Left as they are in batch A, on purpose:
 
-- The hourly database snapshot is a file copy of a live WAL database, as it was for `vault.db`.
-  A checkpoint between the two reads can lose the commits of that moment.
+- The backup service holds `PSEUDO_VAULT_KEY`, because a consistent copy of the SQLCipher vault
+  needs the key. It already holds `app.db` and the memory files with real values.
 - `docs/plan.md` still describes Litestream. This record supersedes it.
