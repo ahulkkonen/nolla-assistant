@@ -178,3 +178,4 @@ Status on 2026-10-31. The plan, section 13, defines each gate.
 | 29 | Evals: topics and memory with a judge, reserved for a guided session; `tests/memory-eval` and `tests/pii` exist today | reserved |
 | 30 | Audits before publication: security, architecture and dependency audits in `docs/audits/`, fixes in two batches (`docs/decisions/phase-30-audits.md`) | done |
 | 31 | Publication preparation: MIT license, GitHub Actions gate, history rewrite (model blob, screenshot churn, session trailers, author email), synthetic names (`docs/decisions/phase-31-publication.md`) | done |
+| 32 | README for readers (short form plus `docs/overview.md`), curated media, the threat model (`docs/decisions/phase-32-readme.md`) | done, name open |
