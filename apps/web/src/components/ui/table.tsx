@@ -1,6 +1,6 @@
 'use client';
 
-import * as React from 'react';
+import type * as React from 'react';
 import { cn } from '@/lib/utils';
 
 /** `label`: the scroll container is a focusable region, so a wide table scrolls by keyboard. */

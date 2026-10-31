@@ -53,7 +53,7 @@ what stays as it is.
 
 Open. Batch A is done on the branch `p30-sec` (2026-10-31). Batch B item 10 is done on the branch
 `p30-b1` and items 8, 11, 12, 13 and the dependency follow-ups on the branch `p30-b2` (2026-10-31).
-Item 9 is open.
+Item 9 is done on the branch `p30-b3` (2026-10-31).
 
 Batch A, per item:
 
@@ -141,6 +141,44 @@ Left as they are in item 10, on purpose:
   call or one guard.
 - `AGENTS.md` (layout) still names only `bridge.ts`. This branch changed only `apps/server/src`
   and this record.
+
+Batch B, item 9:
+
+9. Done. `biome.json` uses the `recommended` preset. The first run gave 205 findings (124 errors,
+   81 warnings) from 27 rules. Fixed in the code, with the same behaviour:
+   `noAssignInExpressions` 17, `useImportType` 14, `noNonNullAssertion` 12, `noCommaOperator` 4,
+   `noDescendingSpecificity` 3, `noDuplicateCustomProperties` 2, `useOptionalChain` 2,
+   `useArrowFunction` 2, and 1 each of `noMisleadingCharacterClass`, `noUnsafeOptionalChaining`,
+   `useIterableCallbackReturn`, `noRedeclare`, `noCommentText`, `noUnusedVariables`,
+   `noUnusedImports` and `noFocusedTests` (a function with the name `fit`). The 5
+   `noExplicitAny` findings in product code have real types (`usage.ts`, `viz-runtime.ts`,
+   `plot-runtime.ts`, the subagent RPC records). The CSS changes compile to the same rules; only
+   the order of three selectors in one list changed. Two rules have options, not "off":
+   `noLabelWithoutControl` knows the `Input` component, and `useValidAriaRole` ignores
+   components (`<MessageView role="assistant">` is a prop). `noImportCycles` is on in addition,
+   so that the cycles stay at 0. `npx madge@8.0.0 --circular` found 0 cycles in `apps/web/src`
+   (with the `@/` alias resolved) and 0 in `apps/server/src`, before and after. The web had no
+   cycle to break: all cycles of the report were in the server, and item 10 broke them.
+
+   Rules that are off, with the reason:
+   - `useExhaustiveDependencies` (63 findings). The effects run when one value changes (the
+     chat id, `tick`, `rev`) and call the helpers of the latest render. The rule wants the
+     trigger out and each helper in. That changes when the effects run.
+   - `noArrayIndexKey` (10). These lists have no ids, and the position is the identity: split
+     text, table cells, the streamed Markdown blocks.
+   - `noNoninteractiveTabindex` (10). Brief 7.8 and the axe rule `scrollable-region-focusable`
+     need `tabIndex={0}` on a scrollable `pre` or region. Tooltip triggers on text take focus too.
+   - `useSemanticElements` (12). For the ARIA roles on styled elements it proposes `fieldset`,
+     `meter`, `input type="radio"` and `search`. These have their own styles and behaviour.
+   - `noExplicitAny` in `**/*.test.ts`, `**/fake-*.ts` and `tests/**` (33). The fakes keep the
+     raw JSON bodies (chat requests, multipart fields, Pi events), and the tests read them field
+     by field. A real body type gave about 50 type errors at about 140 reads, with no gain in
+     safety for the product.
+
+   Suppressed on one line, with the reason in the comment: `noImportantStyles` (reduced motion
+   must win over every rule), `noAriaHiddenOnFocusable` (a `kbd` is not focusable),
+   `useAriaPropsSupportedByRole` (the role is a prop with the default `group`) and
+   `noStaticElementInteractions` (the model list catches the events of its row buttons).
 
 Batch B, per item (branch `p30-b2` holds 8, 11, 12, 13 and the dependency follow-ups):
 

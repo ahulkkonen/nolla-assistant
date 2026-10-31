@@ -186,7 +186,9 @@ function harness(
   let registered: any;
   const pi = {
     on: (name: string, h: never) => handlers.set(name, [...(handlers.get(name) ?? []), h]),
-    registerTool: (t: unknown) => void (registered = t),
+    registerTool: (t: unknown) => {
+      registered = t;
+    },
   };
   const ask = vi.fn(async (_req: { reason: string }) => true);
   const asker = Object.assign(ask, o.unattended ? { unattended: o.unattended } : {});

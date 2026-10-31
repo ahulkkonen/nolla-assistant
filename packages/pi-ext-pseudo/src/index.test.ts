@@ -219,7 +219,7 @@ test('a surrogate the model echoes keeps its surrogate through every hook', asyn
   await session.prompt('kirjoita Matti Virtanen tiedostoon');
   await session.prompt('Kenen nimi siinä oli?');
   expect(readFileSync(join(cwd, 'a.txt'), 'utf8')).toBe('Matti Virtanen'); // tool_call restores
-  const tools = (llm.requests[2]?.body as { messages: { role: string }[] }).messages;
+  const tools = llm.requests[2]?.body.messages as { role: string }[];
   expect(JSON.stringify(tools.filter((m) => m.role === 'tool'))).toContain('Pekka Laaksonen'); // tool_result
   const last = JSON.stringify(llm.requests[3]?.body); // input, scan of the model's own turns
   expect(last).toContain('Tiedostossa lukee Pekka Laaksonen.');
@@ -351,7 +351,11 @@ test('collisions that keep coming after three answers drop the input and log it 
   const waits: Collision[][] = [];
   const { llm, logs, session } = await boot([{ text: 'ok' }], [], undefined, false, {
     names: ['Pekka Laaksonen'],
-    wait: async (c) => (waits.push(c), true), // "answered", but the row stays open
+    // "Answered", but the row stays open.
+    wait: async (c) => {
+      waits.push(c);
+      return true;
+    },
   });
   await session.prompt('Pekka Laaksonen?');
   expect(waits).toHaveLength(3);

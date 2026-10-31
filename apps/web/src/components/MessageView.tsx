@@ -411,7 +411,8 @@ export const rehypeCaret = () => (tree: HNode) => {
     properties: { className: ['caret'], ariaHidden: 'true' },
     children: [],
   };
-  const kids = (at.parent.children ??= []);
+  at.parent.children ??= [];
+  const kids = at.parent.children;
   if (at.i === undefined) return void kids.push(caret);
   const value = kids[at.i]?.value ?? '';
   const end = value.trimEnd().length;

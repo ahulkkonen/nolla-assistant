@@ -260,8 +260,10 @@ export function Thread() {
   messages.forEach((m, i) => {
     const turn = turns.at(-1);
     const prev = turn?.items.at(-1)?.m;
-    if (turn && m.role === 'assistant' && turn.role === 'assistant' && prev && !prev.text)
-      return void turn.items.push({ m, i });
+    if (turn && m.role === 'assistant' && turn.role === 'assistant' && prev && !prev.text) {
+      turn.items.push({ m, i });
+      return;
+    }
     if (m.role === 'user') [asked, replies] = [m.id, 0];
     const key = m.role === 'user' ? m.id : `${asked}:${replies++}`;
     turns.push({ key, role: m.role, items: [{ m, i }] });

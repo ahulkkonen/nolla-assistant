@@ -327,7 +327,9 @@ export async function startFakeLlm(
     catalog,
     push: (turn: FakeTurn) => void queue.push(turn),
     /** Text the `/audio/transcriptions` route returns. */
-    setTranscript: (text: string) => void (transcript = text),
+    setTranscript: (text: string) => {
+      transcript = text;
+    },
     close,
   };
 }

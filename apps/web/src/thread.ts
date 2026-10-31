@@ -244,7 +244,7 @@ export function waitSteps(w: Wait, now: number, row = false, thinks = true): Ste
 export const receiptSteps = (t: Timing): Step[] =>
   (['queueMs', 'thinkMs', 'writeMs'] as const).flatMap((key, i) => {
     const ms = t[key];
-    return ms === undefined ? [] : [{ k: i + 1, word: PAST[i + 1]!, ms }];
+    return ms === undefined ? [] : [{ k: i + 1, word: PAST[i + 1] ?? '', ms }];
   });
 
 /** The closed thinking row: "Ajatteli 12 s", or "Ajatteli" without a time. */
@@ -281,9 +281,8 @@ const FENCE = /^(?:\s*(?:[-*+]|\d+[.)])\s+|\s*>\s?)*\s*(`{3,}|~{3,})/;
 /** A fence line that closes `open` (same char, at least as long, nothing after it). */
 const closes = (line: string, open: string) => {
   const m = FENCE.exec(line);
-  return (
-    !!m && m[1]![0] === open[0] && m[1]!.length >= open.length && !line.slice(m[0].length).trim()
-  );
+  const f = m?.[1] ?? '';
+  return !!m && f[0] === open[0] && f.length >= open.length && !line.slice(m[0].length).trim();
 };
 /** A link reference definition (the URL may be on the next line), or a footnote (`[^1]:`). */
 const DEFINITION = /^ {0,3}\[([^\]\n]+)\]:(\s*\S)?/;
@@ -313,14 +312,14 @@ export function mdBlocks(
   let start = 0;
   let fence = '';
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]!;
+    const line = lines[i] ?? '';
     if (fence) {
       if (closes(line, fence)) [fence, canDefine] = ['', true];
       continue;
     }
     const open = FENCE.exec(line);
     if (open) {
-      fence = open[1]!;
+      fence = open[1] ?? '';
       continue;
     }
     const def = DEFINITION.exec(line);
@@ -342,7 +341,7 @@ export function mdBlocks(
       !line.trim() &&
       i > start &&
       i + 1 < lines.length &&
-      !/^(\s|[-*+](\s|$)|\d+[.)](\s|$)|$)/.test(lines[i + 1]!)
+      !/^(\s|[-*+](\s|$)|\d+[.)](\s|$)|$)/.test(lines[i + 1] ?? '')
     ) {
       blocks.push(lines.slice(start, i).join('\n'));
       start = i + 1;
@@ -460,7 +459,7 @@ function scanFences(lines: string[]) {
       if (closes(line, fence)) [fence, after] = ['', i + 1];
     } else {
       const open = FENCE.exec(line);
-      if (open) [fence, opened] = [open[1]!, i];
+      if (open) [fence, opened] = [open[1] ?? '', i];
     }
   });
   return { fence, opened, after };

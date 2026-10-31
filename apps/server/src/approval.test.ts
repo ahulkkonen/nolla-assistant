@@ -279,7 +279,11 @@ function gate(
     autoTools: ['profile_edit', 'chat_read'],
     views: o.views,
     tainted: o.tainted,
-  })({ on: (_: string, h: never) => void (handler = h) } as never);
+  })({
+    on: (_: string, h: never) => {
+      handler = h;
+    },
+  } as never);
   const call = (toolName: string, input: object = {}) =>
     handler?.({ toolName, toolCallId: 't1', input }, {});
   return { ask, call };

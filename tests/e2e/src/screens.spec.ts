@@ -237,7 +237,9 @@ const gate = async (page: Page, type: string) => {
     });
   });
   return {
-    close: () => void (closed = true),
+    close: () => {
+      closed = true;
+    },
     open: () => {
       closed = false;
       for (const m of held.splice(0)) deliver(m);

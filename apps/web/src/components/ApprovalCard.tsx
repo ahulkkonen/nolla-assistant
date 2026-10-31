@@ -70,9 +70,9 @@ export function Lines({
   useLayoutEffect(() => {
     const el = box.current;
     if (!el || all) return;
-    const fit = () => setTall(el.scrollHeight > el.clientHeight + 1);
-    fit();
-    const ro = new ResizeObserver(fit);
+    const measure = () => setTall(el.scrollHeight > el.clientHeight + 1);
+    measure();
+    const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
   }, [lines, all]);
@@ -271,7 +271,7 @@ function Url({ url }: { url: string }) {
   const user = u.username + (u.password ? `:${u.password}` : '');
   return (
     <>
-      <span className="text-muted-foreground">{u.protocol}//</span>
+      <span className="text-muted-foreground">{`${u.protocol}//`}</span>
       {user && (
         <span className="text-muted-foreground">
           <span className="sr-only">käyttäjätiedot </span>

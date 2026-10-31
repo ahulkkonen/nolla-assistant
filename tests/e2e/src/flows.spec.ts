@@ -82,8 +82,9 @@ test('new chat streams a reply, then survives reload', async ({ app, page }) => 
   const user = thread(page).getByText('Moi', { exact: true });
   await expect(user).toBeVisible();
   const box = await user.boundingBox();
-  const vp = page.viewportSize()!;
-  expect(box!.x + box!.width / 2).toBeGreaterThan(vp.width / 2);
+  const vp = page.viewportSize();
+  if (!box || !vp) throw new Error('no layout');
+  expect(box.x + box.width / 2).toBeGreaterThan(vp.width / 2);
   await expect(page.locator('.md')).toHaveText('Hei! Tässä vastaus.');
   await expect(page.getByRole('button', { name: 'Lähetä', exact: true })).toBeVisible();
   await expect(page.locator('nav li > button')).toHaveCount(1);
@@ -326,9 +327,12 @@ const measureStream = async (app: App, page: Page, text: string, check: () => Pr
   await app.login(page);
   const cdp = await page.context().newCDPSession(page);
   await cdp.send('Performance.enable');
-  const script = async () =>
-    (await cdp.send('Performance.getMetrics')).metrics.find((m) => m.name === 'ScriptDuration')!
-      .value;
+  const script = async () => {
+    const { metrics } = await cdp.send('Performance.getMetrics');
+    const m = metrics.find((x) => x.name === 'ScriptDuration');
+    if (!m) throw new Error('no ScriptDuration metric');
+    return m.value;
+  };
   const commits = () => page.evaluate(() => (window as unknown as { __commits: number }).__commits);
   const [c0, s0] = [await commits(), await script()];
   await send(page, 'Kirjoita pitkä vastaus');
@@ -2013,7 +2017,10 @@ test('streaming: a tool-only final keeps the open tool row; the text final keeps
   await page.routeWebSocket(/\/ws$/, (ws) => {
     const server = ws.connectToServer();
     deliver = (m) => ws.send(m);
-    server.onMessage((m) => void (queue.push(String(m)), pump()));
+    server.onMessage((m) => {
+      queue.push(String(m));
+      pump();
+    });
   });
   const release = async () => {
     await expect.poll(() => held).toBe(true);

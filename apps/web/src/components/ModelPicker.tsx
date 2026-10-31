@@ -541,6 +541,7 @@ function SheetGroup({
 }) {
   const id = useId();
   return (
+    // biome-ignore lint/a11y/useAriaPropsSupportedByRole: `role` is always group or radiogroup.
     <div role={role} aria-labelledby={id} className="flex flex-col">
       <p id={id} className="px-3 pt-2 pb-1 text-micro text-muted-foreground">
         {label}
@@ -856,6 +857,7 @@ function CatalogDialog({
             className="h-full border-0 bg-transparent px-0 focus-visible:ring-0"
           />
         </div>
+        {/* biome-ignore lint/a11y/noStaticElementInteractions: the row buttons' events bubble. */}
         <div
           ref={list}
           onKeyDown={onListKey}

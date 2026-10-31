@@ -465,6 +465,7 @@ export function Sidebar({
           className={cn('pl-9 [&::-webkit-search-cancel-button]:hidden', !drawer && 'pr-12')}
         />
         {!drawer && (
+          // biome-ignore lint/a11y/noAriaHiddenOnFocusable: a kbd is not focusable.
           <kbd
             aria-hidden="true"
             className="pointer-events-none absolute inset-y-0 right-2 my-auto flex h-5 items-center rounded-xs border border-border px-1.5 font-sans text-micro text-muted-foreground"

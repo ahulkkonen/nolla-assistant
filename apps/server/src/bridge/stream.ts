@@ -40,8 +40,8 @@ export const reindex = (
 export const join = (conn: Conn, chatId: string, session: AgentSession) => {
   const { rooms, socket, registry } = conn;
   conn.open.add(chatId);
-  let room = rooms.get(chatId);
-  if (!room) rooms.set(chatId, (room = new Set()));
+  const room = rooms.get(chatId) ?? new Set();
+  rooms.set(chatId, room);
   room.add(socket);
   registry.subscribe(chatId, session, forward(chatId, session, conn));
 };

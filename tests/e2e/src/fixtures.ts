@@ -45,13 +45,12 @@ export const mockPush = (page: Page) =>
     let subscribed = false;
     Object.defineProperty(Notification, 'permission', { get: () => 'granted' });
     Notification.requestPermission = async () => 'granted';
-    PushManager.prototype.subscribe = async function () {
+    PushManager.prototype.subscribe = async () => {
       subscribed = true;
       return sub as unknown as PushSubscription;
     };
-    PushManager.prototype.getSubscription = async function () {
-      return subscribed ? (sub as unknown as PushSubscription) : null;
-    };
+    PushManager.prototype.getSubscription = async () =>
+      subscribed ? (sub as unknown as PushSubscription) : null;
   });
 
 /**
@@ -508,7 +507,9 @@ export const holdAt = async (page: Page, text: string) => {
       if (holding) return void held.push(m);
       ws.send(m);
       const msg = typeof m === 'string' ? JSON.parse(m) : undefined;
-      if (armed && msg?.type === 'message.delta' && (streamed += msg.text).includes(text)) {
+      if (!armed || msg?.type !== 'message.delta') return;
+      streamed += msg.text;
+      if (streamed.includes(text)) {
         armed = false;
         holding = true;
         seen();

@@ -364,10 +364,9 @@ test('user.retry with a document and an image: masked in the request and the ses
 }, async () => {
   const sc = await startFakeSidecar({ 'Matti Virtanen': 'Pekka Laaksonen' });
   cleanups.push(sc.close);
-  const { llm, srv, config, c, create, refuseThenOpen } = await start(
-    [REFUSAL, { text: 'Näen kuvan.' }, TITLE],
-    { PSEUDO_URL: sc.url },
-  );
+  const { llm, srv, config, c, create } = await start([REFUSAL, { text: 'Näen kuvan.' }, TITLE], {
+    PSEUDO_URL: sc.url,
+  });
   const { cookie } = await login(config.port);
   const png = await sharp({ create: { width: 4, height: 4, channels: 3, background: '#f00' } })
     .png()

@@ -424,7 +424,14 @@ async function allowlistSelf(
       await new Promise((r) => {
         const t = setTimeout(r, 10_000);
         t.unref();
-        signal.addEventListener('abort', () => (clearTimeout(t), r(undefined)), { once: true });
+        signal.addEventListener(
+          'abort',
+          () => {
+            clearTimeout(t);
+            r(undefined);
+          },
+          { once: true },
+        );
       });
     }
   }
