@@ -51,7 +51,8 @@ what stays as it is.
 
 ## Status
 
-Open. Batch A is done on the branch `p30-sec` (2026-10-31). Batch B is not started.
+Open. Batch A is done on the branch `p30-sec` (2026-10-31). Batch B items 8, 11, 12, 13 and the
+dependency follow-ups are done on the branch `p30-b2` (2026-10-31). Items 9 and 10 are not on this branch.
 
 Batch A, per item:
 
@@ -96,6 +97,12 @@ Batch A, per item:
    drill passed. It covers an hourly snapshot newer than the nightly one and the reverse, and a
    SQLCipher vault.
 
+Left as they are in batch A, on purpose:
+
+- The backup service holds `PSEUDO_VAULT_KEY`, because a consistent copy of the SQLCipher vault
+  needs the key. It already holds `app.db` and the memory files with real values.
+- `docs/plan.md` still describes Litestream. This record supersedes it.
+
 Batch B, per item (branch `p30-b2` holds 8, 11, 12, 13 and the dependency follow-ups):
 
 8. Done. A refused `chat.create` or a close before `chat.created` rejects the wait in `ws.ts`.
@@ -114,12 +121,12 @@ Batch B, per item (branch `p30-b2` holds 8, 11, 12, 13 and the dependency follow
    report (three closes, then `me()`): one check per failed open is simpler, and the backoff
    already caps it at one call per 10 s.
 11. Done. Migration `0013_curvy_mimic.sql` adds `chunks(chatId, kind, seq)`, `files(chatId)`,
-   `fileOrigins(chatId)`, `memoryPending(chatId)` and `topicProposals(chatId)`. `drizzle-kit
-   generate` wrote it from `schema.ts`. `packages/db/src/schema.test.ts` migrates an empty
-   database and runs drizzle-kit's `pushSQLiteSchema` against it: the test expects no
-   statement. This compares columns, defaults, keys, foreign keys and indexes in one call, so
-   the test does not compare `PRAGMA table_info` by hand. The raw FTS5 and vec0 tables stay out
-   of the check, because the test runs drizzle's `migrate` and not `openDb`.
+    `fileOrigins(chatId)`, `memoryPending(chatId)` and `topicProposals(chatId)`. `drizzle-kit
+    generate` wrote it from `schema.ts`. `packages/db/src/schema.test.ts` migrates an empty
+    database and runs drizzle-kit's `pushSQLiteSchema` against it: the test expects no
+    statement. This compares columns, defaults, keys, foreign keys and indexes in one call, so
+    the test does not compare `PRAGMA table_info` by hand. The raw FTS5 and vec0 tables stay out
+    of the check, because the test runs drizzle's `migrate` and not `openDb`.
 12. Error codes: done. `ErrorCode` in `packages/protocol` is a `z.enum` of the 13 codes, and
     `error.code` uses it. The wire format does not change. The web keeps
     `ERROR_TEXT: Record<ErrorCode, string>` and gained Finnish texts for `memory_generated` and
@@ -136,8 +143,8 @@ Batch B, per item (branch `p30-b2` holds 8, 11, 12, 13 and the dependency follow
     `search.test.ts`, `claims.test.ts` and `memory.test.ts`. When the model does not load, the
     file fails with the cause and the name of the skip variable. Only `PA_SKIP_MODEL_TESTS=1`
     turns the 14 tests into skips with a warning. CI must not set it. The report proposed the
-    reverse (`REQUIRE_MODEL=1` makes a skip fail). The task asked for a loud default, so a
-    machine without the variable can never pass the gate silently.
+    reverse (`REQUIRE_MODEL=1` makes a skip fail). With a loud default, a machine without the
+    variable can never pass the gate silently.
 13. Done in the tree; phase 31 rewrites the history. `tests/masked-only/models` is removed, and
     `.gitignore` has `**/models/`. Cause fixed: `embeddings.ts` no longer reads `process.env`.
     `Config.modelsDir` is `MODELS_DIR`, else `DEFAULT_MODELS_DIR` (`$TMPDIR/pa-models`), and
@@ -170,11 +177,7 @@ Dependency follow-ups (`docs/audits/2026-10-31-dependencies.md`, "Recommended ac
   The README ("Dependency policy") now gives the command with a full UTC timestamp
   (`--exclude-newer 2026-10-24T00:00:00Z` as the example). The lock is not rebuilt in this batch:
   a rebuild with the stricter cut-off changes versions, and a version bump is its own change.
+- Checked with `docker compose config` and a placeholder env. The images were not built and the
+  stack did not run in this batch (no pull). Run the compose smoke before the merge.
 - Not done, on purpose: `undici` and `cryptography`. The fixed releases are younger than 7 days.
 - Not in scope: `pnpm install` to drop the orphan Pi 1.3.0 folders (local `node_modules` only).
-
-Left as they are in batch A, on purpose:
-
-- The backup service holds `PSEUDO_VAULT_KEY`, because a consistent copy of the SQLCipher vault
-  needs the key. It already holds `app.db` and the memory files with real values.
-- `docs/plan.md` still describes Litestream. This record supersedes it.
