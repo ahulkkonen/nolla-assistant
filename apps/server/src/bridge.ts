@@ -13,6 +13,7 @@ import { PseudoDownError } from '@pa/pi-ext-pseudo';
 import { ClientMessage, type ServerMessage } from '@pa/protocol';
 import { and, desc, eq } from 'drizzle-orm';
 import { messageArtifacts } from './artifacts.ts';
+import { autoApproveOf, respond, setAutoApprove } from './bridge/approvals.ts';
 import {
   type BridgeDeps,
   connect,
@@ -406,11 +407,6 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
     return undefined;
   };
 
-  /** "Hyväksy automaattisesti" of a chat (phase-21 decision 7); `tools` also while it is off. */
-  const autoApproveOf = (r: ChatRow) => {
-    return { on: approvals.autoApprove.has(r.id), tools: registry.autoApproveTools(r.agentId) };
-  };
-
   /** `chat.state` of a chat and its session (`chat.open`, `chat.fork`, `chat.version`). */
   const chatState = async (
     r: ChatRow,
@@ -426,7 +422,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
       messages,
       artifacts: messageArtifacts(messages),
       running: registry.running(r.id),
-      autoApprove: autoApproveOf(r),
+      autoApprove: autoApproveOf(conn, r),
       ...(link ? { forkedFrom: link } : {}),
       ...(memory.claims ? { claims: memory.claims.chips(r.id) } : {}),
       ...(switched ? { switched } : {}),
@@ -614,7 +610,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
         join(conn, id, session);
         send(socket, { type: 'chat.created', chat: summary(r) });
         // No `chat.state` follows for a new chat: the composer chip needs the tool list.
-        return send(socket, { type: 'chat.autoApprove', chatId: id, ...autoApproveOf(r) });
+        return send(socket, { type: 'chat.autoApprove', chatId: id, ...autoApproveOf(conn, r) });
       }
       case 'chat.list': {
         const rows = db
@@ -706,20 +702,8 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
         update(conn, msg.chatId, { modes: [...new Set(msg.modes)] });
         await registry.evict(msg.chatId);
         return;
-      // Also during a run: the next tool call reads it; an open card stays open.
-      case 'chat.setAutoApprove': {
-        const r = owned(conn, msg.chatId);
-        // A running automation keeps its own `autoApprove` list (phase-14 decision 9).
-        if (approvals.unattended.has(msg.chatId))
-          return send(socket, errorMsg('bad_message', msg.chatId));
-        if (msg.on) approvals.autoApprove.add(msg.chatId);
-        else approvals.autoApprove.delete(msg.chatId);
-        return notify(conn, msg.chatId, {
-          type: 'chat.autoApprove',
-          chatId: r.id,
-          ...autoApproveOf(r),
-        });
-      }
+      case 'chat.setAutoApprove':
+        return setAutoApprove(conn, msg);
       case 'chat.setDataPolicy': {
         const r = owned(conn, msg.chatId);
         if (
@@ -856,17 +840,8 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
         if (code) send(socket, errorMsg(code, msg.chatId));
         return;
       }
-      case 'approval.respond': {
-        if (approvals.respond(msg.requestId, msg.approve)) return;
-        const chatId = approvals.resolvedChat(msg.requestId);
-        if (!chatId) throw new NotFound();
-        return send(socket, {
-          type: 'approval.resolved',
-          chatId,
-          requestId: msg.requestId,
-          outcome: 'expired',
-        });
-      }
+      case 'approval.respond':
+        return respond(conn, msg);
       case 'user.stop':
         owned(conn, msg.chatId);
         collisions.cancel(msg.chatId); // a message held by a collision is dropped
