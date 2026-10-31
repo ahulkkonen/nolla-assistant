@@ -19,6 +19,8 @@ The invariants (`docs/plan.md` section 2):
 - Local-first data: SQLite, JSONL sessions, and markdown memory live under one `/data` volume, with backups.
 - Minimal UI: each element on screen must have a user action.
 
+Agents and contributors: read `AGENTS.md` first. It holds the rules and the document index.
+
 ## Repository layout
 
 ```
@@ -133,7 +135,7 @@ Only you can do these steps:
 - Check Python packages on PyPI in the same way.
 - A version bump is its own change.
   The contract tests and the PII suite are the gate.
-- Pi stays at 1.3.0 for now. Details are in `docs/decisions/0002-workflow-and-pins.md`.
+- Pi is pinned exactly; a bump is its own task (`docs/decisions/0002-workflow-and-pins.md`, `0009-pi-1.4.0.md`).
 
 ## Decision records
 
