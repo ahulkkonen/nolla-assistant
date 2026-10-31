@@ -241,6 +241,8 @@ export function SettingsDialog() {
   const setTheme = useStore((s) => s.setTheme);
   const showModelSaw = useStore((s) => s.showModelSaw);
   const setShowModelSaw = useStore((s) => s.setShowModelSaw);
+  const showPseudonyms = useStore((s) => s.showPseudonyms);
+  const setShowPseudonyms = useStore((s) => s.setShowPseudonyms);
   const showThinking = useStore((s) => s.showThinking);
   const setShowThinking = useStore((s) => s.setShowThinking);
   const sttAutoSend = useStore((s) => s.sttAutoSend);
@@ -313,9 +315,27 @@ export function SettingsDialog() {
               <Row
                 label="Näytä mitä malli näki"
                 htmlFor="model-saw"
-                helper="Tunnistetut nimet näkyvät viesteissä niinä, jotka malli sai."
+                helper="Suojatut nimet näkyvät viesteissä niinä, jotka malli sai."
               >
                 <Switch id="model-saw" checked={showModelSaw} onCheckedChange={setShowModelSaw} />
+              </Row>
+              {/* Phase-28 decision 4: the model's text always keeps its marks. */}
+              <Row
+                label="Merkitse suojatut nimet"
+                htmlFor="show-pseudonyms"
+                helper={
+                  showModelSaw
+                    ? 'Päällä, kun mallin näkemä teksti näytetään.'
+                    : 'Viesteissä suojatut nimet saavat värillisen merkin.'
+                }
+              >
+                <Switch
+                  id="show-pseudonyms"
+                  checked={showPseudonyms || showModelSaw}
+                  disabled={showModelSaw}
+                  aria-describedby="show-pseudonyms-help"
+                  onCheckedChange={setShowPseudonyms}
+                />
               </Row>
               <Row
                 label="Näytä ajattelu"

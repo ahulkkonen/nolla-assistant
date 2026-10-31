@@ -27,7 +27,6 @@ import {
 import { Popover } from 'radix-ui';
 import {
   type ComponentProps,
-  type CSSProperties,
   createContext,
   isValidElement,
   memo,
@@ -220,7 +219,10 @@ const SawContext = createContext(false);
 function Anno({ real, saw }: { real: string; saw: string }) {
   const local = useContext(SawContext);
   const show = useStore((s) => s.showModelSaw) || local;
+  // Phase-28 decision 4: marks off, the real value is plain text with the hint as its title.
+  const marks = useStore((s) => s.showPseudonyms) || show;
   const hint = show ? `Alkuperäinen: ${real}` : `Malli näki: ${saw}`;
+  if (!marks) return <span title={hint}>{real}</span>;
   const span = (
     <span
       tabIndex={0}
@@ -325,18 +327,16 @@ const rehypeAnnotate = (pairs: [string, string][]) => () => (tree: HNode) => {
 };
 
 const MARKS = new RegExp(CONFIDENCE_MARK, 'g');
-/** `--conf` of the lowest confidence (N=1); 9 is 100 (phase-21 decision 4). */
-const CONF_FLOOR = 0;
-/** The `--conf` of level `n` (1–9): the colour mix of `.md .conf` and the legend's swatches. */
-const confLevel = (n: number) => Math.round(CONF_FLOOR + ((n - 1) * (100 - CONF_FLOOR)) / 8);
+/** Phase-28 decision 3: a sentence with N up to this is underlined and shows its N. */
+const CONF_LOW = 6;
 
 /**
- * Rehype plugin (phase-21 decision 4): each confidence marker `⟦N⟧` goes, and the text before it
- * (from the previous marker or the start of the text node) gets a span whose `--conf` runs from
- * CONF_FLOOR (N=1) to 100 (N=9), and its N as a last child `sup.conf-n` in a zero-width anchor
- * `span.conf-a`, which CSS shows on hover, on a tap or with "Näytä luvut" (phase-23 decision 9).
- * Code stays as written. An unterminated marker at the end of the last text node (a reply still
- * streaming) is hidden.
+ * Rehype plugin (phase-21 decision 4, phase-28 decision 3): each confidence marker `⟦N⟧` goes, and
+ * the text before it (from the previous marker or the start of the text node) gets a span `conf`,
+ * plus `conf-low` for N up to CONF_LOW (a dashed underline, the N always visible), and its N as a
+ * last child `span.conf-n` in an anchor `span.conf-a`. A high N shows on hover, on a tap or with
+ * "Näytä luvut" (phase-23 decision 9), always inline after the full stop. Code stays as written. An unterminated marker at the
+ * end of the last text node (a reply still streaming) is hidden.
  */
 export const rehypeConfidence = () => (tree: HNode) => {
   let last: HNode | undefined;
@@ -352,8 +352,7 @@ export const rehypeConfidence = () => (tree: HNode) => {
           type: 'element',
           tagName: 'span',
           properties: {
-            className: ['conf'],
-            style: `--conf:${confLevel(n)}`,
+            className: n <= CONF_LOW ? ['conf', 'conf-low'] : ['conf'],
             title: `Luottamus ${n}/9`,
           },
           children: [
@@ -365,7 +364,7 @@ export const rehypeConfidence = () => (tree: HNode) => {
               children: [
                 {
                   type: 'element',
-                  tagName: 'sup',
+                  tagName: 'span',
                   properties: { className: ['conf-n'] },
                   children: [{ type: 'text', value: String(n) }],
                 },
@@ -449,37 +448,26 @@ const toggleN = (e: ReactMouseEvent) => {
 };
 
 /**
- * Phase-23 decision 9: the scale under a reply with markers (micro, muted) and "Näytä luvut", which
- * puts every N in the text (`pa.confN`). One 28 px row; phones: "Luottamus" and the scale, then
- * the button (UI review 3). The button's 44 px target reaches 8 px past its 28 px pill, so the gaps
- * stay 8 px.
+ * Phase-23 decision 9: the scale under a reply with markers (micro, muted; phase 28: what the
+ * underline means, in words) and "Näytä luvut", which puts every N in the text (`pa.confN`). One
+ * 32 px row at every width; the button's 44 px target reaches 6 px past its 32 px pill.
  */
 function ConfidenceLegend() {
   const on = useStore((s) => s.showConfN);
   return (
-    <div className="flex h-7 items-center gap-3 text-micro text-muted-foreground max-md:h-auto max-md:flex-wrap max-md:gap-y-2">
-      <span>Luottamus</span>
-      <span className="flex items-center gap-2 tabular-nums">
-        <span>1 arvaus</span>
-        <span aria-hidden="true" className="flex gap-1">
-          {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
-            <span
-              key={n}
-              className="conf-swatch h-2 w-3"
-              style={{ '--conf': confLevel(n) } as CSSProperties}
-            />
-          ))}
-        </span>
-        <span>9 varma</span>
+    // Phones: 6 px more below, so the pill's and the action row's 44 px targets keep 8 px apart.
+    <div className="flex h-8 items-center gap-3 text-micro text-muted-foreground max-md:mb-1.5 max-md:h-auto max-md:flex-wrap max-md:gap-y-2">
+      <span className="tabular-nums">
+        1 arvaus – 9 varma ·&nbsp;<span className="conf-sample">alleviivattu</span> ≤&nbsp;6
       </span>
       <button
         type="button"
         aria-pressed={on}
         onClick={() => useStore.getState().setShowConfN(!on)}
-        // A 28 px pill with a border; on: the fill and a 12 px check before the text (the brief's
-        // segmented control). An invisible checked copy shares the grid cell, so the pill keeps
-        // its width in both states. The 44 px target is `::after`.
-        className="relative grid h-7 items-center rounded-full border border-border px-2.5 text-foreground transition-colors duration-100 after:absolute after:inset-x-0 after:-inset-y-2 hover:bg-accent aria-pressed:bg-accent"
+        // A 32 px pill (`sm`) with a border; on: the fill and a 12 px check before the text (the
+        // brief's segmented control). An invisible checked copy shares the grid cell, so the pill
+        // keeps its width in both states. The 44 px target is `::after`.
+        className="relative grid h-8 items-center rounded-full border border-border px-2.5 text-foreground transition-colors duration-100 after:absolute after:inset-x-0 after:-inset-y-1.5 hover:bg-accent aria-pressed:bg-accent"
       >
         <span aria-hidden="true" className="invisible col-start-1 row-start-1 flex gap-1">
           <Check size={12} />

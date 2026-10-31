@@ -13,6 +13,7 @@ import {
   COLLIDING,
   CONFIDENCE_PLAIN,
   CONFIDENCE_REPLY,
+  CONFIDENCE_SHOWN,
   confidenceReply,
   DICT,
   deviceRows,
@@ -1590,10 +1591,13 @@ test.describe('admin', () => {
       'aria-checked',
       'false',
     );
-    await page.keyboard.press('Escape');
+    // Phase-28 decision 2: the chip's last row opens Agentit at Tilat.
+    await page.getByRole('menuitem', { name: 'Muokkaa tiloja…' }).click();
+    await expect(page.getByRole('heading', { name: 'Tilat' })).toBeFocused();
+    // The hash is read once, then cleared.
+    await expect(page).toHaveURL(/\/agents$/);
 
     // The text, through the Markdown tab's dry run and back.
-    await openSettings(page, 'Agentit');
     await modes.getByRole('button', { name: 'Toiminnot: Lyhyt' }).click();
     await page.getByRole('menuitem', { name: 'Muokkaa' }).click();
     await page.getByLabel('Ohje', { exact: true }).fill('Vastaa yhdellä virkkeellä.');
@@ -2132,8 +2136,8 @@ for (const viewport of VIEWPORTS)
 
       await send(page, 'Kerro Tampereesta');
       const reply = page.locator('.md').last();
-      // The text a reader sees: each sentence's N (`sup.conf-n`) is hidden.
-      await expect(reply).toHaveText(CONFIDENCE_PLAIN, { useInnerText: true });
+      // The text a reader sees: the N (`.conf-n`) of a sentence up to 6 only.
+      await expect(reply).toHaveText(CONFIDENCE_SHOWN, { useInnerText: true });
       const prompt = (text: string) =>
         JSON.stringify(
           app.llm.requests.find((r) => JSON.stringify(r.body.messages).includes(text))?.body
@@ -2144,13 +2148,18 @@ for (const viewport of VIEWPORTS)
       const spans = reply.locator('span.conf');
       await expect(spans).toHaveCount(3);
       await expect(spans.nth(0)).toHaveAttribute('title', 'Luottamus 9/9');
-      await expect(spans.nth(1)).toHaveAttribute('title', 'Luottamus 5/9');
-      await expect(spans.nth(2)).toHaveAttribute('title', 'Luottamus 1/9');
-      // The contrast follows N: 100 is the text colour, 0 is the muted one.
-      await expect(spans.nth(0)).toHaveAttribute('style', '--conf: 100;');
-      await expect(spans.nth(2)).toHaveAttribute('style', '--conf: 0;');
-      const color = (i: number) => spans.nth(i).evaluate((el) => getComputedStyle(el).color);
-      expect(await color(2)).not.toBe(await color(0));
+      await expect(spans.nth(1)).toHaveAttribute('title', 'Luottamus 7/9');
+      await expect(spans.nth(2)).toHaveAttribute('title', 'Luottamus 3/9');
+      // Phase-28 decision 3: up to 6 a dashed underline, 7 and up plain; one text colour.
+      const style = (i: number) =>
+        spans.nth(i).evaluate((el) => {
+          const s = getComputedStyle(el);
+          return [s.textDecorationStyle, s.textDecorationLine, s.color].join(' ');
+        });
+      const [high, low] = [await style(0), await style(2)];
+      expect(high).toMatch(/^solid none /);
+      expect(low).toMatch(/^dashed underline /);
+      expect(low.split(' ').slice(2)).toEqual(high.split(' ').slice(2));
 
       await reply.hover();
       await page.getByRole('button', { name: 'Kopioi', exact: true }).last().click();
@@ -2160,7 +2169,7 @@ for (const viewport of VIEWPORTS)
       await page.reload();
       if (viewport.width < 768) await page.getByRole('button', { name: 'Valikko' }).click();
       await page.locator('nav li > button').click({ position: { x: 16, y: 16 } });
-      await expect(page.locator('.md').last()).toHaveText(CONFIDENCE_PLAIN, {
+      await expect(page.locator('.md').last()).toHaveText(CONFIDENCE_SHOWN, {
         useInnerText: true,
       });
       await flipMode(page, 'Luottamus', false);
@@ -2225,43 +2234,22 @@ for (const viewport of VIEWPORTS)
     const phone = viewport.width < 768;
     test.use({ viewport, ...(phone ? { hasTouch: true, isMobile: true } : {}) });
 
-    test('confidence N: hover or a tap shows one N without moving a glyph; Näytä luvut shows each N', async ({
+    test('confidence N: hover or a tap shows one N inline; Näytä luvut shows each N', async ({
       app,
       page,
     }) => {
       const reply = await confidenceReply(app, page);
       const spans = reply.locator('span.conf');
-      const n = reply.locator('sup.conf-n');
-      await expect(n).toHaveText(['9', '5', '1']);
-      for (const i of [0, 1, 2]) await expect(n.nth(i)).toBeHidden();
+      const n = reply.locator('.conf-n');
+      await expect(n).toHaveText(['9', '7', '3']);
+      for (const i of [0, 1]) await expect(n.nth(i)).toBeHidden();
+      // Phase-28 decision 3: the N of a sentence up to 6 is always in the line.
+      await expect(n.nth(2)).toBeVisible();
       const legend = page.getByRole('button', { name: 'Näytä luvut' });
       await expect(legend).toHaveAttribute('aria-pressed', 'false');
-      /** The box of every glyph run of the reply's text, the N left out. */
-      const glyphs = () =>
-        reply.evaluate((el) => {
-          const out: string[] = [];
-          const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
-          for (let t = walk.nextNode(); t; t = walk.nextNode()) {
-            if (t.parentElement?.closest('.conf-n')) continue;
-            const r = document.createRange();
-            r.selectNodeContents(t);
-            for (const b of Array.from(r.getClientRects()))
-              out.push(`${b.x},${b.y},${b.width},${b.height}`);
-          }
-          return out;
-        });
-      const before = await glyphs();
-
-      if (phone) await spans.nth(1).tap();
-      else await spans.nth(1).hover();
-      await expect(n.nth(1)).toBeVisible();
-      await expect(n.nth(0)).toBeHidden();
-      expect(await glyphs()).toEqual(before);
       /**
-       * The N's box against the full stop's and the next word's first glyph (UI review): `right`
-       * from the full stop's end to the N's right edge, `left` from it to the N's left edge,
-       * `clear` from the N to the next glyph, `rise` from the full stop's box bottom to the N's,
-       * and the anchor's width.
+       * Phase-28 UI review: one N style. `left` from the full stop's end to the N, `base` from the
+       * full stop's box bottom to the N's (the same baseline: the 12 px N sits a little higher).
        */
       const placeOf = (i: number) =>
         spans.nth(i).evaluate((el) => {
@@ -2270,41 +2258,32 @@ for (const viewport of VIEWPORTS)
           r.setStart(text, text.length - 1);
           r.setEnd(text, text.length);
           const end = r.getBoundingClientRect();
-          const sup = (el.querySelector('.conf-n') as HTMLElement).getBoundingClientRect();
-          const next = el.nextElementSibling?.firstChild as Text;
-          const at = next.data.search(/\S/);
-          r.setStart(next, at);
-          r.setEnd(next, at + 1);
-          return {
-            right: sup.right - end.right,
-            left: sup.x - end.right,
-            clear: r.getBoundingClientRect().x - sup.right,
-            rise: end.bottom - sup.bottom,
-            anchor: (el.querySelector('.conf-a') as HTMLElement).getBoundingClientRect().width,
-          };
+          const box = (el.querySelector('.conf-n') as HTMLElement).getBoundingClientRect();
+          return { left: box.x - end.right, base: end.bottom - box.bottom };
         });
-      // Above the sentence's end: no width of its own, its right edge 1 px before the full stop's
-      // end, 4 px or more clear of the next word, its box above the prose's cap height.
-      const place = await placeOf(1);
-      expect(place.anchor).toBe(0);
-      expect(place.right).toBeCloseTo(-1, 0);
-      expect(place.clear).toBeGreaterThanOrEqual(4);
-      expect(place.rise).toBeGreaterThan(14);
+      const low = await placeOf(2);
+      // 4 px after the full stop, so "2031. 3" does not read as "2031.3".
+      expect(low.left).toBeCloseTo(4, 0);
+      expect(low.base).toBeGreaterThanOrEqual(0);
+      expect(low.base).toBeLessThan(8);
+
+      if (phone) await spans.nth(1).tap();
+      else await spans.nth(1).hover();
+      await expect(n.nth(1)).toBeVisible();
+      await expect(n.nth(0)).toBeHidden();
+      expect(await placeOf(1)).toEqual(low);
       if (phone) {
         await spans.nth(1).tap();
         await expect(n.nth(1)).toBeHidden();
       }
 
-      // Every N in the text, kept on this device: right after its full stop, raised to the
-      // prose's cap height.
+      // Every N in the text, kept on this device, in the same style.
       await legend.click();
       await expect(legend).toHaveAttribute('aria-pressed', 'true');
       for (const i of [0, 1, 2]) await expect(n.nth(i)).toBeVisible();
-      const inline = await placeOf(1);
-      expect(inline.left).toBeCloseTo(0, 0);
-      expect(inline.rise).toBeGreaterThan(4);
+      expect(await placeOf(0)).toEqual(low);
       await expect(reply).toHaveText(
-        'Tampere on Suomen kolmanneksi suurin kaupunki.9 Sen väkiluku kasvaa ensi vuonna noin prosentin.5 Raitiotie jatkunee Hiedanrantaan vuonna 2031.1',
+        'Tampere on Suomen kolmanneksi suurin kaupunki.9 Sen väkiluku kasvaa ensi vuonna noin prosentin.7 Raitiotie jatkunee Hiedanrantaan vuonna 2031.3',
         { useInnerText: true },
       );
       expect(await page.evaluate(() => localStorage.getItem('pa.confN'))).toBe('on');

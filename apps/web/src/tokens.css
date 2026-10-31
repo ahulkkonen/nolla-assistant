@@ -477,43 +477,25 @@
   }
 }
 
-/* Phase-21 decision 4: a sentence's confidence as its contrast; --conf 100 is --foreground. In
-   OKLab: the steps stay on the line between the two warm greys. In OKLCH Chrome gives these
-   low-chroma greys the hue `none`, which renders as hue 0, a pink tint (UI review). */
-.md .conf,
-.conf-swatch {
-  color: color-mix(in oklab, var(--foreground) calc(var(--conf) * 1%), var(--muted-foreground));
-}
-.conf-swatch {
-  background: currentColor;
-}
-/* Phase-23 decision 9: each sentence's N sits above the sentence's end. It is placed absolutely in
-   a zero-width inline-block anchor right after the full stop (an absolute child of an inline box
-   would follow the inline's line breaks), so a hidden N reserves no width and a hover (hover
-   devices) or a tap (`data-show`) moves no glyph. Its right edge is 1 px before the full stop's
-   end, so with the word space (3.8 px at 16 px) it stays 4 px or more clear of the next word; its
-   box starts at the prose's cap height, so it clears the sentence's own glyphs. "Näytä luvut" (`data-conf-n`) puts every N in the line after its full stop
-   with its whole width and its top at the cap height, where a screen reader reads it (hidden text
-   is not read). */
-@property --prose-cap {
-  syntax: "<length>";
-  inherits: true;
-  initial-value: 0px;
-}
-.md .conf {
-  --prose-cap: 1cap;
+/* Phase-23 decision 9, phase-28 decision 3 and its UI review: one N style, 12 px micro and inline
+   4 px after the full stop on the prose baseline. A sentence with N up to 6 has a dashed underline in the
+   muted colour and always shows its N; a higher N shows on hover (hover devices), on a tap
+   (`data-show`) or with "Näytä luvut" (`data-conf-n`). A hidden N is `display: none`, so a screen
+   reader reads only the N on screen. The anchor is an inline-block, so the underline stops before
+   the N. The dashes differ from the dotted mark of a protected name. */
+.md .conf-low,
+.conf-sample {
+  text-decoration: underline dashed var(--muted-foreground) 2px;
+  text-underline-offset: 0.25em;
 }
 .md .conf-a {
-  position: relative;
   display: inline-block;
-  width: 0;
 }
 .md .conf-n {
-  visibility: hidden;
-  position: absolute;
-  inset: auto 1px var(--prose-cap) auto;
+  display: none;
   font-family: var(--font-sans);
-  font-size: 11px;
+  margin-left: 4px;
+  font-size: var(--text-micro);
   line-height: 1;
   font-weight: var(--font-weight-medium);
   font-variant-numeric: tabular-nums;
@@ -521,21 +503,13 @@
 }
 @media (hover: hover) {
   .md .conf:hover > .conf-a > .conf-n {
-    visibility: visible;
+    display: inline;
   }
 }
-.md .conf[data-show] > .conf-a > .conf-n {
-  visibility: visible;
-}
-.md[data-conf-n] .conf-a {
-  display: inline;
-}
+.md .conf-low > .conf-a > .conf-n,
+.md .conf[data-show] > .conf-a > .conf-n,
 .md[data-conf-n] .conf-n {
-  visibility: visible;
-  position: relative;
-  inset: auto;
-  top: calc(1cap - var(--prose-cap));
-  vertical-align: baseline;
+  display: inline;
 }
 
 /* Assistant prose (7.2): serif, markdown without a typography plugin. */

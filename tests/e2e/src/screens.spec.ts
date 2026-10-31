@@ -407,32 +407,29 @@ for (const scheme of ['light', 'dark'] as const) {
         hold.release();
       });
 
-      // Phase-21 decision 4 and phase-23 decision 9: three confidence levels with Luottamus on,
-      // the legend, and the second sentence's N (hover on a desktop, a tap on the phone).
+      // Phase-21 decision 4, phase-23 decision 9 and phase-28 decision 3: three confidence levels
+      // with Luottamus on (3 underlined with its N), the legend, and the second sentence's N
+      // (hover on a desktop, a tap on the phone).
       test('chat-confidence', async ({ app, page }) => {
         const reply = await confidenceReply(app, page);
         await expect(reply.locator('span.conf')).toHaveCount(3);
         await flipMode(page, 'Luottamus', true);
         await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
         const box = (l: Locator) => l.evaluate((el) => el.getBoundingClientRect().toJSON());
-        // P1 and UI review: the legend row is 28 px, the button's pill (phones: the pill's line
-        // and the 16 px scale 8 apart), 4 px between 12 × 8 swatches, 8 px to the text above and
-        // to the action row below.
+        // P1 and phase-28 UI review: the legend is one 32 px row (the `sm` pill) at every width,
+        // 8 px to the text above and to the action row below; phones 14, so the two 44 px targets
+        // keep 8 px apart.
         const legend = page.getByRole('button', { name: 'Näytä luvut' }).locator('..');
         const row = await box(legend);
-        expect(row.height).toBe(vp.width < 768 ? 52 : 28);
+        expect(row.height).toBe(32);
         expect(row.top - (await box(reply)).bottom).toBe(8);
         expect(
           (await box(legend.locator('xpath=following-sibling::div[1]'))).top - row.bottom,
-        ).toBe(8);
-        const swatches = legend.locator('.conf-swatch');
-        await expect(swatches).toHaveCount(9);
-        const [a, b] = [await box(swatches.nth(0)), await box(swatches.nth(1))];
-        expect([a.width, a.height, b.x - a.right]).toEqual([12, 8, 4]);
-        // A 28 px pill, as wide on as off; its target is 44 px (`::after`).
+        ).toBe(vp.width < 768 ? 14 : 8);
+        // A 32 px pill, as wide on as off; its target is 44 px (`::after`).
         const button = page.getByRole('button', { name: 'Näytä luvut' });
         const off = await box(button);
-        expect(off.height).toBe(28);
+        expect(off.height).toBe(32);
         expect(
           await button.evaluate((el) => {
             const after = getComputedStyle(el, '::after');
@@ -447,7 +444,7 @@ for (const scheme of ['light', 'dark'] as const) {
         const sentence = reply.locator('span.conf').nth(1);
         if (vp.width < 768) await sentence.tap();
         else await sentence.hover();
-        await expect(sentence.locator('sup.conf-n')).toBeVisible();
+        await expect(sentence.locator('.conf-n')).toBeVisible();
         await shot(page, 'chat-confidence', vp.width, scheme);
       });
 
@@ -455,7 +452,7 @@ for (const scheme of ['light', 'dark'] as const) {
       test('chat-confidence-numbers', async ({ app, page }) => {
         await confidenceReply(app, page);
         await page.getByRole('button', { name: 'Näytä luvut' }).click();
-        await expect(page.locator('.md sup.conf-n').last()).toBeVisible();
+        await expect(page.locator('.md .conf-n').last()).toBeVisible();
         await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
         await page.mouse.move(vp.width - 8, 8);
         await shot(page, 'chat-confidence-numbers', vp.width, scheme);
@@ -533,6 +530,10 @@ for (const scheme of ['light', 'dark'] as const) {
           // P1: the 44 px SwitchRow.
           for (const r of await page.getByRole('group', { name: 'Tila' }).locator('label').all())
             expect((await box(r)).height).toBeGreaterThanOrEqual(44);
+          // Phase-28 decision 2: the last row of the group.
+          const edit = page.getByRole('group', { name: 'Tila' }).getByRole('button').last();
+          await expect(edit).toHaveText('Muokkaa tiloja…');
+          expect((await box(edit)).height).toBe(44);
         } else {
           const chip = page.getByRole('button', { name: /^Tila/ });
           const model = page.getByRole('button', { name: /^Malli: / });
@@ -1505,6 +1506,26 @@ for (const scheme of ['light', 'dark'] as const) {
             await expect(page.locator('.md').last()).toHaveText(
               'Hei Matti Virtanen! Hetu 010190-123M on tallessa.',
             );
+            /** Flips a switch in Asetukset, then closes Settings and (under 768 px) the drawer. */
+            const setting = async (label: string) => {
+              await page.keyboard.press('Escape');
+              const menu = page.getByRole('button', { name: 'Valikko' });
+              if (await menu.isVisible()) await menu.click();
+              await page.getByRole('button', { name: 'Asetukset' }).click();
+              await page.getByLabel(label).check();
+              await expect(async () => {
+                await page.keyboard.press('Escape');
+                await expect(page.getByRole('dialog')).toHaveCount(0, { timeout: 500 });
+              }).toPass();
+            };
+            // Phase-28 decision 4: no marks by default; the hint stays as the title.
+            await expect(page.locator('.md span[tabindex="0"]')).toHaveCount(0);
+            await expect(page.locator('.md span[title="Malli näki: Pekka Laaksonen"]')).toHaveText(
+              'Matti Virtanen',
+            );
+            await page.mouse.move(vp.width - 8, 8);
+            await shot(page, 'chat-annotated', vp.width, scheme);
+            await setting('Merkitse suojatut nimet');
             const masked = page.locator('.md span[tabindex="0"]').first();
             if (vp.width === 390) {
               // Touch: a tap opens the hint; there is no hover tooltip.
@@ -1523,17 +1544,8 @@ for (const scheme of ['light', 'dark'] as const) {
               // The hetu's tooltip from the Tab has faded.
               await expect(page.getByRole('tooltip')).toHaveCount(1);
             }
-            await shot(page, 'chat-annotated', vp.width, scheme);
-            await page.keyboard.press('Escape');
-            const menu = page.getByRole('button', { name: 'Valikko' });
-            if (await menu.isVisible()) await menu.click();
-            await page.getByRole('button', { name: 'Asetukset' }).click();
-            await page.getByLabel('Näytä mitä malli näki').check();
-            // Settings, then (under 768 px) the drawer.
-            await expect(async () => {
-              await page.keyboard.press('Escape');
-              await expect(page.getByRole('dialog')).toHaveCount(0, { timeout: 500 });
-            }).toPass();
+            await shot(page, 'chat-annotated-marks', vp.width, scheme);
+            await setting('Näytä mitä malli näki');
             await expect(page.locator('.md').last()).toHaveText(
               'Hei Pekka Laaksonen! Hetu 010190-900B on tallessa.',
             );

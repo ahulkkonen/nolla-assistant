@@ -196,7 +196,7 @@ export function claimStore(deps: {
   pseudo?: PseudoClient | undefined;
   /** `taskSmall(...)`: the extraction call. */
   ask?: ReturnType<typeof taskSmall> | undefined;
-  /** Decision 28 amended: MEMORY.md is regenerated after every review change. */
+  /** Decision 28 amended: MEMORY.md is regenerated after every change to the active claims. */
   onProfileChange?: (() => void | Promise<void>) | undefined;
 }) {
   const { db, userId, warn, pseudo } = deps;
@@ -540,93 +540,99 @@ export function claimStore(deps: {
     const windows: ChatMsg[][] = [];
     let cur: ChatMsg[] = [];
     let size = 0;
-    for (const m of messages.slice(at + 1).reverse()) {
-      if (size + own(m).length > NEW_CHARS && cur.length) {
-        windows.unshift(cur);
-        cur = [];
-        size = 0;
-      }
-      cur.unshift(m);
-      size += own(m).length;
-    }
-    if (cur.length) windows.unshift(cur);
-    if (windows.length > MAX_WINDOWS)
-      warn('claims windows skipped', { chatId, skipped: windows.length - MAX_WINDOWS });
-    const todo = windows.slice(-MAX_WINDOWS);
-    if (!todo.some((w) => w.some((m) => m.role === 'user'))) {
-      markRead(db, last);
-      return done;
-    }
-    at = messages.indexOf(todo[0]?.[0] as ChatMsg) - 1;
-    for (const fresh of todo) {
-      let context = '';
-      for (const m of messages.slice(0, at + 1).reverse()) {
-        const l = `${line('-', m)}\n\n`;
-        if (context.length + l.length > CONTEXT_CHARS) break;
-        context = l + context;
-      }
-      at += fresh.length;
-      const through = fresh.at(-1)?.id ?? last;
-      const r = fresh.some((m) => m.role === 'user')
-        ? await window(chatId, fresh, context, opts.date)
-        : { items: [], confirms: [], supersedes: new Map<number, Supersede[]>() };
-      if (!r) throw new Error('extraction reply invalid');
-      const list = r.items.map(({ index, item }) => {
-        const sup = r.supersedes.get(index) ?? [];
-        const auto =
-          !sup.length &&
-          !opts.tainted &&
-          AUTO_KINDS.has(item.claim.kind) &&
-          item.claim.confidence >= 0.8;
-        return {
-          ...item,
-          claim: {
-            ...item.claim,
-            status: auto ? ('active' as const) : ('proposed' as const),
-            activatedBy: auto ? ('auto' as const) : null,
-            supersedesId: sup[0]?.claimId ?? null,
-          },
-        };
-      });
-      const at2 = now();
-      const added = db.transaction((tx) => {
-        const ids = insert(
-          tx,
-          list,
-          r.items.map((x) => x.v),
-        );
-        for (const { id, q } of r.confirms) {
-          tx.update(claims)
-            .set({ timesSeen: sql`${claims.timesSeen} + 1`, lastConfirmedAt: at2 })
-            .where(eq(claims.id, id))
-            .run();
-          if (q)
-            tx.insert(evidence)
-              .values({ userId, claimId: id, createdAt: at2, ...q })
-              .run();
+    // Phase-28 decision 1: an auto-activated claim regenerates MEMORY.md like a review does,
+    // also when a later window throws after an earlier one committed.
+    try {
+      for (const m of messages.slice(at + 1).reverse()) {
+        if (size + own(m).length > NEW_CHARS && cur.length) {
+          windows.unshift(cur);
+          cur = [];
+          size = 0;
         }
-        r.items.forEach(({ index }, k) => {
-          for (const s of r.supersedes.get(index) ?? [])
-            tx.insert(evidence)
-              .values({
-                userId,
-                claimId: s.claimId,
-                createdAt: at2,
-                ...s.quote,
-                supersededBy: ids[k],
-                reason: s.reason,
-                validTo: s.validTo,
-              })
-              .run();
+        cur.unshift(m);
+        size += own(m).length;
+      }
+      if (cur.length) windows.unshift(cur);
+      if (windows.length > MAX_WINDOWS)
+        warn('claims windows skipped', { chatId, skipped: windows.length - MAX_WINDOWS });
+      const todo = windows.slice(-MAX_WINDOWS);
+      if (!todo.some((w) => w.some((m) => m.role === 'user'))) {
+        markRead(db, last);
+        return done;
+      }
+      at = messages.indexOf(todo[0]?.[0] as ChatMsg) - 1;
+      for (const fresh of todo) {
+        let context = '';
+        for (const m of messages.slice(0, at + 1).reverse()) {
+          const l = `${line('-', m)}\n\n`;
+          if (context.length + l.length > CONTEXT_CHARS) break;
+          context = l + context;
+        }
+        at += fresh.length;
+        const through = fresh.at(-1)?.id ?? last;
+        const r = fresh.some((m) => m.role === 'user')
+          ? await window(chatId, fresh, context, opts.date)
+          : { items: [], confirms: [], supersedes: new Map<number, Supersede[]>() };
+        if (!r) throw new Error('extraction reply invalid');
+        const list = r.items.map(({ index, item }) => {
+          const sup = r.supersedes.get(index) ?? [];
+          const auto =
+            !sup.length &&
+            !opts.tainted &&
+            AUTO_KINDS.has(item.claim.kind) &&
+            item.claim.confidence >= 0.8;
+          return {
+            ...item,
+            claim: {
+              ...item.claim,
+              status: auto ? ('active' as const) : ('proposed' as const),
+              activatedBy: auto ? ('auto' as const) : null,
+              supersedesId: sup[0]?.claimId ?? null,
+            },
+          };
         });
-        markRead(tx, through);
-        return ids;
-      });
-      done.written += added.length;
-      added.forEach((id, k) => {
-        const c = list[k]?.claim;
-        if (c?.status === 'active') done.activated.push({ id, kind: c.kind, text: c.text });
-      });
+        const at2 = now();
+        const added = db.transaction((tx) => {
+          const ids = insert(
+            tx,
+            list,
+            r.items.map((x) => x.v),
+          );
+          for (const { id, q } of r.confirms) {
+            tx.update(claims)
+              .set({ timesSeen: sql`${claims.timesSeen} + 1`, lastConfirmedAt: at2 })
+              .where(eq(claims.id, id))
+              .run();
+            if (q)
+              tx.insert(evidence)
+                .values({ userId, claimId: id, createdAt: at2, ...q })
+                .run();
+          }
+          r.items.forEach(({ index }, k) => {
+            for (const s of r.supersedes.get(index) ?? [])
+              tx.insert(evidence)
+                .values({
+                  userId,
+                  claimId: s.claimId,
+                  createdAt: at2,
+                  ...s.quote,
+                  supersededBy: ids[k],
+                  reason: s.reason,
+                  validTo: s.validTo,
+                })
+                .run();
+          });
+          markRead(tx, through);
+          return ids;
+        });
+        done.written += added.length;
+        added.forEach((id, k) => {
+          const c = list[k]?.claim;
+          if (c?.status === 'active') done.activated.push({ id, kind: c.kind, text: c.text });
+        });
+      }
+    } finally {
+      if (done.activated.length) await changed();
     }
     return done;
   };
