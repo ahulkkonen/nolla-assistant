@@ -109,7 +109,7 @@ Lines were read on 2026-10-29 at `d3263f1` (phase 22 server part and Pi 1.4.0 me
    "Tila" with one `SwitchRow` per mode (description as helper). The chip and the rows work on an
    empty new chat too: the store keeps `pendingModes` and `chat.create` sends it.
    `useModes(chatId)` replaces `useConfidence`; the chip and the sheet share it.
-9. **The confidence renderer.** `rehypeConfidence` stays. It runs when a reply holds markers,
+9. **The confidence renderer.** *(Superseded by phase-28 decision 3: the shading and the swatches are gone.)* `rehypeConfidence` stays. It runs when a reply holds markers,
    whatever the chat's modes are now: older replies keep their shading. `renderer` in a mode file
    says that the mode needs a client renderer; the web map is `RENDERERS = { confidence }` and the
    editor refuses any other name. New parts:

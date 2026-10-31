@@ -198,6 +198,8 @@ export function ModesSection({
     if (location.hash !== MODES_HASH) return;
     title.current?.scrollIntoView({ block: 'start' });
     title.current?.focus({ preventScroll: true });
+    // Once: a reload or a remount must not jump and steal focus again.
+    history.replaceState(history.state, '', `${location.pathname}${location.search}`);
   }, []);
   const drop = (d: ModeDoc) => {
     setRemove(null);
