@@ -14,9 +14,9 @@ import { type ClaimKind, chats, claims, evidence, openDb } from '@pa/db';
 import { CLAIMS_HEADER } from '@pa/pi-ext-memory';
 import { PseudoClient } from '@pa/pi-ext-pseudo';
 import { claimStore } from '@pa/server/src/claims.ts';
+import { taskSmall } from '@pa/server/src/llm.ts';
 import { memoryStore } from '@pa/server/src/memory.ts';
 import { indexChat, indexIdle, search } from '@pa/server/src/search.ts';
-import { taskSmall } from '@pa/server/src/topics.ts';
 import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
 

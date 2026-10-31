@@ -260,7 +260,7 @@ export function webSearchExtensions(o: {
         ),
       }),
       async execute(_id, p, signal) {
-        // One line: the tool row restores query and titles in one sidecar call (bridge.ts).
+        // One line: the tool row restores query and titles in one sidecar call (history.ts).
         const query = p.query.replace(/\s+/g, ' ').trim();
         let found: Citation[] | 'limited';
         try {

@@ -15,15 +15,9 @@ import { liveAgentId, loadAgents, watchAgents } from './agents.ts';
 import { approvals as approvalStore } from './approval.ts';
 import { purgeExpiredSessions } from './auth/session.ts';
 import { startAutomations } from './automations.ts';
-import {
-  agentsState,
-  type BridgeDeps,
-  broadcast,
-  chatRow,
-  errorMsg,
-  transcript,
-  vaultState,
-} from './bridge.ts';
+import { agentsState, type BridgeDeps } from './bridge/connection.ts';
+import { vaultState } from './bridge/vault.ts';
+import { chatRow } from './chats.ts';
 import { branchPoint, claimStore } from './claims.ts';
 import { collisionWaits } from './collisions.ts';
 import { BUNDLED_AGENTS, BUNDLED_AUTOMATIONS, type Config, loadConfig } from './config.ts';
@@ -31,6 +25,7 @@ import { fxRates } from './fx.ts';
 import { harness } from './harness.ts';
 import { buildServer } from './http.ts';
 import { integrations as integrationStore } from './integrations.ts';
+import { taskSmall } from './llm.ts';
 import { loadMcp } from './mcp.ts';
 import { memoryStore } from './memory.ts';
 import { loadModes, modesDir } from './modes.ts';
@@ -40,7 +35,9 @@ import { pushService } from './push.ts';
 import { indexIdle } from './search.ts';
 import { searcher } from './search-tool.ts';
 import { seedDir } from './seed.ts';
-import { taskSmall, titleJobs } from './topics.ts';
+import { transcript } from './session-text.ts';
+import { broadcast, errorMsg } from './socket.ts';
+import { titleJobs } from './topics.ts';
 import { purgeTrash, workStore } from './tree.ts';
 import { usageRecorder } from './usage.ts';
 

@@ -124,10 +124,21 @@ export async function connect(port: number, origin?: string, cookie?: string) {
   return { ws, inbox, next, idle, send };
 }
 
+/** Sends a user message on `c` and waits until the chat is idle. */
+export async function turn(c: Awaited<ReturnType<typeof connect>>, chatId: string, text: string) {
+  c.send({ type: 'user.message', chatId, text });
+  await c.idle();
+}
+
+/** Opens the chat on `c` and returns its `chat.state`. */
+export async function open(c: Awaited<ReturnType<typeof connect>>, chatId: string) {
+  c.send({ type: 'chat.open', chatId });
+  return c.next('chat.state');
+}
+
 /** Opens the chat on `c` and returns its first message. */
 export async function openFirst(c: Awaited<ReturnType<typeof connect>>, chatId: string) {
-  c.send({ type: 'chat.open', chatId });
-  return (await c.next('chat.state')).messages[0];
+  return (await open(c, chatId)).messages[0];
 }
 
 /** Boots and returns a socket on a new chat. */

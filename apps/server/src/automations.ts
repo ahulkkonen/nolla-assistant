@@ -9,9 +9,9 @@ import cron from 'node-cron';
 import { parse, YAMLError } from 'yaml';
 import { ZodError, z } from 'zod';
 import { type Agents, ownChange } from './agents.ts';
-import { transcript } from './bridge.ts';
 import type { SessionRegistry } from './pi/registry.ts';
 import { indexChat } from './search.ts';
+import { transcript } from './session-text.ts';
 
 export const TOPIC_NAME = 'Automaatiot';
 

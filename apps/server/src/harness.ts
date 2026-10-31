@@ -13,10 +13,12 @@ import { parse } from 'yaml';
 import { type Answer, type adminWriters, badPath } from './admin.ts';
 import { callKey, type View } from './approval.ts';
 import { AutomationFile, nextRuns } from './automations.ts';
-import { chatRow, cutText, restorer, transcript } from './bridge.ts';
+import { chatRow } from './chats.ts';
 import { modesDir } from './modes.ts';
 import type { SessionRegistry } from './pi/registry.ts';
+import { restorer } from './restore.ts';
 import { untrusted } from './search-tool.ts';
+import { cutText, transcript } from './session-text.ts';
 
 /**
  * Phase 25 (docs/decisions/phase-25-harness-tools.md, decisions 1 to 18): `profile_edit`,

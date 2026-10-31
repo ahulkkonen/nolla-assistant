@@ -11,7 +11,7 @@ import { type ExportJob, ExportStart, type ServerMessage } from '@pa/protocol';
 import { asc, eq } from 'drizzle-orm';
 import type { FastifyInstance, preHandlerHookHandler } from 'fastify';
 import { isFresh } from './auth/routes.ts';
-import type { BridgeDeps } from './bridge.ts';
+import type { BridgeDeps } from './bridge/connection.ts';
 import { chatExport, dateOf, fileName, toMarkdown } from './export.ts';
 import type { MemoryStore } from './memory.ts';
 import { openFile, type WorkStore } from './tree.ts';

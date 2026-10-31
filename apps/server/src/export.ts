@@ -12,16 +12,12 @@ import {
 import { and, eq } from 'drizzle-orm';
 import type { FastifyInstance, preHandlerHookHandler } from 'fastify';
 import { extractArtifacts } from './artifacts.ts';
-import {
-  type BridgeDeps,
-  chatRow,
-  history,
-  ownUsage,
-  restorer,
-  threadFiles,
-  transcript,
-} from './bridge.ts';
+import type { BridgeDeps } from './bridge/connection.ts';
+import { chatRow, ownUsage, threadFiles } from './chats.ts';
+import { history } from './history.ts';
 import { ChatNotFound } from './pi/registry.ts';
+import { restorer } from './restore.ts';
+import { transcript } from './session-text.ts';
 import { chatUsage } from './usage.ts';
 
 /** One chat to a file (docs/decisions/phase-9-ui.md 7.11). */

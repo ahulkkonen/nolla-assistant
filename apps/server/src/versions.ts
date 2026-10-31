@@ -1,5 +1,5 @@
 import type { SessionEntry, SessionManager } from '@earendil-works/pi-coding-agent';
-import { textOf } from './bridge.ts';
+import { textOf } from './session-text.ts';
 
 /**
  * Phase 24 (docs/decisions/phase-24-edit-in-place.md, decisions 1 to 4): the versions of a user

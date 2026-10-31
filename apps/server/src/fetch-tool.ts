@@ -8,9 +8,9 @@ import { FETCH_URL_TOOL } from '@pa/protocol';
 import { isPrivate, publicLookup } from '@pa/sandbox-broker/net';
 import { Type } from 'typebox';
 import { type Ask, callKey, DENIED_REASON, UNATTENDED_REASON } from './approval.ts';
-import { cutText, textOf } from './bridge.ts';
 import { capped } from './fx.ts';
 import { guardConfirm, type maskedArgs, toolGuard, untrusted } from './search-tool.ts';
+import { cutText, textOf } from './session-text.ts';
 
 /**
  * `fetch_url` (docs/decisions/phase-25-harness-tools.md, decisions 20 to 23): one GET of a public
