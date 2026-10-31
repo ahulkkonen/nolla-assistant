@@ -20,7 +20,7 @@ mkdirSync(join(dataDir, 'automations'), { recursive: true });
 const DICT = {
   'Matti Virtanen': 'Pekka Laaksonen',
   'Liisa Korhonen': 'Anna Mäkinen',
-  '010190-123M': '010190-900B',
+  '010190-923E': '010190-900B',
 };
 const KEY = 'sk-demo';
 let n = 0;
@@ -45,7 +45,7 @@ const llm = await startFakeLlm([], (body) => {
     };
   }
   return {
-    text: `**Valemalli** sai viestin (maskattuna):\n\n> ${text}\n\nKirjoita *artefakti* niin saat HTML-artefaktin. Nimet Matti Virtanen ja Liisa Korhonen sekä hetu 010190-123M maskataan.`,
+    text: `**Valemalli** sai viestin (maskattuna):\n\n> ${text}\n\nKirjoita *artefakti* niin saat HTML-artefaktin. Nimet Matti Virtanen ja Liisa Korhonen sekä hetu 010190-923E maskataan.`,
   };
 });
 const sidecar = await startFakeSidecar(DICT, {

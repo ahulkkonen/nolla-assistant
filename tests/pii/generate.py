@@ -121,38 +121,38 @@ nickname,double-surname :: {{Riikka Virtanen-Koskinen|P}} lähettää kuvat illa
 nickname,adessive,place-vs-surname :: {{Antti Niemi|P}} lupasi auttaa muutossa. {{Antsalla|P|Antsa|Antti Niemi|lempinimi, adessiivi; viittaa edellisen lauseen Antti Niemeen}} on pakettiauto.
 nickname,allative,place-vs-surname :: {{Kari Ranta|P}} on vähän poissa tolaltaan. Soita {{Kakelle|P|Kake|Kari Ranta|lempinimi, allatiivi; viittaa edellisen lauseen Kari Rantaan}} illalla.
 # --- hetu
-genitive :: {{Mikko Virtasen|P|Mikko Virtanen||genetiivi}} henkilötunnus on {{210165-076K|H}}, tarvitsen sitä vakuutushakemukseen.
-:: Täytä lomakkeeseen hetu: {{190163-5214|H}} ja nimi {{Juhani Korhonen|P}}.
-:: Apteekki kysyi henkilötunnusta, annoin {{140745-073M|H}}, mutta reseptiä ei löytynyt.
-:: Kirjoitin vahingossa ryhmächattiin hetuni {{211154-598M|H}}. Voiko viestin vielä poistaa?
-:: Isän hetu on {{130177-228D|H}} ja äidin {{050594-431D|H}}, tarvitaan molemmat.
-:: {{Kela|O}} pyytää hakemukseen hakijan henkilötunnuksen ({{190547-575Y|H}}) ja tilinumeron.
-:: Pojan henkilötunnus on {{191103A1945|H}}, hän syntyi marraskuussa 2003.
-:: Lasten tiedot päiväkotia varten:\n{{Aino Virtanen|P}}, {{230203A579W|H}}\n{{Onni Virtanen|P}}, {{161119A546P|H}}
-:: Tyttären henkilötunnus on {{190810A3729|H}}, hän aloittaa lukion syksyllä.
-:: Pojan hetu {{061207A8005|H}}, tarkista että se on oikein ennen kuin lähetät hakemuksen.
-:: Rokotuskortissa lukee henkilötunnus {{100902A508L|H}}.
-hetu-2023-separator :: Uudessa muodossa hetu on {{200258Y122D|H}}, eli viivan tilalla on nyt Y-kirjain.
-hetu-2023-separator :: Henkilötunnus: {{250650X157X|H}} (uusi välimerkki X)
-hetu-2023-separator :: Lääkärin lähetteessä potilaan tunnus oli {{220242W784X|H}}.
-hetu-2023-separator :: Pankin lomake ei hyväksynyt hetua {{270690V350S|H}}, koska siinä on V-kirjain.
-hetu-2023-separator :: Kirjasto rekisteröi asiakkaan hetulla {{190871U072B|H}}.
-hetu-2023-separator :: Tyttären tunnus on {{231115B068S|H}}, siinä on uusi B-välimerkki.
-hetu-2023-separator :: Hetu {{211009C699F|H}} kuuluu nuorimmalle, muut ovat vanhassa muodossa.
-hetu-2023-separator :: Vauvan henkilötunnus on {{131122D357E|H}}, merkitse se neuvolakorttiin.
-hetu-2023-separator :: Pojan passihakemus: henkilötunnus {{061011E121N|H}}, pituus 152 cm.
-hetu-2023-separator :: Vaihto-oppilaan tunnus {{250506F1341|H}} tuli koulun kansliasta.
-:: Sukututkimusarkistossa isoisoisän henkilötunnukseksi on merkitty {{280887+084N|H}}.
+genitive :: {{Mikko Virtasen|P|Mikko Virtanen||genetiivi}} henkilötunnus on {{210165-976L|H}}, tarvitsen sitä vakuutushakemukseen.
+:: Täytä lomakkeeseen hetu: {{190163-9211|H}} ja nimi {{Juhani Korhonen|P}}.
+:: Apteekki kysyi henkilötunnusta, annoin {{140745-973N|H}}, mutta reseptiä ei löytynyt.
+:: Kirjoitin vahingossa ryhmächattiin hetuni {{211154-998J|H}}. Voiko viestin vielä poistaa?
+:: Isän hetu on {{130177-9280|H}} ja äidin {{050594-931J|H}}, tarvitaan molemmat.
+:: {{Kela|O}} pyytää hakemukseen hakijan henkilötunnuksen ({{190547-975V|H}}) ja tilinumeron.
+:: Pojan henkilötunnus on {{191103A994Y|H}}, hän syntyi marraskuussa 2003.
+:: Lasten tiedot päiväkotia varten:\n{{Aino Virtanen|P}}, {{230203A979T|H}}\n{{Onni Virtanen|P}}, {{161119A946L|H}}
+:: Tyttären henkilötunnus on {{190810A972M|H}}, hän aloittaa lukion syksyllä.
+:: Pojan hetu {{061207A900C|H}}, tarkista että se on oikein ennen kuin lähetät hakemuksen.
+:: Rokotuskortissa lukee henkilötunnus {{100902A908H|H}}.
+hetu-2023-separator :: Uudessa muodossa hetu on {{200258Y9227|H}}, eli viivan tilalla on nyt Y-kirjain.
+hetu-2023-separator :: Henkilötunnus: {{250650X957R|H}} (uusi välimerkki X)
+hetu-2023-separator :: Lääkärin lähetteessä potilaan tunnus oli {{220242W984C|H}}.
+hetu-2023-separator :: Pankin lomake ei hyväksynyt hetua {{270690V9504|H}}, koska siinä on V-kirjain.
+hetu-2023-separator :: Kirjasto rekisteröi asiakkaan hetulla {{190871U972C|H}}.
+hetu-2023-separator :: Tyttären tunnus on {{231115B968T|H}}, siinä on uusi B-välimerkki.
+hetu-2023-separator :: Hetu {{211009C9995|H}} kuuluu nuorimmalle, muut ovat vanhassa muodossa.
+hetu-2023-separator :: Vauvan henkilötunnus on {{131122D957T|H}}, merkitse se neuvolakorttiin.
+hetu-2023-separator :: Pojan passihakemus: henkilötunnus {{061011E921F|H}}, pituus 152 cm.
+hetu-2023-separator :: Vaihto-oppilaan tunnus {{250506F934U|H}} tuli koulun kansliasta.
+:: Sukututkimusarkistossa isoisoisän henkilötunnukseksi on merkitty {{280887+984P|H}}.
 hetu-temporary :: Sairaala antoi väliaikaisen henkilötunnuksen {{150760-9703|H}}, koska hänellä ei ollut papereita mukana.
 hetu-temporary :: Väliaikainen tunnus: {{050708A9707|H}}
 hetu-temporary :: Potilaalle luotiin tilapäinen hetu {{230767-9458|H}} päivystyksessä.
 hetu-temporary,hetu-2023-separator :: Tilapäinen henkilötunnus {{130493Y9198|H}} pitää vaihtaa pysyvään.
 hetu-temporary :: Väliaikainen tunnus {{060355-929E|H}} löytyy potilastiedoista.
-hetu-invalid :: Testissä käytin keksittyä tunnusta {{220450-498J|!H|väärä tarkistemerkki}}, eikä järjestelmä hyväksynyt sitä.
-hetu-invalid :: Lomakkeen esimerkkikentässä lukee {{271061-2714|!H|väärä tarkistemerkki}}.
-hetu-invalid :: Taulukossa on rivi {{100159-431J|!H|väärä tarkistemerkki}}, mutta tarkistemerkki ei täsmää.
-hetu-invalid :: Kirjoitusvirhe: {{180689-581A|!H|väärä tarkistemerkki}} ei ole kelvollinen henkilötunnus.
-hetu-invalid :: Asiakasnumero {{110394-881B|!H|väärä tarkistemerkki}} näyttää hetulta, mutta se on vain viitekoodi.
+hetu-invalid :: Testissä käytin keksittyä tunnusta {{220450-998J|!H|väärä tarkistemerkki}}, eikä järjestelmä hyväksynyt sitä.
+hetu-invalid :: Lomakkeen esimerkkikentässä lukee {{271061-9714|!H|väärä tarkistemerkki}}.
+hetu-invalid :: Taulukossa on rivi {{100159-931J|!H|väärä tarkistemerkki}}, mutta tarkistemerkki ei täsmää.
+hetu-invalid :: Kirjoitusvirhe: {{180689-981A|!H|väärä tarkistemerkki}} ei ole kelvollinen henkilötunnus.
+hetu-invalid :: Asiakasnumero {{110394-981B|!H|väärä tarkistemerkki}} näyttää hetulta, mutta se on vain viitekoodi.
 # --- IBAN
 iban-spaced :: Vuokran voi maksaa tilille {{FI19 1238 9078 6666 17|I}}, viestiksi asunnon numero.
 :: Tilinumeroni on {{FI0620960313721590|I}}, laita rahat sinne kun ehdit.
@@ -304,7 +304,7 @@ multi-entity,calendar :: Kalenterikutsu: Asuntonäyttö to 14.11. klo 17.00\nPai
 multi-entity,calendar :: Kutsu: Projektin aloituspalaveri\nAika: ti 18.11. klo 13–14\nOsallistujat: {{Ville Heikkinen|P}}, {{Kirsi Lahtinen|P}}, {{Sami Toivonen|P}}\nPaikka: {{Satamaväylä 22|A}}, 2. krs
 multi-entity,calendar,first-name-only :: Hammaslääkäri ma 3.11. klo 9.30, {{Kauppakatu 3 B 14|A}}. {{Päivi Järvinen|P}} vie lapset kouluun. Jos {{Päivi|P|Päivi|Päivi Järvinen|etunimi; viittaa edellisen lauseen Päivi Järviseen}} ei pääse, soita {{046 813 7720|T}}.
 multi-entity,email-body,iban-spaced :: Hei {{Outi Kallio|P}},\nkiitos eilisestä. Lasku maksetaan tilille {{FI94 7159 9752 8820 01|I}}, viitenumero 1234 5. Kysy tarvittaessa lisää.\nTerveisin\n{{Tuomas Lehtonen|P}}\n{{tuomas.lehtonen@rakennuslehtonen.fi|E}}
-multi-entity,email-body,swedish-finnish :: Moi,\nliitteenä {{Katja Lindqvistin|P|Katja Lindqvist||genetiivi}} hakemus. Hänen henkilötunnuksensa on {{140175-848J|H}} ja osoite {{Puistokatu 4 A 6|A}}, {{00100 Helsinki|Z}}.\nYst. terv. {{Heikki Nieminen|P}}
+multi-entity,email-body,swedish-finnish :: Moi,\nliitteenä {{Katja Lindqvistin|P|Katja Lindqvist||genetiivi}} hakemus. Hänen henkilötunnuksensa on {{140175-948S|H}} ja osoite {{Puistokatu 4 A 6|A}}, {{00100 Helsinki|Z}}.\nYst. terv. {{Heikki Nieminen|P}}
 multi-entity,email-body,swedish-finnish,iban-spaced :: Hei,\nvahvistan, että {{Leena Öhman|P}} aloittaa meillä 1.12. Palkka maksetaan tilille {{FI34 5508 7801 7598 98|I}}. Postiosoite on {{Vanha Porvoontie 41|A}}, {{01380 Vantaa|Z}}.
 multi-entity,email-body,allative :: Hei {{Juha Seppälä|P}},\nauto on yhä myynnissä. Rekisterinumero on {{ZYN-98|R}}, ja koeajosta voi sopia numerossa {{050 765 4321|T}}. Kirjoita mieluummin {{Juha Seppälälle|P|Juha Seppälä||allatiivi}} kuin minulle, hän hoitaa kaupat.
 multi-entity,shopping-list :: Ostoslista:\n- maitoa\n- ruisleipää\n- kahvia\n- banaaneja\nToimitus: {{Linnankatu 44 B 7|A}}, {{20100 Turku|Z}}, ovikoodi 2468. Kuljettaja soittaa numeroon {{050 118 4499|T}}.
@@ -314,7 +314,7 @@ multi-entity,dialogue,plate-with-context,compound-name :: {{Mikko Virtanen|P}}: 
 multi-entity,dialogue :: Asiakas: Hei, haluaisin päivittää tilinumeron.\nPalvelu: Mikä on uusi tilinumero?\nAsiakas: {{FI2881034788783848|I}}. Ja osoite on nyt {{Puistokatu 4 A 6|A}}, {{00100 Helsinki|Z}}.\nPalvelu: Kiitos, {{Olli Mattila|P}}. Tiedot on päivitetty.
 multi-entity,calendar :: Ilmoittautuneet:\nNimi | Puhelin | Sähköposti\n{{Sari Laaksonen|P}} | {{046 813 7721|T}} | {{sari.laaksonen@gmail.com|E}}\n{{Ilkka Ahonen|P}} | {{040 552 0193|T}} | {{ilkka.ahonen@kolumbus.fi|E}}
 multi-entity,email-body :: Muistilista:\n1) Maksa vuokra tilille {{FI3455087801759898|I}}? Ei, se on vanha tili, käytä {{FI0980095486205798|I}}.\n2) Soita {{Aino Ylöselle|P|Aino Ylönen||allatiivi}} numeroon {{041 702 3381|T}}.\n3) Vie avaimet {{Pellavapolku 3|A}}.
-multi-entity,email-body,swedish-finnish :: Hei {{Tapio Söderström|P}},\ntässä pyytämäsi tiedot: henkilötunnus {{190547-575Y|H}}, tili {{FI1912389078666617|I}}, puhelin {{+358 40 718 2233|T}}.\nTerveisin {{Emma Grönroos|P}}
+multi-entity,email-body,swedish-finnish :: Hei {{Tapio Söderström|P}},\ntässä pyytämäsi tiedot: henkilötunnus {{190547-975V|H}}, tili {{FI1912389078666617|I}}, puhelin {{+358 40 718 2233|T}}.\nTerveisin {{Emma Grönroos|P}}
 # --- English mixed in
 english-mixed,allative :: Can you send the invoice to {{Mikko Virtaselle|P|Mikko Virtanen||allatiivi}}? Hänen sähköposti on {{mikko.virtanen@gmail.com|E}}.
 english-mixed,swedish-finnish :: Meeting notes: {{Katja Lindqvist|P}} will handle the budget, ja {{Erik Åkerlundin|P|Erik Åkerlund||genetiivi}} kanssa sovitaan aikataulu next week.
@@ -537,7 +537,7 @@ multi-entity,email-body,first-name-only :: Hei {{Pirjo|P|Pirjo|Pirjo Ahonen|etun
 multi-entity,dialogue,swedish-finnish,adessive,inflected :: {{Sofia Ekström|P}}: Onko {{Johan Nyströmillä|P|Johan Nyström||adessiivi}} vielä se pakettiauto?\nMinä: On, soita hänelle {{040 663 1209|T}}.
 multi-entity,shopping-list,swedish-finnish :: Kauppalista:\n- leipää\n- juustoa\n- kahvia\nToimitus {{Tervakuja 2 D 40|A}}, vastaanottaja {{Linnea Holmström|P}}, {{050 227 4416|T}}
 multi-entity,email-body,iban-spaced :: Hei {{Antti Lehtonen|P}},\nvuokra maksetaan tilille {{FI35 1590 3000 0097 36|I}}. Kuitti osoitteeseen {{antti.lehtonen@gmail.com|E}}.
-multi-entity :: Hakija: {{Kimmo Lahtinen|P}}, henkilötunnus {{120584-347M|H}}, osoite {{Pihlajatie 18 as. 4|A}}.
+multi-entity :: Hakija: {{Kimmo Lahtinen|P}}, henkilötunnus {{120584-9470|H}}, osoite {{Pihlajatie 18 as. 4|A}}.
 multi-entity,lowercase,phone-typed :: {{sari virtanen|P|Sari Virtanen||nominatiivi, pienet kirjaimet}} {{sari.virtanen@outlook.com|E}} {{rantatie 22 a 3|A|Rantatie 22 a 3}} {{0442710938|T}}
 multi-entity,swedish-finnish,email :: Yhteyshenkilöt: {{Fredrik Wikström|P}} ({{fredrik.wikstrom@varvet.fi|E}}) ja {{Annika Blomqvist|P}} ({{040 815 2299|T}}).
 multi-entity,calendar,nickname :: Saunailta pe klo 18\nPaikka: {{Sepänpiha 3 A 5|A}}\nTulossa: {{Markku Rantanen|P}} ja {{Pentti Hirvonen|P}} vaimoineen. {{Make|P|Make|Markku Rantanen|lempinimi; viittaa samassa viestissä Markku Rantaseen}} tuo makkarat.
@@ -547,7 +547,7 @@ multi-entity,code-snippet,swedish-finnish :: users = [{"name": "{{Elin Strandber
 multi-entity,first-name-only,ablative :: {{Kaisa Partanen|P}} ja {{Mervi Koskinen|P}} järjestävät myyjäiset. {{Kaisalta|P|Kaisa|Kaisa Partanen|ablatiivi; viittaa edellisen lauseen Kaisa Partaseen}} saa arvat ja {{Merviltä|P|Mervi|Mervi Koskinen|ablatiivi; viittaa edellisen lauseen Mervi Koskiseen}} pullat.
 multi-entity,address-inflected,street-suffix-kuja,street-suffix-katu :: Muutin {{Koivukujalta 7|A|Koivukuja 7||ablatiivi}} {{Kalevankadulle 31|A|Kalevankatu 31||allatiivi}}, uusi numeroni on {{045 990 2283|T}}.
 multi-entity,dialogue,lowercase,phone-typed :: minä: missä {{janne|P|Janne||etunimi, pienet kirjaimet}} on\n{{riitta|P|Riitta||etunimi, pienet kirjaimet}}: se meni {{laaksosille|P|Laaksonen||monikon allatiivi, pienet kirjaimet}} saunaan
-multi-entity,swedish-finnish :: Potilas: {{Benita Sjöholm|P}}, {{030791-6180|H}}, puh. {{+358 50 337 2915|T}}.
+multi-entity,swedish-finnish :: Potilas: {{Benita Sjöholm|P}}, {{030791-918N|H}}, puh. {{+358 50 337 2915|T}}.
 multi-entity,email,nickname,ablative :: {{Jaakko Mustonen|P}} ({{jaska.mustonen@gmail.com|E}}) hoitaa ilmoittautumiset. {{Jaskalta|P|Jaska|Jaakko Mustonen|lempinimi, ablatiivi; viittaa edellisen lauseen Jaakko Mustoseen}} saa lisätietoja.
 multi-entity,iban,allative,inflected :: Maksu {{Veera Kettuselle|P|Veera Kettunen||allatiivi}} tilille {{FI0857293847561027|I}}, viestiksi "{{Väinö Pesonen|P}} jäsenmaksu".
 multi-entity :: Varahenkilöt: {{Ari Savolainen|P}} {{040 118 7720|T}}, {{Liisa Turunen|P}} {{050 448 1932|T}}.

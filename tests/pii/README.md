@@ -32,7 +32,7 @@ PSEUDO_URL=http://pseudo-svc:8000 python3 -I tests/pii/harness.py
 ```
 
 - `start` and `end` are UTF-16 code unit offsets into `text`. In JavaScript, `text.slice(start, end)` gives the surface form.
-- `canonical` is the base form: nominative singular for names (`Virtaselle` gives `Virtanen`), the compact code for codes (`FI1912389078666617`, `+358405562190`, `210165-076K`), and the nominative street form for addresses (`Mannerheimintie 12`).
+- `canonical` is the base form: nominative singular for names (`Virtaselle` gives `Virtanen`), the compact code for codes (`FI1912389078666617`, `+358405562190`, `210165-976L`), and the nominative street form for addresses (`Mannerheimintie 12`).
 - `ref` (PERSON only) is the full name of the person that the mention refers to. The harness uses `ref` to put a mention in the vault-known group or in the unseen group.
 - `note` tells the case, the consonant gradation, or the referent of a first name or a nickname.
 - `decoys` (optional) are strings that look like PII but are not PII: invalid hetu codes, order numbers, product codes, and place names that are also surnames. Decoys are not gold spans. The harness reports each decoy that a prediction overlaps.

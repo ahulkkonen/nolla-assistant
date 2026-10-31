@@ -146,9 +146,9 @@ UNVERIFIED: whether `reasoning: {effort: none}` really turns off thinking for Ha
 The fix needs no Finnish spaCy model. Mount a recognizer registry that registers `FiPersonalIdentityCodeRecognizer` for `en`, and keep `presidio_language: en`. The stock image reads `RECOGNIZER_REGISTRY_CONF_FILE` at runtime (`app.py`, lines 46–54: `os.environ.get("RECOGNIZER_REGISTRY_CONF_FILE")` passed to `AnalyzerEngineProvider`). Local result with that registry (presidio-analyzer 2.2.362, entities limited to the three):
 
 ```
-hetu 131052-308T ok              -> [('FI_PERSONAL_IDENTITY_CODE', 1.0)]
+hetu 131052-913A ok              -> [('FI_PERSONAL_IDENTITY_CODE', 1.0)]
 uusi erotin 010594Y9032 tässä    -> [('FI_PERSONAL_IDENTITY_CODE', 1.0)]
-virheellinen 131052-308X         -> []
+virheellinen 131052-913X         -> []
 IBAN FI21 1234 5600 0007 85      -> [('IBAN_CODE', 1.0)]
 kortti 4111 1111 1111 1111       -> [('CREDIT_CARD', 1.0)]
 Matti Meikäläinen asuu Helsingissä -> []
@@ -158,7 +158,7 @@ The plan's `fi` + `en` NLP models are therefore not needed for the backstop. A `
 
 **End to end through the proxy** (LiteLLM 1.105.1, guardrail `pii-block`, local analyzer):
 
-- `"hetuni on 131052-308T"` gave `400 "Blocked entity detected: FI_PERSONAL_IDENTITY_CODE by Guardrail: pii-block."`. The same happened with `stream: true`.
+- `"hetuni on 131052-913A"` gave `400 "Blocked entity detected: FI_PERSONAL_IDENTITY_CODE by Guardrail: pii-block."`. The same happened with `stream: true`.
 - IBAN inside a `role: tool` message gave `400 ... IBAN_CODE`.
 - **Gap:** a hetu inside an assistant `tool_calls[].function.arguments` string was **not** scanned and got `200`. Pi's `context_with_system` leak scan (section 6) must cover tool-call arguments.
 - A clean Finnish sentence with a name got `200`. PERSON is not active.

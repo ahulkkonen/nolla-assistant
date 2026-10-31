@@ -10,7 +10,7 @@ import { type Collision, PseudoClient, pseudoExtension } from './index.ts';
 const DICT = {
   'Matti Virtanen': 'Pekka Laaksonen',
   Virtaselle: 'Laaksoselle',
-  '010190-123A': '010190-900B',
+  '010190-923A': '010190-900B',
 };
 const REAL = Object.keys(DICT);
 const noReal = (s: string) => {
@@ -50,7 +50,7 @@ async function boot(
 
 test('input is masked before the model and the session file', async () => {
   const { llm, sc, session, sessionFile } = await boot([{ text: 'ok' }]);
-  await session.prompt('Lähetä viesti Matti Virtanen, hetu 010190-123A');
+  await session.prompt('Lähetä viesti Matti Virtanen, hetu 010190-923A');
   const body = JSON.stringify(llm.requests[0]?.body);
   expect(body).toContain('Pekka Laaksonen');
   expect(body).toContain('010190-900B');

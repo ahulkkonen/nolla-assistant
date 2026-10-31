@@ -312,7 +312,7 @@ test('pseudo: model sees surrogates, client sees restored text with annotations'
 }, async () => {
   const sc = await startFakeSidecar({
     'Matti Virtanen': 'Pekka Laaksonen',
-    '010190-123A': '010190-900B',
+    '010190-923A': '010190-900B',
   });
   cleanups.push(sc.close);
   const { llm, config, run } = await boot([{ text: 'Hei Pekka Laaksonen, hetu 010190-900B.' }], {
@@ -329,18 +329,18 @@ test('pseudo: model sees surrogates, client sees restored text with annotations'
   expect(body).toContain('Pekka Laaksonen');
   expect(body).not.toContain('Matti Virtanen');
 
-  const real = 'Hei Matti Virtanen, hetu 010190-123A.';
+  const real = 'Hei Matti Virtanen, hetu 010190-923A.';
   const deltas = deltasOf(c.inbox);
   expect(deltas.length).toBeGreaterThan(1);
   expect(deltas.map((d) => d.text).join('')).toBe(real);
   expect(deltaSpans(deltas, real)).toEqual([
     ['Matti Virtanen', 'Pekka Laaksonen'],
-    ['010190-123A', '010190-900B'],
+    ['010190-923A', '010190-900B'],
   ]);
   expect(final.message.text).toBe(real);
   const covered = (m: { text: string; annotations: { start: number; end: number }[] }) =>
     m.annotations.map((a) => m.text.slice(a.start, a.end));
-  expect(covered(final.message)).toEqual(['Matti Virtanen', '010190-123A']);
+  expect(covered(final.message)).toEqual(['Matti Virtanen', '010190-923A']);
   c.ws.close();
   await srv.close();
 
@@ -351,7 +351,7 @@ test('pseudo: model sees surrogates, client sees restored text with annotations'
   expect(state.messages.map((m) => m.text)).toEqual(['Moi Matti Virtanen', real]);
   expect(state.messages.map(covered)).toEqual([
     ['Matti Virtanen'],
-    ['Matti Virtanen', '010190-123A'],
+    ['Matti Virtanen', '010190-923A'],
   ]);
 });
 
