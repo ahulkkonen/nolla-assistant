@@ -122,9 +122,11 @@ export function authRoutes(
   const passwordLimit = limiter(app);
   // All clients together: an IP key alone fails behind a CDN or with a rotating IPv6 /64.
   const passwordGlobal = limiter(app, 10);
-  // Shared by passkey login options and verify: every options request and every failed verify
-  // count, so one client cannot fill the challenge map (MAX_CHALLENGES) for everyone.
+  // Failed passkey verifies, strict.
   const passkeyLimit = limiter(app);
+  // Every passkey options request, looser (conditional UI, several tabs, a shared IP): one client
+  // still cannot fill the challenge map (MAX_CHALLENGES) for everyone.
+  const optionsLimit = limiter(app, 30);
   const challenges = new Map<string, { challenge: string; purpose: Purpose; expiresAt: number }>();
   app.decorateRequest('userId', '');
   app.decorateRequest('sessionId', '');
@@ -296,8 +298,8 @@ export function authRoutes(
   );
 
   app.post('/api/auth/passkey/login/options', async (req, reply) => {
-    if (passkeyLimit.blocked(req.ip)) return reply.code(429).send({ error: 'rate_limited' });
-    passkeyLimit.fail(req.ip);
+    if (optionsLimit.blocked(req.ip)) return reply.code(429).send({ error: 'rate_limited' });
+    optionsLimit.fail(req.ip);
     if (full(reply)) return reply;
     const options = await generateAuthenticationOptions({
       rpID: config.passkeyRpId,

@@ -75,6 +75,10 @@ Phase 2 ships only `pa-server`. Later phases add services to `infra/compose.yaml
 3. Open **Asetukset** (the gear) and select **Lisää avain** within 10 minutes of the login. Registration requires a fresh session.
 4. On iPhone: Share → **Add to Home Screen**. Open the app from the Home Screen once; the service worker installs.
 5. On desktop Chrome: use the install icon in the address bar.
+6. Remove `AUTH_PASSWORD_HASH` in Coolify after the passkey works, and deploy again. Password
+   login has a strict rate limit: 5 attempts per minute per IP and 10 per minute for all clients
+   together. A flood of wrong passwords therefore locks you out of password login too, and behind
+   a CDN all clients share the same IP. A registered passkey is the recovery path.
 
 ## 4. Verify
 

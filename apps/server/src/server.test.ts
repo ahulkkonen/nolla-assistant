@@ -197,6 +197,24 @@ test('auth: parallel wrong passwords count before the verify', { timeout: 30_000
   expect(new Set(res)).toEqual(new Set([401, 429]));
 });
 
+test('auth: passkey options have their own looser limit', async () => {
+  const { config, run } = await boot([]);
+  await run();
+  const post = (path: string, body?: object) =>
+    api(config.port, `/api/auth/passkey/login/${path}`, {
+      method: 'POST',
+      ...(body
+        ? { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }
+        : {}),
+    }).then((r) => r.status);
+  const statuses = [];
+  for (let i = 0; i < 31; i++) statuses.push(await post('options'));
+  expect(statuses.slice(0, 30).every((s) => s === 200)).toBe(true);
+  expect(statuses[30]).toBe(429);
+  // Options never count against the strict limit of failed verifies.
+  expect(await post('verify', { response: {} })).not.toBe(429);
+});
+
 test('auth: on https the session cookie is __Host- and Secure', async () => {
   const { config, run } = await boot([], { AUTH_ORIGIN: 'https://assistant.example.invalid' });
   await run();
