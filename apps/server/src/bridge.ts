@@ -7,7 +7,7 @@ import {
   type PromptOptions,
   SessionManager,
 } from '@earendil-works/pi-coding-agent';
-import { chats, files, modelFavorites, topicProposals, topics } from '@pa/db';
+import { chats, files, modelFavorites } from '@pa/db';
 import { FULL } from '@pa/pi-ext-memory';
 import { PseudoDownError } from '@pa/pi-ext-pseudo';
 import { ClientMessage, type ModelChoice, type ServerMessage } from '@pa/protocol';
@@ -23,6 +23,7 @@ import {
   update,
 } from './bridge/connection.ts';
 import { join, reindex } from './bridge/stream.ts';
+import { acceptTopic, ownTopic, rejectTopic } from './bridge/topics.ts';
 import { vault } from './bridge/vault.ts';
 import { type ChatRow, forkLink, ownUsage, summary, threadFiles } from './chats.ts';
 import { AttachmentNotFound, ingestAttachments, splitBlocks } from './files.ts';
@@ -231,33 +232,6 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
   const assertIdle = (chatId: string) => {
     if (registry.running(chatId)) throw new RunActive();
   };
-  const ownTopic = (topicId: string) => {
-    const t = db
-      .select({ id: topics.id })
-      .from(topics)
-      .where(and(eq(topics.id, topicId), eq(topics.userId, userId)))
-      .get();
-    if (!t) throw new NotFound();
-  };
-
-  /** Moves a pending proposal of this user to `status`. */
-  const resolveProposal = (id: number, status: 'accepted' | 'rejected') => {
-    const p = db
-      .update(topicProposals)
-      .set({ status })
-      .where(
-        and(
-          eq(topicProposals.id, id),
-          eq(topicProposals.userId, userId),
-          eq(topicProposals.status, 'pending'),
-        ),
-      )
-      .returning()
-      .get();
-    if (!p) throw new NotFound();
-    return p;
-  };
-
   /** Runs `fn` with the chat held: `running` is true, so no policy change starts meanwhile. */
   const holding = async <T>(chatId: string, fn: () => Promise<T>): Promise<T> => {
     let release = () => {};
@@ -618,7 +592,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
         return send(socket, { type: 'pong' });
       case 'chat.create': {
         if (!agents().has(msg.agentId)) throw new NotFound();
-        if (msg.topicId) ownTopic(msg.topicId);
+        if (msg.topicId) ownTopic(conn, msg.topicId);
         const choice = msg.model ?? { modelId: 'auto', reasoning: 'auto' };
         if (!validChoice(choice) || !knownModes(msg.modes ?? []))
           return send(socket, errorMsg('bad_message'));
@@ -934,28 +908,10 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
         return send(socket, deps.automations()?.state() ?? errorMsg('failed'));
       case 'topic.list':
         return send(socket, topicState(db, userId));
-      case 'topic.accept': {
-        let topicId = msg.mergeIntoTopicId;
-        if (topicId) ownTopic(topicId);
-        const p = resolveProposal(msg.proposalId, 'accepted');
-        if (!topicId) {
-          topicId = randomUUID();
-          db.insert(topics)
-            .values({
-              id: topicId,
-              userId,
-              name: msg.name?.trim() || p.name,
-              description: p.why,
-              createdAt: new Date().toISOString(),
-            })
-            .run();
-        }
-        update(conn, p.chatId, { topicId });
-        return notify(conn, p.chatId, topicState(db, userId));
-      }
+      case 'topic.accept':
+        return acceptTopic(conn, msg);
       case 'topic.reject':
-        resolveProposal(msg.proposalId, 'rejected');
-        return send(socket, topicState(db, userId));
+        return rejectTopic(conn, msg);
       case 'memory.list':
         return send(socket, memory.state());
       case 'claims.list':
