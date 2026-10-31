@@ -4,7 +4,8 @@ import { join } from 'node:path';
 import { startFakeSidecar } from '@pa/pi-ext-pseudo/fake-sidecar';
 import type { AttachmentRef, ServerMessage } from '@pa/protocol';
 import sharp from 'sharp';
-import { afterEach, expect, test } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
+import { verifyPassword } from './auth/password.ts';
 import {
   api,
   boot,
@@ -17,6 +18,11 @@ import {
   runCleanups,
   tempDir,
 } from './test-utils.ts';
+
+vi.mock('./auth/password.ts', async (actual) => {
+  const m = await actual<typeof import('./auth/password.ts')>();
+  return { ...m, verifyPassword: vi.fn(m.verifyPassword) };
+});
 
 const SCRIPTED = 'Hei! Miten voin auttaa?';
 afterEach(runCleanups);
@@ -167,14 +173,28 @@ test('auth: cookie required, password login, rate limit, logout', { timeout: 30_
     userId: 'aleksi',
   });
 
-  // Only failures count: five 401s, then 429 even for the right password.
-  for (let i = 0; i < 5; i++) expect((await login(port, 'wrong')).res.status).toBe(401);
+  // Every attempt counts: the login above plus four 401s, then 429 even for the right password.
+  for (let i = 0; i < 4; i++) expect((await login(port, 'wrong')).res.status).toBe(401);
   expect((await login(port, 'wrong')).res.status).toBe(429);
   expect((await login(port)).res.status).toBe(429);
 
   const out = await api(port, '/api/auth/logout', { method: 'POST', headers: { cookie } });
   expect(out.status).toBe(204);
   expect((await api(port, '/api/auth/me', { headers: { cookie } })).status).toBe(401);
+});
+
+test('auth: parallel wrong passwords count before the verify', { timeout: 30_000 }, async () => {
+  const { config, run } = await boot([]);
+  await run();
+  vi.mocked(verifyPassword).mockClear();
+  const res = await Promise.all(
+    Array.from({ length: 30 }, () => login(config.port, 'wrong').then((r) => r.res.status)),
+  );
+  expect(vi.mocked(verifyPassword).mock.calls.length).toBeLessThanOrEqual(5);
+  expect(res.filter((s) => s === 429).length).toBe(
+    30 - vi.mocked(verifyPassword).mock.calls.length,
+  );
+  expect(new Set(res)).toEqual(new Set([401, 429]));
 });
 
 test('attachments: image and txt reach the model; owner-only download', {

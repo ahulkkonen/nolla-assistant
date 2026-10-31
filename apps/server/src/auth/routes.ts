@@ -52,7 +52,15 @@ const RP_NAME = 'Personal Assistant';
 
 type Purpose = 'reg' | 'auth';
 
-/** Counts failed attempts per key; blocked after `max` failures in `windowMs`. */
+// One scrypt verify at a time: each allocates about 128 MiB and holds a threadpool slot.
+let verifying: Promise<unknown> = Promise.resolve();
+const verifyOne = (stored: string, password: string) => {
+  const run = verifying.then(() => verifyPassword(stored, password));
+  verifying = run.catch(() => {});
+  return run;
+};
+
+/** Counts attempts per key (`fail`); blocked after `max` of them in `windowMs`. */
 export function limiter(app: FastifyInstance, max = 5, windowMs = 60_000) {
   const fails = new Map<string, number[]>();
   const recent = (key: string, now = Date.now()) =>
@@ -108,6 +116,8 @@ export function authRoutes(
 ) {
   const auth = requireUser(db, config.cookieSecure);
   const passwordLimit = limiter(app);
+  // All clients together: an IP key alone fails behind a CDN or with a rotating IPv6 /64.
+  const passwordGlobal = limiter(app, 10);
   // Shared by passkey login options and verify; only failed verifications count.
   const passkeyLimit = limiter(app);
   const challenges = new Map<string, { challenge: string; purpose: Purpose; expiresAt: number }>();
@@ -164,11 +174,13 @@ export function authRoutes(
       },
     },
     async (req, reply) => {
-      if (passwordLimit.blocked(req.ip)) return reply.code(429).send({ error: 'rate_limited' });
-      if (!config.passwordHash || !(await verifyPassword(config.passwordHash, req.body.password))) {
-        passwordLimit.fail(req.ip);
+      if (passwordLimit.blocked(req.ip) || passwordGlobal.blocked('global'))
+        return reply.code(429).send({ error: 'rate_limited' });
+      // Count the attempt before the verify, so requests in flight count too.
+      passwordLimit.fail(req.ip);
+      passwordGlobal.fail('global');
+      if (!config.passwordHash || !(await verifyOne(config.passwordHash, req.body.password)))
         return reply.code(401).send({ error: 'invalid' });
-      }
       return login(req, reply, config.userId);
     },
   );
