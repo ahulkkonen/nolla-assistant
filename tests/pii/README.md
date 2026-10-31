@@ -12,6 +12,7 @@ All names are synthetic combinations of common Finnish first names and surnames.
 | `validate.py` | Checks the corpus and prints the counts per kind and per tag. |
 | `vault-seed.json` | The 15 people that the harness registers in the vault before a run. |
 | `harness.py` | Sends each text to `POST /mask` and computes recall and precision. Writes `last-run.json`. |
+| `last-run.json` | The result of the last full run (2026-10-27, all 554 lines). The root `README.md` links to it. |
 
 Commands:
 
