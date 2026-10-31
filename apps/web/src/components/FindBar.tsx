@@ -75,6 +75,7 @@ export function FindBar({ scroller }: { scroller: RefObject<HTMLElement | null> 
     back.current = null;
   };
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: one listener; `show` uses refs and setters
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey || e.key.toLowerCase() !== 'f')
@@ -92,6 +93,7 @@ export function FindBar({ scroller }: { scroller: RefObject<HTMLElement | null> 
 
   // Another chat: the bar closes and forgets its query.
   const shownChat = useRef(chatId);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: closes on another chat only
   useEffect(() => {
     if (shownChat.current === chatId) return;
     shownChat.current = chatId;
@@ -99,6 +101,7 @@ export function FindBar({ scroller }: { scroller: RefObject<HTMLElement | null> 
   }, [chatId]);
 
   // A global search hit opens its chat with the query here.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: when a search hit sends a query
   useEffect(() => {
     if (findQuery === null) return;
     useStore.setState({ findQuery: null });
@@ -135,6 +138,7 @@ export function FindBar({ scroller }: { scroller: RefObject<HTMLElement | null> 
 
   // A new query starts at its first hit; a changed thread keeps the place.
   const searched = useRef('');
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `tick` asks for a new search
   useEffect(() => {
     const root = scroller.current;
     const found = open && root ? findRanges(root, query) : [];

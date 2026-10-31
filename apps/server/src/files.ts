@@ -360,16 +360,11 @@ export async function ingestAttachments(
     else {
       const { text: extracted, pages } = await safeText(buf, r.mime);
       // A scanned PDF has (almost) no text layer: local OCR (phase-16 decisions 14 to 18).
-      const ocr =
-        pages && needsOcr(extracted, pages)
-          ? await ocrPdf(
-              path,
-              pages,
-              join(config.dataDir, 'files'),
-              (ocrDeadline ??= Date.now() + OCR_BUDGET_MS),
-              config.warn,
-            )
-          : undefined;
+      let ocr: string | undefined;
+      if (pages && needsOcr(extracted, pages)) {
+        ocrDeadline ??= Date.now() + OCR_BUDGET_MS;
+        ocr = await ocrPdf(path, pages, join(config.dataDir, 'files'), ocrDeadline, config.warn);
+      }
       const label = ocr ? `${r.name} ${OCR_MARK}` : r.name;
       text += `\n\n[Liite: ${label}]\n${(ocr ?? extracted).slice(0, MAX_TEXT)}`;
     }

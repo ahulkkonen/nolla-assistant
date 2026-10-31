@@ -53,7 +53,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import { touch } from '../media.ts';
-import { type SubagentChild, type ToolView, useStore } from '../store.ts';
+import { blockMasked, type SubagentChild, type ToolView, useStore } from '../store.ts';
 import {
   endsInFence,
   mdBlocks,
@@ -62,6 +62,7 @@ import {
   type TextNode,
   withDefinitions,
 } from '../thread.ts';
+import { MaskedLine } from './ApprovalCard.tsx';
 import { InlineFigure } from './Figure.tsx';
 import { IconButton, Tip } from './IconButton.tsx';
 import { MessageMeta, MetaLine } from './MessageMeta.tsx';
@@ -169,6 +170,8 @@ function Pre({ node, ...props }: ComponentProps<'pre'> & ExtraProps) {
     const a = o && s.artifacts[o.chatId]?.find((x) => x.id === o.id);
     return !!art && !!a && a.content.trimEnd() === source.trimEnd();
   });
+  // Phase-30 decision 14: the server's twin of this page runs its masked source.
+  const masked = useStore((s) => (art === 'html' || art === 'react') && blockMasked(s, source));
   if (!art) return <CodeBlock lang={lang}>{props.children}</CodeBlock>;
   if ((props as Record<string, unknown>)['data-streaming'])
     return <WritingCard kind={art} source={source} />;
@@ -187,7 +190,7 @@ function Pre({ node, ...props }: ComponentProps<'pre'> & ExtraProps) {
   if (art === 'vega-lite' || art === 'mermaid') return <InlineFigure a={a} onOpen={open} />;
   // A page or a component is a compact card in the thread; its code is in the panel's Koodi tab.
   return (
-    <div className={cn(CARD, shown ? 'bg-accent' : 'bg-muted')}>
+    <div className={cn(CARD, shown ? 'bg-accent' : 'bg-muted', masked && 'flex-wrap gap-y-1 pb-3')}>
       <AppWindow size={16} className="shrink-0 text-muted-foreground" />
       <span className="min-w-0 flex-1 truncate font-sans text-ui">{a.title}</span>
       {shown ? (
@@ -200,6 +203,8 @@ function Pre({ node, ...props }: ComponentProps<'pre'> & ExtraProps) {
           Avaa paneelissa
         </Button>
       )}
+      {/* The shield in the icon column, its text on the title's edge (12 px gap). */}
+      {masked && <MaskedLine className="basis-full gap-3" />}
     </div>
   );
 }
@@ -411,7 +416,8 @@ export const rehypeCaret = () => (tree: HNode) => {
     properties: { className: ['caret'], ariaHidden: 'true' },
     children: [],
   };
-  const kids = (at.parent.children ??= []);
+  at.parent.children ??= [];
+  const kids = at.parent.children;
   if (at.i === undefined) return void kids.push(caret);
   const value = kids[at.i]?.value ?? '';
   const end = value.trimEnd().length;
@@ -549,6 +555,7 @@ export const MarkdownText = memo(function MarkdownText({
     >
       {blocks.map((b, i) => (
         <Block
+          // biome-ignore lint/suspicious/noArrayIndexKey: no ids; position is the identity
           key={i}
           text={withDefinitions(b, definitions)}
           rehype={i === blocks.length - 1 ? rehypeLast : rehype}
@@ -698,6 +705,7 @@ function EditBox({
   const area = useRef<HTMLTextAreaElement>(null);
   // Grows with its text (wrapped lines too) up to 320 px, then scrolls; the border is outside
   // `scrollHeight`.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: grows again when the value changes
   useLayoutEffect(() => {
     const el = area.current;
     if (!el) return;
@@ -791,6 +799,7 @@ export function MessageView({
   }, [editRequested]);
 
   // An edit of a message without its entry id: the chat's ids come first (`chat.open`).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: asks for the ids once, when editing starts
   useEffect(() => {
     if (editing && !canSend) onNeedIds?.();
   }, [editing]);

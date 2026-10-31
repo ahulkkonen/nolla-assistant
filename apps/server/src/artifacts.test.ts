@@ -46,6 +46,29 @@ describe('extractArtifacts', () => {
     expect(real[0]?.content).toBe('<p>Matti Virtanen</p>');
   });
 
+  it('phase-30 decision 14: with the masked text, a page or a component carries its masked source', () => {
+    const text = (name: string) =>
+      [
+        `\`\`\`python\nprint("${name}")\n\`\`\``,
+        `\`\`\`html\n<p>${name}</p>\n\`\`\``,
+        `\`\`\`jsx\nexport default () => <b>${name}</b>;\n\`\`\``,
+        `\`\`\`mermaid\ngraph TD; A[${name}]-->B\n\`\`\``,
+        '```vega-lite\n{"mark": "bar"}\n```',
+      ].join('\n\n');
+    const real = text('Matti Virtanen');
+    const a = extractArtifacts('m1', real, text('Pekka Laaksonen'));
+    expect(a.map((x) => [x.kind, x.content.includes('Matti Virtanen'), x.masked])).toEqual([
+      ['html', true, '<p>Pekka Laaksonen</p>'],
+      ['react', true, 'export default () => <b>Pekka Laaksonen</b>;'],
+      ['mermaid', true, undefined],
+      ['vega-lite', false, undefined],
+    ]);
+    // An untainted chat: no masked source.
+    expect(extractArtifacts('m1', real).some((x) => 'masked' in x)).toBe(false);
+    // A masked text with other blocks: an empty page, never the restored source.
+    expect(extractArtifacts('m1', real, '')[0]?.masked).toBe('');
+  });
+
   it('ignores unclosed fences and plain text; the closer must match the opener', () => {
     expect(extractArtifacts('m', 'no code')).toEqual([]);
     expect(extractArtifacts('m', '```html\n<p>open')).toEqual([]);

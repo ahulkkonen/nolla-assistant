@@ -41,11 +41,22 @@ what stays as it is.
 13. The committed model under `tests/masked-only/models/` leaves the tree and the history
     (phase 31 rewrites the history anyway).
 
+## Decision 14: artifacts of a tainted chat (decided by the user)
+
+14. **A page or a component of a tainted chat runs masked.** An HTML, JSX or TSX artifact can run
+    code, and a prompt-injected artifact can send real values out in a navigation (security
+    report, artifact exfiltration). `chats.tainted` is set when external content entered the
+    chat: `fetch_url`, MCP, search or an attachment (`turnTaint`). In an untainted chat the
+    artifact is built from the restored text, as before. In a tainted chat the frame runs the
+    masked text, so the page shows surrogates. The artifact card in the thread and the panel show
+    the line "Ulkoista sisältöä: oikeat arvot piilotettu". The panel also has the button "Näytä
+    oikeat arvot". The button opens a confirmation (`ConfirmDialog`) that says that the code of
+    the artifact can send the values out. After the confirmation the frame runs the restored text
+    of that artifact until the page reloads. Charts (`vega-lite`) and diagrams (`mermaid`) are
+    data, not code that runs, so they keep the restored text in both cases.
+
 ## Left as they are, with the reason
 
-- **Artifacts show real values.** An HTML or React artifact is built from the restored text, so a
-  prompt-injected artifact can carry real values in a navigation. Decision pending with the user:
-  masked artifacts, or restored with a warning on a tainted chat.
 - **`pnpm audit`:** 19 transitive advisories; the two highs sit inside the pinned Pi and the MCP
   SDK. Overrides when the patched versions are 7 days old.
 
@@ -53,7 +64,7 @@ what stays as it is.
 
 Open. Batch A is done on the branch `p30-sec` (2026-10-31). Batch B item 10 is done on the branch
 `p30-b1` and items 8, 11, 12, 13 and the dependency follow-ups on the branch `p30-b2` (2026-10-31).
-Item 9 is open.
+Item 9 and decision 14 are done on the branch `p30-b3` (2026-10-31).
 
 Batch A, per item:
 
@@ -140,7 +151,104 @@ Left as they are in item 10, on purpose:
   `memory.list`, `chat.focus`, `push.subscribe` and `automations.*` itself. Each is one service
   call or one guard.
 - `AGENTS.md` (layout) still names only `bridge.ts`. This branch changed only `apps/server/src`
-  and this record.
+  and this record. Done later on the branch `p30-b3`.
+
+Batch B, item 9:
+
+9. Done. `biome.json` uses the `recommended` preset. The first run gave 205 findings (124 errors,
+   81 warnings) from 27 rules. Fixed in the code, with the same behaviour:
+   `noAssignInExpressions` 17, `useImportType` 14, `noNonNullAssertion` 12, `noCommaOperator` 4,
+   `noDescendingSpecificity` 3, `noDuplicateCustomProperties` 2, `useOptionalChain` 2,
+   `useArrowFunction` 2, and 1 each of `noMisleadingCharacterClass`, `noUnsafeOptionalChaining`,
+   `useIterableCallbackReturn`, `noRedeclare`, `noCommentText`, `noUnusedVariables`,
+   `noUnusedImports` and `noFocusedTests` (a function with the name `fit`). The 5
+   `noExplicitAny` findings in product code have real types (`usage.ts`, `viz-runtime.ts`,
+   `plot-runtime.ts`, the subagent RPC records). The `tokens.css` changes compile to the same
+   CSS, except the order of three selectors in one list. In `kit.css` the subtitle rule moved
+   after the `p` rules; its selectors win by specificity in both places. Two rules have options,
+   not "off":
+   `noLabelWithoutControl` knows the `Input` component, and `useValidAriaRole` ignores
+   components (`<MessageView role="assistant">` is a prop). `noImportCycles` is on in addition,
+   so that the cycles stay at 0. `npx madge@8.0.0 --circular` found 0 cycles in `apps/web/src`
+   (with the `@/` alias resolved) and 0 in `apps/server/src`, before and after. The web had no
+   cycle to break: all cycles of the report were in the server, and item 10 broke them.
+
+   Rules that are off, with the reason:
+   - `noNoninteractiveTabindex` (10). Brief 7.8 and the axe rule `scrollable-region-focusable`
+     need `tabIndex={0}` on a scrollable `pre` or region. Tooltip triggers on text take focus too.
+   - `useSemanticElements` (12). For the ARIA roles on styled elements it proposes `fieldset`,
+     `meter`, `input type="radio"` and `search`. These have their own styles and behaviour.
+   - `noExplicitAny` in `**/*.test.ts`, `**/fake-*.ts` and `tests/**` (33). The fakes keep the
+     raw JSON bodies (chat requests, multipart fields, Pi events), and the tests read them field
+     by field. A real body type gave about 50 type errors at about 140 reads, with no gain in
+     safety for the product.
+
+   Suppressed in place, with the reason in the comment: `noImportantStyles` (reduced motion
+   must win over every rule), `noAriaHiddenOnFocusable` (a `kbd` is not focusable),
+   `useAriaPropsSupportedByRole` (the role is a prop with the default `group`) and
+   `noStaticElementInteractions` (the model list catches the events of its row buttons).
+
+   Review fix: `useExhaustiveDependencies` (63 findings at 33 effects) and `noArrayIndexKey` (10)
+   are on again. Each site has a `biome-ignore` with its reason, not a rule override. Each effect
+   runs when one value changes (the chat id, `tick`, `rev`) and reads the values of that render.
+   No effect had a stale closure: the long-lived listeners read only refs, state setters or one
+   object (`Follow`, `latest`). The lists without ids use the position as the identity: split
+   text, table cells, the streamed Markdown blocks.
+
+Decision 14:
+
+14. Done. Wire: `Artifact.masked`, an optional string with the masked source. `content` stays
+    the restored text, so the copy, "Lataa lähdekoodi", "Tallenna työkansioon", the Koodi tab and
+    the export do not change. An older client does not know the field (zod drops it) and builds
+    from `content`, as before. One optional field is the smaller change; a flag and a second text
+    are two. Server: `extractArtifacts(id, text, masked)` takes the text before the restore and
+    matches the blocks by position. Another block at that position gives an empty masked source,
+    never the restored one. `bridge/stream.ts` reads `chats.tainted` at each final, and a chat row
+    that is gone counts as tainted. `chat.state` reads the masked text from the branch entries.
+    The flag belongs to the chat: after the first tainted turn, every page of the chat runs
+    masked, also the older ones. Web: `maskedSource` and `revealed` in `store.ts`; `revealed`
+    is in memory only. The card shows only the line, because it runs no artifact; the button is
+    in the panel, where its result shows. The panel shows the line on the Esikatselu tab only,
+    because the Koodi tab shows the restored source. "Avaa uudessa ikkunassa" opens the masked
+    page while the artifact is masked. The line reuses the tainted line of the approval card
+    (`TaintLine`). Tests: server 3 (`artifacts.test.ts`, `bridge/chats.test.ts`,
+    `pi/registry.test.ts`), web 4 (`ArtifactPanel.test.ts`), the e2e flow "tainted artifact"
+    (`flows.spec.ts`), and the screens `artifact-masked`, `artifact-masked-card` and
+    `artifact-reveal`.
+
+    On purpose, the Koodi tab, Kopioi, "Lataa lähdekoodi" and "Tallenna työkansioon" give the
+    restored source: they are text, and nothing runs them. "Avaa uudessa ikkunassa" opens the
+    document that the frame runs, so the masked one while the artifact is masked.
+
+    Code review fixes:
+    - `ChatSummary.tainted` (optional, so older servers still parse) tells the client the taint.
+      In a tainted chat, a page or a component without a masked source runs nothing and shows
+      the masked line, without the button: the code block that the card opens before its server
+      artifact comes (`local-`), or a reply without its entry id until the next `chat.state`.
+      The server artifact takes the panel over when it comes.
+    - When a run turns the chat tainted, the room gets `chat.updated` and the earlier pages and
+      components again (`artifact.upsert`) with their masked sources, built as `chat.state`
+      builds them (`history`, `messageArtifacts`, `maskedTexts`). `bridge/stream.ts` sees the
+      change at the next final, after the tool that tainted the turn ran.
+    - `chats.tainted` is written whenever `pseudo` runs (`onTaint` of the registry), with or
+      without the memory extension. Without `pseudo` nothing is masked, so nothing is marked.
+    - `revealed` is keyed by `chatId:artifactId`: a fork can keep the entry ids.
+    - The card of a block takes the first artifact of the chat with the same content
+      (`blockMasked`). Two pages with the same source share the line and the reveal.
+
+    UI review fixes: the notice text of the card starts on the title's edge (the shield in the
+    icon column, 12 px gap), and the card keeps 12 px at the bottom (74 px tall at 1024 and
+    1440). The screen `artifact-masked-card` shoots the card at every viewport, because on a
+    phone the sheet covers the thread. Not fixed here: the dialog title is 16/24, not the brief's
+    20/28 (`phase-9-ui.md` §7.5, confirm). It is the shared `AlertDialog` style of every
+    confirmation, not this batch.
+
+Left as they are in decision 14, on purpose:
+
+- The artifact title (card, panel header, confirmation) comes from the restored text. The app
+  shows it as text, and no code runs.
+- Markdown links in a reply are restored before rendering (the weaker form in the security
+  report). This decision does not change them.
 
 Batch B, per item (branch `p30-b2` holds 8, 11, 12, 13 and the dependency follow-ups):
 

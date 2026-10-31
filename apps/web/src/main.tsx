@@ -10,7 +10,7 @@ import '@fontsource-variable/jetbrains-mono/wght.css';
 import './tokens.css';
 import { reloadWhenIdle } from './update.ts';
 
-createRoot(document.getElementById('root')!).render(
+createRoot(document.getElementById('root') as HTMLElement).render(
   <StrictMode>
     <App />
   </StrictMode>,

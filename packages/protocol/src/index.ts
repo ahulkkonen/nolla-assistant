@@ -172,6 +172,11 @@ export const ChatSummary = z.object({
   archived: z.boolean(),
   /** True after a manual rename: automatic titling no longer changes the title. */
   titleLocked: z.boolean().optional(),
+  /**
+   * Phase-30 decision 14: external content entered the chat; its pages and components run
+   * masked. The server always sets it; optional for older servers and fixtures.
+   */
+  tainted: z.boolean().optional(),
   /** Phase-22 decision 3: the chat "Haarauta" started this one from; the sidebar marks it. */
   forkedFrom: id64.nullable().optional(),
   modelPolicy: ModelPolicy,
@@ -361,6 +366,11 @@ export const Artifact = z.object({
   title: z.string(),
   language: z.string().optional(),
   content: z.string(),
+  /**
+   * Phase-30 decision 14: in a tainted chat, the masked source of a page or a component. The
+   * frame runs it, not `content`, until the user confirms "Näytä oikeat arvot".
+   */
+  masked: z.string().optional(),
 });
 export type Artifact = z.infer<typeof Artifact>;
 

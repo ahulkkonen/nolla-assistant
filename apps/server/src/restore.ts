@@ -37,7 +37,11 @@ export function restorer(pseudo: PseudoClient | undefined, onDown: () => void): 
       return { text, annotations: [], hold: 0 };
     }
   };
-  return Object.assign(restore, { reset: () => void (failed = false) });
+  return Object.assign(restore, {
+    reset: () => {
+      failed = false;
+    },
+  });
 }
 
 /**

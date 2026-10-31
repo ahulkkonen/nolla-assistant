@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { chats, files } from '@pa/db';
 import { afterEach, expect, test } from 'vitest';
-import { bootChat, connect, runCleanups } from '../test-utils.ts';
+import { bootChat, bootPseudo, connect, runCleanups } from '../test-utils.ts';
 
 afterEach(runCleanups);
 
@@ -35,6 +35,55 @@ test('titleLocked on the wire; artifacts after the final and in chat.state', {
   expect(state.messages.at(-1)?.id).toBe(final.message.id);
   c2.send({ type: 'chat.list' });
   expect((await c2.next('chat.list')).chats[0]?.titleLocked).toBe(true);
+});
+
+const TITLE = {
+  match: 'Aiheet:',
+  text: JSON.stringify({ title: 'Sivu', topics: [], proposed_topic: null, summary: 'Sivu.' }),
+};
+
+test('phase-30 decision 14: a chat that turns tainted masks its pages, also the earlier ones', {
+  timeout: 30_000,
+}, async () => {
+  const page = (tag: string) => `Tässä:\n\n\`\`\`html\n<${tag}>Pekka Laaksonen</${tag}>\n\`\`\``;
+  const { c, chat, config } = await bootPseudo({ 'Matti Virtanen': 'Pekka Laaksonen' }, [
+    { text: page('h1') },
+    { toolCalls: [{ name: 'web_search', args: { query: 'sää' } }] },
+    { text: page('p') },
+    TITLE,
+  ]);
+  c.send({ type: 'user.message', chatId: chat.id, text: 'Tee sivu' });
+  const plain = (await c.next('artifact.upsert')).artifact;
+  expect(plain.content).toBe('<h1>Matti Virtanen</h1>');
+  expect(plain).not.toHaveProperty('masked');
+  await c.idle();
+
+  // The search taints the chat (pseudo is on, memory plays no part): the room hears it, and the
+  // earlier page comes again with its masked source before the new one.
+  c.inbox.length = 0;
+  c.send({ type: 'user.message', chatId: chat.id, text: 'Hae sää ja tee toinen' });
+  await c.idle();
+  const heard = c.inbox.flatMap((m) =>
+    m.type === 'artifact.upsert'
+      ? [[m.artifact.content, m.artifact.masked]]
+      : m.type === 'chat.updated'
+        ? [['tainted', m.chat.tainted]]
+        : [],
+  );
+  expect(heard.slice(0, 2)).toEqual([
+    ['tainted', true],
+    ['<h1>Matti Virtanen</h1>', '<h1>Pekka Laaksonen</h1>'],
+  ]);
+  expect(heard).toContainEqual(['<p>Matti Virtanen</p>', '<p>Pekka Laaksonen</p>']);
+
+  const c2 = await connect(config.port);
+  c2.send({ type: 'chat.open', chatId: chat.id });
+  const state = await c2.next('chat.state');
+  expect(state.chat.tainted).toBe(true);
+  expect(state.artifacts?.map((a) => [a.id === plain.id, a.masked])).toEqual([
+    [true, '<h1>Pekka Laaksonen</h1>'],
+    [false, '<p>Pekka Laaksonen</p>'],
+  ]);
 });
 
 test('chat.delete removes only its own row, files, and session; all sockets hear it', {

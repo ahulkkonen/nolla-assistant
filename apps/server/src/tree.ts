@@ -1,4 +1,4 @@
-import { constants, createWriteStream } from 'node:fs';
+import { constants } from 'node:fs';
 import {
   type FileHandle,
   link,

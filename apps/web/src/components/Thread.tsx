@@ -148,11 +148,13 @@ export function Thread() {
 
   // Another chat: a switch's place and its kept last message belong to the old thread. Before the
   // layout effect below, which would apply them to the new one.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: resets when the chat changes
   useLayoutEffect(() => {
     keep.current = null;
     kept.current = undefined;
   }, [chatId]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: after each thread change; `follow` is one object
   useLayoutEffect(() => {
     const k = keep.current;
     const el = scroller.current;
@@ -169,6 +171,7 @@ export function Thread() {
 
   // Another chat starts at its bottom, with no pill and nothing unread. The follow runs now: a
   // cached chat of the same height gives no resize.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: each chat starts at its bottom
   useEffect(() => {
     follow.reset();
     setAway(false);
@@ -177,6 +180,7 @@ export function Thread() {
   }, [chatId]);
 
   // A sent message follows the bottom again, at once.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: follows when a new user message comes
   useEffect(() => {
     if (kept.current === lastUserId) return;
     follow.pinned = true;
@@ -187,6 +191,7 @@ export function Thread() {
   // bottom stays while pinned, else the reader's distance to it. Phase 27: the content's height
   // too (a delta, a tool row): the follow runs after layout, once per frame, with no forced
   // layout (a jump, not a smooth scroll); the pill shows once the growth leaves the reader away.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: one observer; `follow` is one object
   useEffect(() => {
     const el = scroller.current;
     if (!el) return;
@@ -202,6 +207,7 @@ export function Thread() {
   }, []);
 
   // A search hit opens at its message once the chat's messages are in.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: tries again when messages arrive
   useEffect(() => {
     if (!scrollTo) return;
     const el = scroller.current?.querySelector(`[data-message-id="${CSS.escape(scrollTo)}"]`);
@@ -260,8 +266,10 @@ export function Thread() {
   messages.forEach((m, i) => {
     const turn = turns.at(-1);
     const prev = turn?.items.at(-1)?.m;
-    if (turn && m.role === 'assistant' && turn.role === 'assistant' && prev && !prev.text)
-      return void turn.items.push({ m, i });
+    if (turn && m.role === 'assistant' && turn.role === 'assistant' && prev && !prev.text) {
+      turn.items.push({ m, i });
+      return;
+    }
     if (m.role === 'user') [asked, replies] = [m.id, 0];
     const key = m.role === 'user' ? m.id : `${asked}:${replies++}`;
     turns.push({ key, role: m.role, items: [{ m, i }] });
@@ -418,6 +426,7 @@ export function Thread() {
                       before?.tools.length && !before.text && toolsFirst ? '-mt-1' : undefined;
                     if (!item)
                       return (
+                        // biome-ignore lint/suspicious/noArrayIndexKey: no ids; position is the identity
                         <div key={j} className={stack}>
                           {liveView}
                         </div>
@@ -426,6 +435,7 @@ export function Thread() {
                     const prev = m.role === 'assistant' ? previousUser(messages, i) : undefined;
                     const serverId = serverIdOf(m);
                     return (
+                      // biome-ignore lint/suspicious/noArrayIndexKey: no ids; position is the identity
                       <div key={j} data-message-id={m.id} className={stack}>
                         <MessageView
                           id={m.id}

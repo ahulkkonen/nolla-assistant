@@ -41,6 +41,7 @@ import {
   searchTurns,
   secondDevice,
   seedClaims,
+  TAINTED_PAGE_REPLY,
   TAX,
   THINKING_TURN,
   taxChat,
@@ -82,8 +83,9 @@ test('new chat streams a reply, then survives reload', async ({ app, page }) => 
   const user = thread(page).getByText('Moi', { exact: true });
   await expect(user).toBeVisible();
   const box = await user.boundingBox();
-  const vp = page.viewportSize()!;
-  expect(box!.x + box!.width / 2).toBeGreaterThan(vp.width / 2);
+  const vp = page.viewportSize();
+  if (!box || !vp) throw new Error('no layout');
+  expect(box.x + box.width / 2).toBeGreaterThan(vp.width / 2);
   await expect(page.locator('.md')).toHaveText('Hei! Tässä vastaus.');
   await expect(page.getByRole('button', { name: 'Lähetä', exact: true })).toBeVisible();
   await expect(page.locator('nav li > button')).toHaveCount(1);
@@ -326,9 +328,12 @@ const measureStream = async (app: App, page: Page, text: string, check: () => Pr
   await app.login(page);
   const cdp = await page.context().newCDPSession(page);
   await cdp.send('Performance.enable');
-  const script = async () =>
-    (await cdp.send('Performance.getMetrics')).metrics.find((m) => m.name === 'ScriptDuration')!
-      .value;
+  const script = async () => {
+    const { metrics } = await cdp.send('Performance.getMetrics');
+    const m = metrics.find((x) => x.name === 'ScriptDuration');
+    if (!m) throw new Error('no ScriptDuration metric');
+    return m.value;
+  };
   const commits = () => page.evaluate(() => (window as unknown as { __commits: number }).__commits);
   const [c0, s0] = [await commits(), await script()];
   await send(page, 'Kirjoita pitkä vastaus');
@@ -1934,6 +1939,45 @@ test('artifact panel: an html reply opens in a sandboxed iframe', async ({ app, 
   await expect(panel).toBeVisible();
 });
 
+test.describe('tainted artifact', () => {
+  test.use({ pseudo: 'full' });
+
+  test('a page of a tainted chat shows surrogates until "Näytä oikeat arvot" is confirmed', async ({
+    app,
+    page,
+  }) => {
+    // Phase-30 decision 14: the web search taints the chat; the page names Matti Virtanen.
+    searchTurns(app, 'sää', TAINTED_PAGE_REPLY);
+    await app.login(page);
+    await send(page, 'Hae sää ja tee sivu Matti Virtasesta');
+    const panel = page.getByRole('complementary', { name: 'Artefaktit' });
+    const frame = panel.locator('iframe').contentFrame();
+    const line = 'Ulkoista sisältöä: oikeat arvot piilotettu';
+    await expect(frame.getByRole('heading', { name: 'Pekka Laaksonen' })).toBeVisible();
+    await expect(panel).toContainText(line);
+    await expect(thread(page)).toContainText(line);
+    // The code tab and the copy keep the restored source.
+    await panel.getByRole('tab', { name: 'Koodi' }).click();
+    await expect(panel.locator('pre')).toContainText('Matti Virtanen');
+    await expect(panel).not.toContainText(line);
+    await panel.getByRole('tab', { name: 'Esikatselu' }).click();
+
+    await panel.getByRole('button', { name: 'Näytä oikeat arvot' }).click();
+    const dialog = page.getByRole('alertdialog');
+    await expect(dialog).toContainText('Artefaktin koodi voi lähettää oikeat arvot ulkopuolelle.');
+    await dialog.getByRole('button', { name: 'Näytä oikeat arvot' }).click();
+    await expect(frame.getByRole('heading', { name: 'Matti Virtanen' })).toBeVisible();
+    await expect(panel).not.toContainText(line);
+    await expect(thread(page)).not.toContainText(line);
+
+    // Until the page reloads.
+    await page.reload();
+    await thread(page).getByRole('button', { name: 'Avaa paneelissa' }).click();
+    await expect(frame.getByRole('heading', { name: 'Pekka Laaksonen' })).toBeVisible();
+    await expect(panel).toContainText(line);
+  });
+});
+
 /** Lowest opacity of the thread's last article, sampled per frame until `stop` (phase 27). */
 const sampleOpacity = async (page: Page) => {
   await page.evaluate(() => {
@@ -2013,7 +2057,10 @@ test('streaming: a tool-only final keeps the open tool row; the text final keeps
   await page.routeWebSocket(/\/ws$/, (ws) => {
     const server = ws.connectToServer();
     deliver = (m) => ws.send(m);
-    server.onMessage((m) => void (queue.push(String(m)), pump()));
+    server.onMessage((m) => {
+      queue.push(String(m));
+      pump();
+    });
   });
   const release = async () => {
     await expect.poll(() => held).toBe(true);

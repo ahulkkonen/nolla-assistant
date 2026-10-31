@@ -82,8 +82,8 @@ export function versionsOf(
   for (const e of entries) {
     if (e.type !== 'message' || !isUser(e)) continue;
     const anchor = anchorOf(byId, e);
-    let texts = groups.get(anchor);
-    if (!texts) groups.set(anchor, (texts = new Map()));
+    const texts = groups.get(anchor) ?? new Map<string, string[]>();
+    groups.set(anchor, texts);
     const text = textOf(e.message);
     const ids = texts.get(text);
     if (ids) ids.push(e.id);

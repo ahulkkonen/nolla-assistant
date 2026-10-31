@@ -45,13 +45,12 @@ export const mockPush = (page: Page) =>
     let subscribed = false;
     Object.defineProperty(Notification, 'permission', { get: () => 'granted' });
     Notification.requestPermission = async () => 'granted';
-    PushManager.prototype.subscribe = async function () {
+    PushManager.prototype.subscribe = async () => {
       subscribed = true;
       return sub as unknown as PushSubscription;
     };
-    PushManager.prototype.getSubscription = async function () {
-      return subscribed ? (sub as unknown as PushSubscription) : null;
-    };
+    PushManager.prototype.getSubscription = async () =>
+      subscribed ? (sub as unknown as PushSubscription) : null;
   });
 
 /**
@@ -138,6 +137,12 @@ function seedWork(dir: string) {
 /** An assistant reply with one HTML block (an artifact). */
 export const HTML_REPLY =
   'Tässä sivu:\n\n```html\n<h1>Hei artefakti</h1>\n<p>Tämä sivu toimii hiekkalaatikossa.</p>\n```';
+/**
+ * Phase-30 decision 14: a page that names a vault person, as the model writes it (the surrogate of
+ * Matti Virtanen). After `searchTurns` the chat is tainted, so the frame shows the surrogate.
+ */
+export const TAINTED_PAGE_REPLY =
+  'Tässä sivu:\n\n```html\n<h1>Pekka Laaksonen</h1>\n<p>Sivun tiedot tulivat hausta.</p>\n```';
 const block = (lang: string, body: unknown) =>
   `\`\`\`${lang}\n${typeof body === 'string' ? body : JSON.stringify(body, null, 2)}\n\`\`\``;
 const MONTHS = 'tammi helmi maalis huhti touko kesä heinä elo syys loka marras joulu'.split(' ');
@@ -508,7 +513,9 @@ export const holdAt = async (page: Page, text: string) => {
       if (holding) return void held.push(m);
       ws.send(m);
       const msg = typeof m === 'string' ? JSON.parse(m) : undefined;
-      if (armed && msg?.type === 'message.delta' && (streamed += msg.text).includes(text)) {
+      if (!armed || msg?.type !== 'message.delta') return;
+      streamed += msg.text;
+      if (streamed.includes(text)) {
         armed = false;
         holding = true;
         seen();

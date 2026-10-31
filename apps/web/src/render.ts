@@ -152,7 +152,7 @@ const translate = (el: Element) => {
 const even = (v: number) => 2 * Math.ceil(v / 2);
 /** A word that is one emoji (with its variation selector, skin tone or joined parts). */
 const EMOJI =
-  /^\p{Extended_Pictographic}[\p{Extended_Pictographic}\p{Emoji_Modifier}\u200d\ufe0f]*$/u;
+  /^\p{Extended_Pictographic}(?:\p{Extended_Pictographic}|\p{Emoji_Modifier}|\u200d|\ufe0f)*$/u;
 /** Inter's cap height: the text block is centred on its caps. */
 const cap = (size: number) => 0.727 * size;
 

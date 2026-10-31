@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import type { AgentSession } from '@earendil-works/pi-coding-agent';
 import {
   type Artifact,
   artifactKind,
@@ -6,6 +7,7 @@ import {
   type Message,
   stripConfidence,
 } from '@pa/protocol';
+import { textOf } from './session-text.ts';
 
 const MAX_INPUT = 200_000;
 const OPEN = /^ {0,3}(`{3,}|~{3,})(.*)$/;
@@ -35,25 +37,50 @@ function fencedBlocks(text: string) {
   return blocks;
 }
 
-/** Artifacts in an assistant text: `html`, `jsx`/`tsx`, `mermaid` and `vega-lite` blocks. */
-export function extractArtifacts(messageId: string, text: string): Artifact[] {
+/**
+ * Artifacts in an assistant text: `html`, `jsx`/`tsx`, `mermaid` and `vega-lite` blocks. With
+ * `masked` (the text before the restore, in a tainted chat), a page or a component also carries
+ * its masked source (phase-30 decision 14). A chart or a diagram is data, not code that runs.
+ */
+export function extractArtifacts(messageId: string, text: string, masked?: string): Artifact[] {
   const out: Artifact[] = [];
+  const sources = masked === undefined ? undefined : fencedBlocks(stripConfidence(masked));
   // Phase-21 decision 4: a marker the model wrote inside a fence never reaches the renderer.
-  for (const { lang, content } of fencedBlocks(stripConfidence(text))) {
+  for (const [i, { lang, content }] of fencedBlocks(stripConfidence(text)).entries()) {
     const kind = artifactKind(lang);
     if (!kind) continue;
     const index = out.length;
+    // The restore keeps the blocks; another block at `i` gives an empty page, never real values.
+    const twin = sources?.[i];
     out.push({
       id: createHash('sha1').update(`${messageId}:${index}`).digest('hex'),
       kind,
       title: artifactTitle(kind, content) ?? `${lang} #${index + 1}`,
       language: lang,
       content,
+      ...(sources && (kind === 'html' || kind === 'react')
+        ? { masked: twin?.lang === lang ? twin.content : '' }
+        : {}),
     });
   }
   return out;
 }
 
-/** Artifacts of every assistant message, in order (for `chat.state`). */
-export const messageArtifacts = (messages: Message[]) =>
-  messages.flatMap((m) => (m.role === 'assistant' ? extractArtifacts(m.id, m.text) : []));
+/**
+ * Artifacts of every assistant message, in order (for `chat.state`). `masked` holds each message's
+ * text before the restore in a tainted chat; a message without one gets empty masked sources.
+ */
+export const messageArtifacts = (messages: Message[], masked?: Map<string, string>) =>
+  messages.flatMap((m) =>
+    m.role === 'assistant'
+      ? extractArtifacts(m.id, m.text, masked && (masked.get(m.id) ?? ''))
+      : [],
+  );
+
+/** The text before the restore of each message on the session's branch, by entry id. */
+export const maskedTexts = (session: Pick<AgentSession, 'sessionManager'>) =>
+  new Map(
+    session.sessionManager
+      .getBranch()
+      .flatMap((e) => (e.type === 'message' ? [[e.id, textOf(e.message)] as const] : [])),
+  );

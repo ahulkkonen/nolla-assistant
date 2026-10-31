@@ -17,7 +17,7 @@ import { purgeExpiredSessions } from './auth/session.ts';
 import { startAutomations } from './automations.ts';
 import { agentsState, type BridgeDeps } from './bridge/connection.ts';
 import { vaultState } from './bridge/vault.ts';
-import { chatRow } from './chats.ts';
+import { chatRow, markTainted } from './chats.ts';
 import { branchPoint, claimStore } from './claims.ts';
 import { collisionWaits } from './collisions.ts';
 import { BUNDLED_AGENTS, BUNDLED_AUTOMATIONS, type Config, loadConfig } from './config.ts';
@@ -237,6 +237,7 @@ export async function start(
     broker: config.broker,
     mcp,
     mcpWarn: (chatId, missing) => app.log.warn({ chatId, missing }, 'mcp tools missing'),
+    onTaint: (chatId) => markTainted(db, config.userId, chatId),
     onSettled: ({ sessionId }) => titles.scheduleTitleJob(sessionId),
     onUsage: recordUsage,
     harness: (o) =>
@@ -424,7 +425,14 @@ async function allowlistSelf(
       await new Promise((r) => {
         const t = setTimeout(r, 10_000);
         t.unref();
-        signal.addEventListener('abort', () => (clearTimeout(t), r(undefined)), { once: true });
+        signal.addEventListener(
+          'abort',
+          () => {
+            clearTimeout(t);
+            r(undefined);
+          },
+          { once: true },
+        );
       });
     }
   }

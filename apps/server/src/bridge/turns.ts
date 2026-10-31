@@ -466,7 +466,7 @@ function failedTurn(session: AgentSession): UserEntry | undefined {
     .flatMap((e) => (e.type === 'message' ? [e] : []));
   const at = messages.findLastIndex((e) => e.message.role === 'user');
   const last = messages[at];
-  if (!last || last.message.role !== 'user') return undefined;
+  if (last?.message.role !== 'user') return undefined;
   const prev = messages[at - 1]?.message;
   if (prev && (prev.role === 'toolResult' || hasToolCall(prev))) return undefined;
   const after = messages.slice(at + 1).map((e) => e.message);

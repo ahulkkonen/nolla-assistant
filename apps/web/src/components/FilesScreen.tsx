@@ -200,7 +200,7 @@ function NameDialog({
 }
 
 /** One file upload: its row, and what a retry needs. */
-type Upload = {
+type UploadJob = {
   key: string;
   file: File;
   dir: string;
@@ -225,7 +225,7 @@ const folderOf = (path: string) =>
 /** The preview follows a renamed or moved file and closes when its file or a parent goes. */
 function followPreview(from: string, to?: TreeEntry) {
   const p = useStore.getState().filePreview;
-  if (!p || p.root !== 'work') return;
+  if (p?.root !== 'work') return;
   if (p.entry.path === from)
     useStore.setState({ filePreview: to?.type === 'file' ? { root: 'work', entry: to } : null });
   else if (p.entry.path.startsWith(`${from}/`)) useStore.setState({ filePreview: null });
@@ -303,6 +303,7 @@ function Listing({
                   </span>
                 </TableCell>
                 {r.cells.map((c, i) => (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: no ids; position is the identity
                   <TableCell key={i} className="text-muted-foreground">
                     {c}
                   </TableCell>
@@ -383,7 +384,7 @@ export function FilesScreen() {
   const key = keyOf(view);
   const [list, setList] = useState<{ key: string; entries: TreeEntry[]; next: string | null }>();
   const [trash, setTrash] = useState<{ entries: TrashEntry[]; next: string | null }>();
-  const [uploads, setUploads] = useState<Upload[]>([]);
+  const [uploads, setUploads] = useState<UploadJob[]>([]);
   const [naming, setNaming] = useState<Parameters<typeof NameDialog>[0]['state']>(null);
   const [moving, setMoving] = useState<TreeEntry | null>(null);
   const [purge, setPurge] = useState<TrashEntry | 'all' | null>(null);
@@ -431,6 +432,7 @@ export function FilesScreen() {
     refreshUsage();
     setRev((r) => r + 1);
   };
+  // biome-ignore lint/correctness/useExhaustiveDependencies: lists again when the folder key changes
   useEffect(() => {
     void load();
   }, [key]);
@@ -447,6 +449,7 @@ export function FilesScreen() {
   // "Näytä" after "Tallenna tiedostoksi": the file opens in the preview once its folder is listed,
   // following the pages until it shows.
   const entries = list?.key === key ? list.entries : undefined;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: when the focus or the listing changes
   useEffect(() => {
     const focus = view.focus;
     if (!focus || !entries) return;
@@ -463,10 +466,10 @@ export function FilesScreen() {
     requestAnimationFrame(() => visibleRow(hit.path)?.scrollIntoView({ block: 'center' }));
   }, [view.focus, entries]);
 
-  const patch = (k: string, p: Partial<Upload>) =>
+  const patch = (k: string, p: Partial<UploadJob>) =>
     setUploads((u) => u.map((x) => (x.key === k ? { ...x, ...p } : x)));
   const drop = (k: string) => setUploads((u) => u.filter((x) => x.key !== k));
-  const start = async ({ key: k, file, dir }: Upload) => {
+  const start = async ({ key: k, file, dir }: UploadJob) => {
     const job = treeUpload(dir, file, (progress) => patch(k, { progress }));
     patch(k, { abort: job.abort });
     try {
@@ -484,7 +487,7 @@ export function FilesScreen() {
   const [queue] = useState(() =>
     jobQueue(
       MAX_UPLOADS,
-      (u: Upload) => start(u),
+      (u: UploadJob) => start(u),
       () => reload(),
     ),
   );
@@ -500,13 +503,13 @@ export function FilesScreen() {
     setUploads((u) => [...u, ...jobs]);
     queue.add(jobs);
   };
-  const retry = (u: Upload) => {
+  const retry = (u: UploadJob) => {
     const job = { ...u, progress: 0, error: undefined, abort: undefined };
     patch(u.key, job);
     queue.add([job]);
   };
   /** A running upload aborts; a queued one leaves the queue. */
-  const cancel = (u: Upload) => {
+  const cancel = (u: UploadJob) => {
     if (u.abort) return u.abort();
     queue.remove((j) => j.key === u.key);
     drop(u.key);

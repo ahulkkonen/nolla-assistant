@@ -329,7 +329,10 @@ export function exportJobs(deps: Deps) {
           if (j.status !== 'ready' || j.downloading) return reply.code(409).send({ error: 'busy' });
           j.downloading = true;
           reply.raw.once('close', () => {
-            if (!reply.raw.writableFinished) return void (j.downloading = false);
+            if (!reply.raw.writableFinished) {
+              j.downloading = false;
+              return;
+            }
             gone.add(j.id);
             drop(j);
           });

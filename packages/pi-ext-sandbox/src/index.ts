@@ -37,7 +37,10 @@ export function sandboxExtension(opts: {
         const text = () => (truncated ? `[output truncated]\n${out}` : out);
         const update = (force = false) => {
           const now = Date.now();
-          if (!force && now - lastUpdate < UPDATE_EVERY_MS) return void (pendingUpdate = true);
+          if (!force && now - lastUpdate < UPDATE_EVERY_MS) {
+            pendingUpdate = true;
+            return;
+          }
           lastUpdate = now;
           pendingUpdate = false;
           onUpdate?.({ content: [{ type: 'text', text: text() }], details });

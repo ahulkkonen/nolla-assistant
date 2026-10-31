@@ -21,6 +21,17 @@ export const chatRow = (db: Db, userId: string, chatId: string) =>
     .where(and(eq(chats.id, chatId), eq(chats.userId, userId)))
     .get();
 
+/**
+ * A turn of the chat had untrusted input: its claims never activate at once (phase 17), and its
+ * pages and components run masked (phase-30 decision 14).
+ */
+export const markTainted = (db: Db, userId: string, chatId: string) =>
+  void db
+    .update(chats)
+    .set({ tainted: true })
+    .where(and(eq(chats.id, chatId), eq(chats.userId, userId)))
+    .run();
+
 export const summary = (r: ChatRow): ChatSummary => ({
   id: r.id,
   title: r.title,
@@ -29,6 +40,7 @@ export const summary = (r: ChatRow): ChatSummary => ({
   pinned: r.pinned,
   archived: r.archived,
   titleLocked: r.titleLocked,
+  tainted: r.tainted,
   ...(r.forkedFromChatId ? { forkedFrom: r.forkedFromChatId } : {}),
   modelPolicy: policyOf(r),
   modes: r.modes,

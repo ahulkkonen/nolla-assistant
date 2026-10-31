@@ -31,12 +31,6 @@ h2 {
   font-size: 21.6px;
   line-height: 28px;
 }
-/* The line under a title is its subtitle. */
-h1 + p,
-h2 + p {
-  color: var(--muted-foreground);
-  text-wrap: pretty;
-}
 h3 {
   font-size: 18px;
   line-height: 26px;
@@ -52,6 +46,12 @@ ol,
 blockquote,
 figcaption {
   max-width: 68ch;
+}
+/* The line under a title is its subtitle. */
+h1 + p,
+h2 + p {
+  color: var(--muted-foreground);
+  text-wrap: pretty;
 }
 img,
 svg,

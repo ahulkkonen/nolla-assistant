@@ -16,6 +16,7 @@ function Value({ text, children }: { text: string; children?: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
   const [clamped, setClamped] = useState(false);
   const [more, setMore] = useState(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: measures again when the text changes
   useLayoutEffect(() => {
     const el = ref.current;
     if (el && !more) setClamped(el.scrollHeight > el.clientHeight + 1);
@@ -67,12 +68,13 @@ export function Lines({
   const box = useRef<HTMLDivElement>(null);
   // Wrapped rows: only the box knows its height, and it changes with the card's width.
   const [tall, setTall] = useState(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: measures again when the lines change
   useLayoutEffect(() => {
     const el = box.current;
     if (!el || all) return;
-    const fit = () => setTall(el.scrollHeight > el.clientHeight + 1);
-    fit();
-    const ro = new ResizeObserver(fit);
+    const measure = () => setTall(el.scrollHeight > el.clientHeight + 1);
+    measure();
+    const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
   }, [lines, all]);
@@ -94,6 +96,7 @@ export function Lines({
           )}
         >
           {(all ? lines : lines.slice(0, CLAMP)).map((l, i) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: no ids; position is the identity
             <div key={`${i}:${l}`}>{line(l)}</div>
           ))}
         </div>
@@ -271,7 +274,7 @@ function Url({ url }: { url: string }) {
   const user = u.username + (u.password ? `:${u.password}` : '');
   return (
     <>
-      <span className="text-muted-foreground">{u.protocol}//</span>
+      <span className="text-muted-foreground">{`${u.protocol}//`}</span>
       {user && (
         <span className="text-muted-foreground">
           <span className="sr-only">käyttäjätiedot </span>
@@ -287,6 +290,27 @@ function Url({ url }: { url: string }) {
 const show = (v: unknown) => (typeof v === 'string' ? v : JSON.stringify(v, null, 2));
 const clock = (iso: string) =>
   new Date(iso).toLocaleTimeString('fi-FI', { hour: '2-digit', minute: '2-digit' });
+
+/** The line that external content entered the turn or chat: `ShieldAlert` and meta in --warning. */
+export function TaintLine({
+  className,
+  children,
+}: {
+  className?: string | undefined;
+  children: ReactNode;
+}) {
+  return (
+    <p className={cn('flex items-start gap-2 text-meta text-pretty text-warning', className)}>
+      <ShieldAlert size={16} className="mt-px shrink-0" />
+      <span>{children}</span>
+    </p>
+  );
+}
+
+/** Phase-30 decision 14: a page or a component of the chat runs masked (card and panel). */
+export const MaskedLine = ({ className }: { className?: string }) => (
+  <TaintLine className={className}>Ulkoista sisältöä: oikeat arvot piilotettu</TaintLine>
+);
 
 /**
  * The real (unmasked) arguments of a gated tool call, inline in the thread. Focus stays where it
@@ -357,13 +381,10 @@ export function ApprovalCard({ a }: { a: Approval }) {
       </h2>
       {a.tainted && (
         // Under the title, before the body: 8 px above and below, the card's 12 px gap less 4.
-        <p className="-my-1 flex items-start gap-2 text-meta text-pretty text-warning">
-          <ShieldAlert size={16} className="mt-px shrink-0" />
-          <span>
-            Tämä vuoro luki ulkopuolista sisältöä. Hyväksy vain, jos pyysit{' '}
-            {a.tool === 'chat_read' ? 'lukemista' : 'muutosta'} itse.
-          </span>
-        </p>
+        <TaintLine className="-my-1">
+          Tämä vuoro luki ulkopuolista sisältöä. Hyväksy vain, jos pyysit{' '}
+          {a.tool === 'chat_read' ? 'lukemista' : 'muutosta'} itse.
+        </TaintLine>
       )}
       {reason && <p className="text-meta text-muted-foreground">{reason}</p>}
       {guard ? (

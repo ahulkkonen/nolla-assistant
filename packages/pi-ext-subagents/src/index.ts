@@ -73,6 +73,14 @@ export function piCli(): string {
 }
 
 type Msg = { role?: string; content?: unknown; stopReason?: string; errorMessage?: string };
+/** The child's RPC records that `run` reads (Pi `modes/rpc/rpc-types.d.ts`); others pass. */
+type RpcRecord =
+  | { type: 'response'; success: boolean; command: string; error?: string }
+  | { type: 'message_end'; message?: Msg }
+  | { type: 'tool_execution_start' | 'tool_execution_end'; toolName: string; isError?: boolean }
+  | { type: 'extension_ui_request'; method: string; id: string; title: string; message: string }
+  | { type: 'extension_error'; event?: unknown }
+  | { type: 'agent_settled' };
 const textOf = (m: Msg) =>
   Array.isArray(m.content)
     ? m.content
@@ -198,7 +206,7 @@ export function subagentsExtension(opts: SubagentsOptions): ExtensionFactory {
         });
       };
 
-      const onRecord = (e: any) => {
+      const onRecord = (e: RpcRecord) => {
         switch (e.type) {
           case 'response':
             if (!e.success) fail(`${e.command}: ${e.error}`);

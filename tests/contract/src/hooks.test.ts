@@ -184,7 +184,15 @@ describe('tool_result', () => {
 
   test('read payload values, including string structuredContent', async () => {
     let snapshot: unknown;
-    await run(readThenDone, { tool_result: (e) => void (snapshot = structuredClone(e)) }, note);
+    await run(
+      readThenDone,
+      {
+        tool_result: (e) => {
+          snapshot = structuredClone(e);
+        },
+      },
+      note,
+    );
     expect(snapshot).toEqual({
       type: 'tool_result',
       toolName: 'read',
@@ -326,9 +334,20 @@ describe('ExtensionAPI and ExtensionContext members', () => {
   test('runtime members are functions or objects', async () => {
     let api: Record<string, unknown> = {};
     let ctx: Record<string, any> = {};
-    await run(ok, { input: (_e, c) => void (ctx = c as never) }, {}, [
-      (pi) => void (api = pi as never),
-    ]);
+    await run(
+      ok,
+      {
+        input: (_e, c) => {
+          ctx = c as never;
+        },
+      },
+      {},
+      [
+        (pi) => {
+          api = pi as never;
+        },
+      ],
+    );
     for (const name of apiNames) expect(typeof api[name], name).toBe('function');
     for (const name of ctxNames) expect(ctx[name], name).toBeDefined();
     expect(typeof ctx.ui.confirm).toBe('function');

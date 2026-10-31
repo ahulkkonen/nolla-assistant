@@ -14,6 +14,7 @@ function Snippet({ text }: { text: string }) {
     <>
       {text.split(/\*\*(.+?)\*\*/).map((part, i) =>
         i % 2 ? (
+          // biome-ignore lint/suspicious/noArrayIndexKey: no ids; position is the identity
           <mark key={i} className="rounded-[2px] bg-warning-subtle px-0.5 text-foreground">
             {part}
           </mark>

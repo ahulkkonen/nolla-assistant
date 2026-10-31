@@ -135,7 +135,10 @@ test('a child approval reaches the parent ask with real values', async () => {
     {
       tools: ['read', 'write'],
       approvalAlways: ['write'],
-      ask: async (req) => (asked.push(req), false),
+      ask: async (req) => {
+        asked.push(req);
+        return false;
+      },
     },
   );
   await session.prompt('go');

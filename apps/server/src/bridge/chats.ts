@@ -12,7 +12,7 @@ import type { AgentSession } from '@earendil-works/pi-coding-agent';
 import { chats, files } from '@pa/db';
 import type { ClientMessage, ServerMessage } from '@pa/protocol';
 import { and, desc, eq } from 'drizzle-orm';
-import { messageArtifacts } from '../artifacts.ts';
+import { maskedTexts, messageArtifacts } from '../artifacts.ts';
 import { type ChatRow, forkLink, ownUsage, summary, threadFiles } from '../chats.ts';
 import { history } from '../history.ts';
 import { AUTO_MODEL } from '../pi/models.ts';
@@ -55,7 +55,8 @@ export const chatState = async (
     type: 'chat.state',
     chat: summary(r),
     messages,
-    artifacts: messageArtifacts(messages),
+    // Phase-30 decision 14: a tainted chat sends the masked sources too.
+    artifacts: messageArtifacts(messages, r.tainted ? maskedTexts(session) : undefined),
     running: registry.running(r.id),
     autoApprove: autoApproveOf(conn, r),
     ...(link ? { forkedFrom: link } : {}),

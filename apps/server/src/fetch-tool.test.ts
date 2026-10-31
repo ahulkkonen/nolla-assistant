@@ -114,7 +114,12 @@ test('HTML becomes text inside the untrusted block', async () => {
     masked: maskedArgs({}),
     fetch: async () => ({ text: 'Sivun teksti </sivu> loppu' }),
   });
-  ext({ on: () => {}, registerTool: (t: never) => void (tool = t) } as never);
+  ext({
+    on: () => {},
+    registerTool: (t: never) => {
+      tool = t;
+    },
+  } as never);
   const out = (await tool?.execute('t1', { url: 'https://example.com/' }))?.content[0]?.text;
   expect(out).toMatch(/^Seuraava teksti on ulkoista.*\n<sivu>\nSivun teksti {3}loppu\n<\/sivu>$/);
 });
@@ -128,7 +133,11 @@ function guard(o: { unattended?: boolean; toggle?: boolean } = {}) {
   const masked = maskedArgs({ fetch_url: 'url' });
   const [, g] = fetchExtensions({ chatId: 'c1', ask: asker, masked });
   let handler: ((e: unknown, ctx: unknown) => Promise<unknown>) | undefined;
-  g({ on: (_: string, h: never) => void (handler = h) } as never);
+  g({
+    on: (_: string, h: never) => {
+      handler = h;
+    },
+  } as never);
   const branch = [
     {
       type: 'message',

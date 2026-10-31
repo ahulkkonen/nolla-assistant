@@ -170,7 +170,8 @@ in `apps/web/package.json` (decision 2).
 - An artifact can navigate its own frame or tab to an external URL with data in the query. No CSP
   directive stops a document from navigating itself. The chat that the artifact can see is
   pseudonymized, so the exposure is surrogate text. This risk is older than the sandbox page: the
-  `srcdoc` frame had it too.
+  `srcdoc` frame had it too. Amended 2026-10-31: the frame got the restored text, not surrogates
+  (security audit); phase-30 decision 14 (`phase-30-audits.md`) runs pages of a tainted chat masked.
 - "Avaa uudessa ikkunassa" keeps the opener reference, because the app posts the document to the
   tab. The `sandbox` directive (without `allow-top-navigation` and `allow-popups`) stops the
   artifact from navigating its opener. An e2e flow checks that an artifact cannot navigate the

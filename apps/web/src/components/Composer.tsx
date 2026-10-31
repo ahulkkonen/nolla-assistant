@@ -89,12 +89,14 @@ function useToolbarFit(bar: RefObject<HTMLDivElement | null>) {
   const latest = useRef(check);
   latest.current = check;
   // After a step's render: what it freed, then the next step if the room is still short.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: once per level change; `s` is a ref
   useLayoutEffect(() => {
     if (!s.pending) return;
     s.pending = false;
     if (bar.current && !Number.isNaN(s.before)) s.saved[s.level] = freeOf(bar.current) - s.before;
     check();
   }, [level]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: observes once; `latest` holds the check
   useLayoutEffect(() => {
     const el = bar.current;
     if (!el) return;
@@ -202,6 +204,7 @@ export function Composer() {
   // Phase 24: an edit of this chat is on its way; a send waits for its run (`sendUserMessage`).
   const editing = useStore((s) => !!chatId && s.pendingEdit?.chatId === chatId);
   const draft = useStore((s) => s.draft);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: when a draft returns; `resize` uses refs
   useEffect(() => {
     if (!draft || draft.chatId !== chatId) return;
     // Ahead of what is typed since: nothing is lost.
@@ -248,6 +251,7 @@ export function Composer() {
   }, [chatScreen]);
 
   // "Kuuntelee 0:07": seconds since the recorder started.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: restarts only when recording starts or ends
   useEffect(() => {
     if (mic !== 'recording' && mic !== 'cancel') return setElapsed(0);
     const from = Date.now();
