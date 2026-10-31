@@ -190,7 +190,7 @@ function Pre({ node, ...props }: ComponentProps<'pre'> & ExtraProps) {
   if (art === 'vega-lite' || art === 'mermaid') return <InlineFigure a={a} onOpen={open} />;
   // A page or a component is a compact card in the thread; its code is in the panel's Koodi tab.
   return (
-    <div className={cn(CARD, shown ? 'bg-accent' : 'bg-muted', masked && 'flex-wrap gap-y-1')}>
+    <div className={cn(CARD, shown ? 'bg-accent' : 'bg-muted', masked && 'flex-wrap gap-y-1 pb-3')}>
       <AppWindow size={16} className="shrink-0 text-muted-foreground" />
       <span className="min-w-0 flex-1 truncate font-sans text-ui">{a.title}</span>
       {shown ? (
@@ -203,7 +203,8 @@ function Pre({ node, ...props }: ComponentProps<'pre'> & ExtraProps) {
           Avaa paneelissa
         </Button>
       )}
-      {masked && <MaskedLine className="basis-full" />}
+      {/* The shield in the icon column, its text on the title's edge (12 px gap). */}
+      {masked && <MaskedLine className="basis-full gap-3" />}
     </div>
   );
 }

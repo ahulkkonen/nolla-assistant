@@ -297,7 +297,7 @@ for (const scheme of ['light', 'dark'] as const) {
       test.describe('tainted', () => {
         test.use({ pseudo: 'full' });
 
-        // Phase-30 decision 14: the masked line on the card and the panel, then the confirm.
+        // Phase-30 decision 14: the masked line on the panel and the card, then the confirm.
         test('artifact-masked', async ({ app, page }) => {
           searchTurns(app, 'sää', TAINTED_PAGE_REPLY);
           await app.login(page);
@@ -310,6 +310,11 @@ for (const scheme of ['light', 'dark'] as const) {
               .getByRole('heading', { name: 'Pekka Laaksonen' }),
           ).toBeVisible();
           await shot(page, 'artifact-masked', vp.width, scheme);
+          // The card alone (on a phone the sheet covers the thread).
+          await panel.getByRole('button', { name: 'Sulje artefaktit' }).click();
+          await expect(panel).toHaveCount(0);
+          await shot(page, 'artifact-masked-card', vp.width, scheme);
+          await page.getByRole('button', { name: 'Avaa paneelissa' }).click();
           await panel.getByRole('button', { name: 'Näytä oikeat arvot' }).click();
           await expect(page.getByRole('alertdialog')).toBeVisible();
           await shot(page, 'artifact-reveal', vp.width, scheme);
