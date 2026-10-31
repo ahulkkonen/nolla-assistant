@@ -148,6 +148,14 @@ Batch B, per item (branch `p30-b2` holds 8, 11, 12, 13 and the dependency follow
     `MODELS_DIR` now keeps the model in `$TMPDIR/pa-models`, not in `DATA_DIR/models`. One default
     for every run is simpler than one per `DATA_DIR`, and it is never inside the repository.
 
+Missing test 2 of the architecture report: done. `chats.test.ts` deletes a chat while its reply
+streams and a subagent child runs. It expects no chat row, no `chunks`, `chat_fts` or `chunk_vec`
+row, no session file or folder, no unhandled rejection and no error log line. The test found a
+bug: `registry.remove` deleted the chat's JSONL but kept `sessions/<user>/<chatId>/sub/` with
+the children's masked JSONL. `remove` now deletes that folder too. Not covered: the vault scope
+(only a fork has its own scope, and `chat.delete` already drops it) and push (off in the test
+setup).
+
 Dependency follow-ups (`docs/audits/2026-10-31-dependencies.md`, "Recommended actions"):
 
 - Done. `Dockerfile.server` and `Dockerfile.broker` pin `node:22.23.2-bookworm-slim` by the
