@@ -27,7 +27,6 @@ import {
 import { Popover } from 'radix-ui';
 import {
   type ComponentProps,
-  type CSSProperties,
   createContext,
   isValidElement,
   memo,
@@ -325,18 +324,16 @@ const rehypeAnnotate = (pairs: [string, string][]) => () => (tree: HNode) => {
 };
 
 const MARKS = new RegExp(CONFIDENCE_MARK, 'g');
-/** `--conf` of the lowest confidence (N=1); 9 is 100 (phase-21 decision 4). */
-const CONF_FLOOR = 0;
-/** The `--conf` of level `n` (1–9): the colour mix of `.md .conf` and the legend's swatches. */
-const confLevel = (n: number) => Math.round(CONF_FLOOR + ((n - 1) * (100 - CONF_FLOOR)) / 8);
+/** Phase-28 decision 3: a sentence with N up to this is underlined and shows its N. */
+const CONF_LOW = 6;
 
 /**
- * Rehype plugin (phase-21 decision 4): each confidence marker `⟦N⟧` goes, and the text before it
- * (from the previous marker or the start of the text node) gets a span whose `--conf` runs from
- * CONF_FLOOR (N=1) to 100 (N=9), and its N as a last child `sup.conf-n` in a zero-width anchor
- * `span.conf-a`, which CSS shows on hover, on a tap or with "Näytä luvut" (phase-23 decision 9).
- * Code stays as written. An unterminated marker at the end of the last text node (a reply still
- * streaming) is hidden.
+ * Rehype plugin (phase-21 decision 4, phase-28 decision 3): each confidence marker `⟦N⟧` goes, and
+ * the text before it (from the previous marker or the start of the text node) gets a span `conf`,
+ * plus `conf-low` for N up to CONF_LOW (a dotted underline, the N always visible), and its N as a
+ * last child `sup.conf-n` in a zero-width anchor `span.conf-a`, which CSS shows on hover, on a tap
+ * or with "Näytä luvut" (phase-23 decision 9). Code stays as written. An unterminated marker at the
+ * end of the last text node (a reply still streaming) is hidden.
  */
 export const rehypeConfidence = () => (tree: HNode) => {
   let last: HNode | undefined;
@@ -352,8 +349,7 @@ export const rehypeConfidence = () => (tree: HNode) => {
           type: 'element',
           tagName: 'span',
           properties: {
-            className: ['conf'],
-            style: `--conf:${confLevel(n)}`,
+            className: n <= CONF_LOW ? ['conf', 'conf-low'] : ['conf'],
             title: `Luottamus ${n}/9`,
           },
           children: [
@@ -449,8 +445,8 @@ const toggleN = (e: ReactMouseEvent) => {
 };
 
 /**
- * Phase-23 decision 9: the scale under a reply with markers (micro, muted) and "Näytä luvut", which
- * puts every N in the text (`pa.confN`). One 28 px row; phones: "Luottamus" and the scale, then
+ * Phase-23 decision 9: the scale under a reply with markers (micro, muted; phase 28: words only, the
+ * swatches went with the shading) and "Näytä luvut", which puts every N in the text (`pa.confN`). One 28 px row; phones: "Luottamus" and the scale, then
  * the button (UI review 3). The button's 44 px target reaches 8 px past its 28 px pill, so the gaps
  * stay 8 px.
  */
@@ -461,15 +457,7 @@ function ConfidenceLegend() {
       <span>Luottamus</span>
       <span className="flex items-center gap-2 tabular-nums">
         <span>1 arvaus</span>
-        <span aria-hidden="true" className="flex gap-1">
-          {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
-            <span
-              key={n}
-              className="conf-swatch h-2 w-3"
-              style={{ '--conf': confLevel(n) } as CSSProperties}
-            />
-          ))}
-        </span>
+        <span aria-hidden="true">–</span>
         <span>9 varma</span>
       </span>
       <button

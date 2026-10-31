@@ -477,16 +477,6 @@
   }
 }
 
-/* Phase-21 decision 4: a sentence's confidence as its contrast; --conf 100 is --foreground. In
-   OKLab: the steps stay on the line between the two warm greys. In OKLCH Chrome gives these
-   low-chroma greys the hue `none`, which renders as hue 0, a pink tint (UI review). */
-.md .conf,
-.conf-swatch {
-  color: color-mix(in oklab, var(--foreground) calc(var(--conf) * 1%), var(--muted-foreground));
-}
-.conf-swatch {
-  background: currentColor;
-}
 /* Phase-23 decision 9: each sentence's N sits above the sentence's end. It is placed absolutely in
    a zero-width inline-block anchor right after the full stop (an absolute child of an inline box
    would follow the inline's line breaks), so a hidden N reserves no width and a hover (hover
@@ -527,9 +517,22 @@
 .md .conf[data-show] > .conf-a > .conf-n {
   visibility: visible;
 }
+/* Phase-28 decision 3: N up to 6 is a dotted underline in the muted colour with its N always in
+   the line; the anchor is an inline-block, so the underline stops before the N. */
+.md .conf-low {
+  text-decoration: underline dotted var(--muted-foreground);
+  text-underline-offset: 0.25em;
+}
+.md .conf-low > .conf-a {
+  width: auto;
+}
 .md[data-conf-n] .conf-a {
   display: inline;
 }
+.md[data-conf-n] .conf-low > .conf-a {
+  display: inline-block;
+}
+.md .conf-low > .conf-a > .conf-n,
 .md[data-conf-n] .conf-n {
   visibility: visible;
   position: relative;

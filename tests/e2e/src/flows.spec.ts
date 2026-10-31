@@ -13,6 +13,7 @@ import {
   COLLIDING,
   CONFIDENCE_PLAIN,
   CONFIDENCE_REPLY,
+  CONFIDENCE_SHOWN,
   confidenceReply,
   DICT,
   deviceRows,
@@ -2134,8 +2135,8 @@ for (const viewport of VIEWPORTS)
 
       await send(page, 'Kerro Tampereesta');
       const reply = page.locator('.md').last();
-      // The text a reader sees: each sentence's N (`sup.conf-n`) is hidden.
-      await expect(reply).toHaveText(CONFIDENCE_PLAIN, { useInnerText: true });
+      // The text a reader sees: the N (`sup.conf-n`) of a sentence up to 6 only.
+      await expect(reply).toHaveText(CONFIDENCE_SHOWN, { useInnerText: true });
       const prompt = (text: string) =>
         JSON.stringify(
           app.llm.requests.find((r) => JSON.stringify(r.body.messages).includes(text))?.body
@@ -2146,13 +2147,18 @@ for (const viewport of VIEWPORTS)
       const spans = reply.locator('span.conf');
       await expect(spans).toHaveCount(3);
       await expect(spans.nth(0)).toHaveAttribute('title', 'Luottamus 9/9');
-      await expect(spans.nth(1)).toHaveAttribute('title', 'Luottamus 5/9');
-      await expect(spans.nth(2)).toHaveAttribute('title', 'Luottamus 1/9');
-      // The contrast follows N: 100 is the text colour, 0 is the muted one.
-      await expect(spans.nth(0)).toHaveAttribute('style', '--conf: 100;');
-      await expect(spans.nth(2)).toHaveAttribute('style', '--conf: 0;');
-      const color = (i: number) => spans.nth(i).evaluate((el) => getComputedStyle(el).color);
-      expect(await color(2)).not.toBe(await color(0));
+      await expect(spans.nth(1)).toHaveAttribute('title', 'Luottamus 7/9');
+      await expect(spans.nth(2)).toHaveAttribute('title', 'Luottamus 3/9');
+      // Phase-28 decision 3: up to 6 a dotted underline, 7 and up plain; one text colour.
+      const style = (i: number) =>
+        spans.nth(i).evaluate((el) => {
+          const s = getComputedStyle(el);
+          return [s.textDecorationStyle, s.textDecorationLine, s.color].join(' ');
+        });
+      const [high, low] = [await style(0), await style(2)];
+      expect(high).toMatch(/^solid none /);
+      expect(low).toMatch(/^dotted underline /);
+      expect(low.split(' ').slice(2)).toEqual(high.split(' ').slice(2));
 
       await reply.hover();
       await page.getByRole('button', { name: 'Kopioi', exact: true }).last().click();
@@ -2162,7 +2168,7 @@ for (const viewport of VIEWPORTS)
       await page.reload();
       if (viewport.width < 768) await page.getByRole('button', { name: 'Valikko' }).click();
       await page.locator('nav li > button').click({ position: { x: 16, y: 16 } });
-      await expect(page.locator('.md').last()).toHaveText(CONFIDENCE_PLAIN, {
+      await expect(page.locator('.md').last()).toHaveText(CONFIDENCE_SHOWN, {
         useInnerText: true,
       });
       await flipMode(page, 'Luottamus', false);
@@ -2234,8 +2240,10 @@ for (const viewport of VIEWPORTS)
       const reply = await confidenceReply(app, page);
       const spans = reply.locator('span.conf');
       const n = reply.locator('sup.conf-n');
-      await expect(n).toHaveText(['9', '5', '1']);
-      for (const i of [0, 1, 2]) await expect(n.nth(i)).toBeHidden();
+      await expect(n).toHaveText(['9', '7', '3']);
+      for (const i of [0, 1]) await expect(n.nth(i)).toBeHidden();
+      // Phase-28 decision 3: the N of a sentence up to 6 is always in the line.
+      await expect(n.nth(2)).toBeVisible();
       const legend = page.getByRole('button', { name: 'Näytä luvut' });
       await expect(legend).toHaveAttribute('aria-pressed', 'false');
       /** The box of every glyph run of the reply's text, the N left out. */
@@ -2306,7 +2314,7 @@ for (const viewport of VIEWPORTS)
       expect(inline.left).toBeCloseTo(0, 0);
       expect(inline.rise).toBeGreaterThan(4);
       await expect(reply).toHaveText(
-        'Tampere on Suomen kolmanneksi suurin kaupunki.9 Sen väkiluku kasvaa ensi vuonna noin prosentin.5 Raitiotie jatkunee Hiedanrantaan vuonna 2031.1',
+        'Tampere on Suomen kolmanneksi suurin kaupunki.9 Sen väkiluku kasvaa ensi vuonna noin prosentin.7 Raitiotie jatkunee Hiedanrantaan vuonna 2031.3',
         { useInnerText: true },
       );
       expect(await page.evaluate(() => localStorage.getItem('pa.confN'))).toBe('on');

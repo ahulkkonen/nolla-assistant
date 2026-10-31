@@ -528,20 +528,24 @@ export const holdAt = async (page: Page, text: string) => {
 
 /** Phase-21 decision 4: a reply with confidence markers at three levels (9, 5, 1). */
 export const CONFIDENCE_REPLY =
-  'Tampere on Suomen kolmanneksi suurin kaupunki.⟦9⟧ Sen väkiluku kasvaa ensi vuonna noin prosentin.⟦5⟧ Raitiotie jatkunee Hiedanrantaan vuonna 2031.⟦1⟧';
+  'Tampere on Suomen kolmanneksi suurin kaupunki.⟦9⟧ Sen väkiluku kasvaa ensi vuonna noin prosentin.⟦7⟧ Raitiotie jatkunee Hiedanrantaan vuonna 2031.⟦3⟧';
 export const CONFIDENCE_PLAIN =
   'Tampere on Suomen kolmanneksi suurin kaupunki. Sen väkiluku kasvaa ensi vuonna noin prosentin. Raitiotie jatkunee Hiedanrantaan vuonna 2031.';
 
 /**
- * A new chat with CONFIDENCE_REPLY; its Markdown root once the text shows. The text a reader sees
- * has no N: each sentence's `sup.conf-n` is hidden (phase-23 decision 9).
+ * What a reader sees of CONFIDENCE_REPLY: the N of a sentence up to 6 is in the line (phase-28
+ * decision 3); the other N are hidden (phase-23 decision 9).
  */
+export const CONFIDENCE_SHOWN =
+  'Tampere on Suomen kolmanneksi suurin kaupunki. Sen väkiluku kasvaa ensi vuonna noin prosentin. Raitiotie jatkunee Hiedanrantaan vuonna 2031.3';
+
+/** A new chat with CONFIDENCE_REPLY; its Markdown root once the text shows. */
 export const confidenceReply = async (app: App, page: Page) => {
   app.llm.push({ text: CONFIDENCE_REPLY });
   await app.login(page);
   await sendMessage(page, 'Kerro Tampereesta');
   const reply = page.locator('.md').last();
-  await expect(reply).toHaveText(CONFIDENCE_PLAIN, { useInnerText: true });
+  await expect(reply).toHaveText(CONFIDENCE_SHOWN, { useInnerText: true });
   return reply;
 };
 

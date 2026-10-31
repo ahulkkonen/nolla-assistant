@@ -407,28 +407,24 @@ for (const scheme of ['light', 'dark'] as const) {
         hold.release();
       });
 
-      // Phase-21 decision 4 and phase-23 decision 9: three confidence levels with Luottamus on,
-      // the legend, and the second sentence's N (hover on a desktop, a tap on the phone).
+      // Phase-21 decision 4, phase-23 decision 9 and phase-28 decision 3: three confidence levels
+      // with Luottamus on (3 underlined with its N), the legend, and the second sentence's N
+      // (hover on a desktop, a tap on the phone).
       test('chat-confidence', async ({ app, page }) => {
         const reply = await confidenceReply(app, page);
         await expect(reply.locator('span.conf')).toHaveCount(3);
         await flipMode(page, 'Luottamus', true);
         await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
         const box = (l: Locator) => l.evaluate((el) => el.getBoundingClientRect().toJSON());
-        // P1 and UI review: the legend row is 28 px, the button's pill (phones: the pill's line
-        // and the 16 px scale 8 apart), 4 px between 12 × 8 swatches, 8 px to the text above and
-        // to the action row below.
+        // P1 and UI review: the legend row is 28 px, the button's pill (phones too: without the
+        // swatches it fits one line at 390), 8 px to the text above and to the action row below.
         const legend = page.getByRole('button', { name: 'Näytä luvut' }).locator('..');
         const row = await box(legend);
-        expect(row.height).toBe(vp.width < 768 ? 52 : 28);
+        expect(row.height).toBe(28);
         expect(row.top - (await box(reply)).bottom).toBe(8);
         expect(
           (await box(legend.locator('xpath=following-sibling::div[1]'))).top - row.bottom,
         ).toBe(8);
-        const swatches = legend.locator('.conf-swatch');
-        await expect(swatches).toHaveCount(9);
-        const [a, b] = [await box(swatches.nth(0)), await box(swatches.nth(1))];
-        expect([a.width, a.height, b.x - a.right]).toEqual([12, 8, 4]);
         // A 28 px pill, as wide on as off; its target is 44 px (`::after`).
         const button = page.getByRole('button', { name: 'Näytä luvut' });
         const off = await box(button);
