@@ -9,8 +9,8 @@ import { eq, inArray } from 'drizzle-orm';
 import { afterEach, expect, test } from 'vitest';
 import { branchPoint, type ChatMsg, claimStore } from './claims.ts';
 import { loadModel } from './embeddings.ts';
+import { taskSmall } from './llm.ts';
 import { bootPseudo, cleanups, runCleanups, tempDir } from './test-utils.ts';
-import { taskSmall } from './topics.ts';
 
 afterEach(runCleanups);
 

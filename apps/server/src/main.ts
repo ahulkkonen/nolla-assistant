@@ -25,6 +25,7 @@ import { fxRates } from './fx.ts';
 import { harness } from './harness.ts';
 import { buildServer } from './http.ts';
 import { integrations as integrationStore } from './integrations.ts';
+import { taskSmall } from './llm.ts';
 import { loadMcp } from './mcp.ts';
 import { memoryStore } from './memory.ts';
 import { loadModes, modesDir } from './modes.ts';
@@ -36,7 +37,7 @@ import { searcher } from './search-tool.ts';
 import { seedDir } from './seed.ts';
 import { transcript } from './session-text.ts';
 import { broadcast, errorMsg } from './socket.ts';
-import { taskSmall, titleJobs } from './topics.ts';
+import { titleJobs } from './topics.ts';
 import { purgeTrash, workStore } from './tree.ts';
 import { usageRecorder } from './usage.ts';
 

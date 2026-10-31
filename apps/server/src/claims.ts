@@ -6,8 +6,8 @@ import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lt, or, sql } from 
 import cron from 'node-cron';
 import { z } from 'zod';
 import { embed } from './embeddings.ts';
+import type { taskSmall } from './llm.ts';
 import { RELATED_MIN, rrf, terms } from './search.ts';
-import type { taskSmall } from './topics.ts';
 
 /**
  * Claims about the user (docs/decisions/phase-17-memory.md). Texts and quotes are real values:

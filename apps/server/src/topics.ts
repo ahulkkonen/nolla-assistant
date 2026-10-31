@@ -6,14 +6,17 @@ import type { FastifyBaseLogger } from 'fastify';
 import { z } from 'zod';
 import { chatRow, summary } from './chats.ts';
 import { embed } from './embeddings.ts';
+import { type ChatMessage, taskSmall } from './llm.ts';
 import type { SessionRegistry } from './pi/registry.ts';
 import { indexChat } from './search.ts';
 import { transcript as branch } from './session-text.ts';
 import { broadcast, type Rooms } from './socket.ts';
-import { type RecordUsage, rawUsage } from './usage.ts';
+import type { RecordUsage } from './usage.ts';
+
+// tests/memory-eval imports `taskSmall` from here; it lives in llm.ts.
+export { taskSmall };
 
 const DEBOUNCE_MS = 2000;
-const TIMEOUT_MS = 20_000;
 /** ~4 chars per token: rerun after ~3K new tokens, send the last ~2K tokens. */
 const RERUN_CHARS = 12_000;
 const TAIL_CHARS = 8000;
@@ -41,88 +44,12 @@ Säännöt:
 - why: enintään kaksi lyhyttä virkettä siitä, mitä aihe kattaa. Älä koskaan aloita sanalla "Keskustelussa".
 - summary: 3–5 virkettä keskustelun sisällöstä hakua varten, keskustelun kielellä.`;
 
-const REPAIR =
-  'Vastauksesi ei ollut kelvollista JSONia annetussa muodossa. Vastaa uudelleen pelkällä JSON-objektilla.';
-
 const Reply = z.object({
   title: z.string().trim().min(1).max(80),
   topics: z.array(z.string()),
   proposed_topic: z.object({ name: z.string().trim().min(1).max(80), why: z.string() }).nullable(),
   summary: z.string(),
 });
-
-export type ChatMessage = { role: 'system' | 'user' | 'assistant'; content: string };
-
-const TASK_MODEL = 'zdr/task-small';
-
-/**
- * JSON-only calls to the LiteLLM alias `zdr/task-small` (or `model`): validates the reply with `schema` and
- * retries once with a repair message. Resolves `undefined` when the reply stays invalid. Each call
- * goes to `onUsage` as a `task` row of `chatId` (phase-13 decision 14).
- */
-export function taskSmall(
-  litellmUrl: string,
-  litellmMasterKey: string,
-  onUsage?: RecordUsage,
-  model = TASK_MODEL,
-) {
-  let jsonMode = true;
-  const complete = async (messages: ChatMessage[], chatId: string | null): Promise<string> => {
-    for (;;) {
-      const res = await fetch(`${litellmUrl}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          authorization: `Bearer ${litellmMasterKey}`,
-        },
-        body: JSON.stringify({
-          model,
-          stream: false,
-          messages,
-          ...(jsonMode ? { response_format: { type: 'json_object' } } : {}),
-        }),
-        signal: AbortSignal.timeout(TIMEOUT_MS),
-      });
-      // The alias may reject `response_format`; the prompt asks for JSON only anyway.
-      if (res.status === 400 && jsonMode) {
-        jsonMode = false;
-        continue;
-      }
-      if (!res.ok) throw new Error(`task-small call status ${res.status}`);
-      const body = (await res.json()) as {
-        choices?: { message?: { content?: string | null } }[];
-        usage?: unknown;
-      };
-      onUsage?.({ kind: 'task', chatId }, rawUsage(model, body.usage, onUsage.warn));
-      return body.choices?.[0]?.message?.content ?? '';
-    }
-  };
-  const parse = <T>(schema: z.ZodType<T>, text: string) => {
-    try {
-      return schema.safeParse(JSON.parse(text.replace(/^\s*```(?:json)?|```\s*$/g, ''))).data;
-    } catch {
-      // The parser error quotes the reply text: never log it.
-      return undefined;
-    }
-  };
-  return async <T>(
-    schema: z.ZodType<T>,
-    messages: ChatMessage[],
-    chatId: string | null = null,
-  ): Promise<T | undefined> => {
-    const content = await complete(messages, chatId);
-    return (
-      parse(schema, content) ??
-      parse(
-        schema,
-        await complete(
-          [...messages, { role: 'assistant', content }, { role: 'user', content: REPAIR }],
-          chatId,
-        ),
-      )
-    );
-  };
-}
 
 /**
  * Whether a proposed topic name is close to an existing topic or an open proposal by embedding
