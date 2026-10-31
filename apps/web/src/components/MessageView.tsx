@@ -555,6 +555,7 @@ export const MarkdownText = memo(function MarkdownText({
     >
       {blocks.map((b, i) => (
         <Block
+          // biome-ignore lint/suspicious/noArrayIndexKey: no ids; position is the identity
           key={i}
           text={withDefinitions(b, definitions)}
           rehype={i === blocks.length - 1 ? rehypeLast : rehype}
@@ -704,6 +705,7 @@ function EditBox({
   const area = useRef<HTMLTextAreaElement>(null);
   // Grows with its text (wrapped lines too) up to 320 px, then scrolls; the border is outside
   // `scrollHeight`.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: grows again when the value changes
   useLayoutEffect(() => {
     const el = area.current;
     if (!el) return;
@@ -797,6 +799,7 @@ export function MessageView({
   }, [editRequested]);
 
   // An edit of a message without its entry id: the chat's ids come first (`chat.open`).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: asks for the ids once, when editing starts
   useEffect(() => {
     if (editing && !canSend) onNeedIds?.();
   }, [editing]);

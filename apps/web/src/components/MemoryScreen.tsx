@@ -211,6 +211,7 @@ export function MemoryScreen() {
   useEffect(() => send({ type: 'memory.list' }), []);
   // A save is done when the server echoes the text (a "Tallennettu" toast); an error toast also
   // ends the wait.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: when the echo or an error comes
   useEffect(() => {
     if (!mem) return;
     if (draft !== null && draft === mem.user) useStore.getState().notify('Tallennettu');

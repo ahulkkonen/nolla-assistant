@@ -244,6 +244,7 @@ export function waitSteps(w: Wait, now: number, row = false, thinks = true): Ste
 export const receiptSteps = (t: Timing): Step[] =>
   (['queueMs', 'thinkMs', 'writeMs'] as const).flatMap((key, i) => {
     const ms = t[key];
+    // PAST has a word for steps 1 to 3; `?? ''` only answers the index type.
     return ms === undefined ? [] : [{ k: i + 1, word: PAST[i + 1] ?? '', ms }];
   });
 

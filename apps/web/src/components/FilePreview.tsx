@@ -44,6 +44,7 @@ async function readCapped(url: string, max: number, signal: AbortSignal): Promis
  */
 function useText(url: string, max: number | null, rev: number) {
   const [got, setGot] = useState<{ url: string; value: Loaded } | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `rev` asks for a new fetch
   useEffect(() => {
     if (max === null) return;
     const ctrl = new AbortController();

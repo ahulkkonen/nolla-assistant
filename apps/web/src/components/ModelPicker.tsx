@@ -178,6 +178,7 @@ const measure = globalThis.document?.createElement('canvas').getContext('2d');
  */
 function useFits(ref: RefObject<HTMLElement | null>, text: string, max: number, shown = true) {
   const [fits, setFits] = useState(true);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: measures again when `shown` mounts it
   useLayoutEffect(() => {
     const check = () => {
       if (!ref.current || !measure) return;
@@ -728,6 +729,7 @@ function CatalogDialog({
   const focusCell = (c: string) =>
     list.current?.querySelector<HTMLElement>(`[data-cell="${CSS.escape(c)}"]`)?.focus();
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: after the list renders; uses the list ref
   useEffect(() => {
     if (!models || !refocus.current) return;
     focusCell(refocus.current);

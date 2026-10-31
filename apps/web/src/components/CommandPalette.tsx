@@ -77,6 +77,7 @@ function useWholeRows(
       else all = false;
     }
     if (!all) el.style.maxHeight = `${fit + pad}px`;
+    // biome-ignore lint/correctness/useExhaustiveDependencies: the caller passes the list
   }, deps);
 }
 

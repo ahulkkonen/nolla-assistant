@@ -303,6 +303,7 @@ function Listing({
                   </span>
                 </TableCell>
                 {r.cells.map((c, i) => (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: no ids; position is the identity
                   <TableCell key={i} className="text-muted-foreground">
                     {c}
                   </TableCell>
@@ -431,6 +432,7 @@ export function FilesScreen() {
     refreshUsage();
     setRev((r) => r + 1);
   };
+  // biome-ignore lint/correctness/useExhaustiveDependencies: lists again when the folder key changes
   useEffect(() => {
     void load();
   }, [key]);
@@ -447,6 +449,7 @@ export function FilesScreen() {
   // "Näytä" after "Tallenna tiedostoksi": the file opens in the preview once its folder is listed,
   // following the pages until it shows.
   const entries = list?.key === key ? list.entries : undefined;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: when the focus or the listing changes
   useEffect(() => {
     const focus = view.focus;
     if (!focus || !entries) return;

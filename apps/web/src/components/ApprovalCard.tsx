@@ -16,6 +16,7 @@ function Value({ text, children }: { text: string; children?: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
   const [clamped, setClamped] = useState(false);
   const [more, setMore] = useState(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: measures again when the text changes
   useLayoutEffect(() => {
     const el = ref.current;
     if (el && !more) setClamped(el.scrollHeight > el.clientHeight + 1);
@@ -67,6 +68,7 @@ export function Lines({
   const box = useRef<HTMLDivElement>(null);
   // Wrapped rows: only the box knows its height, and it changes with the card's width.
   const [tall, setTall] = useState(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: measures again when the lines change
   useLayoutEffect(() => {
     const el = box.current;
     if (!el || all) return;
@@ -94,6 +96,7 @@ export function Lines({
           )}
         >
           {(all ? lines : lines.slice(0, CLAMP)).map((l, i) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: no ids; position is the identity
             <div key={`${i}:${l}`}>{line(l)}</div>
           ))}
         </div>

@@ -148,6 +148,7 @@ function SearchResults({ search }: { search: ToolSearch }) {
               </>
             );
             return (
+              // biome-ignore lint/suspicious/noArrayIndexKey: no ids; position is the identity
               <li key={`${i}:${r.url}`} className="min-w-0">
                 {host ? (
                   // One block link over the title and the host (44 px on touch).

@@ -76,6 +76,7 @@ function Evidence({ claim }: { claim: Claim }) {
       {claim.evidence.map((e, i) => (
         <li
           // Quotes have no id; their order is the server's (newest first).
+          // biome-ignore lint/suspicious/noArrayIndexKey: no ids; position is the identity
           key={i}
           className="flex flex-col items-start gap-2 border-l-2 border-border pl-3"
         >
@@ -219,6 +220,7 @@ function ClaimCard({ claim }: { claim: Claim }) {
   const [seen, setSeen] = useState(claim.text);
   const [sent, setSent] = useState(false);
   const updated = mode === 'edit' && !sent && seen !== claim.text;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs once, when the answer ends `busy`
   useEffect(() => {
     if (!sent || busy) return;
     // The answer came: done (a new state) unless it failed.
@@ -228,6 +230,7 @@ function ClaimCard({ claim }: { claim: Claim }) {
     setText(claim.text);
     setSeen(claim.text);
   }, [busy]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: follows a server change of the text
   useEffect(() => {
     if (mode === 'idle') {
       setText(claim.text);

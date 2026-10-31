@@ -221,6 +221,7 @@ function Shell() {
 
   // The server skips a push for the chat in the foreground.
   const focused = useStore((s) => (s.screen === 'chat' ? s.activeChatId : null));
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reports again when `focused` changes
   useEffect(() => {
     reportFocus();
   }, [focused]);

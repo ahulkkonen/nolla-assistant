@@ -171,6 +171,7 @@ export function MicButton({
   };
 
   // Esc cancels a recording or a running transcription.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: one Esc listener per state; `stop` uses refs
   useEffect(() => {
     if (state === 'idle') return;
     const onKey = (e: KeyboardEvent) => {
@@ -191,6 +192,7 @@ export function MicButton({
   }, [hint]);
 
   // Unmount: no microphone, timer or request may outlive the button.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: unmount only; `abandon` uses refs
   useEffect(
     () => () => {
       const r = rec.current;

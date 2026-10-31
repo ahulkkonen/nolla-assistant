@@ -97,6 +97,7 @@ function TreeBrowser({
       () => setFailed(true),
     );
   const box = useRef<HTMLDivElement>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: lists again when the folder changes
   useEffect(() => {
     setFailed(false);
     // A folder opens at its top.

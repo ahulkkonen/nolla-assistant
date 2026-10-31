@@ -37,6 +37,7 @@ const failText = (code: string | null | undefined) =>
  */
 function Tokens({ text }: { text: string }) {
   return text.split(' ').map((t, i) => (
+    // biome-ignore lint/suspicious/noArrayIndexKey: no ids; position is the identity
     <Fragment key={i}>
       {i > 0 && ' '}
       <span className="whitespace-nowrap">{t}</span>
@@ -165,6 +166,7 @@ export function ExportAllDialog() {
   const close = () => useStore.setState({ exportAllOpen: false });
   // The download is done when the server drops the job (`export.state` with null).
   const prev = useRef(job);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: when the job changes; `close` sets the store
   useEffect(() => {
     if (prev.current?.status === 'ready' && !job) close();
     prev.current = job;

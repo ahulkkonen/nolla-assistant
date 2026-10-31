@@ -35,6 +35,7 @@ export function useFigure(a: Artifact | undefined, fill = false) {
 
   // Keyed by content, not object identity: a streaming upsert of another artifact must not reload
   // this one. The old document stays up until the new one is ready.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: keyed by content, not by object identity
   useEffect(() => {
     if (!a) return;
     let live = true;
@@ -202,6 +203,7 @@ export function ChartFallback({
           </thead>
           <tbody>
             {rows.slice(0, 500).map((r, i) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: no ids; position is the identity
               <tr key={i}>
                 {cols.map((c) => (
                   <td key={c} className="border-b px-2 py-1">
