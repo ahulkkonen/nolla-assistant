@@ -217,6 +217,8 @@ test('masked-only: 10-turn tool conversation, then restart and chat.open', async
   process.env.LITELLM_MASTER_KEY = KEY;
   const config = loadConfig({
     DATA_DIR: dataDir,
+    // Unset: the shared default folder, so the model downloads once (phase-30 item 13).
+    MODELS_DIR: process.env.MODELS_DIR,
     LITELLM_URL: llm.url,
     LITELLM_MASTER_KEY: KEY,
     OPENROUTER_CATALOG: llm.url,

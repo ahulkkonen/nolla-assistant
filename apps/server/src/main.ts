@@ -27,6 +27,7 @@ import {
 import { branchPoint, claimStore } from './claims.ts';
 import { collisionWaits } from './collisions.ts';
 import { BUNDLED_AGENTS, BUNDLED_AUTOMATIONS, type Config, loadConfig } from './config.ts';
+import { setModelsDir } from './embeddings.ts';
 import { fxRates } from './fx.ts';
 import { harness } from './harness.ts';
 import { buildServer } from './http.ts';
@@ -48,6 +49,7 @@ export async function start(
   config: Config = loadConfig(),
   logStream?: { write(line: string): void },
 ) {
+  setModelsDir(config.modelsDir);
   const { db, sqlite } = openDb(join(config.dataDir, 'app.db'));
   db.insert(users)
     .values({ id: config.userId, createdAt: new Date().toISOString() })

@@ -9,13 +9,14 @@ import { startFakeBroker } from '@pa/pi-ext-sandbox/fake-broker';
 import type { ClientMessageInput, ServerMessage } from '@pa/protocol';
 import WebSocket from 'ws';
 import { hashPassword } from './auth/password.ts';
-import { BUNDLED_AGENTS, loadConfig } from './config.ts';
-import { loadModel } from './embeddings.ts';
+import { BUNDLED_AGENTS, DEFAULT_MODELS_DIR, loadConfig } from './config.ts';
+import { loadModel, setModelsDir } from './embeddings.ts';
 import { start } from './main.ts';
 
 /** Shared server test harness. Each test file runs `afterEach(runCleanups)`. */
 // One model cache for all tests, outside the per-test DATA_DIR (downloaded once).
-process.env.MODELS_DIR ||= join(tmpdir(), 'pa-models');
+const MODELS_DIR = process.env.MODELS_DIR || DEFAULT_MODELS_DIR;
+setModelsDir(MODELS_DIR);
 /**
  * Loads the embedding model for the search, claims and memory tests. A missing model fails the
  * file, so a gate never passes without them. Only `PA_SKIP_MODEL_TESTS=1` skips them (offline
@@ -60,6 +61,7 @@ export async function boot(turns: FakeTurn[], env: Record<string, string> = {}) 
   process.env.LITELLM_MASTER_KEY = KEY;
   const config = loadConfig({
     DATA_DIR: dataDir,
+    MODELS_DIR,
     LITELLM_URL: llm.url,
     LITELLM_MASTER_KEY: KEY,
     PORT: String(await freePort()),

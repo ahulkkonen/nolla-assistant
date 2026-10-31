@@ -1,20 +1,23 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { env, type FeatureExtractionPipeline, pipeline } from '@huggingface/transformers';
+import { DEFAULT_MODELS_DIR } from './config.ts';
 
 export const MODEL = 'Xenova/multilingual-e5-small';
 export const DIMS = 384;
 
 let extractor: Promise<FeatureExtractionPipeline> | undefined;
 
-/** Model files live in `MODELS_DIR` (image: /app/models), else `DATA_DIR/models` (dev). */
-export const modelsDir = () =>
-  process.env.MODELS_DIR || join(process.env.DATA_DIR ?? '.', 'models');
+let modelsDir = DEFAULT_MODELS_DIR;
+/** `start` passes `Config.modelsDir`; code that never starts a server keeps the default. */
+export const setModelsDir = (dir: string) => {
+  modelsDir = dir;
+};
 
 /** Lazy, one load per process. Downloads only when the directory does not hold the model yet. */
 export function loadModel() {
   extractor ??= (async () => {
-    const dir = modelsDir();
+    const dir = modelsDir;
     env.cacheDir = dir;
     env.localModelPath = dir;
     env.allowRemoteModels = !existsSync(join(dir, MODEL, 'onnx', 'model_quantized.onnx'));

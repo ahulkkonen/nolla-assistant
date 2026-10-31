@@ -138,6 +138,15 @@ Batch B, per item (branch `p30-b2` holds 8, 11, 12, 13 and the dependency follow
     turns the 14 tests into skips with a warning. CI must not set it. The report proposed the
     reverse (`REQUIRE_MODEL=1` makes a skip fail). The task asked for a loud default, so a
     machine without the variable can never pass the gate silently.
+13. Done in the tree; phase 31 rewrites the history. `tests/masked-only/models` is removed, and
+    `.gitignore` has `**/models/`. Cause fixed: `embeddings.ts` no longer reads `process.env`.
+    `Config.modelsDir` is `MODELS_DIR`, else `DEFAULT_MODELS_DIR` (`$TMPDIR/pa-models`), and
+    `start` passes it to `setModelsDir`. Code that never starts a server (the direct search and
+    claims tests, the memory eval) keeps the same default. The server harness, the e2e fixtures,
+    the demo and masked-only pass `MODELS_DIR` through to `loadConfig`, so all of them share one
+    download. `scripts/download-models.mjs` calls `setModelsDir`. Changed on purpose: dev without
+    `MODELS_DIR` now keeps the model in `$TMPDIR/pa-models`, not in `DATA_DIR/models`. One default
+    for every run is simpler than one per `DATA_DIR`, and it is never inside the repository.
 
 Left as they are in batch A, on purpose:
 

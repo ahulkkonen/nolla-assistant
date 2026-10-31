@@ -1,3 +1,5 @@
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 process.env.PI_OFFLINE = '1';
@@ -5,6 +7,13 @@ process.env.PI_SKIP_VERSION_CHECK = '1';
 process.env.PI_TELEMETRY = '0';
 
 type Env = Record<string, string | undefined>;
+
+/**
+ * The embedding model's folder without `MODELS_DIR`: outside the repository and outside any
+ * `DATA_DIR`, so dev, every test harness and the memory eval share one download. The image sets
+ * `MODELS_DIR=/app/models`.
+ */
+export const DEFAULT_MODELS_DIR = join(tmpdir(), 'pa-models');
 
 function required(env: Env, name: string): string {
   const v = env[name];
@@ -64,6 +73,7 @@ export function loadConfig(env: Env = process.env) {
     port,
     host: env.HOST ?? '127.0.0.1',
     dataDir: required(env, 'DATA_DIR'),
+    modelsDir: env.MODELS_DIR || DEFAULT_MODELS_DIR,
     litellmUrl: required(env, 'LITELLM_URL'),
     litellmMasterKey: required(env, 'LITELLM_MASTER_KEY'),
     userId,
