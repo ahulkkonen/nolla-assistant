@@ -113,6 +113,13 @@ Batch B, per item (branch `p30-b2` holds 8, 11, 12, 13 and the dependency follow
    no more retries. Any other answer, or no answer, keeps the backoff. This differs from the
    report (three closes, then `me()`): one check per failed open is simpler, and the backoff
    already caps it at one call per 10 s.
+11. Done. Migration `0013_curvy_mimic.sql` adds `chunks(chatId, kind, seq)`, `files(chatId)`,
+   `fileOrigins(chatId)`, `memoryPending(chatId)` and `topicProposals(chatId)`. `drizzle-kit
+   generate` wrote it from `schema.ts`. `packages/db/src/schema.test.ts` migrates an empty
+   database and runs drizzle-kit's `pushSQLiteSchema` against it: the test expects no
+   statement. This compares columns, defaults, keys, foreign keys and indexes in one call, so
+   the test does not compare `PRAGMA table_info` by hand. The raw FTS5 and vec0 tables stay out
+   of the check, because the test runs drizzle's `migrate` and not `openDb`.
 
 Left as they are in batch A, on purpose:
 
