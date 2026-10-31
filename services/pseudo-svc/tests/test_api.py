@@ -39,12 +39,12 @@ async def test_seed_mask_unmask_scan(client):
     seed = await post(client, "/vault/seed", {"entities": [{"canonical": "Mikko Virtanen", "kind": "PERSON"}]})
     assert seed["ok"] and len(seed["ids"]) == 1
     # the period: a hetu surrogate's check letter can be a prefix of a surrogate name (hold 1)
-    m = await post(client, "/mask", {"session_id": "s", "text": "😀 Virtaselle 131052-308T."})
+    m = await post(client, "/mask", {"session_id": "s", "text": "😀 Virtaselle 131052-913A."})
     assert {s["kind"] for s in m["spans"]} == {"PERSON", "HETU"} and m["spans"][0]["start"] == 3
     assert set(m["spans"][0]) == {"start", "end", "entity_id", "kind", "surrogate", "real_form", "detector",
                                   "score", "pending"}
     u = await post(client, "/unmask", {"text": m["masked"]})
-    assert u["restored"] == "😀 Virtaselle 131052-308T." and u["hold"] == 0 and u["unresolved"] == []
+    assert u["restored"] == "😀 Virtaselle 131052-913A." and u["hold"] == 0 and u["unresolved"] == []
     j = await post(client, "/mask", {"session_id": "s", "json": {"a": ["Virtaselle"]}})
     assert (await post(client, "/unmask", {"json": j["masked"]}))["restored"] == {"a": ["Virtaselle"]}
     sc = await post(client, "/scan", {"session_id": "s", "messages": [
@@ -98,7 +98,7 @@ async def test_limits_and_errors(client, monkeypatch):
     wide = {"a": [1] * 20_001}
     assert (await client.post("/mask", json={**U, "session_id": "s", "json": wide})).status_code == 413
     bad = await client.post("/vault/seed", json={**U, "entities": [
-        {"canonical": "131052-308t", "kind": "HETU"}, {"canonical": "131052-308X", "kind": "HETU"}]})
+        {"canonical": "131052-913a", "kind": "HETU"}, {"canonical": "131052-913X", "kind": "HETU"}]})
     assert bad.status_code == 422 and bad.json()["detail"] == [{"index": 1, "msg": "not a valid HETU"}]
     assert "308X" not in bad.text
     ok = await post(client, "/vault/seed", {"entities": [{"canonical": "040 123 4567", "kind": "PHONE"}]})

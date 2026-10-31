@@ -129,7 +129,7 @@ describe.skipIf(!hasDocker)(
 
     it('(b) blocks a checksum-valid hetu before the upstream', async () => {
       await expectRefused(
-        chat('zdr/strong', 'hetuni on 010190-123M'),
+        chat('zdr/strong', 'hetuni on 010190-923E'),
         /Blocked entity detected: FI_PERSONAL_IDENTITY_CODE/,
       );
     });
@@ -148,10 +148,10 @@ describe.skipIf(!hasDocker)(
       );
     });
 
-    it('(b) lets a checksum-invalid code through: 010190-123A is not a hetu', async () => {
-      // The mod-31 check character for 010190-123 is M. Presidio validates the checksum, so a
+    it('(b) lets a checksum-invalid code through: 010190-923A is not a hetu', async () => {
+      // The mod-31 check character for 010190-923 is E. Presidio validates the checksum, so a
       // code with a wrong check character is not FI_PERSONAL_IDENTITY_CODE by design.
-      expect((await chat('zdr/strong', 'koodi 010190-123A')).status).toBe(200);
+      expect((await chat('zdr/strong', 'koodi 010190-923A')).status).toBe(200);
     });
 
     it('(c) refuses non-ZDR and non-alias models and client routing overrides', async () => {
@@ -329,7 +329,7 @@ describe.skipIf(!hasDocker)(
 
       it('the presidio backstop also covers search queries', async () => {
         await expectRefused(
-          chat('zdr/search', 'hetu 010190-123M'),
+          chat('zdr/search', 'hetu 010190-923E'),
           /Blocked entity detected: FI_PERSONAL_IDENTITY_CODE/,
         );
       });

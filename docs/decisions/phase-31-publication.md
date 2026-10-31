@@ -27,6 +27,15 @@ discussion before the repository goes public.
    synthetic Finnish names like the rest.
 6. **Not scrubbed, on purpose.** `docs/plan.md` keeps the infrastructure facts (VPS size, prices,
    Coolify); they describe the design, not a person.
+7. **Fabricated personal identity codes use the 900 range.** Individual numbers 002 to 899 go to
+   real people, so a made-up hetu in that range can be the code of a real person. Numbers 900 to 999
+   are for temporary codes and are not given to anyone permanently. The pseudonymization service
+   makes its surrogates in the same range (`services/pseudo-svc/app/surrogate.py`). Each fixture,
+   test, corpus line and record keeps its date and century sign and gets the number
+   `900 + (NNN mod 100)` (the next free number on a clash) and a new check character. A code with a
+   wrong check character on purpose keeps that character, and the character stays wrong. Codes that
+   are never issued (number 000 or 001, a date that does not exist) stay as they are, because the
+   tests check exactly that.
 
 ## Status
 

@@ -1491,7 +1491,7 @@ for (const scheme of ['light', 'dark'] as const) {
           test('vault', async ({ app, page }) => {
             app.llm.push({ text: 'Selvä, Pekka Laaksonen.' });
             await app.login(page);
-            await send(page, 'Matti Virtanen ja Liisa Korhonen, hetu 010190-123M');
+            await send(page, 'Matti Virtanen ja Liisa Korhonen, hetu 010190-923E');
             await expect(page.locator('.md').last()).toHaveText('Selvä, Matti Virtanen.');
             await openVault(page);
             await expect(page.getByText('Koski')).toBeVisible();
@@ -1517,7 +1517,7 @@ for (const scheme of ['light', 'dark'] as const) {
           test('confirm-never-detect', async ({ app, page }) => {
             app.llm.push({ text: 'Selvä, Pekka Laaksonen.' });
             await app.login(page);
-            await send(page, 'Matti Virtanen ja Liisa Korhonen, hetu 010190-123M');
+            await send(page, 'Matti Virtanen ja Liisa Korhonen, hetu 010190-923E');
             await expect(page.locator('.md').last()).toHaveText('Selvä, Matti Virtanen.');
             await openVault(page);
             await page
@@ -1532,9 +1532,9 @@ for (const scheme of ['light', 'dark'] as const) {
           test('chat-annotated', async ({ app, page }) => {
             app.llm.push({ text: 'Hei Pekka Laaksonen! Hetu 010190-900B on tallessa.' });
             await app.login(page);
-            await send(page, 'Moi, olen Matti Virtanen, hetu 010190-123M');
+            await send(page, 'Moi, olen Matti Virtanen, hetu 010190-923E');
             await expect(page.locator('.md').last()).toHaveText(
-              'Hei Matti Virtanen! Hetu 010190-123M on tallessa.',
+              'Hei Matti Virtanen! Hetu 010190-923E on tallessa.',
             );
             /** Flips a switch in Asetukset, then closes Settings and (under 768 px) the drawer. */
             const setting = async (label: string) => {

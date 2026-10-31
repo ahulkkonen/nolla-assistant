@@ -489,7 +489,7 @@ test.describe('vault', () => {
   test('open from settings, merge two, confirm pending', async ({ app, page }) => {
     app.llm.push({ text: 'Selvä.' });
     await app.login(page);
-    await send(page, 'Matti Virtanen ja Liisa Korhonen, hetu 010190-123M');
+    await send(page, 'Matti Virtanen ja Liisa Korhonen, hetu 010190-923E');
     await expect(page.locator('.md')).toHaveText('Selvä.');
     await openVault(page);
     const rows = page.locator('tbody tr');

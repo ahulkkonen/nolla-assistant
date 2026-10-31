@@ -154,8 +154,8 @@ a live call.
 **Presidio backstop:** one `pre_call` guardrail, BLOCK only for `FI_PERSONAL_IDENTITY_CODE`,
 `IBAN_CODE`, `CREDIT_CARD`; nothing else is analyzed (PERSON off); fails closed when the analyzer
 is down. The analyzer loads `FiPersonalIdentityCodeRecognizer` for `en` from the mounted registry,
-so no Finnish spaCy model is needed. Presidio validates the hetu check character: `010190-123A` is
-not a hetu (the correct check character is `M`) and passes; the gate test uses `010190-123M`.
+so no Finnish spaCy model is needed. Presidio validates the hetu check character: `010190-923A` is
+not a hetu (the correct check character is `E`) and passes; the gate test uses `010190-923E`.
 Known gap: hetu inside assistant `tool_calls` arguments is not scanned (the Pi leak scan covers it).
 No `logging_only` guardrail (no log sink exists; it would also hide leaks from the §14 log grep).
 

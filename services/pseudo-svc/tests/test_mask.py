@@ -30,10 +30,10 @@ def test_round_trip_with_inflection(vault):
 
 
 def test_codes_mask_and_restore(vault):
-    text = "Hetu 131052-308T, tili FI21 1234 5600 0007 85, puh. 040 123 4567, posti matti.v@example.com."
+    text = "Hetu 131052-913A, tili FI21 1234 5600 0007 85, puh. 040 123 4567, posti matti.v@example.com."
     masked, spans = mask(vault, text)
     assert [s["kind"] for s in spans] == ["HETU", "IBAN", "PHONE", "EMAIL"]
-    assert "131052-308T" not in masked and "048 " in masked and "@example-1.invalid" in masked  # a company domain
+    assert "131052-913A" not in masked and "048 " in masked and "@example-1.invalid" in masked  # a company domain
     hetu = spans[0]["surrogate"]
     assert 900 <= int(hetu[7:10]) <= 999 and hetu[6] == "-"
     assert unmask(vault, masked)[0] == text
@@ -84,10 +84,10 @@ def test_merge_repoints_spans(vault):
 
 
 def test_json_structure_kept(vault):
-    value = {"content": [{"type": "text", "text": "Hetu 131052-308T"}], "n": 3, "ok": True, "k": None}
+    value = {"content": [{"type": "text", "text": "Hetu 131052-913A"}], "n": 3, "ok": True, "k": None}
     masked, spans = M.mask(vault, U, "s1", json=value)
     assert masked["n"] == 3 and masked["ok"] is True and masked["k"] is None
-    assert "131052-308T" not in masked["content"][0]["text"] and spans[0]["path"] == ["content", 0, "text"]
+    assert "131052-913A" not in masked["content"][0]["text"] and spans[0]["path"] == ["content", 0, "text"]
     assert M.unmask(vault, U, json=masked)[0] == value
 
 

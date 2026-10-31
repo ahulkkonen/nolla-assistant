@@ -7,14 +7,14 @@ def kinds(text):
     return [(c.kind, c.surface) for c in detect(text)]
 
 
-@pytest.mark.parametrize("code", ["131052-308T", "010594Y9032", "010100A123D", "290200B002C", "010105F456E",
-                                  "311299U333Y", "150387-9451", "131052-308t"])
+@pytest.mark.parametrize("code", ["131052-913A", "010594Y9032", "010100A9237", "290200B902D", "010105F956K",
+                                  "311299U933A", "150387-9451", "131052-913a"])
 def test_hetu_valid(code):
     assert hetu_valid(code)
 
 
 @pytest.mark.parametrize("code", [
-    "131052-308X",  # wrong check character
+    "131052-913X",  # wrong check character
     "131052-000V",  # individual number 000
     "131052-0014",  # 001 is never issued
     "290201B002C",  # 29 Feb 2001 does not exist
