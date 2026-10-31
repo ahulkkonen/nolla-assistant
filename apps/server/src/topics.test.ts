@@ -14,22 +14,29 @@ const settle = () => sleep(2500);
 test('title: masked to the model and in the db, restored on the wire; rename locks it', {
   timeout: 60_000,
 }, async () => {
-  const { llm, srv, c, chat } = await bootPseudo({ 'Matti Virtanen': 'Pekka Laaksonen' }, [
-    { text: 'Hei Pekka Laaksonen!' },
-    reply({
-      title: 'Pekka Laaksonen ja verotus',
-      topics: ['nope', 't-tax', 't-home'],
-      proposed_topic: null,
-      summary: 'Pekka Laaksonen kysyi verotuksesta.',
-    }),
-    { text: 'Selvä.' },
-    { text: 'Ok.' },
-  ]);
+  const { llm, srv, c, chat } = await bootPseudo(
+    { 'Matti Virtanen': 'Pekka Laaksonen', 'Kallion Kirjasto': 'Toukolan Tupa' },
+    [
+      { text: 'Hei Pekka Laaksonen!' },
+      reply({
+        title: 'Pekka Laaksonen ja verotus',
+        topics: ['nope', 't-tax', 't-home'],
+        // Surrogates from the masked topic list come back restored (store, compare, show).
+        proposed_topic: {
+          name: 'Toukolan Tupa ja lainaukset',
+          why: 'Pekka Laaksonen lainaa kirjoja.',
+        },
+        summary: 'Pekka Laaksonen kysyi verotuksesta.',
+      }),
+      { text: 'Selvä.' },
+      { text: 'Ok.' },
+    ],
+  );
   const createdAt = new Date().toISOString();
   srv.db
     .insert(topics)
     .values([
-      { id: 't-tax', userId: 'aleksi', name: 'Verot', createdAt },
+      { id: 't-tax', userId: 'aleksi', name: 'Verot', description: 'Kallion Kirjasto', createdAt },
       { id: 't-home', userId: 'aleksi', name: 'Koti', createdAt },
       // A name the user typed, with a vault entity: masked before the model (invariant 1).
       { id: 't-person', userId: 'aleksi', name: 'Matti Virtanen – asiat', createdAt },
@@ -61,6 +68,7 @@ test('title: masked to the model and in the db, restored on the wire; rename loc
   expect(sent).toContain('Verot');
   expect(sent).toContain('Pekka Laaksonen – asiat');
   expect(sent).not.toContain('Matti Virtanen');
+  expect(sent).not.toContain('Kallion Kirjasto');
 
   expect(row()).toMatchObject({
     title: 'Matti Virtanen ja verotus',
@@ -68,6 +76,12 @@ test('title: masked to the model and in the db, restored on the wire; rename loc
     summary: 'Pekka Laaksonen kysyi verotuksesta.',
     topicId: 't-tax',
   });
+  expect(
+    srv.db
+      .select({ name: topicProposals.name, why: topicProposals.why })
+      .from(topicProposals)
+      .all(),
+  ).toEqual([{ name: 'Kallion Kirjasto ja lainaukset', why: 'Matti Virtanen lainaa kirjoja.' }]);
   // Unknown id dropped; the second known topic becomes a tag.
   expect(srv.db.select({ tag: tags.tag }).from(tags).all()).toEqual([{ tag: 'topic:t-home' }]);
   c.send({ type: 'chat.list' });
