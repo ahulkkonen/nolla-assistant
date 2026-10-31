@@ -31,22 +31,42 @@ Done 2026-10-31 on branch `p28`.
    claim activated. This covers the sweep. The tool writes, the review, the update and the import
    already called it. `stale` changes only the confidence of a claim and does not call the hook.
    The weekly job covers it.
-2. The row is a `DropdownMenuItem` under a separator. It navigates in `onCloseAutoFocus`, after the
-   menu closed. Before that, the closing menu took the focus back from the heading. `openModes`
-   (`ModesEditor.tsx`) sets the store screen `agents`; the router pushes `/agents`. Then it adds
-   the hash `#tilat` to that history entry. `ModesSection` scrolls to the "Tilat" heading and
-   focuses it when the hash is `#tilat`. The router compares only the path and the query, so the
-   hash is no new route. The phone model sheet gets no row: the record names only the chip.
-3. A sentence with N of 6 or less gets the class `conf-low`. Its anchor `conf-a` is an inline-block
-   with its width, so the underline stops before the N. The legend lost the nine swatches. It
-   shows "1 arvaus – 9 varma" in words, and at 390 px it now fits one 28 px row. The prompt
-   example changed from 9 to 8, because 9 is now only for what the model verified in the chat. The
-   e2e reply `CONFIDENCE_REPLY` uses the levels 9, 7 and 3, so that the hover tests keep two
-   hidden N and one sentence shows the underline.
+2. The row is in the chip's menu (a `DropdownMenuItem` under a separator) and in the phone sheet
+   (the last row of the "Tila" group: 44 px, a divider above it, a 16 px muted pencil, the label
+   indented as "Kaikki mallit…"). `useOpenModes` (`ModesEditor.tsx`) gives both the same pair:
+   `mark` on the row and `onCloseAutoFocus` on the menu or sheet content. The screen changes in
+   `onCloseAutoFocus`, after the menu or sheet closed. Before that, the closing menu took the
+   focus back from the heading. `openModes` sets the store screen `agents`; the router pushes
+   `/agents`. Then it adds the hash `#tilat` to that history entry. `ModesSection` scrolls to the
+   "Tilat" heading, focuses it and clears the hash. The router compares only the path and the
+   query, so the hash is no new route.
+3. A sentence with N of 6 or less gets the class `conf-low`: a dashed 2 px underline in the muted
+   colour, and its N always shows. The dashes differ from the dotted mark of a protected name. A
+   sentence with N of 7 or more is plain, and nothing shows after it. Every N has one style: a
+   small inline number right after the full stop, on the prose baseline. The N of a high
+   sentence shows only on hover, on a tap or with "Näytä luvut", in the same style. The N element
+   is a `span`, not a `sup`, and a hidden N is `display: none`. A hover or a tap now moves the
+   text after the N; the UI review chose one number style over no movement. The anchor `conf-a`
+   is an inline-block, so the underline stops before the N. Every sentence keeps the title
+   "Luottamus N/9". The legend reads "Luottamus · alleviivattu ≤ 6 · 9 varma". The word
+   "alleviivattu" is a sample of the underline. The "Näytä luvut" pill is 32 px (`sm`) at every
+   width, with a 44 px target (`::after`), and the legend is one 32 px row at 390 px too. The
+   prompt example changed from 9 to 8, because 9 is now only for what the model verified in the
+   chat. The e2e reply `CONFIDENCE_REPLY` uses the levels 9, 7 and 3, so that the hover tests
+   keep two hidden N and one sentence shows the underline.
 4. The store key is `pa.pseudonyms`. `loadOn` and `saveOn` in `store.ts` now hold the
    localStorage read and write for this switch and for "Näytä luvut". With the marks off, the real
    value is a plain span with the hint as its `title` attribute: no tab stop and no tooltip
    component. A touch screen has no hover, so on a phone the user turns the marks on to check a
    value. "Näytä mitä malli näki" (the setting or the eye button of a message) still shows the
-   marks, because the surrogates must stay distinct from the real text. The `chat-annotated`
-   screen first checks that no mark shows by default, then turns the setting on in Asetukset.
+   marks, because the surrogates must stay distinct from the real text. The switch is named
+   "Merkitse suojatut nimet" (the dialog calls the feature "Nimisuoja"), with the helper "Suojatut
+   nimet saavat viesteissä värillisen merkin." While "Näytä mitä malli näki" is on, the switch is
+   on and disabled, with the helper "Päällä, kun mallin näkemä teksti näytetään." The screen
+   `chat-annotated` shows the default state with plain values. The screen `chat-annotated-marks`
+   shows the marks after the switch is on.
+
+## Review findings left as they are
+
+- The focus ring around an inline mark covers the "!" after the name. This is from before phase
+  28, and this phase does not change it.
