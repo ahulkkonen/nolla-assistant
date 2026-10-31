@@ -6,17 +6,21 @@ import { chats, claims, memoryPending, openDb, topics } from '@pa/db';
 import { startFakeSidecar } from '@pa/pi-ext-pseudo/fake-sidecar';
 import { eq } from 'drizzle-orm';
 import { afterEach, expect, test } from 'vitest';
-import { loadModel } from './embeddings.ts';
 import { memoryStore } from './memory.ts';
 import { indexChat } from './search.ts';
-import { bootBroker, bootChat, bootPseudo, cleanups, connect, runCleanups } from './test-utils.ts';
+import {
+  bootBroker,
+  bootChat,
+  bootPseudo,
+  cleanups,
+  connect,
+  modelReady,
+  runCleanups,
+} from './test-utils.ts';
 
 afterEach(runCleanups);
 
-const modelOk = await loadModel().then(
-  () => true,
-  () => false,
-);
+const modelOk = await modelReady();
 type Msg = { role: string; content: unknown };
 const text = (m: Msg | undefined) =>
   typeof m?.content === 'string' ? m.content : JSON.stringify(m?.content ?? '');

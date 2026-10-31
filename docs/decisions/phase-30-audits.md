@@ -132,6 +132,12 @@ Batch B, per item (branch `p30-b2` holds 8, 11, 12, 13 and the dependency follow
     older than the server drops an error frame with a code it does not know (zod refuses the
     frame). Before, it showed the server's English text. A new code is rare, and the PWA
     update replaces the old client.
+    Model tests: done. `modelReady()` in `apps/server/src/test-utils.ts` loads the model for
+    `search.test.ts`, `claims.test.ts` and `memory.test.ts`. When the model does not load, the
+    file fails with the cause and the name of the skip variable. Only `PA_SKIP_MODEL_TESTS=1`
+    turns the 14 tests into skips with a warning. CI must not set it. The report proposed the
+    reverse (`REQUIRE_MODEL=1` makes a skip fail). The task asked for a loud default, so a
+    machine without the variable can never pass the gate silently.
 
 Left as they are in batch A, on purpose:
 

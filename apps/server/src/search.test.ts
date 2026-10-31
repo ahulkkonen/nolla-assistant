@@ -6,22 +6,13 @@ import { PseudoClient } from '@pa/pi-ext-pseudo';
 import { startFakeSidecar } from '@pa/pi-ext-pseudo/fake-sidecar';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, expect, test } from 'vitest';
-import { loadModel } from './embeddings.ts';
 import { indexChat, indexIdle, related, search, split } from './search.ts';
-import { boot, connect, runCleanups } from './test-utils.ts';
+import { boot, connect, modelReady, runCleanups } from './test-utils.ts';
 
 afterEach(runCleanups);
 
 const t0 = performance.now();
-const modelOk = await loadModel().then(
-  () => true,
-  (err: unknown) => {
-    console.warn(
-      `search.test: SKIPPED, embedding model not available (download needs network once): ${err instanceof Error ? err.message : err}`,
-    );
-    return false;
-  },
-);
+const modelOk = await modelReady();
 const loadMs = performance.now() - t0;
 
 /** [title, summary, user message, assistant message]; all masked text (surrogate names). */

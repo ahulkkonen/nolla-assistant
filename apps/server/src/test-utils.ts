@@ -10,11 +10,28 @@ import type { ClientMessageInput, ServerMessage } from '@pa/protocol';
 import WebSocket from 'ws';
 import { hashPassword } from './auth/password.ts';
 import { BUNDLED_AGENTS, loadConfig } from './config.ts';
+import { loadModel } from './embeddings.ts';
 import { start } from './main.ts';
 
 /** Shared server test harness. Each test file runs `afterEach(runCleanups)`. */
 // One model cache for all tests, outside the per-test DATA_DIR (downloaded once).
 process.env.MODELS_DIR ||= join(tmpdir(), 'pa-models');
+/**
+ * Loads the embedding model for the search, claims and memory tests. A missing model fails the
+ * file, so a gate never passes without them. Only `PA_SKIP_MODEL_TESTS=1` skips them (offline
+ * work); CI never sets it.
+ */
+export const modelReady = () =>
+  loadModel().then(
+    () => true,
+    (err: unknown) => {
+      const why = `embedding model not available (the first run downloads it): ${err instanceof Error ? err.message : err}`;
+      if (process.env.PA_SKIP_MODEL_TESTS !== '1')
+        throw new Error(`${why}. Set PA_SKIP_MODEL_TESTS=1 to skip the model tests.`);
+      console.warn(`SKIPPED (PA_SKIP_MODEL_TESTS=1): ${why}`);
+      return false;
+    },
+  );
 export const KEY = 'sk-test-master';
 export const PASSWORD = 'correct horse';
 const PASSWORD_HASH = await hashPassword(PASSWORD);

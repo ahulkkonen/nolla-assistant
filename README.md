@@ -104,6 +104,11 @@ Playwright needs Chromium. Install it once:
 pnpm --filter @pa/e2e exec playwright install chromium
 ```
 
+The first server test run downloads the embedding model once (`Xenova/multilingual-e5-small`,
+about 130 MB) to `MODELS_DIR`, by default `$TMPDIR/pa-models`. Without the model, the search,
+claims and memory tests fail. Set `PA_SKIP_MODEL_TESTS=1` to skip them when you work offline.
+CI must not set it.
+
 Set `PSEUDO_URL` for the PII harness, for example `PSEUDO_URL=http://localhost:8000`.
 Use `--dry-run` to check the corpus without a sidecar.
 See `tests/pii/README.md`.
