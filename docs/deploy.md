@@ -231,6 +231,10 @@ LiteLLM egress. Only the OpenRouter keys are real; nothing leaves the machine ex
 4. Open http://localhost:3000 and log in with the password. Passkeys, push and the Google
    OAuth callback all accept `localhost`.
 
+The local project name is `pa-local` (`compose.local.yaml`). The `bash` tool binds the work dir
+from `/var/lib/docker/volumes/pa-local_pa-data/_data`. This path assumes the default Docker
+data-root. If you change the data-root or the project name, set `HOST_DATA_DIR` in `.env`.
+
 ### Open the local run on your phone
 
 You can use the local run from a phone on the same wifi. This connection uses plain http.
