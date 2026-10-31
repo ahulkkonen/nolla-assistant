@@ -2,6 +2,18 @@
 
 Oct 25, 2026 · @Aleksi
 
+## As built (2026-10-31)
+
+The plan text below is unchanged. The built system differs from it in these points:
+
+- No Litestream. The backup service copies `app.db` and `vault.db` hourly and snapshots them with restic, and snapshots all of `/data` nightly (§2 item 9, §4; `docs/decisions/phase-30-audits.md`, batch A item 8).
+- The Google tokens are plain JSON (mode 600) on the volume `mcp-workspace-data`. Only the restic snapshots encrypt them (§10 says "encrypted at rest"; `infra/compose.yaml:165`, `docs/deploy.md:205`).
+- No iptables rule limits the egress of `pa-server`. `fetch_url` reaches any public host. The networks `pseudo` and `presidio` are `internal: true` (§4; `docs/decisions/phase-25-harness-tools.md`, "Risks and ceilings"; `phase-30-audits.md`, batch A item 6).
+- The threat-model note of §14 is `docs/threat-model.md`, not a file in `docs/decisions/`.
+- `chats.tainted` is set by any tool except `memory` and a `read` inside the work dir outside `files/` (`cleanTool` in `packages/pi-ext-memory/src/index.ts`). So `bash`, `write` and `recall` taint the chat too, not only outside content (`phase-30-audits.md`, decision 14, corrected on 2026-10-31).
+- The web app does not use assistant-ui (§3 layout, §11 "Stack"; `docs/decisions/phase-2.md`, decision 1). It uses shadcn/ui (`docs/decisions/phase-9-ui.md`).
+- There is no `pi-ext-notify`. Web Push lives in `apps/server/src/push.ts` (§3 layout and turn step 6; `docs/decisions/phase-7.md`, decision 2).
+
 ## 1. Purpose and operating model
 
 Build a single-user, self-hosted personal assistant: Pi 1.x is the agent runtime, a custom PWA is the interface, and all model traffic leaves the box pseudonymized and routed to OpenRouter with zero data retention. Nothing off the shelf fits, so this is a thin custom build on a Hetzner CX33 (4 vCPU, 8 GB) under Coolify.

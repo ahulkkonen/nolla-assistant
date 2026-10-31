@@ -44,16 +44,18 @@ what stays as it is.
 ## Decision 14: artifacts of a tainted chat (decided by the user)
 
 14. **A page or a component of a tainted chat runs masked.** An HTML, JSX or TSX artifact can run
-    code, and a prompt-injected artifact can send real values out in a navigation (security
-    report, artifact exfiltration). `chats.tainted` is set when external content entered the
-    chat: `fetch_url`, MCP, search or an attachment (`turnTaint`). In an untainted chat the
-    artifact is built from the restored text, as before. In a tainted chat the frame runs the
-    masked text, so the page shows surrogates. The artifact card in the thread and the panel show
-    the line "Ulkoista sisältöä: oikeat arvot piilotettu". The panel also has the button "Näytä
-    oikeat arvot". The button opens a confirmation (`ConfirmDialog`) that says that the code of
-    the artifact can send the values out. After the confirmation the frame runs the restored text
-    of that artifact until the page reloads. Charts (`vega-lite`) and diagrams (`mermaid`) are
-    data, not code that runs, so they keep the restored text in both cases.
+    code, and a prompt-injected artifact can send real values out in a navigation (security report,
+    artifact exfiltration). `chats.tainted` is set at the first tainted turn: a prompt with an
+    attachment, or any tool except `memory` and a `read` inside the work dir outside `files/`
+    (`turnTaint` and `cleanTool` in `packages/pi-ext-memory/src/index.ts`). So `fetch_url`, MCP,
+    search, `bash`, `write` and `recall` all taint the chat. In an untainted chat the artifact is
+    built from the restored text, as before. In a tainted chat the frame runs the masked text, so
+    the page shows surrogates. The artifact card in the thread and the panel show the line "Ulkoista
+    sisältöä: oikeat arvot piilotettu". The panel also has the button "Näytä oikeat arvot". The
+    button opens a confirmation (`ConfirmDialog`) that says that the code of the artifact can send
+    the values out. After the confirmation the frame runs the restored text of that artifact until
+    the page reloads. Charts (`vega-lite`) and diagrams (`mermaid`) are data, not code that runs, so
+    they keep the restored text in both cases.
 
 ## Left as they are, with the reason
 
