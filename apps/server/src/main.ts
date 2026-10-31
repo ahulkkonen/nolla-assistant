@@ -16,7 +16,7 @@ import { approvals as approvalStore } from './approval.ts';
 import { purgeExpiredSessions } from './auth/session.ts';
 import { startAutomations } from './automations.ts';
 import { agentsState, type BridgeDeps } from './bridge/connection.ts';
-import { vaultState } from './bridge.ts';
+import { vaultState } from './bridge/vault.ts';
 import { chatRow } from './chats.ts';
 import { branchPoint, claimStore } from './claims.ts';
 import { collisionWaits } from './collisions.ts';

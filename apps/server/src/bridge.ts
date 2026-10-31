@@ -9,12 +9,7 @@ import {
 } from '@earendil-works/pi-coding-agent';
 import { chats, files, modelFavorites, topicProposals, topics } from '@pa/db';
 import { FULL } from '@pa/pi-ext-memory';
-import {
-  type PseudoClient,
-  PseudoDownError,
-  type VaultEntityRow,
-  type VaultPendingRow,
-} from '@pa/pi-ext-pseudo';
+import { PseudoDownError } from '@pa/pi-ext-pseudo';
 import { ClientMessage, type ModelChoice, type ServerMessage } from '@pa/protocol';
 import { and, asc, desc, eq } from 'drizzle-orm';
 import { messageArtifacts } from './artifacts.ts';
@@ -28,6 +23,7 @@ import {
   update,
 } from './bridge/connection.ts';
 import { join, reindex } from './bridge/stream.ts';
+import { vault } from './bridge/vault.ts';
 import { type ChatRow, forkLink, ownUsage, summary, threadFiles } from './chats.ts';
 import { AttachmentNotFound, ingestAttachments, splitBlocks } from './files.ts';
 import { filesOf, history } from './history.ts';
@@ -260,49 +256,6 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
       .get();
     if (!p) throw new NotFound();
     return p;
-  };
-
-  /** Applies one vault change, then answers this socket (not the room) with a fresh state. */
-  const vault = async (msg: Extract<ClientMessage, { type: `vault.${string}` }>) => {
-    if (!pseudo) return send(socket, errorMsg('not_implemented'));
-    switch (msg.type) {
-      case 'vault.merge':
-        await pseudo.vaultMerge(msg.fromIds, msg.intoId);
-        memory.claims?.repoint(msg.fromIds, msg.intoId);
-        collisions.dropEntities([...msg.fromIds, msg.intoId]); // the question no longer stands
-        break;
-      case 'vault.split':
-        await pseudo.vaultSplit(msg.entityId, msg.spanIds);
-        break;
-      case 'vault.pin':
-        await pseudo.vaultUpdate(msg.entityId, { pinned: msg.pinned });
-        break;
-      case 'vault.allowlist':
-        await pseudo.vaultUpdate(msg.entityId, { allowlisted: msg.allowlisted });
-        break;
-      case 'vault.regenerate':
-        await pseudo.vaultUpdate(msg.entityId, { regenerate: true });
-        break;
-      case 'vault.neverDetect':
-        await pseudo.vaultUpdate(msg.entityId, { never_detect: true });
-        collisions.dropEntities([msg.entityId]);
-        break;
-      case 'vault.setMode':
-        await pseudo.vaultUpdate(msg.entityId, { mode: msg.mode });
-        break;
-      case 'vault.pending.resolve':
-        try {
-          await pseudo.vaultPending(msg.pendingId, msg.action);
-          // A message held by this collision now masks again and runs.
-          collisions.answered(msg.pendingId);
-        } catch (err) {
-          // 409: answered or closed meanwhile (a stale screen); the fresh state below shows it.
-          if (!(err instanceof PseudoDownError && err.message.endsWith('status 409'))) throw err;
-          collisions.drop(msg.pendingId);
-        }
-        break;
-    }
-    send(socket, await vaultState(pseudo));
   };
 
   /** Runs `fn` with the chat held: `running` is true, so no policy change starts meanwhile. */
@@ -1048,7 +1001,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
       case 'vault.neverDetect':
       case 'vault.setMode':
       case 'vault.pending.resolve':
-        return vault(msg);
+        return vault(conn, msg);
       default:
         return send(socket, errorMsg('not_implemented'));
     }
@@ -1115,36 +1068,4 @@ function failedTurn(session: AgentSession): UserEntry | undefined {
   const reply = after.at(-1);
   if (reply?.role === 'assistant' && reply.stopReason !== 'error') return undefined;
   return last as UserEntry;
-}
-
-/** Sidecar snake_case to protocol camelCase. `lastSeen` is normalised to UTC ISO for zod. */
-const vaultEntity = (e: VaultEntityRow) => ({
-  id: e.id,
-  kind: e.kind,
-  canonical: e.canonical,
-  surrogate: e.surrogate,
-  mode: e.mode,
-  pinned: e.pinned,
-  allowlisted: e.allowlisted,
-  seenCount: e.seen_count,
-  lastSeen: e.last_seen ? new Date(e.last_seen).toISOString() : null,
-});
-const vaultPending = (p: VaultPendingRow) => ({
-  id: p.id,
-  kind: p.kind,
-  text: p.text,
-  detector: p.detector,
-  score: p.score,
-  chatId: p.session_id,
-  reason: p.reason,
-  entityId: p.entity_id,
-});
-
-export async function vaultState(pseudo: PseudoClient): Promise<ServerMessage> {
-  const { entities, pending } = await pseudo.vaultList();
-  return {
-    type: 'vault.state',
-    entities: entities.map(vaultEntity),
-    pending: pending.map(vaultPending),
-  };
 }
