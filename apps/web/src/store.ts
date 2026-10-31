@@ -171,6 +171,12 @@ type State = {
   /** "Näytä luvut" (phase-23 decision 9, localStorage, off by default): every N in the text. */
   showConfN: boolean;
   setShowConfN(on: boolean): void;
+  /**
+   * "Näytä pseudonymoinnit" (phase-28 decision 4, localStorage, off by default): the blue marks on
+   * restored real values.
+   */
+  showPseudonyms: boolean;
+  setShowPseudonyms(on: boolean): void;
   /** The last `usage.state` (Käyttö); null until the first answer. */
   usage: Omit<Of<'usage.state'>, 'type'> | null;
   /** A query for the find bar to open with (a global search hit opens its chat with it). */
@@ -329,12 +335,19 @@ function loadShowThinking() {
 }
 
 const CONF_N_KEY = 'pa.confN';
-function loadShowConfN() {
+const PSEUDONYMS_KEY = 'pa.pseudonyms';
+/** A per-browser switch that is off unless stored 'on'. */
+function loadOn(key: string) {
   try {
-    return globalThis.localStorage?.getItem(CONF_N_KEY) === 'on';
+    return globalThis.localStorage?.getItem(key) === 'on';
   } catch {
     return false;
   }
+}
+function saveOn(key: string, on: boolean) {
+  try {
+    localStorage.setItem(key, on ? 'on' : 'off');
+  } catch {}
 }
 
 const STT_KEY = 'pa.stt';
@@ -637,7 +650,8 @@ export const useStore = create<State>()((set, get) => {
     thinkingLive: {},
     thinkingText: {},
     showThinking: loadShowThinking(),
-    showConfN: loadShowConfN(),
+    showConfN: loadOn(CONF_N_KEY),
+    showPseudonyms: loadOn(PSEUDONYMS_KEY),
     usage: null,
     findQuery: null,
     showModelSaw: false,
@@ -1334,10 +1348,12 @@ export const useStore = create<State>()((set, get) => {
       set({ showThinking });
     },
     setShowConfN(showConfN) {
-      try {
-        localStorage.setItem(CONF_N_KEY, showConfN ? 'on' : 'off');
-      } catch {}
+      saveOn(CONF_N_KEY, showConfN);
       set({ showConfN });
+    },
+    setShowPseudonyms(showPseudonyms) {
+      saveOn(PSEUDONYMS_KEY, showPseudonyms);
+      set({ showPseudonyms });
     },
   };
 });

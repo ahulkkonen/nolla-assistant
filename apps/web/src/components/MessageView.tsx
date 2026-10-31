@@ -219,7 +219,10 @@ const SawContext = createContext(false);
 function Anno({ real, saw }: { real: string; saw: string }) {
   const local = useContext(SawContext);
   const show = useStore((s) => s.showModelSaw) || local;
+  // Phase-28 decision 4: marks off, the real value is plain text with the hint as its title.
+  const marks = useStore((s) => s.showPseudonyms) || show;
   const hint = show ? `Alkuperäinen: ${real}` : `Malli näki: ${saw}`;
+  if (!marks) return <span title={hint}>{real}</span>;
   const span = (
     <span
       tabIndex={0}

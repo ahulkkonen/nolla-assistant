@@ -1501,6 +1501,24 @@ for (const scheme of ['light', 'dark'] as const) {
             await expect(page.locator('.md').last()).toHaveText(
               'Hei Matti Virtanen! Hetu 010190-123M on tallessa.',
             );
+            /** Flips a switch in Asetukset, then closes Settings and (under 768 px) the drawer. */
+            const setting = async (label: string) => {
+              await page.keyboard.press('Escape');
+              const menu = page.getByRole('button', { name: 'Valikko' });
+              if (await menu.isVisible()) await menu.click();
+              await page.getByRole('button', { name: 'Asetukset' }).click();
+              await page.getByLabel(label).check();
+              await expect(async () => {
+                await page.keyboard.press('Escape');
+                await expect(page.getByRole('dialog')).toHaveCount(0, { timeout: 500 });
+              }).toPass();
+            };
+            // Phase-28 decision 4: no marks by default; the hint stays as the title.
+            await expect(page.locator('.md span[tabindex="0"]')).toHaveCount(0);
+            await expect(page.locator('.md span[title="Malli näki: Pekka Laaksonen"]')).toHaveText(
+              'Matti Virtanen',
+            );
+            await setting('Näytä pseudonymoinnit');
             const masked = page.locator('.md span[tabindex="0"]').first();
             if (vp.width === 390) {
               // Touch: a tap opens the hint; there is no hover tooltip.
@@ -1520,16 +1538,7 @@ for (const scheme of ['light', 'dark'] as const) {
               await expect(page.getByRole('tooltip')).toHaveCount(1);
             }
             await shot(page, 'chat-annotated', vp.width, scheme);
-            await page.keyboard.press('Escape');
-            const menu = page.getByRole('button', { name: 'Valikko' });
-            if (await menu.isVisible()) await menu.click();
-            await page.getByRole('button', { name: 'Asetukset' }).click();
-            await page.getByLabel('Näytä mitä malli näki').check();
-            // Settings, then (under 768 px) the drawer.
-            await expect(async () => {
-              await page.keyboard.press('Escape');
-              await expect(page.getByRole('dialog')).toHaveCount(0, { timeout: 500 });
-            }).toPass();
+            await setting('Näytä mitä malli näki');
             await expect(page.locator('.md').last()).toHaveText(
               'Hei Pekka Laaksonen! Hetu 010190-900B on tallessa.',
             );

@@ -241,6 +241,8 @@ export function SettingsDialog() {
   const setTheme = useStore((s) => s.setTheme);
   const showModelSaw = useStore((s) => s.showModelSaw);
   const setShowModelSaw = useStore((s) => s.setShowModelSaw);
+  const showPseudonyms = useStore((s) => s.showPseudonyms);
+  const setShowPseudonyms = useStore((s) => s.setShowPseudonyms);
   const showThinking = useStore((s) => s.showThinking);
   const setShowThinking = useStore((s) => s.setShowThinking);
   const sttAutoSend = useStore((s) => s.sttAutoSend);
@@ -316,6 +318,17 @@ export function SettingsDialog() {
                 helper="Tunnistetut nimet näkyvät viesteissä niinä, jotka malli sai."
               >
                 <Switch id="model-saw" checked={showModelSaw} onCheckedChange={setShowModelSaw} />
+              </Row>
+              <Row
+                label="Näytä pseudonymoinnit"
+                htmlFor="show-pseudonyms"
+                helper="Tunnistetut nimet näkyvät viesteissä merkittyinä."
+              >
+                <Switch
+                  id="show-pseudonyms"
+                  checked={showPseudonyms}
+                  onCheckedChange={setShowPseudonyms}
+                />
               </Row>
               <Row
                 label="Näytä ajattelu"
