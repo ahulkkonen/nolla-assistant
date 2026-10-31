@@ -379,6 +379,74 @@ describe('ws client', () => {
     push.mockRestore();
   });
 
+  it('only a code a refused create can send ends the wait; a sign-out drops the text', async () => {
+    const push = vi.spyOn(useStore.getState(), 'pushError').mockImplementation(() => {});
+    const { frame } = chat();
+    useStore.getState().setActive(null);
+    const pending = sendUserMessage('Eka');
+    // An error of another request (a memory edit) leaves the create waiting.
+    frame({ type: 'error', code: 'memory_conflict', message: 'x' });
+    frame({ type: 'chat.created', chat: { ...useStore.getState().chats[0], id: 'c7' } });
+    await pending;
+    expect(useStore.getState().messages.c7?.map((m) => m.text)).toEqual(['Eka']);
+    // Signed out while a create waits: the next user's composer gets nothing.
+    useStore.getState().setActive(null);
+    const lost = sendUserMessage('Salainen');
+    signedOut();
+    await lost;
+    expect(useStore.getState().draft).toBeNull();
+    useStore.setState({ auth: 'in' });
+    push.mockRestore();
+  });
+
+  it('a create that never left the queue is not sent; a lost socket answers nothing', async () => {
+    vi.useFakeTimers();
+    const push = vi.spyOn(useStore.getState(), 'pushError').mockImplementation(() => {});
+    // Not open yet: the create waits in the queue, then the socket closes.
+    connect('ws://test/ws');
+    const first = FakeWebSocket.last;
+    const queued = sendUserMessage('Jonossa', [], null);
+    first.onclose?.({ code: 1006 });
+    await queued;
+    expect(useStore.getState().draft).toMatchObject({ text: 'Jonossa' });
+    useStore.setState({ draft: null });
+    await vi.advanceTimersByTimeAsync(500);
+    const second = FakeWebSocket.last;
+    second.open();
+    const types = (sock: FakeWebSocket) => sock.sent.map((d) => JSON.parse(d).type);
+    expect(types(second)).not.toContain('chat.create');
+    // A socket lost to a missing pong may still deliver the answer to a create sent on it.
+    const sentOnLost = sendUserMessage('Kadonnut', [], null);
+    await vi.advanceTimersByTimeAsync(35_500);
+    await sentOnLost;
+    useStore.setState({ draft: null });
+    const third = FakeWebSocket.last;
+    expect(third).not.toBe(second);
+    third.open();
+    const next = sendUserMessage('Oikea', [], null);
+    const summary = {
+      title: 'Hei',
+      topicId: null,
+      agentId: 'assistant',
+      pinned: false,
+      archived: false,
+      modelPolicy: { modelId: 'auto', reasoning: 'auto', dataPolicy: 'zdr' },
+      modes: null,
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    };
+    const created = (id: string) =>
+      JSON.stringify({ type: 'chat.created', chat: { ...summary, id } });
+    second.onmessage?.({ data: created('ghost') });
+    third.onmessage?.({ data: created('c8') });
+    await next;
+    expect(
+      third.sent.map((d) => JSON.parse(d)).filter((m) => m.type === 'user.message'),
+    ).toMatchObject([{ chatId: 'c8', text: 'Oikea' }]);
+    expect(useStore.getState().chats.some((c) => c.id === 'ghost')).toBe(false);
+    push.mockRestore();
+    vi.useRealTimers();
+  });
+
   it('a ping without an answer in 10 s counts as a close and reconnects; any frame keeps it', () => {
     vi.useFakeTimers();
     const { sock, frame, sent } = chat();
@@ -410,14 +478,21 @@ describe('ws client', () => {
     useStore.setState({ auth: 'in' });
     sock.onclose?.({ code: 1006 });
     expect(fetch).not.toHaveBeenCalled();
-    // The reconnect fails before open: the server is down, so the client keeps trying.
+    // Offline: the failed open is no news, so no check.
+    vi.stubGlobal('navigator', { onLine: false });
     await vi.advanceTimersByTimeAsync(500);
+    FakeWebSocket.last.onclose?.({ code: 1006 });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetch).not.toHaveBeenCalled();
+    vi.stubGlobal('navigator', { onLine: true });
+    // The reconnect fails before open: the server is down, so the client keeps trying.
+    await vi.advanceTimersByTimeAsync(1000);
     FakeWebSocket.last.onclose?.({ code: 1006 });
     await vi.advanceTimersByTimeAsync(0);
     expect([fetch.mock.calls.length, useStore.getState().auth]).toEqual([1, 'in']);
     // The next one: this device was revoked.
     status = 401;
-    await vi.advanceTimersByTimeAsync(1000);
+    await vi.advanceTimersByTimeAsync(2000);
     const last = FakeWebSocket.last;
     last.onclose?.({ code: 1006 });
     await vi.advanceTimersByTimeAsync(0);

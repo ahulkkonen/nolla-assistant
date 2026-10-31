@@ -24,8 +24,19 @@ let stopped = true;
 let pingTimer: ReturnType<typeof setInterval> | undefined;
 let retryTimer: ReturnType<typeof setTimeout> | undefined;
 let pongTimer: ReturnType<typeof setTimeout> | undefined;
-/** Pending `chat.create` calls, oldest first: `chat.created` or an error answers in send order. */
-let createWaiters: Array<{ resolve: (chatId: string) => void; reject: () => void }> = [];
+/**
+ * Pending `chat.create` calls, oldest first: `chat.created` or an error answers in send order.
+ * `reject(true)`: signed out, the text goes nowhere.
+ */
+let createWaiters: Array<{ resolve: (chatId: string) => void; reject: (drop?: boolean) => void }> =
+  [];
+/**
+ * The codes a refused `chat.create` sends (server `handle`: agent or topic lookup, model and
+ * modes check, session build). They name no chat, so they answer the oldest pending create; an
+ * error of another request with one of these codes still can (phase-30 item 8: a `localId` echo
+ * is the follow-up).
+ */
+const CREATE_REFUSALS = new Set(['bad_message', 'not_found', 'failed', 'pseudo_down']);
 let forkTimer: ReturnType<typeof setTimeout> | undefined;
 let versionTimer: ReturnType<typeof setTimeout> | undefined;
 /**
@@ -48,11 +59,16 @@ let retryIntent: {
  * shown are the server's and a version guessed here cannot stay.
  */
 let editRefresh: string | null = null;
-/** Every pending `chat.create` fails: its text goes back to the composer (`sendUserMessage`). */
-const failCreates = () => {
+/**
+ * Every pending `chat.create` fails: its text goes back to the composer (`sendUserMessage`),
+ * unless `drop` (a sign-out). A create still in the queue is never sent: its chat would have no
+ * waiter, and its `chat.created` would answer the next create.
+ */
+const failCreates = (drop = false) => {
   const waiters = createWaiters;
   createWaiters = [];
-  for (const w of waiters) w.reject();
+  queue = queue.filter((data) => (JSON.parse(data) as { type: string }).type !== 'chat.create');
+  for (const w of waiters) w.reject(drop);
 };
 /** The pending retry or edit is over: its edit box stops waiting. */
 const endRetry = () => {
@@ -95,7 +111,7 @@ export function disconnect() {
   clearTimeout(retryTimer);
   clearInterval(pingTimer);
   clearTimeout(pongTimer);
-  failCreates();
+  failCreates(true);
   queue = [];
   // Phase 27: deltas still waiting for their frame never land after a sign-out's wipe.
   if (frame) cancelAnimationFrame(frame);
@@ -188,9 +204,10 @@ export async function sendUserMessage(
   let id = chatId;
   try {
     id ??= await createChat();
-  } catch {
+  } catch (drop) {
     // No chat: the text and files go back to the new-chat composer; the error toast says why.
-    useStore.setState({ draft: { chatId: null, text, attachments } });
+    // After a sign-out they go nowhere: the next user must not see them.
+    if (!drop) useStore.setState({ draft: { chatId: null, text, attachments } });
     return;
   }
   // A new turn ends a pending consent or retry of its chat: neither may act on it.
@@ -484,7 +501,8 @@ function open() {
       return;
     }
     const parsed = ServerMessage.safeParse(raw);
-    if (!parsed.success) return;
+    // A socket that counts as closed (no pong) may still deliver: its answers belong to nothing.
+    if (!parsed.success || ws !== sock) return;
     // Any frame shows the socket is alive.
     clearTimeout(pongTimer);
     const msg = parsed.data;
@@ -498,7 +516,8 @@ function open() {
     settleRetry(msg);
     sendQueued(msg);
     if (msg.type === 'chat.created') createWaiters.shift()?.resolve(msg.chat.id);
-    if (msg.type === 'error' && !msg.chatId) createWaiters.shift()?.reject();
+    if (msg.type === 'error' && !msg.chatId && CREATE_REFUSALS.has(msg.code))
+      createWaiters.shift()?.reject();
     if (msg.type === 'auth.state' && !msg.authenticated) disconnect();
     if (msg.type === 'auth.state' && msg.authenticated) {
       send({ type: 'chat.list', archived: store.archivedView });
@@ -523,7 +542,7 @@ function closed(sock: WebSocket, opened: boolean, code: number) {
   if (code === 4401) return signedOut();
   // A refused upgrade (revoked while offline) closes as 1006 before `onopen`: the browser hides
   // the HTTP 401. `/api/auth/me` tells it apart from a server that is down.
-  if (!opened && !stopped)
+  if (!opened && !stopped && globalThis.navigator?.onLine !== false)
     me().catch((err: unknown) => {
       if (err instanceof HttpError && err.status === 401 && !stopped) signedOut();
     });
