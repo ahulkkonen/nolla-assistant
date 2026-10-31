@@ -148,6 +148,23 @@ Batch B, per item (branch `p30-b2` holds 8, 11, 12, 13 and the dependency follow
     `MODELS_DIR` now keeps the model in `$TMPDIR/pa-models`, not in `DATA_DIR/models`. One default
     for every run is simpler than one per `DATA_DIR`, and it is never inside the repository.
 
+Dependency follow-ups (`docs/audits/2026-10-31-dependencies.md`, "Recommended actions"):
+
+- Done. `Dockerfile.server` and `Dockerfile.broker` pin `node:22.23.2-bookworm-slim` by the
+  digest of its multi-arch index (`sha256:48e4b67d…`, read with `docker buildx imagetools
+  inspect`, no pull). `corepack` is pinned to 0.36.0 (published 2026-08-28), the version that
+  `latest` already gave. The line stays: the corepack that Node 22 bundles was not checked
+  against pnpm 12 here, and a pin keeps the build as it is.
+- Done. `PI_OFFLINE: "1"` for `pa-server` in `infra/compose.yaml`. `config.ts` already sets it in
+  the process, and the subagent children get it in their env. The compose value also covers
+  code that runs before `config.ts` loads.
+- Done. No script or Makefile builds `requirements.lock`; the command lives in the lock header.
+  The README ("Dependency policy") now gives the command with a full UTC timestamp
+  (`--exclude-newer 2026-10-24T00:00:00Z` as the example). The lock is not rebuilt in this batch:
+  a rebuild with the stricter cut-off changes versions, and a version bump is its own change.
+- Not done, on purpose: `undici` and `cryptography`. The fixed releases are younger than 7 days.
+- Not in scope: `pnpm install` to drop the orphan Pi 1.3.0 folders (local `node_modules` only).
+
 Left as they are in batch A, on purpose:
 
 - The backup service holds `PSEUDO_VAULT_KEY`, because a consistent copy of the SQLCipher vault

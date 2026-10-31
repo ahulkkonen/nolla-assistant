@@ -140,7 +140,15 @@ Only you can do these steps:
   ```
 
   The command prints the publish date. Pin only if it is at least 7 days old.
-- Check Python packages on PyPI in the same way.
+- Check Python packages on PyPI in the same way. Build `services/pseudo-svc/requirements.lock`
+  with a cut-off that is a full UTC timestamp at least 7 days ago. uv reads a bare date as the
+  end of that day.
+
+  ```sh
+  cd services/pseudo-svc
+  uv pip compile pyproject.toml --universal --python-version 3.12 \
+    --exclude-newer 2026-10-24T00:00:00Z --generate-hashes -o requirements.lock
+  ```
 - A version bump is its own change.
   The contract tests and the PII suite are the gate.
 - Pi is pinned exactly; a bump is its own task (`docs/decisions/0002-workflow-and-pins.md`, `0009-pi-1.4.0.md`).
