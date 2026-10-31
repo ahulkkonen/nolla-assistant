@@ -21,7 +21,6 @@ import {
   broadcast,
   chatRow,
   errorMsg,
-  transcript,
   vaultState,
 } from './bridge.ts';
 import { branchPoint, claimStore } from './claims.ts';
@@ -40,6 +39,7 @@ import { pushService } from './push.ts';
 import { indexIdle } from './search.ts';
 import { searcher } from './search-tool.ts';
 import { seedDir } from './seed.ts';
+import { transcript } from './session-text.ts';
 import { taskSmall, titleJobs } from './topics.ts';
 import { purgeTrash, workStore } from './tree.ts';
 import { usageRecorder } from './usage.ts';

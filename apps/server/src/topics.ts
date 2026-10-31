@@ -4,10 +4,11 @@ import type { ServerMessage } from '@pa/protocol';
 import { and, count, eq, like } from 'drizzle-orm';
 import type { FastifyBaseLogger } from 'fastify';
 import { z } from 'zod';
-import { type BridgeDeps, transcript as branch, broadcast, chatRow, summary } from './bridge.ts';
+import { type BridgeDeps, broadcast, chatRow, summary } from './bridge.ts';
 import { embed } from './embeddings.ts';
 import type { SessionRegistry } from './pi/registry.ts';
 import { indexChat } from './search.ts';
+import { transcript as branch } from './session-text.ts';
 import { type RecordUsage, rawUsage } from './usage.ts';
 
 const DEBOUNCE_MS = 2000;

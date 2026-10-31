@@ -23,7 +23,6 @@ import {
   type Message,
   type ModelChoice,
   type ServerMessage,
-  stripConfidence,
   type ToolRow,
   ToolSearch,
   type ToolStatus,
@@ -53,6 +52,15 @@ import { type ChatEvent, ChatNotFound, type SessionRegistry } from './pi/registr
 import { BadSubscription, type Push } from './push.ts';
 import { indexChat, related, search } from './search.ts';
 import { SEARCH_DENIED, SEARCH_UNATTENDED } from './search-tool.ts';
+import {
+  type AgentMessage,
+  cutText,
+  isHigh,
+  isLow,
+  textOf,
+  thinkingOf,
+  transcript,
+} from './session-text.ts';
 import { topicState } from './topics.ts';
 import { chatUsage, messageUsage, type PaMeta, usageMonth } from './usage.ts';
 import { childrenOf, conversationAt, LEAF_MARK, newestLeaf, versionsOf } from './versions.ts';
@@ -96,7 +104,6 @@ export type BridgeDeps = {
   fx: Pick<Fx, 'get'>;
 };
 
-type AgentMessage = AgentSession['messages'][number];
 type Entry = ReturnType<AgentSession['sessionManager']['getBranch']>[number];
 type UserEntry = Extract<Entry, { type: 'message' }> & { message: { role: 'user' } };
 type ChatRow = typeof chats.$inferSelect;
@@ -172,19 +179,6 @@ export const summary = (r: ChatRow): ChatSummary => ({
   updatedAt: r.updatedAt,
 });
 
-/**
- * Masked user and assistant texts of the session branch, in order, without confidence markers:
- * the search index, the title job and the claims sweep read them.
- */
-export const transcript = (session: Pick<AgentSession, 'sessionManager'>) =>
-  session.sessionManager
-    .getBranch()
-    .flatMap((e) =>
-      e.type === 'message' && (e.message.role === 'user' || e.message.role === 'assistant')
-        ? [{ id: e.id, role: e.message.role, text: stripConfidence(textOf(e.message)) }]
-        : [],
-    );
-
 /** Reindexes the chat's shown branch in the background (embedding must not hold the caller). */
 const reindex = (
   { db, userId, log }: Pick<BridgeDeps, 'db' | 'userId' | 'log'>,
@@ -195,37 +189,8 @@ const reindex = (
     log.warn({ chatId, error: err instanceof Error ? err.message : 'unknown' }, 'index failed'),
   );
 
-export function textOf(m: AgentMessage): string {
-  if (!('content' in m)) return '';
-  if (typeof m.content === 'string') return m.content;
-  return m.content.map((b) => (b.type === 'text' ? b.text : '')).join('');
-}
-
-/** An assistant message's thinking: its non-redacted thinking blocks (phase-13 decision 10). */
-export function thinkingOf(m: AgentMessage): string {
-  if (m.role !== 'assistant') return '';
-  return m.content
-    .flatMap((b) => (b.type === 'thinking' && !b.redacted && b.thinking.trim() ? [b.thinking] : []))
-    .join('\n\n')
-    .trim();
-}
-
 /** `thinking.get` cuts at most here, before the restore. */
 const THINKING_MAX = 50_000;
-
-/**
- * At most `max` UTF-16 units of `s`: cut at a paragraph break, else at a space or line break, when
- * one is in the last 2,000 units; never inside a surrogate pair. "…" marks a cut.
- */
-export function cutText(s: string, max: number): string {
-  if (s.length <= max) return s;
-  const floor = Math.max(0, max - 2000);
-  let at = s.lastIndexOf('\n\n', max);
-  if (at <= floor) at = Math.max(s.lastIndexOf(' ', max), s.lastIndexOf('\n', max));
-  if (at <= floor) at = max;
-  if (isHigh(s.charCodeAt(at - 1))) at--;
-  return `${s.slice(0, at)}…`;
-}
 
 /**
  * The files of a chat's thread. A fork also shows the files of its sources (a fork of a fork walks
@@ -342,9 +307,6 @@ export function restorer(pseudo: PseudoClient | undefined, onDown: () => void): 
   };
   return Object.assign(restore, { reset: () => void (failed = false) });
 }
-
-const isHigh = (c: number) => c >= 0xd800 && c <= 0xdbff;
-const isLow = (c: number) => c >= 0xdc00 && c <= 0xdfff;
 
 /**
  * Restores the releasable part of streamed masked text (offsets are UTF-16 code units). `pending`
