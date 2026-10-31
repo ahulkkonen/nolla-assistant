@@ -197,6 +197,15 @@ test('auth: parallel wrong passwords count before the verify', { timeout: 30_000
   expect(new Set(res)).toEqual(new Set([401, 429]));
 });
 
+test('the request log has no query string', async () => {
+  const { config, run, logs } = await boot([], { LOG_LEVEL: 'info' });
+  await run();
+  await api(config.port, '/api/files/tree?root=work&path=Synteettinen%20Nimi.pdf');
+  const req = logs.map((l) => JSON.parse(l)).find((l) => l.msg === 'incoming request');
+  expect(req?.req).toEqual({ method: 'GET', url: '/api/files/tree' });
+  expect(logs.join('')).not.toContain('Synteettinen');
+});
+
 test('attachments: image and txt reach the model; owner-only download', {
   timeout: 30_000,
 }, async () => {

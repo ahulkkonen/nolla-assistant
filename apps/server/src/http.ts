@@ -103,7 +103,12 @@ export async function buildServer({
   const { db } = bridge;
   const { trustProxy: tp } = config;
   const app = Fastify({
-    logger: { level: config.logLevel, ...(logStream ? { stream: logStream } : {}) },
+    logger: {
+      level: config.logLevel,
+      // No query string: the Files routes carry file names there (AGENTS.md: no real values).
+      serializers: { req: (r) => ({ method: r.method, url: r.url.split('?', 1)[0] ?? '' }) },
+      ...(logStream ? { stream: logStream } : {}),
+    },
     // Fastify 5.12 treats a numeric trustProxy as "trust nothing", so a hop count is a function.
     trustProxy: typeof tp === 'number' ? (_addr: string, hop: number) => hop < tp : tp,
   });
