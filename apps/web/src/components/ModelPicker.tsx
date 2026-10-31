@@ -2,6 +2,7 @@ import type { CatalogModel, ModelChoice } from '@pa/protocol';
 import {
   Check,
   ChevronDown,
+  Pencil,
   Search,
   Shield,
   ShieldAlert,
@@ -57,6 +58,7 @@ import { aliasName, EFFORT_LABEL, shortName, useModel } from '../useModel.ts';
 import { send, setDataPolicy } from '../ws.ts';
 import { useAgent } from './AgentPicker.tsx';
 import { Tip } from './IconButton.tsx';
+import { openModes } from './ModesEditor.tsx';
 
 /** "1 M", "200 k": a context length. */
 const tokens = (n: number) =>
@@ -207,6 +209,7 @@ export function ModesChip({
 }) {
   const { all, active, names, toggle } = useModes(chatId);
   const label = useRef<HTMLSpanElement>(null);
+  const leaving = useRef(false);
   // Called before the early return: the modes may load after the first render.
   const fits = useFits(label, names, 200, all.length > 0);
   if (!all.length) return null;
@@ -231,7 +234,19 @@ export function ModesChip({
           </Button>
         </DropdownMenuTrigger>
       </NextTurnTip>
-      <DropdownMenuContent side="top" align="start" collisionPadding={8} className="w-[320px]">
+      <DropdownMenuContent
+        side="top"
+        align="start"
+        collisionPadding={8}
+        className="w-[320px]"
+        // "Muokkaa tiloja…" leaves the chat once the menu is gone, so the focus stays on Tilat.
+        onCloseAutoFocus={(e) => {
+          if (!leaving.current) return;
+          leaving.current = false;
+          e.preventDefault();
+          openModes();
+        }}
+      >
         <DropdownMenuLabel className="text-micro text-muted-foreground">Tila</DropdownMenuLabel>
         {all.map((m) => (
           <DropdownMenuCheckboxItem
@@ -244,6 +259,15 @@ export function ModesChip({
             <OptionText o={{ value: m.id, title: m.name, meta: m.description || undefined }} />
           </DropdownMenuCheckboxItem>
         ))}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          onSelect={() => {
+            leaving.current = true;
+          }}
+        >
+          <Pencil size={16} className="text-muted-foreground" />
+          Muokkaa tiloja…
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );

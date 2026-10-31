@@ -1,6 +1,6 @@
 import type { AgentList, ModeDoc, ModeFile } from '@pa/protocol';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -168,6 +168,16 @@ function deleteError(err: unknown, list: AgentList) {
     : `Agentti ${names[0] ?? ''} käyttää tilaa oletuksena. Poista se ensin sen oletustiloista.`;
 }
 
+/** The hash that `openModes` adds to `/agents`: the screen scrolls to Tilat (phase-28 decision 2). */
+const MODES_HASH = '#tilat';
+
+/** Opens Agentit at the Tilat section (the Tila chip's "Muokkaa tiloja…"). */
+export function openModes() {
+  useStore.setState({ screen: 'agents', settingsOpen: false });
+  // The router pushed `/agents`; the hash marks that entry only.
+  history.replaceState(history.state, '', `${location.pathname}${MODES_HASH}`);
+}
+
 /**
  * "Tilat" in Agentit (phase-23 decision 14): one 56 px row per mode file, "Oletus" when a profile
  * names it, "Uusi tila", and the delete with its confirmation.
@@ -183,6 +193,12 @@ export function ModesSection({
 }) {
   const [remove, setRemove] = useState<ModeDoc | null>(null);
   const nameOf = (d: ModeDoc) => d.file?.name ?? d.id;
+  const title = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    if (location.hash !== MODES_HASH) return;
+    title.current?.scrollIntoView({ block: 'start' });
+    title.current?.focus({ preventScroll: true });
+  }, []);
   const drop = (d: ModeDoc) => {
     setRemove(null);
     void modeDelete(d.id).then(onChange, (err) =>
@@ -193,7 +209,12 @@ export function ModesSection({
     <section aria-labelledby="modes-title" className="flex flex-col gap-3">
       {/* Phones: the button full width under the heading, as "Uusi agentti" (Page). */}
       <div className="flex items-center gap-4 max-md:flex-col max-md:items-stretch max-md:gap-3">
-        <h2 id="modes-title" className="min-w-0 flex-1 text-heading">
+        <h2
+          ref={title}
+          id="modes-title"
+          tabIndex={-1}
+          className="min-w-0 flex-1 text-heading outline-none"
+        >
           Tilat
         </h2>
         <Button variant="outline" size="sm" onClick={() => onEdit('new')}>

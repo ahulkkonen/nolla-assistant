@@ -1590,10 +1590,12 @@ test.describe('admin', () => {
       'aria-checked',
       'false',
     );
-    await page.keyboard.press('Escape');
+    // Phase-28 decision 2: the chip's last row opens Agentit at Tilat.
+    await page.getByRole('menuitem', { name: 'Muokkaa tiloja…' }).click();
+    await expect(page).toHaveURL(/\/agents#tilat$/);
+    await expect(page.getByRole('heading', { name: 'Tilat' })).toBeFocused();
 
     // The text, through the Markdown tab's dry run and back.
-    await openSettings(page, 'Agentit');
     await modes.getByRole('button', { name: 'Toiminnot: Lyhyt' }).click();
     await page.getByRole('menuitem', { name: 'Muokkaa' }).click();
     await page.getByLabel('Ohje', { exact: true }).fill('Vastaa yhdellä virkkeellä.');
