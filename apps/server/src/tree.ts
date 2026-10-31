@@ -51,10 +51,10 @@ import {
 import { and, desc, eq, inArray, lt, notInArray, or, sql, sum } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, preHandlerHookHandler } from 'fastify';
 import { extractArtifacts } from './artifacts.ts';
-import { restorer } from './bridge.ts';
 import { chatRow } from './chats.ts';
 import { attachFile, MAX_FILE_BYTES, MAX_FILES, rfc5987 } from './files.ts';
 import { ChatNotFound, type SessionRegistry } from './pi/registry.ts';
+import { restorer } from './restore.ts';
 import { textOf } from './session-text.ts';
 
 // The Files screen (docs/decisions/phase-11-files.md): the work dir tree, the uploads list, the
