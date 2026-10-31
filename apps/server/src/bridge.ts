@@ -7,11 +7,11 @@ import {
   type PromptOptions,
   SessionManager,
 } from '@earendil-works/pi-coding-agent';
-import { chats, files, modelFavorites } from '@pa/db';
+import { chats, files } from '@pa/db';
 import { FULL } from '@pa/pi-ext-memory';
 import { PseudoDownError } from '@pa/pi-ext-pseudo';
-import { ClientMessage, type ModelChoice, type ServerMessage } from '@pa/protocol';
-import { and, asc, desc, eq } from 'drizzle-orm';
+import { ClientMessage, type ServerMessage } from '@pa/protocol';
+import { and, desc, eq } from 'drizzle-orm';
 import { messageArtifacts } from './artifacts.ts';
 import {
   type BridgeDeps,
@@ -29,6 +29,7 @@ import {
   memoryConsolidate,
   memoryEdit,
 } from './bridge/memory.ts';
+import { favorite, modelsState, validChoice } from './bridge/models.ts';
 import { join, reindex } from './bridge/stream.ts';
 import { acceptTopic, ownTopic, rejectTopic } from './bridge/topics.ts';
 import { vault } from './bridge/vault.ts';
@@ -36,7 +37,7 @@ import { type ChatRow, forkLink, ownUsage, summary, threadFiles } from './chats.
 import { AttachmentNotFound, ingestAttachments, splitBlocks } from './files.ts';
 import { filesOf, history } from './history.ts';
 import { GENERATED, MemoryError } from './memory.ts';
-import { AUTO_MODEL, resolveModelId } from './pi/models.ts';
+import { AUTO_MODEL } from './pi/models.ts';
 import { ChatNotFound } from './pi/registry.ts';
 import { BadSubscription } from './push.ts';
 import { restorer } from './restore.ts';
@@ -205,28 +206,6 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
     collisions,
   } = deps;
   const conn = connect(socket, deps);
-
-  const modelsState = (): ServerMessage => ({
-    type: 'models.state',
-    auto: AUTO_MODEL,
-    favorites: db
-      .select({ modelId: modelFavorites.modelId })
-      .from(modelFavorites)
-      .where(eq(modelFavorites.userId, userId))
-      .orderBy(asc(modelFavorites.createdAt))
-      .all()
-      .map((f) => f.modelId),
-    catalog: catalog.list().map(({ maxTokens: _, cacheRead: __, cacheWrite: ___, ...m }) => m),
-    latest: catalog.latest(),
-    fetchedAt: catalog.fetchedAt(),
-  });
-
-  /** Phase-10 server validation: a catalog model, and an effort that the model offers. */
-  const validChoice = ({ modelId, reasoning }: ModelChoice) => {
-    const m = catalog.get(resolveModelId(modelId));
-    if (modelId !== 'auto' && !m) return false;
-    return reasoning === 'auto' || !!m?.reasoning?.efforts.includes(reasoning);
-  };
 
   const knownModes = (ids: string[]) => ids.every((id) => modes().has(id));
 
@@ -600,7 +579,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
         if (!agents().has(msg.agentId)) throw new NotFound();
         if (msg.topicId) ownTopic(conn, msg.topicId);
         const choice = msg.model ?? { modelId: 'auto', reasoning: 'auto' };
-        if (!validChoice(choice) || !knownModes(msg.modes ?? []))
+        if (!validChoice(conn, choice) || !knownModes(msg.modes ?? []))
           return send(socket, errorMsg('bad_message'));
         // No Auto in the catalog (offline first start): the profile's alias, so chats still work.
         const model =
@@ -707,7 +686,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
       // Row first, then the stale session: a message in between already builds from the new row.
       case 'chat.setModel': {
         owned(conn, msg.chatId);
-        if (!validChoice(msg)) return send(socket, errorMsg('bad_message'));
+        if (!validChoice(conn, msg)) return send(socket, errorMsg('bad_message'));
         // Also during a run (phase-20 decision 15): the running session ends its turn, and
         // `registry.get` rebuilds it with the new row once it settles.
         // Consent was for one model: a change ends it (phase-10 decision 9).
@@ -754,20 +733,9 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
         return;
       }
       case 'models.list':
-        return send(socket, modelsState());
+        return send(socket, modelsState(conn));
       case 'models.favorite':
-        if (msg.favorite) {
-          if (!catalog.get(msg.modelId)) return send(socket, errorMsg('bad_message'));
-          db.insert(modelFavorites)
-            .values({ userId, modelId: msg.modelId, createdAt: new Date().toISOString() })
-            .onConflictDoNothing()
-            .run();
-        } else
-          db.delete(modelFavorites)
-            .where(and(eq(modelFavorites.userId, userId), eq(modelFavorites.modelId, msg.modelId)))
-            .run();
-        // Other screens read the favourites at their next `models.list`.
-        return send(socket, modelsState());
+        return favorite(conn, msg);
       case 'chat.delete': {
         const { chatId } = msg;
         const deleted = owned(conn, chatId);
