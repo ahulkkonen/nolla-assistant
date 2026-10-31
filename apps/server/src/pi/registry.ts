@@ -122,6 +122,8 @@ type RegistryOptions = {
   mcp?: McpServers;
   /** Warns about allowlisted MCP tools the session did not get. */
   mcpWarn?: (chatId: string, missing: string[]) => void;
+  /** With `pseudo`: the chat had untrusted input (`chats.tainted`); memory is not needed. */
+  onTaint?: (chatId: string) => void;
   /** Called at every `agent_settled` through `pi-ext-topics`; `sessionId` is the chat id. */
   onSettled?: Parameters<typeof topicsExtension>[0]['onSettled'];
   /** Each model call of a chat and of its subagent children (phase-13 decision 11). */
@@ -184,6 +186,13 @@ async function stop(e: Entry) {
     s.dispose();
   }
 }
+
+/**
+ * One taint per session: memory parking and the harness card (phase-25 decision 5). With `pseudo`
+ * it also marks the chat, with or without memory (phase-30 decision 14).
+ */
+export const sessionTaint = (chatId: string, o: Pick<RegistryOptions, 'pseudo' | 'onTaint'>) =>
+  turnTaint(o.pseudo && o.onTaint ? () => o.onTaint?.(chatId) : undefined);
 
 /** `get` on a chat whose row is gone (deleted while the session was loading). */
 export class ChatNotFound extends Error {}
@@ -515,8 +524,7 @@ export class SessionRegistry {
           approved: searchApproved,
         })
       : [];
-    // One taint per session: memory parking and the harness card (phase-25 decision 5).
-    const taint = turnTaint(memory && pseudo ? () => memory.store.markTainted(chatId) : undefined);
+    const taint = sessionTaint(chatId, this.opts);
     const harness = this.opts.harness?.({ chatId, agentId, masked: masked.sent, allow: tools });
     const resourceLoader = new DefaultResourceLoader({
       cwd: this.cwd,

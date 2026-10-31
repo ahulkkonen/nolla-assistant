@@ -232,9 +232,6 @@ export function memoryStore(deps: {
         date: dates.get(h.chatId) ?? '',
       }));
     },
-    /** Phase 17: a turn of the chat had untrusted input; its claims never activate at once. */
-    markTainted: (chatId: string) =>
-      void db.update(chats).set({ tainted: true }).where(eq(chats.id, chatId)).run(),
     close: () => task.stop(),
   };
 }
