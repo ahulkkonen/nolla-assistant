@@ -5,6 +5,9 @@ packages:
   - tests/*
 # Supply-chain rule: never install a release younger than 7 days (minutes).
 minimumReleaseAge: 10080
+minimumReleaseAgeStrict: true
+# Install fails on a dependency build script that allowBuilds does not list.
+strictDepBuilds: true
 # Exact pins only; see docs/decisions/0001-pi-1.3.0-contract.md
 savePrefix: ''
 allowBuilds:
