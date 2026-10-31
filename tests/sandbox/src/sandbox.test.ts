@@ -244,6 +244,14 @@ describe.skipIf(!hasDocker)(hasDocker ? 'sandbox broker (docker)' : `sandbox ${S
     expect(existsSync(join(dataDir, 'work', 'u1', 'a'))).toBe(true);
   });
 
+  test('bash cannot create a symlink (phase 30: no path guard race)', async () => {
+    const r = await run({ command: 'ln -s /data /work/l; ln -s rel /work/l2; touch /work/ok' });
+    expect(r.output).toMatch(/not permitted/i);
+    expect(existsSync(join(dataDir, 'work', 'u1', 'ok'))).toBe(true);
+    for (const l of ['l', 'l2'])
+      expect(spawnSync('test', ['-L', join(dataDir, 'work', 'u1', l)]).status).not.toBe(0);
+  });
+
   test('bash cannot see or write the trash (phase-11 decision 4)', async () => {
     mkdirSync(join(dataDir, 'work', 'u1', '.trash'), { recursive: true });
     writeFileSync(join(dataDir, 'work', 'u1', '.trash', '1793000000000-old.txt'), 'x');

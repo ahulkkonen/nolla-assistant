@@ -37,6 +37,14 @@ const MAX_LINE = 64 * 1024;
 const MAX_RUNS = 4;
 const QUEUE_WAIT_MS = 10_000;
 const MANAGED = 'pa.managed';
+/**
+ * Docker's default seccomp profile (moby/profiles seccomp/v0.1.0, the one Docker 29.1 ships) with
+ * `symlink` and `symlinkat` removed: a runner cannot plant a symlink in the work dir that the
+ * server's path guard would race against (phase 30). The Engine API takes the JSON text itself.
+ */
+const SECCOMP = JSON.stringify(
+  JSON.parse(readFileSync(new URL('./seccomp.json', import.meta.url), 'utf8')),
+);
 
 export function loadConfig(env = process.env): BrokerConfig {
   const token = env.BROKER_TOKEN ?? '';
@@ -143,7 +151,7 @@ export function containerConfig(cfg: BrokerConfig, body: RunBody, proxyToken?: s
       // An empty read-only tmpfs hides the trash from `bash` (phase-11 decision 4).
       Tmpfs: { '/tmp': 'rw,size=64m', '/work/.trash': 'ro,size=4k' },
       CapDrop: ['ALL'],
-      SecurityOpt: ['no-new-privileges'],
+      SecurityOpt: ['no-new-privileges', `seccomp=${SECCOMP}`],
       AutoRemove: false,
     },
   };
