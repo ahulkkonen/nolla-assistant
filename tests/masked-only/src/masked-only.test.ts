@@ -8,11 +8,16 @@ import type { ClientMessageInput, ServerMessage } from '@pa/protocol';
 import { hashPassword } from '@pa/server/src/auth/password.ts';
 import { loadConfig } from '@pa/server/src/config.ts';
 import { start } from '@pa/server/src/main.ts';
+import { modelReady } from '@pa/server/src/test-utils.ts';
 import { afterEach, expect, test, vi } from 'vitest';
 import WebSocket from 'ws';
 
 // Plan section 2 invariant 1 / section 14 gate 3: real values never reach the session JSONL, the
 // LiteLLM request log, the server log or app.db. Only tool execution (work dir) sees them.
+
+// Without the embedding model, indexing fails with a warning only, and app.db then holds no
+// chunks to search for real values. So a missing model fails here as in the server suite.
+await modelReady();
 
 const KEY = 'sk-test-master';
 const PASSWORD = 'correct horse';
