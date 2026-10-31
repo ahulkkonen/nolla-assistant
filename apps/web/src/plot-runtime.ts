@@ -3,7 +3,7 @@
 import * as ObservablePlot from '@observablehq/plot';
 import * as d3 from 'd3';
 
-type Options = Record<string, any>;
+type Options = ObservablePlot.PlotOptions;
 
 /** The page's content width: the body less its padding (kit.css). */
 const contentWidth = () => {
@@ -14,7 +14,12 @@ const contentWidth = () => {
 };
 
 /** Axis defaults the model cannot override: no tick marks, no domain line, no label arrow. */
-const axis = (a: Options | undefined) => ({ ...a, tickSize: 0, line: false, labelArrow: 'none' });
+const axis = (a: ObservablePlot.ScaleOptions | undefined) => ({
+  ...a,
+  tickSize: 0,
+  line: false,
+  labelArrow: 'none',
+});
 
 /**
  * `Plot.plot` with the kit's look (like the Vega config): the full content width, y ticks that
@@ -26,7 +31,7 @@ function plot(options: Options = {}) {
   // With a y grid, a rule at zero would double the grid line there (Vega draws none).
   const grid = !!options.y?.grid || !!options.grid;
   const marks = grid
-    ? ((options.marks ?? []) as Options[]).filter(
+    ? ((options.marks ?? []) as { ariaLabel?: unknown; data?: unknown }[]).filter(
         (m) =>
           !(
             m?.ariaLabel === 'rule' &&
@@ -90,7 +95,7 @@ ObservablePlot.Mark.prototype.plot = function (
   this: ObservablePlot.Mark,
   { marks = [], ...o } = {},
 ) {
-  return plot({ ...o, marks: [...marks, this] });
+  return plot({ ...o, marks: [...marks, this] } as Options);
 } as ObservablePlot.Mark['plot'];
 
 Object.assign(globalThis, { Plot: { ...ObservablePlot, plot, barX, barY, ruleY }, d3 });

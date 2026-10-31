@@ -146,7 +146,19 @@ export function usageExtension(
  * tokens. The cost is `pa.costUsd` when LiteLLM gave one, else Pi's estimate.
  */
 export function messageUsage(m: unknown): CallUsage | undefined {
-  const msg = m as { role?: unknown; model?: unknown; usage?: any; pa?: PaMeta } | null;
+  const msg = m as {
+    role?: unknown;
+    model?: unknown;
+    usage?: {
+      input?: unknown;
+      output?: unknown;
+      cacheRead?: unknown;
+      cacheWrite?: unknown;
+      reasoning?: unknown;
+      cost?: { total?: unknown };
+    };
+    pa?: PaMeta;
+  } | null;
   if (msg?.role !== 'assistant' || typeof msg.model !== 'string') return undefined;
   const u = msg.usage ?? {};
   const call = {
@@ -169,7 +181,13 @@ export function messageUsage(m: unknown): CallUsage | undefined {
  * call; undefined without tokens. Without `cost`, the alias price in `infra/models.json` estimates.
  */
 export function rawUsage(model: string, raw: unknown, warn?: Warn): CallUsage | undefined {
-  const r = (raw ?? {}) as any;
+  const r = (raw ?? {}) as {
+    prompt_tokens?: unknown;
+    completion_tokens?: unknown;
+    prompt_tokens_details?: { cached_tokens?: unknown; cache_write_tokens?: unknown };
+    completion_tokens_details?: { reasoning_tokens?: unknown };
+    cost?: unknown;
+  };
   const cacheRead = count0(r.prompt_tokens_details?.cached_tokens);
   const cacheWrite = count0(r.prompt_tokens_details?.cache_write_tokens);
   const call = {

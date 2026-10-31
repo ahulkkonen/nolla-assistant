@@ -4,7 +4,10 @@
 import embed from 'vega-embed';
 import { expressionInterpreter } from 'vega-interpreter';
 
-type Obj = Record<string, any>;
+/** What `narrow` reads of a Vega-Lite spec; the parent sanitized the rest (viz.ts). */
+type XDef = { type?: unknown; field?: unknown; scale?: { type?: unknown }; axis?: object | null };
+type Unit = { encoding?: { x?: XDef }; data?: { values?: Record<string, unknown>[] } };
+type Spec = Unit & { layer?: Unit[]; height?: number | string };
 
 const FI_NUMBER = { decimal: ',', thousands: ' ', grouping: [3], currency: ['', ' €'] };
 const FI_TIME = {
@@ -43,20 +46,21 @@ const FI_TIME = {
     'joulu',
   ],
 };
-const DISCRETE = new Set(['ordinal', 'nominal']);
+const DISCRETE = new Set<unknown>(['ordinal', 'nominal']);
+const BANDED = new Set<unknown>(['point', 'band']);
 
 /**
  * R4: under 480 px an ordinal x axis with more than six labels shows every second one, and the
  * chart is at most 200 px high. Axis `datum.index` is a 0-1 fraction, hence `n`.
  */
-function narrow(spec: Obj, width: number) {
+function narrow(spec: Spec, width: number) {
   if (width >= 480) return;
-  const units: Obj[] = [spec, ...(Array.isArray(spec.layer) ? spec.layer : [])];
+  const units: Unit[] = [spec, ...(Array.isArray(spec.layer) ? spec.layer : [])];
   const xs = units
     .map((u) => u.encoding?.x)
-    .filter((x) => x && (DISCRETE.has(x.type) || ['point', 'band'].includes(x.scale?.type)));
-  const rows: Obj[] = units.find((u) => Array.isArray(u.data?.values))?.data.values ?? [];
-  const n = new Set(rows.map((r) => r[xs[0]?.field])).size;
+    .filter((x): x is XDef => !!x && (DISCRETE.has(x.type) || BANDED.has(x.scale?.type)));
+  const rows = units.find((u) => Array.isArray(u.data?.values))?.data?.values ?? [];
+  const n = new Set(rows.map((r) => r[String(xs[0]?.field)])).size;
   if (n <= 6) return;
   for (const x of xs)
     if (x.axis !== null)
@@ -69,7 +73,7 @@ function narrow(spec: Obj, width: number) {
 const fail = (err: unknown) =>
   parent.postMessage({ type: 'viz-error', message: String((err as Error)?.message ?? err) }, '*');
 
-const draw = (box: HTMLElement, spec: Obj) => {
+const draw = (box: HTMLElement, spec: Spec) => {
   narrow(spec, box.clientWidth);
   return embed(box, spec as never, {
     renderer: 'svg',
@@ -86,7 +90,7 @@ const draw = (box: HTMLElement, spec: Obj) => {
  * Export (phase-20 decision 7): the parent sends the spec again with the light theme; it is drawn
  * off screen at the chart's width, and its SVG goes back to the parent only.
  */
-const exportSvg = async (el: HTMLElement, spec: Obj) => {
+const exportSvg = async (el: HTMLElement, spec: Spec) => {
   const box = document.createElement('div');
   box.style.cssText = `position:absolute;top:0;left:-99999px;width:${el.clientWidth}px`;
   document.body.append(box);
@@ -103,7 +107,7 @@ const exportSvg = async (el: HTMLElement, spec: Obj) => {
 };
 
 const el = document.getElementById('vis');
-const spec: Obj = JSON.parse(document.getElementById('spec')?.textContent ?? '{}');
+const spec: Spec = JSON.parse(document.getElementById('spec')?.textContent ?? '{}');
 if (el) {
   // The render timer starts here, in the parent (not when the page html was set).
   parent.postMessage({ type: 'viz-loaded' }, '*');
