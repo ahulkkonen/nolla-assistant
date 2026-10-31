@@ -191,3 +191,5 @@ Status on 2026-10-29. The plan, section 13, defines each gate.
 | 25 | Harness tools `profile_edit`, `automation_edit`, `chat_read` behind mandatory cards with diff and YAML views; `fetch_url` replaces `web-digest` (`docs/decisions/phase-25-harness-tools.md`) | done |
 | 26 | Waiting line "Vaiheet" with a receipt, Android keyboard follow and focus (`docs/decisions/phase-26-waiting-keyboard.md`) | done |
 | 27 | Streaming: per-frame deltas, in-place final, caret on the last character that breathes, table and emphasis hold-back (`docs/decisions/phase-27-streaming.md`) | done |
+| 28 | Fixes: MEMORY.md regenerates on activation, Tila chip links to the mode editor, Luottamus on a relative scale with underlined low sentences, pseudonym marks behind a setting (`docs/decisions/phase-28-fixes.md`) | done |
+| 30 | Audits before publication: security, architecture and dependency audits in `docs/audits/`, fixes in two batches (`docs/decisions/phase-30-audits.md`) | done |
