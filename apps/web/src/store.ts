@@ -244,7 +244,10 @@ type State = {
   artifacts: Record<string, Artifact[]>;
   /** The artifact of the panel (`shownArtifact`); closed when null or on another chat. */
   openArtifact: { chatId: string; id: string } | null;
-  /** Phase-30 decision 14: artifacts confirmed with "Näytä oikeat arvot", until the page reloads. */
+  /**
+   * Phase-30 decision 14: `chatId:artifactId` of each artifact confirmed with "Näytä oikeat
+   * arvot", until the page reloads (a fork can keep the entry ids, so the chat is in the key).
+   */
   revealed: Record<string, true>;
   paletteOpen: boolean;
   settingsOpen: boolean;
@@ -451,24 +454,43 @@ function mergeArtifacts(
   return adopt(st, chatId, [...server, ...local], !st.artifacts[chatId] || !!switched);
 }
 
+type Taint = Pick<State, 'revealed' | 'summaries' | 'chats'>;
+/** Whether external content entered the chat (`ChatSummary.tainted`; older servers send none). */
+const chatTainted = (s: Taint, chatId: string) =>
+  (s.summaries[chatId] ?? s.chats.find((c) => c.id === chatId))?.tainted === true;
+
 /**
- * Phase-30 decision 14: the masked source that the frame of `a` runs (a page or a component of a
- * tainted chat), until the user reveals its real values; else undefined.
+ * Phase-30 decision 14: what the frame of artifact `a` of `chatId` runs. Undefined: its
+ * `content`. A string: its masked source, until the user reveals the real values. Null: nothing,
+ * for a page or a component of a tainted chat that has no masked source yet (a code block
+ * opened before its server artifact came).
  */
-export const maskedSource = (s: Pick<State, 'revealed'>, a: Artifact | undefined) =>
-  a?.masked !== undefined && !s.revealed[a.id] ? a.masked : undefined;
-/** Whether the active chat's artifact of a page block with `source` runs its masked source. */
+export const maskedSource = (
+  s: Taint,
+  chatId: string,
+  a: Artifact | undefined,
+): string | null | undefined => {
+  if (!a || (a.kind !== 'html' && a.kind !== 'react') || s.revealed[`${chatId}:${a.id}`])
+    return undefined;
+  if (a.masked !== undefined) return a.masked;
+  return chatTainted(s, chatId) ? null : undefined;
+};
+/**
+ * Whether the card of a page block with `source` in the active chat shows the masked line. Its
+ * artifact is the first one with the same content; none yet counts as masked in a tainted chat.
+ */
 export const blockMasked = (
-  s: Pick<State, 'activeChatId' | 'artifacts' | 'revealed'>,
+  s: Taint & Pick<State, 'activeChatId' | 'artifacts'>,
   source: string,
 ) => {
-  const list = s.activeChatId ? s.artifacts[s.activeChatId] : undefined;
-  const twin = list?.find((x) => x.content.trimEnd() === source.trimEnd());
-  return maskedSource(s, twin) !== undefined;
+  const chatId = s.activeChatId;
+  if (!chatId) return false;
+  const twin = s.artifacts[chatId]?.find((x) => x.content.trimEnd() === source.trimEnd());
+  return twin ? maskedSource(s, chatId, twin) !== undefined : chatTainted(s, chatId);
 };
-/** "Näytä oikeat arvot", confirmed: the frame of artifact `id` runs the restored text. */
-export const revealArtifact = (id: string) =>
-  useStore.setState((s) => ({ revealed: { ...s.revealed, [id]: true } }));
+/** "Näytä oikeat arvot", confirmed: the frame of that artifact runs the restored text. */
+export const revealArtifact = (chatId: string, id: string) =>
+  useStore.setState((s) => ({ revealed: { ...s.revealed, [`${chatId}:${id}`]: true } }));
 
 /** The artifact the panel shows: only on the chat screen, only of the chat on it (decision 12). */
 export const shownArtifact = (s: State) =>

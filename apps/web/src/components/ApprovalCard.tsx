@@ -304,6 +304,11 @@ export function TaintLine({
   );
 }
 
+/** Phase-30 decision 14: a page or a component of the chat runs masked (card and panel). */
+export const MaskedLine = ({ className }: { className?: string }) => (
+  <TaintLine className={className}>Ulkoista sisältöä: oikeat arvot piilotettu</TaintLine>
+);
+
 /**
  * The real (unmasked) arguments of a gated tool call, inline in the thread. Focus stays where it
  * is, so a typed Enter never approves; the thread announces the request (Thread.tsx). After a

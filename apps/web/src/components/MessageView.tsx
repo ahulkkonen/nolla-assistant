@@ -62,7 +62,7 @@ import {
   type TextNode,
   withDefinitions,
 } from '../thread.ts';
-import { MaskedLine } from './ArtifactPanel.tsx';
+import { MaskedLine } from './ApprovalCard.tsx';
 import { InlineFigure } from './Figure.tsx';
 import { IconButton, Tip } from './IconButton.tsx';
 import { MessageMeta, MetaLine } from './MessageMeta.tsx';
