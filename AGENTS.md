@@ -39,7 +39,7 @@ section 2.
   surrogate-to-real pairs. Tests use synthetic names only.
 - **Dependencies.** Exact pins. Never pin a release younger than 7 days. `pnpm-workspace.yaml`
   enforces this with `minimumReleaseAge: 10080`. Check the publish date on the registry before you
-  pin (command in `README.md`, "Dependency policy"). A version bump is its own change.
+  pin (command in `docs/development.md`, "Dependency policy"). A version bump is its own change.
 - **Pi version bump** is its own task: diff the `.d.ts` files that the contract note cites, run
   `pnpm test:contract`, the server suite and the e2e flows, write a new `docs/decisions/00NN-*.md`.
 - **Finnish strings in the UI.** New user-facing text follows the existing wording. Keep the
@@ -77,7 +77,7 @@ skills/             vendored skills; see skills/README.md
 infra/              compose.yaml, compose.local.yaml, Dockerfiles, LiteLLM config, backup
 scripts/            hash-password, restore, restore-drill, download-models, build-skill-runner
 tests/              contract, e2e (Playwright), egress, fake-llm, masked-only, mcp, memory-eval, pii, sandbox
-docs/               plan.md, deploy.md, decisions/
+docs/               plan.md, deploy.md, development.md, decisions/, audits/, media/ (README images)
 ```
 
 ## Commands
@@ -130,7 +130,8 @@ Start here for a topic. Each entry says what the document answers.
 
 | Document | Answers |
 |---|---|
-| `README.md` | What the project is, how to develop and test, the status table per phase |
+| `README.md` | What the project is and why, screenshots, the architecture diagram, how it was built, how to run it |
+| `docs/development.md` | How to develop and test, the test commands, the dependency policy, the status table per phase |
 | `docs/plan.md` | The full build plan: architecture (§3), protocol (§5), PII (§6), memory (§7), agents (§9), MCP (§10), UI spec (§11), phases (§13), quality gates (§14), pitfalls (§15) |
 | `docs/deploy.md` | Runbook for Coolify on a VPS, the local Docker run, the phone on the wifi, backups and restore, Google OAuth |
 | `docs/decisions/README.md` | Index of every decision record and phase record |
