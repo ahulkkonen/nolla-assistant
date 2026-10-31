@@ -7,6 +7,7 @@ import {
 } from '@pa/protocol';
 import {
   type ClaimChip,
+  errorText,
   serverIdOf,
   shift,
   thinkingKey,
@@ -21,7 +22,8 @@ let backoff = 500;
 let stopped = true;
 let pingTimer: ReturnType<typeof setInterval> | undefined;
 let retryTimer: ReturnType<typeof setTimeout> | undefined;
-let createWaiters: Array<(chatId: string) => void> = [];
+/** Pending `chat.create` calls, oldest first: `chat.created` or an error answers in send order. */
+let createWaiters: Array<{ resolve: (chatId: string) => void; reject: () => void }> = [];
 let forkTimer: ReturnType<typeof setTimeout> | undefined;
 let versionTimer: ReturnType<typeof setTimeout> | undefined;
 /**
@@ -44,6 +46,12 @@ let retryIntent: {
  * shown are the server's and a version guessed here cannot stay.
  */
 let editRefresh: string | null = null;
+/** Every pending `chat.create` fails: its text goes back to the composer (`sendUserMessage`). */
+const failCreates = () => {
+  const waiters = createWaiters;
+  createWaiters = [];
+  for (const w of waiters) w.reject();
+};
 /** The pending retry or edit is over: its edit box stops waiting. */
 const endRetry = () => {
   retryIntent = null;
@@ -84,6 +92,7 @@ export function disconnect() {
   editRefresh = null;
   clearTimeout(retryTimer);
   clearInterval(pingTimer);
+  failCreates();
   queue = [];
   // Phase 27: deltas still waiting for their frame never land after a sign-out's wipe.
   if (frame) cancelAnimationFrame(frame);
@@ -144,11 +153,12 @@ export function openChat(chatId: string, messageId?: string | null) {
 
 /**
  * Sends `chat.create` with the picked agent, model and modes (phase-23 decision 8: unset modes are
- * the agent's default); resolves with the id from the next `chat.created`.
+ * the agent's default); resolves with the id from the next `chat.created`. Rejects on the next
+ * error without a chat (a refused create never names one) or when the socket closes.
  */
 export function createChat(): Promise<string> {
-  return new Promise((resolve) => {
-    createWaiters.push(resolve);
+  return new Promise((resolve, reject) => {
+    createWaiters.push({ resolve, reject });
     const st = useStore.getState();
     // A mode deleted since the toggle would refuse the whole create.
     const modes = st.pendingModes?.filter((id) => st.modes.some((m) => m.id === id));
@@ -172,7 +182,14 @@ export async function sendUserMessage(
   chatId: string | null = useStore.getState().activeChatId,
 ) {
   if (chatId && useStore.getState().pendingEdit?.chatId === chatId) return;
-  const id = chatId ?? (await createChat());
+  let id = chatId;
+  try {
+    id ??= await createChat();
+  } catch {
+    // No chat: the text and files go back to the new-chat composer; the error toast says why.
+    useStore.setState({ draft: { chatId: null, text, attachments } });
+    return;
+  }
   // A new turn ends a pending consent or retry of its chat: neither may act on it.
   if (policyIntent?.chatId === id) policyIntent = null;
   if (retryIntent?.chatId === id) endRetry();
@@ -460,10 +477,8 @@ function open() {
     settlePolicy(msg, was);
     settleRetry(msg);
     sendQueued(msg);
-    if (msg.type === 'chat.created') {
-      const waiter = createWaiters.shift();
-      waiter?.(msg.chat.id);
-    }
+    if (msg.type === 'chat.created') createWaiters.shift()?.resolve(msg.chat.id);
+    if (msg.type === 'error' && !msg.chatId) createWaiters.shift()?.reject();
     if (msg.type === 'auth.state' && !msg.authenticated) disconnect();
     if (msg.type === 'auth.state' && msg.authenticated) {
       send({ type: 'chat.list', archived: store.archivedView });
@@ -482,6 +497,10 @@ function open() {
     clearInterval(pingTimer);
     // 4401: this device's session was revoked (Laitteet, phase 15): signed out, no reconnect.
     if (e.code === 4401) return signedOut();
+    if (createWaiters.length) {
+      failCreates();
+      useStore.getState().pushError(errorText('prompt_failed', ''));
+    }
     // The answer to a pending consent, retry, edit, switch, fork or thinking text may never come;
     // a reconnect starts clean.
     policyIntent = null;

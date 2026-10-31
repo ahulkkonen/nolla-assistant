@@ -347,6 +347,38 @@ describe('ws client', () => {
     expect(useStore.getState().queued.c2).toBeUndefined();
   });
 
+  it('a refused chat.create, or a close before chat.created, gives the text back to the composer', async () => {
+    const push = vi.spyOn(useStore.getState(), 'pushError').mockImplementation(() => {});
+    const file = { id: 'f1', name: 'kuva.png', mime: 'image/png', size: 1, kind: 'image' as const };
+    const { sock, frame, sent } = chat();
+    useStore.getState().setActive(null);
+    // The server refuses: an error without a chat.
+    const refused = sendUserMessage('Eka', [file]);
+    expect(sent('chat.create')).toHaveLength(1);
+    frame({ type: 'error', code: 'bad_message', message: 'x' });
+    await refused;
+    expect(useStore.getState().draft).toEqual({ chatId: null, text: 'Eka', attachments: [file] });
+    expect(push).toHaveBeenCalledWith('Virheellinen viesti.');
+    useStore.setState({ draft: null });
+    // The socket closes before the answer.
+    const lost = sendUserMessage('Toka');
+    sock.onclose?.({ code: 1006 });
+    await lost;
+    expect(useStore.getState().draft).toMatchObject({ chatId: null, text: 'Toka' });
+    expect(push).toHaveBeenLastCalledWith('Viestin lähetys epäonnistui.');
+    useStore.setState({ draft: null });
+    // No stale waiter: the next chat.created answers only its own create.
+    disconnect();
+    const next = chat();
+    useStore.getState().setActive(null);
+    const third = sendUserMessage('Kolmas');
+    next.frame({ type: 'chat.created', chat: { ...useStore.getState().chats[0], id: 'c9' } });
+    await third;
+    expect(next.sent('user.message')).toMatchObject([{ chatId: 'c9', text: 'Kolmas' }]);
+    expect(sent('user.message')).toEqual([]);
+    push.mockRestore();
+  });
+
   it('a sign-out drops the deltas that wait for their frame: nothing lands after the wipe', () => {
     const frames: FrameRequestCallback[] = [];
     const cancel = vi.fn();

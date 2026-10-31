@@ -96,6 +96,17 @@ Batch A, per item:
    drill passed. It covers an hourly snapshot newer than the nightly one and the reverse, and a
    SQLCipher vault.
 
+Batch B, per item (branch `p30-b2` holds 8, 11, 12, 13 and the dependency follow-ups):
+
+8. Done. A refused `chat.create` or a close before `chat.created` rejects the wait in `ws.ts`.
+   `sendUserMessage` then gives the text and the files back as a `draft` with `chatId: null`
+   (the new-chat composer). A refusal shows the toast of its code; a close shows "Viestin
+   lähetys epäonnistui.". The server does not echo a request id for `chat.create`, and the fix
+   must not touch `bridge.ts` while the split runs. So the next error without a `chatId`
+   answers the oldest wait, the same send order that `chat.created` already uses. A refused
+   create never names a chat. Follow-up after the split: a `localId` on `chat.create`, echoed in
+   `chat.created` and in the error.
+
 Left as they are in batch A, on purpose:
 
 - The backup service holds `PSEUDO_VAULT_KEY`, because a consistent copy of the SQLCipher vault

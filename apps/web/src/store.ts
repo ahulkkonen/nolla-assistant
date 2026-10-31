@@ -265,10 +265,11 @@ type State = {
   /** Per chat, the user message that waits for the vault (`chat.held`): its text, given back on a drop. */
   held: Record<string, string>;
   /**
-   * Text for the composer to take back: a held message that was dropped, or a queued one given
-   * back. Never sent again by itself.
+   * Text for the composer to take back: a held message that was dropped, a queued one given
+   * back, or the first message of a chat that was never created (`chatId` null). Never sent again
+   * by itself.
    */
-  draft: { chatId: string; text: string; attachments?: AttachmentRef[] } | null;
+  draft: { chatId: string | null; text: string; attachments?: AttachmentRef[] } | null;
   /**
    * Phase-20 decision 17: one message per chat written while a reply runs; `ws.ts` sends it when
    * the chat goes idle. Stop, a failed reply or a held message give it back to the composer.
