@@ -15,7 +15,7 @@ export RESTIC_PASSWORD=drill-restic-pass DRILL_PORT=$PORT DRILL_S3_PORT=$S3PORT
 export AUTH_ORIGIN=http://127.0.0.1:$PORT AUTH_PASSKEY_RP_ID=127.0.0.1
 export COOKIE_SECRET=drill-cookie-secret-0123456789abcdef0123 USER_ID=drill MODEL=zdr/strong
 export PSEUDO_VAULT_KEY=drill-vault-key OPENROUTER_API_KEY=unused
-export LITELLM_URL=http://127.0.0.1:9 LITELLM_MASTER_KEY=drill-key
+export LITELLM_URL=http://127.0.0.1:9 LITELLM_MASTER_KEY=drill-litellm-key-0123456789abcdef
 # Required by mcp-workspace, which the drill does not start. Its token volume is not drilled.
 export GOOGLE_OAUTH_CLIENT_ID=unused GOOGLE_OAUTH_CLIENT_SECRET=unused USER_GOOGLE_EMAIL=unused@example.invalid
 PW=drill-password
@@ -35,6 +35,7 @@ services:
     image: pa-server:dev
     environment:
       PSEUDO_URL: ""  # empty disables the sidecar client; masking is not under test
+      NODE_ENV: development  # production refuses to start without PSEUDO_URL
     ports: ["127.0.0.1:\${DRILL_PORT}:3000"]
 YAML
 dc() { docker compose -f infra/compose.yaml -f "$TMP/override.yaml" "$@"; }
@@ -113,11 +114,9 @@ echo "== create chat"
 CHAT=$(client create)
 echo "chat $CHAT"
 sleep 5
-echo "== litestream ltx"
-dc exec -T backup litestream ltx -config /etc/litestream.yml -level all /data/app.db | tee "$TMP/snaps"
-[ "$(wc -l <"$TMP/snaps")" -gt 1 ] || { echo "no Litestream LTX files for app.db"; exit 1; }
-echo "== restic backup"
+echo "== restic backup (nightly, then the hourly app.db snapshot by hand)"
 dc exec -T backup /backup-now.sh
+dc exec -T backup sh -c 'restic backup /data/app.db $( [ -e /data/app.db-wal ] && echo /data/app.db-wal ) --tag app' >/dev/null
 
 echo "== delete stack and volume"
 dc stop pa-server backup

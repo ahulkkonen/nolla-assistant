@@ -210,9 +210,9 @@ services:
     # Not internal: the server needs egress to Google APIs.
     networks: [mcp]
 
-  # Litestream (app.db, vault.db) plus nightly restic of /data. /data is read-write on purpose:
-  # Litestream opens the live WAL database, which needs the -shm file and its own
-  # .<db>-litestream state directory next to the database. Same uid as pa-server.
+  # restic only (phase 30): app.db and vault.db hourly, all of /data nightly, encrypted in the
+  # bucket. /data is read-write for `scripts/restore.sh`, which runs in this service. Same uid as
+  # pa-server.
   backup:
     build: { context: .., dockerfile: infra/Dockerfile.backup }
     restart: unless-stopped

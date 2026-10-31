@@ -20,6 +20,12 @@ what stays as it is.
 7. Nice-to-haves done in the same batch: passkey challenge map capped, the missing IPv6 ranges in
    `net.ts`, YAML error logs without the source line, `__Host-` cookie prefix when the origin is
    https, config checks fail closed.
+8. **Litestream removed; `app.db` hourly with restic** (decided by the user). Litestream wrote
+   `app.db` to the bucket as plain SQLite pages, and the file holds real values (claims, evidence,
+   restored titles). Litestream 0.5 has no replica encryption. Restic encrypts every snapshot.
+   The backup service now snapshots `app.db` and `vault.db` hourly (tags `app`, `vault`) and all
+   of `/data` nightly, WAL files included. `scripts/restore.sh` restores the nightly snapshot,
+   then the newest hourly snapshot of each database.
 
 ## Batch B: architecture fixes
 
@@ -39,8 +45,6 @@ what stays as it is.
 - **Artifacts show real values.** An HTML or React artifact is built from the restored text, so a
   prompt-injected artifact can carry real values in a navigation. Decision pending with the user:
   masked artifacts, or restored with a warning on a tainted chat.
-- **Litestream replica is not encrypted.** Decision pending with the user (needs a key and a
-  deploy change).
 - **`pnpm audit`:** 19 transitive advisories; the two highs sit inside the pinned Pi and the MCP
   SDK. Overrides when the patched versions are 7 days old.
 
