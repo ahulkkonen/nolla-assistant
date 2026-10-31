@@ -40,16 +40,16 @@ const add = (t: string, target: 'user' | 'memory' = 'user') => ({
 test('injected memory is masked and byte-stable across two turns', {
   timeout: 60_000,
 }, async () => {
-  const { llm, sc, c, chat } = await bootPseudo({ 'Aleksi Hulkkonen': 'Pekka Laaksonen' }, [
+  const { llm, sc, c, chat } = await bootPseudo({ 'Juho Rantanen': 'Pekka Laaksonen' }, [
     { text: 'Hei.' },
     { text: 'Hyvää.' },
   ]);
   c.send({
     type: 'memory.edit',
     target: 'user',
-    text: 'Nimi: Aleksi Hulkkonen\nAsuu Helsingissä.',
+    text: 'Nimi: Juho Rantanen\nAsuu Helsingissä.',
   });
-  expect((await c.next('memory.state')).user).toContain('Aleksi Hulkkonen');
+  expect((await c.next('memory.state')).user).toContain('Juho Rantanen');
   for (const t of ['Hei', 'Mitä kuuluu?']) {
     c.send({ type: 'user.message', chatId: chat.id, text: t });
     await c.idle();
@@ -59,7 +59,7 @@ test('injected memory is masked and byte-stable across two turns', {
     .map((r) => text(messages(r.body).findLast((m) => text(m).includes('## Käyttäjä'))));
   expect(injected[0]).toContain('Pekka Laaksonen');
   expect(injected[0]).toContain('## Muisti');
-  expect(injected[0]).not.toContain('Aleksi Hulkkonen');
+  expect(injected[0]).not.toContain('Juho Rantanen');
   expect(injected[1]).toBe(injected[0]);
   // Masked once through /mask, then served from the cache.
   const masks = sc.requests.filter(

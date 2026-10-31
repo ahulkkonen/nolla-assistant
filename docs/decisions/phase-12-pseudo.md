@@ -190,7 +190,7 @@ lines and the harness enforces the plan's thresholds.
       scores 0.75 because `Jari` is no ordinary word.
     - spaCy tagged the sentence-initial `Mentorini` as PERSON, and the filter kept it because Voikko
       does not know `mentori`. A single NER token at a sentence start now needs a Voikko name reading
-      (`known_name`). `Hulkkonen` at a sentence start still passes.
+      (`known_name`). `Pulkkinen` at a sentence start still passes.
     - The same run masked `Milloin Satamarahdin sopimus uusitaan?` as the person `Milla Satamarahdin`:
       Voikko reads `Milloin` as the plural instructive of `Milla`, and the full-name rule took the unknown
       capitalised word after it as the surname at 0.75. An unknown surname after a first name that is

@@ -10,7 +10,7 @@ import { startWorkspaceConfig } from '../fixtures/fake-workspace-server.ts';
 
 afterEach(runCleanups);
 
-const USER = { 'Aleksi Hulkkonen': 'Matti Virtanen' };
+const USER = { 'Juho Rantanen': 'Matti Virtanen' };
 const ALLOWED = ['list_calendars', 'get_events', 'manage_event'];
 
 async function bootMcp(turns: FakeTurn[], env: Record<string, string> = {}) {
@@ -72,7 +72,7 @@ test('(a) manage_event asks with real values and the server gets real values', a
   const req = await c.next('approval.request');
   expect(req.tool).toBe('mcp__workspace__manage_event');
   expect(req.args).toMatchObject({
-    summary: 'Kahvit Aleksi Hulkkonen',
+    summary: 'Kahvit Juho Rantanen',
     attendees: ['kaisa.nieminen@example.fi'],
   });
   expect(ws.state.created).toEqual([]);
@@ -81,12 +81,12 @@ test('(a) manage_event asks with real values and the server gets real values', a
   await c.idle();
   expect(ws.state.created).toEqual([
     expect.objectContaining({
-      summary: 'Kahvit Aleksi Hulkkonen',
+      summary: 'Kahvit Juho Rantanen',
       attendees: ['kaisa.nieminen@example.fi'],
     }),
   ]);
   expect(sent()).not.toContain('kaisa.nieminen@example.fi');
-  expect(sent()).not.toContain('Aleksi Hulkkonen');
+  expect(sent()).not.toContain('Juho Rantanen');
 });
 
 test('(b, c, d) a fetched attendee is masked in the session and in model requests', async () => {

@@ -92,11 +92,11 @@ def test_json_structure_kept(vault):
 
 
 def test_self_label(vault, monkeypatch):
-    monkeypatch.setenv("SELF_NAME", "Aleksi Hulkkonen")
-    masked, spans = mask(vault, "Aleksi Hulkkosen kalenteri.")
+    monkeypatch.setenv("SELF_NAME", "Juho Rantanen")
+    masked, spans = mask(vault, "Juho Rantasen kalenteri.")
     assert masked == "[sinä] kalenteri." and spans[0]["kind"] == "SELF"
     # restores to the configured name for tools; never mapped to a third-party name
-    assert unmask(vault, "Kysy [sinä], kiitos.")[0] == "Kysy Aleksi Hulkkonen, kiitos."
+    assert unmask(vault, "Kysy [sinä], kiitos.")[0] == "Kysy Juho Rantanen, kiitos."
     monkeypatch.delenv("SELF_NAME")
     assert M.unmask(vault, "u2", "Kysy [sinä], kiitos.")[0] == "Kysy [sinä], kiitos."
 
@@ -128,7 +128,7 @@ def test_unknown_name_gets_surrogate(vault):
 def test_ner_filter():
     from app.detect.ner import plausible
 
-    assert plausible("Mikko Virtanen") and plausible("Hulkkonen")
+    assert plausible("Mikko Virtanen") and plausible("Pulkkinen")
     assert not any(map(plausible, ["SKU-123", "B.", "ma 3.11", "Helsinki"]))
 
 
@@ -576,7 +576,7 @@ def test_two_ordinary_words_are_no_mixed_case_name(vault):
 def test_ner_drops_unknown_words_at_a_sentence_start():
     from app.detect.ner import plausible
 
-    assert plausible("Hulkkonen", at_start=True) and plausible("Mentorini")
+    assert plausible("Pulkkinen", at_start=True) and plausible("Mentorini")
     assert not plausible("Mentorini", at_start=True)
 
 

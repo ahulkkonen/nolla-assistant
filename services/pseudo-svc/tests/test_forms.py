@@ -45,15 +45,15 @@ def test_known_pairs(name, kind, case, form):
 
 
 def test_paradigm_size():
-    f = generate_forms("Hulkkonen", "last")
-    assert len(f) >= 15 + 3 + 3 * 2 + 6 and f["ALL"] == "Hulkkoselle" and f["PL_ALL"] == "Hulkkosille"
+    f = generate_forms("Pulkkinen", "last")
+    assert len(f) >= 15 + 3 + 3 * 2 + 6 and f["ALL"] == "Pulkkiselle" and f["PL_ALL"] == "Pulkkisille"
 
 
 @pytest.mark.skipif(not os.environ.get("OMORFI_MODELS"), reason="Omorfi models not present")
 def test_omorfi_generates_known_and_unknown_names():
     assert omorfi() is not None
-    f = generate_forms("Hulkkonen", "last")
-    assert [f[c] for c in ("GEN", "PAR", "ALL", "ILL")] == ["Hulkkosen", "Hulkkosta", "Hulkkoselle", "Hulkkoseen"]
+    f = generate_forms("Pulkkinen", "last")
+    assert [f[c] for c in ("GEN", "PAR", "ALL", "ILL")] == ["Pulkkisen", "Pulkkista", "Pulkkiselle", "Pulkkiseen"]
     # not in the lexicon: the rules fill in
     assert omorfi().prefix("Qwertyläinen", "last") is None
     assert generate_forms("Qwertyläinen", "last")["ALL"] == "Qwertyläiselle"
