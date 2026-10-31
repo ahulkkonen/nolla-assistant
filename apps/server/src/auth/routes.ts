@@ -19,8 +19,8 @@ import {
   listSessions,
   revokeAll,
   revokeSession,
-  SESSION_COOKIE,
   sessionCookie,
+  sessionCookieName,
 } from './session.ts';
 
 declare module 'fastify' {
@@ -52,7 +52,15 @@ const RP_NAME = 'Personal Assistant';
 
 type Purpose = 'reg' | 'auth';
 
-/** Counts failed attempts per key; blocked after `max` failures in `windowMs`. */
+// One scrypt verify at a time: each allocates about 128 MiB and holds a threadpool slot.
+let verifying: Promise<unknown> = Promise.resolve();
+const verifyOne = (stored: string, password: string) => {
+  const run = verifying.then(() => verifyPassword(stored, password));
+  verifying = run.catch(() => {});
+  return run;
+};
+
+/** Counts attempts per key (`fail`); blocked after `max` of them in `windowMs`. */
 export function limiter(app: FastifyInstance, max = 5, windowMs = 60_000) {
   const fails = new Map<string, number[]>();
   const recent = (key: string, now = Date.now()) =>
@@ -75,9 +83,10 @@ export function limiter(app: FastifyInstance, max = 5, windowMs = 60_000) {
 /** preHandler: 401 without a valid session; sets `req.userId` and re-sets a refreshed cookie. */
 export const requireUser =
   (db: Db, secure: boolean) => async (req: FastifyRequest, reply: FastifyReply) => {
-    const user = getUser(db, req);
+    const user = getUser(db, req, secure);
     if (!user) return reply.code(401).send({ error: 'unauthorized' });
-    if (user.refreshed) reply.setCookie(SESSION_COOKIE, user.token, sessionCookie(secure));
+    if (user.refreshed)
+      reply.setCookie(sessionCookieName(secure), user.token, sessionCookie(secure));
     req.userId = user.userId;
     req.sessionId = user.id;
     req.sessionCreatedAt = user.createdAt;
@@ -107,9 +116,17 @@ export function authRoutes(
   sockets: SessionSockets = { revoke: () => {}, rename: () => {} },
 ) {
   const auth = requireUser(db, config.cookieSecure);
+  const cookieName = sessionCookieName(config.cookieSecure);
+  /** `Secure` too: a browser ignores a `__Host-` Set-Cookie without it, the clearing one included. */
+  const clearSession = { path: '/', secure: config.cookieSecure };
   const passwordLimit = limiter(app);
-  // Shared by passkey login options and verify; only failed verifications count.
+  // All clients together: an IP key alone fails behind a CDN or with a rotating IPv6 /64.
+  const passwordGlobal = limiter(app, 10);
+  // Failed passkey verifies, strict.
   const passkeyLimit = limiter(app);
+  // Every passkey options request, looser (conditional UI, several tabs, a shared IP): one client
+  // still cannot fill the challenge map (MAX_CHALLENGES) for everyone.
+  const optionsLimit = limiter(app, 30);
   const challenges = new Map<string, { challenge: string; purpose: Purpose; expiresAt: number }>();
   app.decorateRequest('userId', '');
   app.decorateRequest('sessionId', '');
@@ -118,7 +135,7 @@ export function authRoutes(
   const login = (req: FastifyRequest, reply: FastifyReply, userId: string) =>
     reply
       .setCookie(
-        SESSION_COOKIE,
+        cookieName,
         createSession(db, userId, req.headers['user-agent']),
         sessionCookie(config.cookieSecure),
       )
@@ -164,11 +181,13 @@ export function authRoutes(
       },
     },
     async (req, reply) => {
-      if (passwordLimit.blocked(req.ip)) return reply.code(429).send({ error: 'rate_limited' });
-      if (!config.passwordHash || !(await verifyPassword(config.passwordHash, req.body.password))) {
-        passwordLimit.fail(req.ip);
+      if (passwordLimit.blocked(req.ip) || passwordGlobal.blocked('global'))
+        return reply.code(429).send({ error: 'rate_limited' });
+      // Count the attempt before the verify, so requests in flight count too.
+      passwordLimit.fail(req.ip);
+      passwordGlobal.fail('global');
+      if (!config.passwordHash || !(await verifyOne(config.passwordHash, req.body.password)))
         return reply.code(401).send({ error: 'invalid' });
-      }
       return login(req, reply, config.userId);
     },
   );
@@ -183,9 +202,9 @@ export function authRoutes(
   }));
 
   app.post('/api/auth/logout', { preHandler: auth }, async (req, reply) => {
-    destroySession(db, req.cookies[SESSION_COOKIE] ?? '');
+    destroySession(db, req.cookies[cookieName] ?? '');
     sockets.revoke([req.sessionId]);
-    return reply.clearCookie(SESSION_COOKIE, { path: '/' }).code(204).send();
+    return reply.clearCookie(cookieName, clearSession).code(204).send();
   });
 
   // Laitteet (phase-15 decisions 11 and 12). No fresh login: revoking protects, so it is one step.
@@ -200,7 +219,7 @@ export function authRoutes(
       if (!revokeSession(db, req.userId, req.params.id))
         return reply.code(404).send({ error: 'not_found' });
       sockets.revoke([req.params.id]);
-      if (req.params.id === req.sessionId) reply.clearCookie(SESSION_COOKIE, { path: '/' });
+      if (req.params.id === req.sessionId) reply.clearCookie(cookieName, clearSession);
       return reply.code(204).send();
     },
   );
@@ -209,10 +228,7 @@ export function authRoutes(
     const { token, id, revoked } = revokeAll(db, req.userId, req.sessionId);
     sockets.revoke(revoked);
     sockets.rename(req.sessionId, id);
-    return reply
-      .setCookie(SESSION_COOKIE, token, sessionCookie(config.cookieSecure))
-      .code(204)
-      .send();
+    return reply.setCookie(cookieName, token, sessionCookie(config.cookieSecure)).code(204).send();
   });
 
   app.delete<{ Params: { id: string } }>(
@@ -282,7 +298,8 @@ export function authRoutes(
   );
 
   app.post('/api/auth/passkey/login/options', async (req, reply) => {
-    if (passkeyLimit.blocked(req.ip)) return reply.code(429).send({ error: 'rate_limited' });
+    if (optionsLimit.blocked(req.ip)) return reply.code(429).send({ error: 'rate_limited' });
+    optionsLimit.fail(req.ip);
     if (full(reply)) return reply;
     const options = await generateAuthenticationOptions({
       rpID: config.passkeyRpId,

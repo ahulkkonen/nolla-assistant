@@ -6,8 +6,8 @@ import { isHarnessTool, type ServerMessage } from '@pa/protocol';
 import { and, eq } from 'drizzle-orm';
 import type { FastifyBaseLogger } from 'fastify';
 import cron from 'node-cron';
-import { parse } from 'yaml';
-import { z } from 'zod';
+import { parse, YAMLError } from 'yaml';
+import { ZodError, z } from 'zod';
 import { type Agents, ownChange } from './agents.ts';
 import { transcript } from './bridge.ts';
 import type { SessionRegistry } from './pi/registry.ts';
@@ -56,6 +56,16 @@ export function nextRuns(expression: string, timezone: string, count = 5): strin
     void task.destroy();
   }
 }
+
+/**
+ * A load error without its message: a YAML message quotes the source line, which can hold the
+ * prompt (AGENTS.md: no real values in logs). Zod issues give the field paths only.
+ */
+const errorShape = (err: unknown) => ({
+  error: err instanceof Error ? err.name : 'unknown',
+  ...(err instanceof YAMLError && err.linePos ? { line: err.linePos[0].line } : {}),
+  ...(err instanceof ZodError ? { fields: err.issues.map((i) => i.path.join('.')) } : {}),
+});
 
 /** Reads every `*.yaml` in `dir`. A bad file goes to `onError` and is skipped. */
 export function loadAutomations(
@@ -230,7 +240,7 @@ export function startAutomations({
     seen = sig;
     for (const t of tasks.values()) void t.destroy();
     list = loadAutomations(dir, (file, err) =>
-      log.warn({ file, error: err instanceof Error ? err.message : String(err) }, 'bad automation'),
+      log.warn({ file, ...errorShape(err) }, 'bad automation'),
     ).filter((a) => {
       const known = agents().has(a.agentId);
       if (!known) log.warn({ id: a.id, agentId: a.agentId }, 'automation skipped: unknown agent');

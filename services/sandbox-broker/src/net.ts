@@ -5,7 +5,8 @@ import net from 'node:net';
 
 /**
  * Private, loopback, link-local, shared, documentation, benchmark, multicast and reserved ranges,
- * and the IPv6 transition ranges that can embed an IPv4 address (NAT64, Teredo, 6to4 and its relay).
+ * and the IPv6 ranges that can embed an IPv4 address (IPv4-compatible and -translated, NAT64,
+ * Teredo, 6to4 and its relay).
  * `BlockList` checks an IPv4-mapped IPv6 address (`::ffff:10.0.0.1`) against the IPv4 rules.
  */
 export const PRIVATE = new net.BlockList();
@@ -28,9 +29,11 @@ for (const [a, p] of [
 ] as const)
   PRIVATE.addSubnet(a, p, 'ipv4');
 for (const [a, p] of [
-  ['::', 128],
-  ['::1', 128],
+  // IPv4-compatible (covers `::` and `::1`), IPv4-translated (RFC 2765), local-use NAT64 (RFC 8215).
+  ['::', 96],
+  ['::ffff:0:0:0', 96],
   ['64:ff9b::', 96],
+  ['64:ff9b:1::', 48],
   ['100::', 64],
   ['2001::', 32],
   ['2001:db8::', 32],

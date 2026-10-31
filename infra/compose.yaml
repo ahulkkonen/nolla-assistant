@@ -34,7 +34,7 @@ services:
     # The process holds the e5 embedding model (ONNX), the Pi runtime and child processes (OCR,
     # subagents). At 400m Docker OOM-killed it silently (exit 0, no signal) on 2026-10-27.
     mem_limit: 1g
-    networks: [internal, mcp]
+    networks: [internal, mcp, pseudo]
 
   # Finnish PII pseudonymization sidecar (plan §6, decision 0003). Holds the encrypted vault in /data.
   pseudo-svc:
@@ -53,7 +53,9 @@ services:
       SELF_NAME: ${SELF_NAME:-}
     # healthcheck: from the image (start period 120 s; spaCy and Omorfi load at startup)
     mem_limit: 1536m  # measured ~1.1 GiB after the 300-line corpus run
-    networks: [internal]
+    # `pseudo` only: its routes have no auth, so only pa-server may reach it, and it needs no egress.
+    # Presidio runs in process here; the presidio-* containers are LiteLLM's backstop.
+    networks: [pseudo]
 
   # Runs `bash` tool commands in throwaway pa-skill-runner containers (phase-5 decision 3). The only
   # service with the Docker socket. Root in the container because the socket is root-owned; all
@@ -117,7 +119,8 @@ services:
       start_period: 60s
       start_interval: 2s
     mem_limit: 768m  # measured ~510 MB idle, ~590 MB after 10 requests (decision 0004 follow-up)
-    networks: [internal]
+    # `internal` for pa-server and the egress to OpenRouter; `presidio` for the guardrail.
+    networks: [internal, presidio]
 
   # Presidio backstop for the LiteLLM pii-block guardrail (BLOCK only, plan §6).
   presidio-analyzer:
@@ -133,7 +136,7 @@ services:
       RECOGNIZER_REGISTRY_CONF_FILE: /app/conf/presidio-recognizers.yaml
     healthcheck: { interval: 30s, start_period: 120s, start_interval: 2s }  # test from the image
     mem_limit: 1g  # 700m was OOM-killed at startup under host swap pressure (phase-10 egress runs)
-    networks: [internal]
+    networks: [presidio]
 
   presidio-anonymizer:
     image: mcr.microsoft.com/presidio-anonymizer:2.2.362@sha256:a10a12a2a613d13cf29d3ad3641e3258444dd8c90403dd644a0a114c472c2483
@@ -144,7 +147,7 @@ services:
     security_opt: ["no-new-privileges:true"]
     healthcheck: { interval: 30s, start_period: 60s, start_interval: 2s }  # test from the image
     mem_limit: 100m
-    networks: [internal]
+    networks: [presidio]
 
   # One-shot: a new named volume is root-owned; mcp-workspace and backup run as uid 10001.
   mcp-workspace-init:
@@ -207,9 +210,9 @@ services:
     # Not internal: the server needs egress to Google APIs.
     networks: [mcp]
 
-  # Litestream (app.db, vault.db) plus nightly restic of /data. /data is read-write on purpose:
-  # Litestream opens the live WAL database, which needs the -shm file and its own
-  # .<db>-litestream state directory next to the database. Same uid as pa-server.
+  # restic only (phase 30): app.db and vault.db hourly, all of /data nightly, encrypted in the
+  # bucket. /data is read-write for `scripts/restore.sh`, which runs in this service. Same uid as
+  # pa-server.
   backup:
     build: { context: .., dockerfile: infra/Dockerfile.backup }
     restart: unless-stopped
@@ -231,6 +234,8 @@ services:
       AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY}
       AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY}
       BACKUP_RUN_NOW: ${BACKUP_RUN_NOW:-0}
+      # db-copy.sh opens vault.db (SQLCipher) for a consistent copy, and restore.sh checks it.
+      PSEUDO_VAULT_KEY: ${PSEUDO_VAULT_KEY:?set PSEUDO_VAULT_KEY}
     mem_limit: 128m
     networks: [internal]
 
@@ -242,5 +247,9 @@ networks:
   internal:
   # pa-server and mcp-workspace only.
   mcp:
+  # pa-server and pseudo-svc only, no egress (phase 30).
+  pseudo: { internal: true }
+  # litellm and the presidio-* containers only, no egress (phase 30).
+  presidio: { internal: true }
   skill-egress: { name: pa-skill-egress }
   skill-proxy-only: { name: pa-skill-proxy-only, internal: true }

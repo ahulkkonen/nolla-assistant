@@ -2,7 +2,7 @@ import { createServer } from 'node:http';
 import type { LookupFunction } from 'node:net';
 import { isPrivate, publicLookup } from '@pa/sandbox-broker/net';
 import { afterEach, expect, test, vi } from 'vitest';
-import { UNATTENDED_REASON } from './approval.ts';
+import { approvalGate, CALL_ID_REASON, callKey, UNATTENDED_REASON } from './approval.ts';
 import {
   BAD_URL,
   FETCH_ENTITY_REASON,
@@ -78,7 +78,15 @@ test('refused: private hosts, IP literals, other ports', async () => {
 });
 
 test('private: IPv6 transition ranges that embed IPv4', () => {
-  for (const a of ['64:ff9b::a00:1', '2002:a00:1::1', '2001:0:4136:e378::1', '192.88.99.1'])
+  for (const a of [
+    '64:ff9b::a00:1',
+    '2002:a00:1::1',
+    '2001:0:4136:e378::1',
+    '192.88.99.1',
+    '::7f00:1',
+    '::ffff:0:7f00:1',
+    '64:ff9b:1::a00:1',
+  ])
     expect(isPrivate(a), a).toBe(true);
   expect(isPrivate('2a00:1450:4001::1')).toBe(false);
 });
@@ -132,7 +140,7 @@ function guard(o: { unattended?: boolean; toggle?: boolean } = {}) {
     },
   ];
   const call = (maskedUrl: string, url = maskedUrl) => {
-    masked.sent.set('t1', maskedUrl);
+    masked.sent.set(callKey('fetch_url', 't1'), maskedUrl);
     return handler?.(
       { toolName: 'fetch_url', toolCallId: 't1', input: { url } },
       { sessionManager: { getBranch: () => branch } },
@@ -173,6 +181,59 @@ test('guard: a URL from the user passes; another URL asks; a vault name asks; un
   expect(t.ask).toHaveBeenCalledTimes(1);
   await t.call('https://x.example/Pekka', 'https://x.example/Matti');
   expect(t.ask).toHaveBeenCalledTimes(2);
+});
+
+test('an approved fetch_url does not approve a bash call with the same id', async () => {
+  const ask = vi.fn(async (_req: { tool: string }) => true);
+  const approved = new Set<string>();
+  const masked = maskedArgs({ fetch_url: 'url' });
+  const [, g] = fetchExtensions({ chatId: 'c1', ask, masked, approved });
+  const gate = approvalGate({
+    chatId: 'c1',
+    policy: { always: ['bash'], never: [] },
+    ask,
+    approved,
+  });
+  const on = new Map<string, ((e: unknown, ctx: unknown) => unknown)[]>();
+  const pi = { on: (n: string, h: never) => on.set(n, [...(on.get(n) ?? []), h]) };
+  for (const f of [masked.extension, g, gate]) f(pi as never);
+  const ctx = { sessionManager: { getBranch: () => [] } };
+  const run = async (event: object) => {
+    for (const h of on.get('tool_call') ?? []) {
+      const r = (await h(event, ctx)) as { block?: boolean } | undefined;
+      if (r?.block) return r;
+    }
+    return undefined;
+  };
+  const message = (ids: string[]) => ({
+    message: {
+      role: 'assistant',
+      content: ids.map((id) => ({ type: 'toolCall', id, name: 'x', arguments: {} })),
+    },
+  });
+  const fetchCall = {
+    toolName: 'fetch_url',
+    toolCallId: 't1',
+    input: { url: 'https://b.example/' },
+  };
+  const bashCall = { toolName: 'bash', toolCallId: 't1', input: { command: 'ls' } };
+
+  // Ids unique per message: the fetch card's approval does not cover bash with the same id.
+  for (const h of on.get('message_end') ?? []) h(message(['t1']), ctx);
+  expect(await run(fetchCall)).toBeUndefined();
+  expect(await run(bashCall)).toBeUndefined();
+  expect(ask.mock.calls.map(([r]) => r.tool)).toEqual(['fetch_url', 'bash']);
+
+  // A message whose calls repeat an id, or lack one, is refused without a card.
+  for (const ids of [
+    ['t1', 't1'],
+    ['', 't2'],
+  ]) {
+    for (const h of on.get('message_end') ?? []) h(message(ids), ctx);
+    expect(await run(fetchCall)).toEqual({ block: true, reason: CALL_ID_REASON });
+    expect(await run(bashCall)).toEqual({ block: true, reason: CALL_ID_REASON });
+  }
+  expect(ask).toHaveBeenCalledTimes(2);
 });
 
 test('guard: only a whole URL token of the user counts', async () => {

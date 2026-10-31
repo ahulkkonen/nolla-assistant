@@ -54,6 +54,12 @@ export function loadConfig(env: Env = process.env) {
   if (vapid && !vapid.subject.startsWith('mailto:'))
     throw new Error('VAPID_SUBJECT must be a mailto: address');
   if (cookieSecret.length < 32) throw new Error('COOKIE_SECRET must be at least 32 characters');
+  // Fail closed in the image (NODE_ENV=production): no unmasked run, no guessable LiteLLM key.
+  if (env.NODE_ENV === 'production') {
+    if (!env.PSEUDO_URL) throw new Error('PSEUDO_URL is required in production (invariant 1)');
+    if ((env.LITELLM_MASTER_KEY ?? '').length < 32)
+      throw new Error('LITELLM_MASTER_KEY must be at least 32 characters in production');
+  }
   return Object.freeze({
     port,
     host: env.HOST ?? '127.0.0.1',

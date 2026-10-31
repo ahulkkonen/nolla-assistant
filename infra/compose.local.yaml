@@ -2,6 +2,8 @@
 #   docker compose --env-file .env -f infra/compose.yaml -f infra/compose.local.yaml up --build
 # Then open http://localhost:3000. Coolify does not use this file.
 # Phone on the wifi: PA_LAN_BIND=0.0.0.0, AUTH_INSECURE_LAN=1, AUTH_ORIGIN=http://<mac-name>.local:3000.
+# The project name is fixed: HOST_DATA_DIR below names its volume.
+name: pa-local
 services:
   pa-server:
     ports: ["${PA_LAN_BIND:-127.0.0.1}:3000:3000"]
@@ -10,6 +12,11 @@ services:
       AUTH_INSECURE_LAN: ${AUTH_INSECURE_LAN:-}
       AUTH_PASSKEY_RP_ID: ${AUTH_PASSKEY_RP_ID:-localhost}
       TRUST_PROXY: ""
+  sandbox-broker:
+    environment:
+      # Docker Desktop resolves bind sources inside its VM, where the volume has this path (default
+      # data-root). Another project name (-p) needs its own HOST_DATA_DIR.
+      HOST_DATA_DIR: ${HOST_DATA_DIR:-/var/lib/docker/volumes/pa-local_pa-data/_data}
   backup:
     # Needs an S3 bucket. Start it on purpose: --profile backup
     profiles: [backup]

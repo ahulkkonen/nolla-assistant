@@ -6,6 +6,10 @@ import type { AgentProfile } from './agents.ts';
 export const DENIED_REASON = 'käyttäjä esti työkalun';
 export const TIMEOUT_REASON = 'hyväksyntä aikakatkaistiin';
 export const UNATTENDED_REASON = 'ajastettu ajo: työkalu vaatii hyväksynnän';
+export const CALL_ID_REASON = 'työkalukutsujen tunnisteet puuttuvat tai toistuvat: viesti hylätty';
+
+/** Per-call records are keyed by tool and call id: two tools never share one (phase 30). */
+export const callKey = (tool: string, callId: string) => `${tool}\u0000${callId}`;
 /** The plan fixes 10 minutes; `APPROVAL_TIMEOUT_MS` shortens it in tests. */
 const TIMEOUT_MS = 10 * 60_000;
 
@@ -91,7 +95,7 @@ export const approvalGate =
       const tool = event.toolName;
       const harness = isHarnessTool(tool);
       if (!harness && (policy.never.includes(tool) || !policy.always.includes(tool))) return;
-      if (!harness && approved?.has(event.toolCallId)) return;
+      if (!harness && approved?.has(callKey(tool, event.toolCallId))) return;
       const auto = ask.unattended?.get(chatId);
       if (auto)
         return !harness && auto.includes(tool)

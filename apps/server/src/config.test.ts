@@ -28,3 +28,13 @@ test('phase-22 decision 8: http on a LAN host only with AUTH_INSECURE_LAN=1', ()
     'https://pa.example.test',
   ]);
 });
+
+test('production fails closed without PSEUDO_URL or with a short LiteLLM key', () => {
+  const prod = { ...env('https://pa.example.test'), NODE_ENV: 'production' };
+  const key = 'k'.repeat(32);
+  expect(() => loadConfig({ ...prod, LITELLM_MASTER_KEY: key })).toThrow('PSEUDO_URL');
+  expect(() => loadConfig({ ...prod, PSEUDO_URL: 'http://p' })).toThrow('LITELLM_MASTER_KEY');
+  expect(loadConfig({ ...prod, PSEUDO_URL: 'http://p', LITELLM_MASTER_KEY: key }).pseudoUrl).toBe(
+    'http://p',
+  );
+});

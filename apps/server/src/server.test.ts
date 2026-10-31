@@ -4,7 +4,8 @@ import { join } from 'node:path';
 import { startFakeSidecar } from '@pa/pi-ext-pseudo/fake-sidecar';
 import type { AttachmentRef, ServerMessage } from '@pa/protocol';
 import sharp from 'sharp';
-import { afterEach, expect, test } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
+import { verifyPassword } from './auth/password.ts';
 import {
   api,
   boot,
@@ -17,6 +18,11 @@ import {
   runCleanups,
   tempDir,
 } from './test-utils.ts';
+
+vi.mock('./auth/password.ts', async (actual) => {
+  const m = await actual<typeof import('./auth/password.ts')>();
+  return { ...m, verifyPassword: vi.fn(m.verifyPassword) };
+});
 
 const SCRIPTED = 'Hei! Miten voin auttaa?';
 afterEach(runCleanups);
@@ -167,14 +173,68 @@ test('auth: cookie required, password login, rate limit, logout', { timeout: 30_
     userId: 'aleksi',
   });
 
-  // Only failures count: five 401s, then 429 even for the right password.
-  for (let i = 0; i < 5; i++) expect((await login(port, 'wrong')).res.status).toBe(401);
+  // Every attempt counts: the login above plus four 401s, then 429 even for the right password.
+  for (let i = 0; i < 4; i++) expect((await login(port, 'wrong')).res.status).toBe(401);
   expect((await login(port, 'wrong')).res.status).toBe(429);
   expect((await login(port)).res.status).toBe(429);
 
   const out = await api(port, '/api/auth/logout', { method: 'POST', headers: { cookie } });
   expect(out.status).toBe(204);
   expect((await api(port, '/api/auth/me', { headers: { cookie } })).status).toBe(401);
+});
+
+test('auth: parallel wrong passwords count before the verify', { timeout: 30_000 }, async () => {
+  const { config, run } = await boot([]);
+  await run();
+  vi.mocked(verifyPassword).mockClear();
+  const res = await Promise.all(
+    Array.from({ length: 30 }, () => login(config.port, 'wrong').then((r) => r.res.status)),
+  );
+  expect(vi.mocked(verifyPassword).mock.calls.length).toBeLessThanOrEqual(5);
+  expect(res.filter((s) => s === 429).length).toBe(
+    30 - vi.mocked(verifyPassword).mock.calls.length,
+  );
+  expect(new Set(res)).toEqual(new Set([401, 429]));
+});
+
+test('auth: passkey options have their own looser limit', async () => {
+  const { config, run } = await boot([]);
+  await run();
+  const post = (path: string, body?: object) =>
+    api(config.port, `/api/auth/passkey/login/${path}`, {
+      method: 'POST',
+      ...(body
+        ? { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }
+        : {}),
+    }).then((r) => r.status);
+  const statuses = [];
+  for (let i = 0; i < 31; i++) statuses.push(await post('options'));
+  expect(statuses.slice(0, 30).every((s) => s === 200)).toBe(true);
+  expect(statuses[30]).toBe(429);
+  // Options never count against the strict limit of failed verifies.
+  expect(await post('verify', { response: {} })).not.toBe(429);
+});
+
+test('auth: on https the session cookie is __Host- and Secure', async () => {
+  const { config, run } = await boot([], { AUTH_ORIGIN: 'https://assistant.example.invalid' });
+  await run();
+  const { res, cookie } = await login(config.port);
+  expect(res.headers.getSetCookie()[0]).toMatch(/^__Host-pa_session=.+; Path=\/; .*Secure/);
+  expect((await api(config.port, '/api/auth/me', { headers: { cookie } })).status).toBe(200);
+  // The old name no longer authenticates.
+  const old = cookie.replace('__Host-pa_session', 'pa_session');
+  expect((await api(config.port, '/api/auth/me', { headers: { cookie: old } })).status).toBe(401);
+  const out = await api(config.port, '/api/auth/logout', { method: 'POST', headers: { cookie } });
+  expect(out.headers.getSetCookie()[0]).toMatch(/^__Host-pa_session=;.*Secure/);
+});
+
+test('the request log has no query string', async () => {
+  const { config, run, logs } = await boot([], { LOG_LEVEL: 'info' });
+  await run();
+  await api(config.port, '/api/files/tree?root=work&path=Synteettinen%20Nimi.pdf');
+  const req = logs.map((l) => JSON.parse(l)).find((l) => l.msg === 'incoming request');
+  expect(req?.req).toEqual({ method: 'GET', url: '/api/files/tree' });
+  expect(logs.join('')).not.toContain('Synteettinen');
 });
 
 test('attachments: image and txt reach the model; owner-only download', {

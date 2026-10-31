@@ -48,7 +48,7 @@ Phase 2 ships only `pa-server`. Later phases add services to `infra/compose.yaml
 
 1. In Coolify, add a new resource of type **Docker Compose** from this Git repository.
 2. Set the compose file path to `infra/compose.yaml`.
-3. Set the domain for the `pa-server` service, for example `https://assistant.example.fi`. Coolify issues the TLS certificate.
+3. Set the domain for the `pa-server` service, for example `https://assistant.example.fi`. Coolify issues the TLS certificate. Do not give a domain to another service. `pseudo-svc` has no authentication. Only the `pseudo` network (shared with `pa-server`, no internet) protects it. The Presidio containers are on the `presidio` network with `litellm` only.
 4. Add these environment variables in Coolify. Do not commit them.
 
    | Variable | Value |
@@ -57,7 +57,7 @@ Phase 2 ships only `pa-server`. Later phases add services to `infra/compose.yaml
    | `AUTH_PASSWORD_HASH` | the `scrypt$...` string from step 1 |
    | `COOKIE_SECRET` | the random string from step 1 |
    | `LITELLM_URL` | `http://litellm:4000`, no `/v1`: Pi appends `/chat/completions` and LiteLLM serves it (compose default) |
-   | `LITELLM_MASTER_KEY` | any random string for now; phase 3 uses it |
+   | `LITELLM_MASTER_KEY` | at least 32 random characters, for example `openssl rand -base64 48`. `pa-server` does not start with a shorter key. |
    | `TRUST_PROXY` | `1` |
    | `USER_ID` | your short user id, letters and digits only |
 
@@ -75,6 +75,10 @@ Phase 2 ships only `pa-server`. Later phases add services to `infra/compose.yaml
 3. Open **Asetukset** (the gear) and select **Lisää avain** within 10 minutes of the login. Registration requires a fresh session.
 4. On iPhone: Share → **Add to Home Screen**. Open the app from the Home Screen once; the service worker installs.
 5. On desktop Chrome: use the install icon in the address bar.
+6. Remove `AUTH_PASSWORD_HASH` in Coolify after the passkey works, and deploy again. Password
+   login has a strict rate limit: 5 attempts per minute per IP and 10 per minute for all clients
+   together. A flood of wrong passwords therefore locks you out of password login too, and behind
+   a CDN all clients share the same IP. A registered passkey is the recovery path.
 
 ## 4. Verify
 
@@ -84,7 +88,9 @@ Phase 2 ships only `pa-server`. Later phases add services to `infra/compose.yaml
 
 ## Backups
 
-The `backup` service replicates `app.db` to the S3 bucket with Litestream and snapshots `/data` with restic every night at 03:00 Europe/Helsinki. The snapshot includes the work dirs (`/data/work/<user>`, the Työkansio root of the Files screen) but not their `.trash` folders. `vault.db` is covered hourly by restic (tag `vault`, with its WAL file), because Litestream cannot read SQLCipher files. At most one hour of new mappings can be lost. A lost mapping cannot be rebuilt: surrogates are seeded with a random secret that exists only inside the vault. The service mounts `/data` read-write because Litestream opens the live database and keeps its state next to it.
+The `backup` service uses restic only. Every hour it snapshots `app.db` (tag `app`) and `vault.db` (tag `vault`). Every night at 03:00 Europe/Helsinki it snapshots all of `/data` (tag `full`). The nightly snapshot includes the work dirs (`/data/work/<user>`, the Työkansio root of the Files screen) but not their `.trash` folders. Restic encrypts every snapshot with `RESTIC_PASSWORD`, so the bucket holds no plain data. The service never copies a live database file. `infra/backup/db-copy.sh` first writes a consistent copy of each database to `/data/.backup` (SQLite online backup for `app.db`, `sqlcipher_export` for `vault.db`), and restic backs up the copy. For the vault copy, the service gets `PSEUDO_VAULT_KEY`. At most one hour of changes to the databases can be lost. A lost vault mapping cannot be rebuilt: surrogates are seeded with a random secret that exists only inside the vault. The service mounts `/data` read-write because `scripts/restore.sh` runs in it.
+
+Until phase 30, Litestream replicated `app.db` to the bucket as plain SQLite pages. Litestream 0.5 has no replica encryption. After you deploy this version, run `docker compose exec backup /backup-now.sh` once. A restore needs a snapshot that holds the `/data/.backup` copies. Then delete the `litestream/` prefix in the bucket and the `/data/.app.db-litestream` directory.
 
 ### Set up
 
@@ -100,13 +106,13 @@ The `backup` service replicates `app.db` to the S3 bucket with Litestream and sn
 
 3. Deploy. The first nightly run creates the restic repository. To snapshot now, run `docker compose exec backup /backup-now.sh`.
 
-### Verify that Litestream replicates
+### Verify the backups
 
 ```sh
-docker compose exec backup litestream ltx -config /etc/litestream.yml -level all /data/app.db
+docker compose exec backup restic snapshots --tag app
 ```
 
-The command lists LTX files with a recent `created` time. Litestream 0.5 has no `snapshots` command. The log line `restic run ok` appears after each nightly run.
+The newest snapshot is less than one hour old. The log lines `restic app ok` and `restic vault ok` appear every hour, and `restic run ok` after each nightly run.
 
 ### Restore on a new VPS
 
@@ -117,7 +123,7 @@ The command lists LTX files with a recent `created` time. Litestream 0.5 has no 
    docker compose run --rm --no-deps backup /scripts/restore.sh
    ```
 
-   The script restores `app.db` with Litestream, then sessions, files, Pi state and `vault.db` from restic (the vault from the newest snapshot with tag `vault`). It prints each restored file.
+   The script restores sessions, files and Pi state from the newest nightly snapshot. It restores each database from the newer of the nightly snapshot and the hourly one (tags `app` and `vault`), then runs `PRAGMA integrity_check` on it. It stops when a check does not return `ok`, when restic fails, or when the volume already holds a database. It prints each restored file.
 3. Start the stack: `docker compose up -d`.
 
 ### Restore drill
@@ -146,9 +152,11 @@ The `bash` tool runs each command in a throwaway `pa-skill-runner` container. Th
    | `HOST_DATA_DIR` | the host path of the `pa-data` volume, from `docker volume inspect <project>_pa-data --format '{{.Mountpoint}}'` |
    | `HOST_SKILLS_DIR` | the host path of the `skills/` directory of the checkout. Only skills with a `bin/` directory need it. |
 
-   The broker gives these paths to the Docker host as bind sources. A path inside the broker container does not work.
+   The broker gives these paths to the Docker host as bind sources. A path inside the broker container does not work. The broker does not start without `HOST_DATA_DIR`.
 
 3. Deploy. Compose creates the `pa-skill-egress` and `pa-skill-proxy-only` networks. A skill with `network: [hosts]` runs on `pa-skill-proxy-only` and reaches the listed hosts through the broker's proxy.
+
+The runner's seccomp profile (`services/sandbox-broker/src/seccomp.json`) blocks `symlink` and `symlinkat` on purpose (phase 30). `ln -s` fails inside a runner with "Operation not permitted". A skill that creates links inside `/work` does not work.
 
 ## Integrations
 
@@ -228,6 +236,10 @@ LiteLLM egress. Only the OpenRouter keys are real; nothing leaves the machine ex
 
 4. Open http://localhost:3000 and log in with the password. Passkeys, push and the Google
    OAuth callback all accept `localhost`.
+
+The local project name is `pa-local` (`compose.local.yaml`). The `bash` tool binds the work dir
+from `/var/lib/docker/volumes/pa-local_pa-data/_data`. This path assumes the default Docker
+data-root. If you change the data-root or the project name, set `HOST_DATA_DIR` in `.env`.
 
 ### Open the local run on your phone
 

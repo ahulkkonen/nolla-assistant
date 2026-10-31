@@ -15,7 +15,7 @@ export RESTIC_PASSWORD=drill-restic-pass DRILL_PORT=$PORT DRILL_S3_PORT=$S3PORT
 export AUTH_ORIGIN=http://127.0.0.1:$PORT AUTH_PASSKEY_RP_ID=127.0.0.1
 export COOKIE_SECRET=drill-cookie-secret-0123456789abcdef0123 USER_ID=drill MODEL=zdr/strong
 export PSEUDO_VAULT_KEY=drill-vault-key OPENROUTER_API_KEY=unused
-export LITELLM_URL=http://127.0.0.1:9 LITELLM_MASTER_KEY=drill-key
+export LITELLM_URL=http://127.0.0.1:9 LITELLM_MASTER_KEY=drill-litellm-key-0123456789abcdef
 # Required by mcp-workspace, which the drill does not start. Its token volume is not drilled.
 export GOOGLE_OAUTH_CLIENT_ID=unused GOOGLE_OAUTH_CLIENT_SECRET=unused USER_GOOGLE_EMAIL=unused@example.invalid
 PW=drill-password
@@ -35,6 +35,7 @@ services:
     image: pa-server:dev
     environment:
       PSEUDO_URL: ""  # empty disables the sidecar client; masking is not under test
+      NODE_ENV: development  # production refuses to start without PSEUDO_URL
     ports: ["127.0.0.1:\${DRILL_PORT}:3000"]
 YAML
 dc() { docker compose -f infra/compose.yaml -f "$TMP/override.yaml" "$@"; }
@@ -50,6 +51,7 @@ trap cleanup EXIT INT TERM
 
 # WebSocket client. create: log in, make a chat, send one message (the model call fails; fine).
 # verify ID: log in, assert chat.list holds the chat and chat.open returns the user message.
+# listed ID: only the chat.list part.
 cat >"$TMP/client.mjs" <<'JS'
 import { createRequire } from 'node:module';
 const WebSocket = createRequire(`${process.env.ROOT}/apps/server/package.json`)('ws');
@@ -88,6 +90,8 @@ if (mode === 'create') {
   send({ type: 'chat.list' });
   const { chats } = await next((m) => m.type === 'chat.list');
   if (!chats.some((c) => c.id === id)) throw new Error('chat missing from chat.list');
+  // `listed`: the chat row only (app.db); its session file is in the nightly snapshot alone.
+  if (mode === 'listed') { console.log(`chat ${id} listed`); process.exit(0); }
   send({ type: 'chat.open', chatId: id });
   const { messages } = await next((m) => m.type === 'chat.state');
   if (!messages.some((m) => m.role === 'user' && m.text === TEXT)) throw new Error('user message missing');
@@ -109,15 +113,32 @@ dc build backup
 dc up -d --no-build pa-server backup
 wait_http "http://127.0.0.1:$PORT/healthz"
 
-echo "== create chat"
-CHAT=$(client create)
-echo "chat $CHAT"
-sleep 5
-echo "== litestream ltx"
-dc exec -T backup litestream ltx -config /etc/litestream.yml -level all /data/app.db | tee "$TMP/snaps"
-[ "$(wc -l <"$TMP/snaps")" -gt 1 ] || { echo "no Litestream LTX files for app.db"; exit 1; }
-echo "== restic backup"
+# vault.db stand-in (pseudo-svc does not run here): one row in a SQLCipher file with the drill key.
+vault_sql() { # SQL, then the dc arguments that run a backup container
+  sql=$1
+  shift
+  dc "$@" sh -c 'printf "PRAGMA key = '"'"'%s'"'"';\n%s\n" "$PSEUDO_VAULT_KEY" "$0" | sqlcipher -bail /data/vault.db' "$sql"
+}
+
+echo "== create chat 1, vault row, hourly snapshots"
+CHAT1=$(client create)
+echo "chat $CHAT1"
+vault_sql "CREATE TABLE drill(x); INSERT INTO drill VALUES ('drill-row');" exec -T backup >/dev/null
+sleep 2
+dc exec -T backup sh -c 'restic cat config >/dev/null 2>&1 || restic init' >/dev/null
+for db in app vault; do
+  dc exec -T backup sh -c "flock /data/.backup.lock sh -c '/db-copy.sh $db && restic backup /data/.backup/$db.db --tag $db'" >/dev/null
+done
+echo "== create chat 2, then the nightly snapshot (newer than the hourly one: it must win)"
+CHAT2=$(client create)
+echo "chat $CHAT2"
+sleep 2
 dc exec -T backup /backup-now.sh
+echo "== create chat 3, then an hourly app.db snapshot (newer than the nightly one: it must win)"
+CHAT3=$(client create)
+echo "chat $CHAT3"
+sleep 2
+dc exec -T backup sh -c "flock /data/.backup.lock sh -c '/db-copy.sh app && restic backup /data/.backup/app.db --tag app'" >/dev/null
 
 echo "== delete stack and volume"
 dc stop pa-server backup
@@ -128,5 +149,9 @@ echo "== restore"
 dc run --rm --no-deps backup /scripts/restore.sh
 dc up -d --no-build pa-server
 wait_http "http://127.0.0.1:$PORT/healthz"
-client verify "$CHAT"
+client verify "$CHAT1"
+client verify "$CHAT2"
+client listed "$CHAT3"
+vault_sql "SELECT x FROM drill;" run --rm --no-deps -T backup | grep -qx drill-row || { echo "vault row missing"; exit 1; }
+echo "vault row present"
 echo "DRILL OK"

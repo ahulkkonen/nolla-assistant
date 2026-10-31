@@ -7,7 +7,7 @@ import { toolText as text } from '@pa/pi-ext-memory';
 import { FETCH_URL_TOOL } from '@pa/protocol';
 import { isPrivate, publicLookup } from '@pa/sandbox-broker/net';
 import { Type } from 'typebox';
-import { type Ask, DENIED_REASON, UNATTENDED_REASON } from './approval.ts';
+import { type Ask, callKey, DENIED_REASON, UNATTENDED_REASON } from './approval.ts';
 import { cutText, textOf } from './bridge.ts';
 import { capped } from './fx.ts';
 import { guardConfirm, type maskedArgs, toolGuard, untrusted } from './search-tool.ts';
@@ -234,7 +234,7 @@ export function fetchExtensions(o: {
 }): [tool: ExtensionFactory, guard: ExtensionFactory] {
   const fetch = o.fetch ?? fetchPage;
   const tool: ExtensionFactory = (pi) => {
-    pi.on('tool_execution_end', (event) => void o.approved?.delete(event.toolCallId));
+    pi.on('tool_execution_end', (e) => void o.approved?.delete(callKey(e.toolName, e.toolCallId)));
     pi.registerTool({
       name: FETCH_URL_TOOL,
       label: FETCH_URL_TOOL,
@@ -250,7 +250,7 @@ export function fetchExtensions(o: {
   };
   const guard = toolGuard(FETCH_URL_TOOL, async (event, ctx) => {
     const url = String(event.input.url ?? '');
-    const masked = o.masked.sent.get(event.toolCallId) ?? url;
+    const masked = o.masked.sent.get(callKey(FETCH_URL_TOOL, event.toolCallId)) ?? url;
     const said = (t: string) => typeof masked === 'string' && saidIn(t, masked);
     const fromUser = ctx.sessionManager
       .getBranch()

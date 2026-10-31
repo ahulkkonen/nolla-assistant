@@ -4,7 +4,11 @@ import type { DeviceSession } from '@pa/protocol';
 import { and, desc, eq, gt, lt } from 'drizzle-orm';
 import type { FastifyRequest } from 'fastify';
 
-export const SESSION_COOKIE = 'pa_session';
+/**
+ * `__Host-` on https: the browser then refuses the cookie from a sibling subdomain and without
+ * `Secure` and `Path=/`, so a same-site host cannot plant or overwrite it.
+ */
+export const sessionCookieName = (secure: boolean) => (secure ? '__Host-pa_session' : 'pa_session');
 const DAY = 86_400_000;
 const TTL = 30 * DAY;
 const REFRESH_BELOW = 15 * DAY;
@@ -134,8 +138,9 @@ export function revokeAll(db: Db, userId: string, currentId: string) {
 export function getUser(
   db: Db,
   req: FastifyRequest,
+  secure: boolean,
 ): { userId: string; id: string; token: string; refreshed: boolean; createdAt: string } | null {
-  const token = req.cookies[SESSION_COOKIE];
+  const token = req.cookies[sessionCookieName(secure)];
   if (!token) return null;
   const id = hash(token);
   const row = db.select().from(authSessions).where(eq(authSessions.id, id)).get();

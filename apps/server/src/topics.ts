@@ -232,12 +232,21 @@ export function titleJobs(deps: {
       .from(topics)
       .where(eq(topics.userId, userId))
       .all();
+    // Topic names are typed by the user (invariant 1): masked, and not sent at all without pseudo.
+    // Only names and descriptions go through the mask; the ids stay exact for the `known` filter.
+    const texts = list.map((t) => [t.name, t.description]);
+    const masked = pseudo && list.length ? (await pseudo.mask(chatId, texts)).masked : [];
+    const sentList = (masked as (string | null)[][]).map(([name, description], i) => ({
+      id: list[i]?.id,
+      name,
+      description,
+    }));
     // Static prompt first, then the topic list, then the transcript (prompt caching order).
     const messages: ChatMessage[] = [
       { role: 'system', content: SYSTEM_PROMPT },
       {
         role: 'user',
-        content: `Aiheet:\n${JSON.stringify(list)}\n\nKeskustelu:\n${transcript.slice(-TAIL_CHARS)}`,
+        content: `Aiheet:\n${JSON.stringify(sentList)}\n\nKeskustelu:\n${transcript.slice(-TAIL_CHARS)}`,
       },
     ];
     const reply = await ask(Reply, messages, chatId);
@@ -246,7 +255,11 @@ export function titleJobs(deps: {
     const known = new Set(list.map((t) => t.id));
     const ids = [...new Set(reply.topics)].filter((id) => known.has(id)).slice(0, 3);
     const title = pseudo ? (await pseudo.unmask(reply.title)).restored : reply.title;
-    const proposed = reply.proposed_topic;
+    // The model writes surrogates for the masked topic names: restore before store and compare.
+    const proposed =
+      pseudo && reply.proposed_topic
+        ? ((await pseudo.unmask(reply.proposed_topic)).restored as typeof reply.proposed_topic)
+        : reply.proposed_topic;
     const similar = proposed
       ? await duplicateProposal(db, userId, proposed.name, list, log)
       : false;

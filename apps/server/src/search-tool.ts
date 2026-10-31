@@ -7,7 +7,7 @@ import {
   WEB_SEARCH_TOOL,
 } from '@pa/protocol';
 import { Type } from 'typebox';
-import { type Ask, confirm } from './approval.ts';
+import { type Ask, CALL_ID_REASON, callKey, confirm } from './approval.ts';
 import { capped } from './fx.ts';
 import { type RecordUsage, rawUsage } from './usage.ts';
 
@@ -65,19 +65,33 @@ export const untrusted = (tag: string, body: string, note = UNTRUSTED_NOTE) =>
   `${note}\n<${tag}>\n${untag(body, tag)}\n</${tag}>`;
 
 /**
- * Records one argument per tool as the model wrote it (masked). Load `extension` before
- * `pseudoExtension`; a guard after it compares the restored argument (phase-25 decision 22). A
- * record lives until the call ends.
+ * Records one argument per tool as the model wrote it (masked), keyed by `callKey`. Load
+ * `extension` first, before `pseudoExtension`; a guard after it compares the restored argument
+ * (phase-25 decision 22). A record lives until the call ends. It also refuses every call of an
+ * assistant message whose tool call ids repeat or are empty (phase 30): the per-call records
+ * and approvals must not cross calls.
  */
 export function maskedArgs(fields: Record<string, string>) {
   const sent = new Map<string, unknown>();
+  let badIds = false;
   const extension: ExtensionFactory = (pi) => {
+    // Pi awaits `message_end` before it runs the message's `tool_call` hooks.
+    pi.on('message_end', ({ message }) => {
+      if (message.role !== 'assistant') return;
+      const ids = message.content.flatMap((c) => (c.type === 'toolCall' ? [c.id] : []));
+      badIds = ids.some((id) => !id) || new Set(ids).size !== ids.length;
+    });
     pi.on('tool_call', (event) => {
+      if (badIds) return { block: true, reason: CALL_ID_REASON };
       const field = fields[event.toolName];
-      if (field) sent.set(event.toolCallId, (event.input as Record<string, unknown>)[field]);
+      if (field)
+        sent.set(
+          callKey(event.toolName, event.toolCallId),
+          (event.input as Record<string, unknown>)[field],
+        );
     });
     // Also for a call that another handler blocked before its guard (no `tool_result` then).
-    pi.on('tool_execution_end', (event) => void sent.delete(event.toolCallId));
+    pi.on('tool_execution_end', (e) => void sent.delete(callKey(e.toolName, e.toolCallId)));
   };
   return { extension, sent };
 }
@@ -229,7 +243,7 @@ export function webSearchExtensions(o: {
   const { sent } = rec;
   const tool: ExtensionFactory = (pi) => {
     if (!o.masked) rec.extension(pi);
-    pi.on('tool_execution_end', (event) => void o.approved?.delete(event.toolCallId));
+    pi.on('tool_execution_end', (e) => void o.approved?.delete(callKey(e.toolName, e.toolCallId)));
     pi.registerTool({
       name: WEB_SEARCH_TOOL,
       label: WEB_SEARCH_TOOL,
@@ -265,8 +279,8 @@ export function webSearchExtensions(o: {
     });
   };
   const guard = toolGuard(WEB_SEARCH_TOOL, async (event, ctx) => {
-    const masked = sent.get(event.toolCallId);
-    sent.delete(event.toolCallId);
+    const masked = sent.get(callKey(WEB_SEARCH_TOOL, event.toolCallId));
+    sent.delete(callKey(WEB_SEARCH_TOOL, event.toolCallId));
     const query = event.input.query;
     if (masked === query) return;
     if (o.ask.unattended?.has(o.chatId)) return { block: true, reason: SEARCH_UNATTENDED };
@@ -317,6 +331,6 @@ export async function guardConfirm(
     timeoutMs: o.timeoutMs,
     signal,
   });
-  if (!blocked) o.approved?.add(callId);
+  if (!blocked) o.approved?.add(callKey(req.tool, callId));
   return blocked;
 }
