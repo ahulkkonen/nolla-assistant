@@ -25,4 +25,28 @@ Date: 2026-10-31. Follows phase 27. The user chose these in a written discussion
 
 ## Status
 
-Open.
+Done 2026-10-31 on branch `p28`.
+
+1. `extract` in `apps/server/src/claims.ts` calls the hook once after its windows when at least one
+   claim activated. This covers the sweep. The tool writes, the review, the update and the import
+   already called it. `stale` changes only the confidence of a claim and does not call the hook.
+   The weekly job covers it.
+2. The row is a `DropdownMenuItem` under a separator. It navigates in `onCloseAutoFocus`, after the
+   menu closed. Before that, the closing menu took the focus back from the heading. `openModes`
+   (`ModesEditor.tsx`) sets the store screen `agents`; the router pushes `/agents`. Then it adds
+   the hash `#tilat` to that history entry. `ModesSection` scrolls to the "Tilat" heading and
+   focuses it when the hash is `#tilat`. The router compares only the path and the query, so the
+   hash is no new route. The phone model sheet gets no row: the record names only the chip.
+3. A sentence with N of 6 or less gets the class `conf-low`. Its anchor `conf-a` is an inline-block
+   with its width, so the underline stops before the N. The legend lost the nine swatches. It
+   shows "1 arvaus – 9 varma" in words, and at 390 px it now fits one 28 px row. The prompt
+   example changed from 9 to 8, because 9 is now only for what the model verified in the chat. The
+   e2e reply `CONFIDENCE_REPLY` uses the levels 9, 7 and 3, so that the hover tests keep two
+   hidden N and one sentence shows the underline.
+4. The store key is `pa.pseudonyms`. `loadOn` and `saveOn` in `store.ts` now hold the
+   localStorage read and write for this switch and for "Näytä luvut". With the marks off, the real
+   value is a plain span with the hint as its `title` attribute: no tab stop and no tooltip
+   component. A touch screen has no hover, so on a phone the user turns the marks on to check a
+   value. "Näytä mitä malli näki" (the setting or the eye button of a message) still shows the
+   marks, because the surrogates must stay distinct from the real text. The `chat-annotated`
+   screen first checks that no mark shows by default, then turns the setting on in Asetukset.
