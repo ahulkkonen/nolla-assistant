@@ -34,3 +34,6 @@ The build plan is `docs/plan.md`. Section numbers in records refer to it.
 - `phase-25-harness-tools.md`: `profile_edit`, `automation_edit` and `chat_read` behind a mandatory card with a diff or YAML view, the audit trail, and `fetch_url` in place of the `web-digest` skill.
 - `phase-26-waiting-keyboard.md`: the waiting line "Vaiheet" (`message.phase` sent and headers, the receipt with stored times), the thread that keeps its bottom when an Android keyboard opens, and send that keeps the keyboard open.
 - `phase-27-streaming.md`: the streaming reply: one article from the live reply to the final message, deltas batched per frame, the caret on the last character and its breathing, a thread that does not render per delta, held-back tables and emphasis, and any upward scroll that stops the follow.
+- `phase-28-fixes.md`: MEMORY.md regeneration on activation, the Tila chip link to the mode editor, the relative Luottamus scale, pseudonym marks behind a setting.
+- `phase-30-audits.md`: the three audits before publication (`docs/audits/`) and their fixes in batches A (security) and B (architecture, lint, masked artifacts in a tainted chat).
+- `phase-31-publication.md`: license, CI, the history rewrite, supply-chain settings, synthetic names.

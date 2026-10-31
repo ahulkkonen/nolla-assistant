@@ -193,3 +193,4 @@ Status on 2026-10-29. The plan, section 13, defines each gate.
 | 27 | Streaming: per-frame deltas, in-place final, caret on the last character that breathes, table and emphasis hold-back (`docs/decisions/phase-27-streaming.md`) | done |
 | 28 | Fixes: MEMORY.md regenerates on activation, Tila chip links to the mode editor, Luottamus on a relative scale with underlined low sentences, pseudonym marks behind a setting (`docs/decisions/phase-28-fixes.md`) | done |
 | 30 | Audits before publication: security, architecture and dependency audits in `docs/audits/`, fixes in two batches (`docs/decisions/phase-30-audits.md`) | done |
+| 31 | Publication preparation: MIT license, GitHub Actions gate, history rewrite (model blob, screenshot churn, session trailers, author email), synthetic names (`docs/decisions/phase-31-publication.md`) | done |
