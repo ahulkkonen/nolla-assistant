@@ -19,8 +19,8 @@ import {
   listSessions,
   revokeAll,
   revokeSession,
-  SESSION_COOKIE,
   sessionCookie,
+  sessionCookieName,
 } from './session.ts';
 
 declare module 'fastify' {
@@ -83,9 +83,10 @@ export function limiter(app: FastifyInstance, max = 5, windowMs = 60_000) {
 /** preHandler: 401 without a valid session; sets `req.userId` and re-sets a refreshed cookie. */
 export const requireUser =
   (db: Db, secure: boolean) => async (req: FastifyRequest, reply: FastifyReply) => {
-    const user = getUser(db, req);
+    const user = getUser(db, req, secure);
     if (!user) return reply.code(401).send({ error: 'unauthorized' });
-    if (user.refreshed) reply.setCookie(SESSION_COOKIE, user.token, sessionCookie(secure));
+    if (user.refreshed)
+      reply.setCookie(sessionCookieName(secure), user.token, sessionCookie(secure));
     req.userId = user.userId;
     req.sessionId = user.id;
     req.sessionCreatedAt = user.createdAt;
@@ -115,10 +116,14 @@ export function authRoutes(
   sockets: SessionSockets = { revoke: () => {}, rename: () => {} },
 ) {
   const auth = requireUser(db, config.cookieSecure);
+  const cookieName = sessionCookieName(config.cookieSecure);
+  /** `Secure` too: a browser ignores a `__Host-` Set-Cookie without it, the clearing one included. */
+  const clearSession = { path: '/', secure: config.cookieSecure };
   const passwordLimit = limiter(app);
   // All clients together: an IP key alone fails behind a CDN or with a rotating IPv6 /64.
   const passwordGlobal = limiter(app, 10);
-  // Shared by passkey login options and verify; only failed verifications count.
+  // Shared by passkey login options and verify: every options request and every failed verify
+  // count, so one client cannot fill the challenge map (MAX_CHALLENGES) for everyone.
   const passkeyLimit = limiter(app);
   const challenges = new Map<string, { challenge: string; purpose: Purpose; expiresAt: number }>();
   app.decorateRequest('userId', '');
@@ -128,7 +133,7 @@ export function authRoutes(
   const login = (req: FastifyRequest, reply: FastifyReply, userId: string) =>
     reply
       .setCookie(
-        SESSION_COOKIE,
+        cookieName,
         createSession(db, userId, req.headers['user-agent']),
         sessionCookie(config.cookieSecure),
       )
@@ -195,9 +200,9 @@ export function authRoutes(
   }));
 
   app.post('/api/auth/logout', { preHandler: auth }, async (req, reply) => {
-    destroySession(db, req.cookies[SESSION_COOKIE] ?? '');
+    destroySession(db, req.cookies[cookieName] ?? '');
     sockets.revoke([req.sessionId]);
-    return reply.clearCookie(SESSION_COOKIE, { path: '/' }).code(204).send();
+    return reply.clearCookie(cookieName, clearSession).code(204).send();
   });
 
   // Laitteet (phase-15 decisions 11 and 12). No fresh login: revoking protects, so it is one step.
@@ -212,7 +217,7 @@ export function authRoutes(
       if (!revokeSession(db, req.userId, req.params.id))
         return reply.code(404).send({ error: 'not_found' });
       sockets.revoke([req.params.id]);
-      if (req.params.id === req.sessionId) reply.clearCookie(SESSION_COOKIE, { path: '/' });
+      if (req.params.id === req.sessionId) reply.clearCookie(cookieName, clearSession);
       return reply.code(204).send();
     },
   );
@@ -221,10 +226,7 @@ export function authRoutes(
     const { token, id, revoked } = revokeAll(db, req.userId, req.sessionId);
     sockets.revoke(revoked);
     sockets.rename(req.sessionId, id);
-    return reply
-      .setCookie(SESSION_COOKIE, token, sessionCookie(config.cookieSecure))
-      .code(204)
-      .send();
+    return reply.setCookie(cookieName, token, sessionCookie(config.cookieSecure)).code(204).send();
   });
 
   app.delete<{ Params: { id: string } }>(
@@ -295,6 +297,7 @@ export function authRoutes(
 
   app.post('/api/auth/passkey/login/options', async (req, reply) => {
     if (passkeyLimit.blocked(req.ip)) return reply.code(429).send({ error: 'rate_limited' });
+    passkeyLimit.fail(req.ip);
     if (full(reply)) return reply;
     const options = await generateAuthenticationOptions({
       rpID: config.passkeyRpId,

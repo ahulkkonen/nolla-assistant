@@ -197,6 +197,19 @@ test('auth: parallel wrong passwords count before the verify', { timeout: 30_000
   expect(new Set(res)).toEqual(new Set([401, 429]));
 });
 
+test('auth: on https the session cookie is __Host- and Secure', async () => {
+  const { config, run } = await boot([], { AUTH_ORIGIN: 'https://assistant.example.invalid' });
+  await run();
+  const { res, cookie } = await login(config.port);
+  expect(res.headers.getSetCookie()[0]).toMatch(/^__Host-pa_session=.+; Path=\/; .*Secure/);
+  expect((await api(config.port, '/api/auth/me', { headers: { cookie } })).status).toBe(200);
+  // The old name no longer authenticates.
+  const old = cookie.replace('__Host-pa_session', 'pa_session');
+  expect((await api(config.port, '/api/auth/me', { headers: { cookie: old } })).status).toBe(401);
+  const out = await api(config.port, '/api/auth/logout', { method: 'POST', headers: { cookie } });
+  expect(out.headers.getSetCookie()[0]).toMatch(/^__Host-pa_session=;.*Secure/);
+});
+
 test('the request log has no query string', async () => {
   const { config, run, logs } = await boot([], { LOG_LEVEL: 'info' });
   await run();

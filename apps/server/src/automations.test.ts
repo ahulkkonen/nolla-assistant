@@ -26,6 +26,7 @@ test('automations run as chats under Automaatiot', { timeout: 30_000 }, async ()
   writeFileSync(join(dir, 'bad.yaml'), file('not a cron', 'bad'));
   writeFileSync(join(dir, 'other.yaml'), file('* * * * *', 'mismatch'));
   writeFileSync(join(dir, 'off.yaml.disabled'), file('* * * * *', 'off'));
+  writeFileSync(join(dir, 'broken.yaml'), 'prompt: Synteettinen Henkilö soita\n  bad: [\n');
   const b = await boot(
     Array.from({ length: 40 }, () => turn),
     { AUTOMATIONS_DIR: dir },
@@ -86,6 +87,10 @@ test('automations run as chats under Automaatiot', { timeout: 30_000 }, async ()
   });
 
   expect(logs.filter((l) => l.includes('bad automation')).length).toBeGreaterThan(0);
+  // A YAML error logs its name and line, never the source line it quotes.
+  const broken = logs.map((l) => JSON.parse(l)).find((l) => l.file === 'broken.yaml');
+  expect(broken).toMatchObject({ error: 'YAMLParseError', line: expect.any(Number) });
+  expect(logs.join('')).not.toContain('Synteettinen');
   c.send({ type: 'automations.run', id: 'later' });
   expect(
     (await c.next('automations.state')).automations.find((x) => x.id === 'later'),
