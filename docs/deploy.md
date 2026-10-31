@@ -57,7 +57,7 @@ Phase 2 ships only `pa-server`. Later phases add services to `infra/compose.yaml
    | `AUTH_PASSWORD_HASH` | the `scrypt$...` string from step 1 |
    | `COOKIE_SECRET` | the random string from step 1 |
    | `LITELLM_URL` | `http://litellm:4000`, no `/v1`: Pi appends `/chat/completions` and LiteLLM serves it (compose default) |
-   | `LITELLM_MASTER_KEY` | any random string for now; phase 3 uses it |
+   | `LITELLM_MASTER_KEY` | at least 32 random characters, for example `openssl rand -base64 48`. `pa-server` does not start with a shorter key. |
    | `TRUST_PROXY` | `1` |
    | `USER_ID` | your short user id, letters and digits only |
 
@@ -146,7 +146,7 @@ The `bash` tool runs each command in a throwaway `pa-skill-runner` container. Th
    | `HOST_DATA_DIR` | the host path of the `pa-data` volume, from `docker volume inspect <project>_pa-data --format '{{.Mountpoint}}'` |
    | `HOST_SKILLS_DIR` | the host path of the `skills/` directory of the checkout. Only skills with a `bin/` directory need it. |
 
-   The broker gives these paths to the Docker host as bind sources. A path inside the broker container does not work.
+   The broker gives these paths to the Docker host as bind sources. A path inside the broker container does not work. The broker does not start without `HOST_DATA_DIR`.
 
 3. Deploy. Compose creates the `pa-skill-egress` and `pa-skill-proxy-only` networks. A skill with `network: [hosts]` runs on `pa-skill-proxy-only` and reaches the listed hosts through the broker's proxy.
 

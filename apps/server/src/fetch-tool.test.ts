@@ -78,7 +78,15 @@ test('refused: private hosts, IP literals, other ports', async () => {
 });
 
 test('private: IPv6 transition ranges that embed IPv4', () => {
-  for (const a of ['64:ff9b::a00:1', '2002:a00:1::1', '2001:0:4136:e378::1', '192.88.99.1'])
+  for (const a of [
+    '64:ff9b::a00:1',
+    '2002:a00:1::1',
+    '2001:0:4136:e378::1',
+    '192.88.99.1',
+    '::7f00:1',
+    '::ffff:0:7f00:1',
+    '64:ff9b:1::a00:1',
+  ])
     expect(isPrivate(a), a).toBe(true);
   expect(isPrivate('2a00:1450:4001::1')).toBe(false);
 });

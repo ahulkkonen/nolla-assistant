@@ -10,6 +10,10 @@ services:
       AUTH_INSECURE_LAN: ${AUTH_INSECURE_LAN:-}
       AUTH_PASSKEY_RP_ID: ${AUTH_PASSKEY_RP_ID:-localhost}
       TRUST_PROXY: ""
+  sandbox-broker:
+    environment:
+      # Docker Desktop resolves bind sources inside its VM, where the volume has this path.
+      HOST_DATA_DIR: ${HOST_DATA_DIR:-/var/lib/docker/volumes/${COMPOSE_PROJECT_NAME}_pa-data/_data}
   backup:
     # Needs an S3 bucket. Start it on purpose: --profile backup
     profiles: [backup]

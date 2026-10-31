@@ -51,6 +51,9 @@ export function loadConfig(env = process.env): BrokerConfig {
   if (token.length < 32) throw new Error('BROKER_TOKEN must be at least 32 characters');
   const dataDir = env.DATA_DIR ?? '/data';
   const skillsDir = env.SKILLS_DIR ?? '/app/skills';
+  // In the image the fallback is wrong: `/data` would be a path on the Docker host, not the volume.
+  if (env.NODE_ENV === 'production' && !env.HOST_DATA_DIR)
+    throw new Error('HOST_DATA_DIR is required in production (docs/deploy.md, Sandbox)');
   return {
     token,
     dockerSocket: env.DOCKER_SOCKET ?? '/var/run/docker.sock',

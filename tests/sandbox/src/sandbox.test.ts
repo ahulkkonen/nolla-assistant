@@ -9,6 +9,7 @@ import {
   build,
   dockerClient,
   EGRESS_NETWORK,
+  loadConfig,
   PROXY_NETWORK,
   skillPolicy,
 } from '@pa/sandbox-broker';
@@ -66,6 +67,12 @@ const socket = () => {
   ).stdout.trim();
   return host.startsWith('unix://') ? host.slice(7) : '/var/run/docker.sock';
 };
+
+test('loadConfig: production fails closed without HOST_DATA_DIR', () => {
+  const env = { BROKER_TOKEN: TOKEN, NODE_ENV: 'production' };
+  expect(() => loadConfig(env)).toThrow('HOST_DATA_DIR');
+  expect(loadConfig({ ...env, HOST_DATA_DIR: '/srv/data' }).hostDataDir).toBe('/srv/data');
+});
 
 describe.skipIf(!hasDocker)(hasDocker ? 'sandbox broker (docker)' : `sandbox ${SKIP_NOTE}`, () => {
   let app: Awaited<ReturnType<typeof build>>;
