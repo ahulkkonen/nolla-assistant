@@ -232,12 +232,14 @@ export function titleJobs(deps: {
       .from(topics)
       .where(eq(topics.userId, userId))
       .all();
+    // Topic names are typed by the user (invariant 1): masked, and not sent at all without pseudo.
+    const sentList = pseudo && list.length ? (await pseudo.mask(chatId, list)).masked : [];
     // Static prompt first, then the topic list, then the transcript (prompt caching order).
     const messages: ChatMessage[] = [
       { role: 'system', content: SYSTEM_PROMPT },
       {
         role: 'user',
-        content: `Aiheet:\n${JSON.stringify(list)}\n\nKeskustelu:\n${transcript.slice(-TAIL_CHARS)}`,
+        content: `Aiheet:\n${JSON.stringify(sentList)}\n\nKeskustelu:\n${transcript.slice(-TAIL_CHARS)}`,
       },
     ];
     const reply = await ask(Reply, messages, chatId);

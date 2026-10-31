@@ -31,6 +31,8 @@ test('title: masked to the model and in the db, restored on the wire; rename loc
     .values([
       { id: 't-tax', userId: 'aleksi', name: 'Verot', createdAt },
       { id: 't-home', userId: 'aleksi', name: 'Koti', createdAt },
+      // A name the user typed, with a vault entity: masked before the model (invariant 1).
+      { id: 't-person', userId: 'aleksi', name: 'Matti Virtanen – asiat', createdAt },
     ])
     .run();
   const row = () => srv.db.select().from(chats).where(eq(chats.id, chat.id)).get();
@@ -57,6 +59,7 @@ test('title: masked to the model and in the db, restored on the wire; rename loc
   const sent = JSON.stringify(req?.body);
   expect(sent).toContain('Pekka Laaksonen');
   expect(sent).toContain('Verot');
+  expect(sent).toContain('Pekka Laaksonen – asiat');
   expect(sent).not.toContain('Matti Virtanen');
 
   expect(row()).toMatchObject({
