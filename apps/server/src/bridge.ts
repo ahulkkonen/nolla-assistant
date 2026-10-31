@@ -22,6 +22,13 @@ import {
   toAll,
   update,
 } from './bridge/connection.ts';
+import {
+  claimsChange,
+  claimsList,
+  memoryApprove,
+  memoryConsolidate,
+  memoryEdit,
+} from './bridge/memory.ts';
 import { join, reindex } from './bridge/stream.ts';
 import { acceptTopic, ownTopic, rejectTopic } from './bridge/topics.ts';
 import { vault } from './bridge/vault.ts';
@@ -198,7 +205,6 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
     collisions,
   } = deps;
   const conn = connect(socket, deps);
-  const memoryToAll = () => toAll(conn, memory.state());
 
   const modelsState = (): ServerMessage => ({
     type: 'models.state',
@@ -915,39 +921,17 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
       case 'memory.list':
         return send(socket, memory.state());
       case 'claims.list':
-        return memory.claims
-          ? send(socket, memory.claims.state())
-          : send(socket, errorMsg('not_implemented'));
+        return claimsList(conn);
       case 'claims.review':
       case 'claims.update':
-      case 'claims.stale': {
-        const c = memory.claims;
-        if (!c) return send(socket, errorMsg('not_implemented'));
-        const r =
-          msg.type === 'claims.review'
-            ? await c.review(msg.id, msg.action, { text: msg.text, validTo: msg.validTo })
-            : msg.type === 'claims.update'
-              ? await c.update(msg.id, { text: msg.text, validTo: msg.validTo })
-              : c.stale(msg.id, msg.action);
-        if (r === 'not_found') throw new NotFound();
-        if (r === 'invalid') return send(socket, errorMsg('invalid'));
-        // MEMORY.md may have changed (decision 28 amended).
-        memoryToAll();
-        return toAll(conn, c.state());
-      }
+      case 'claims.stale':
+        return claimsChange(conn, msg);
       case 'memory.edit':
-        memory.edit(msg.target, msg.text);
-        return memoryToAll();
-      case 'memory.approve': {
-        const status = await memory.approve(msg.pendingId, msg.approve);
-        if (!status) throw new NotFound();
-        // A failed write leaves the queue; this is its only report.
-        if (status === 'failed') send(socket, errorMsg('memory_conflict'));
-        return memoryToAll();
-      }
+        return memoryEdit(conn, msg);
+      case 'memory.approve':
+        return memoryApprove(conn, msg);
       case 'memory.consolidate':
-        await memory.consolidate();
-        return memoryToAll();
+        return memoryConsolidate(conn);
       case 'vault.list':
       case 'vault.merge':
       case 'vault.split':
