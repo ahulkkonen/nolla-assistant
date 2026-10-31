@@ -1,6 +1,9 @@
-# Avustaja
+# Nolla Assistant
 
 Aleksi Hulkkonen · built with Claude Code in seven days, 25 to 31 October 2026
+
+*Nolla* is Finnish for zero: zero real names reach the model, zero data retention, zero cloud you
+do not own.
 
 A self-hosted personal assistant for one person, built on the
 [Pi](https://www.npmjs.com/package/@earendil-works/pi-coding-agent) agent runtime, that you talk to
@@ -8,7 +11,7 @@ in Finnish from a phone or a desktop browser. Before any model sees a message, i
 numbers, addresses and emails become realistic surrogates, and all model traffic leaves through one
 proxy to OpenRouter endpoints with zero data retention (ZDR).
 
-<!-- The CI badge goes here once the repository name is set. -->
+[![ci](https://github.com/ahulkkonen/nolla-assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/ahulkkonen/nolla-assistant/actions/workflows/ci.yml)
 
 ![A reply that shows the real names Matti Virtanen and Liisa Korhonen in the user's message and in the reply, with a tooltip: the model saw Pekka Laaksonen](docs/media/masking-screen.png)
 
