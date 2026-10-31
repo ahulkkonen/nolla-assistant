@@ -417,14 +417,15 @@ for (const scheme of ['light', 'dark'] as const) {
         await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
         const box = (l: Locator) => l.evaluate((el) => el.getBoundingClientRect().toJSON());
         // P1 and phase-28 UI review: the legend is one 32 px row (the `sm` pill) at every width,
-        // 8 px to the text above and to the action row below.
+        // 8 px to the text above and to the action row below; phones 14, so the two 44 px targets
+        // keep 8 px apart.
         const legend = page.getByRole('button', { name: 'Näytä luvut' }).locator('..');
         const row = await box(legend);
         expect(row.height).toBe(32);
         expect(row.top - (await box(reply)).bottom).toBe(8);
         expect(
           (await box(legend.locator('xpath=following-sibling::div[1]'))).top - row.bottom,
-        ).toBe(8);
+        ).toBe(vp.width < 768 ? 14 : 8);
         // A 32 px pill, as wide on as off; its target is 44 px (`::after`).
         const button = page.getByRole('button', { name: 'Näytä luvut' });
         const off = await box(button);

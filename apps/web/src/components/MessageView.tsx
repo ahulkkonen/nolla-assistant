@@ -455,9 +455,10 @@ const toggleN = (e: ReactMouseEvent) => {
 function ConfidenceLegend() {
   const on = useStore((s) => s.showConfN);
   return (
-    <div className="flex h-8 items-center gap-3 text-micro text-muted-foreground max-md:h-auto max-md:flex-wrap max-md:gap-y-2">
+    // Phones: 6 px more below, so the pill's and the action row's 44 px targets keep 8 px apart.
+    <div className="flex h-8 items-center gap-3 text-micro text-muted-foreground max-md:mb-1.5 max-md:h-auto max-md:flex-wrap max-md:gap-y-2">
       <span className="tabular-nums">
-        Luottamus ·&nbsp;<span className="conf-sample">alleviivattu</span> ≤&nbsp;6 ·&nbsp;9 varma
+        1 arvaus – 9 varma ·&nbsp;<span className="conf-sample">alleviivattu</span> ≤&nbsp;6
       </span>
       <button
         type="button"

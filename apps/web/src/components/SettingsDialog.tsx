@@ -315,7 +315,7 @@ export function SettingsDialog() {
               <Row
                 label="Näytä mitä malli näki"
                 htmlFor="model-saw"
-                helper="Tunnistetut nimet näkyvät viesteissä niinä, jotka malli sai."
+                helper="Suojatut nimet näkyvät viesteissä niinä, jotka malli sai."
               >
                 <Switch id="model-saw" checked={showModelSaw} onCheckedChange={setShowModelSaw} />
               </Row>
@@ -326,7 +326,7 @@ export function SettingsDialog() {
                 helper={
                   showModelSaw
                     ? 'Päällä, kun mallin näkemä teksti näytetään.'
-                    : 'Suojatut nimet saavat viesteissä värillisen merkin.'
+                    : 'Viesteissä suojatut nimet saavat värillisen merkin.'
                 }
               >
                 <Switch

@@ -477,8 +477,8 @@
   }
 }
 
-/* Phase-23 decision 9, phase-28 decision 3 and its UI review: one N style, small and inline right
-   after the full stop on the prose baseline. A sentence with N up to 6 has a dashed underline in the
+/* Phase-23 decision 9, phase-28 decision 3 and its UI review: one N style, 12 px micro and inline
+   4 px after the full stop on the prose baseline. A sentence with N up to 6 has a dashed underline in the
    muted colour and always shows its N; a higher N shows on hover (hover devices), on a tap
    (`data-show`) or with "Näytä luvut" (`data-conf-n`). A hidden N is `display: none`, so a screen
    reader reads only the N on screen. The anchor is an inline-block, so the underline stops before
@@ -494,7 +494,8 @@
 .md .conf-n {
   display: none;
   font-family: var(--font-sans);
-  font-size: 11px;
+  margin-left: 4px;
+  font-size: var(--text-micro);
   line-height: 1;
   font-weight: var(--font-weight-medium);
   font-variant-numeric: tabular-nums;

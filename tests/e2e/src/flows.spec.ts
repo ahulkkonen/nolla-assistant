@@ -2249,7 +2249,7 @@ for (const viewport of VIEWPORTS)
       await expect(legend).toHaveAttribute('aria-pressed', 'false');
       /**
        * Phase-28 UI review: one N style. `left` from the full stop's end to the N, `base` from the
-       * full stop's box bottom to the N's (the same baseline: the 11 px N sits a little higher).
+       * full stop's box bottom to the N's (the same baseline: the 12 px N sits a little higher).
        */
       const placeOf = (i: number) =>
         spans.nth(i).evaluate((el) => {
@@ -2262,7 +2262,8 @@ for (const viewport of VIEWPORTS)
           return { left: box.x - end.right, base: end.bottom - box.bottom };
         });
       const low = await placeOf(2);
-      expect(low.left).toBeCloseTo(0, 0);
+      // 4 px after the full stop, so "2031. 3" does not read as "2031.3".
+      expect(low.left).toBeCloseTo(4, 0);
       expect(low.base).toBeGreaterThanOrEqual(0);
       expect(low.base).toBeLessThan(8);
 

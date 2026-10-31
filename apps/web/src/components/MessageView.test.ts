@@ -43,7 +43,7 @@ test('legend: a reply with markers shows the scale and "Näytä luvut"; others h
   expect(html).not.toContain('--conf');
   // Phase-28 UI review: the legend says what the underline means; the word is a sample of it.
   expect(html.replace(/<[^>]+>/g, '')).toContain(
-    'Luottamus ·\u00a0alleviivattu ≤\u00a06 ·\u00a09 varmaNäytä luvut',
+    '1 arvaus – 9 varma ·\u00a0alleviivattu ≤\u00a06Näytä luvut',
   );
   expect(html).toContain('<span class="conf-sample">alleviivattu</span>');
   // The pill's width comes from an invisible checked copy that screen readers skip.
