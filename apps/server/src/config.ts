@@ -9,9 +9,9 @@ process.env.PI_TELEMETRY = '0';
 type Env = Record<string, string | undefined>;
 
 /**
- * The embedding model's folder without `MODELS_DIR`: outside the repository and outside any
- * `DATA_DIR`, so dev, every test harness and the memory eval share one download. The image sets
- * `MODELS_DIR=/app/models`.
+ * The embedding model's folder without `MODELS_DIR`, outside production only: outside the
+ * repository and outside any `DATA_DIR`, so dev, every test harness and the memory eval share one
+ * download. Production requires `MODELS_DIR` (the image sets `/app/models`).
  */
 export const DEFAULT_MODELS_DIR = join(tmpdir(), 'pa-models');
 
@@ -68,6 +68,8 @@ export function loadConfig(env: Env = process.env) {
     if (!env.PSEUDO_URL) throw new Error('PSEUDO_URL is required in production (invariant 1)');
     if ((env.LITELLM_MASTER_KEY ?? '').length < 32)
       throw new Error('LITELLM_MASTER_KEY must be at least 32 characters in production');
+    // A shared /tmp would let another local user plant the model; the image sets /app/models.
+    if (!env.MODELS_DIR) throw new Error('MODELS_DIR is required in production');
   }
   return Object.freeze({
     port,
