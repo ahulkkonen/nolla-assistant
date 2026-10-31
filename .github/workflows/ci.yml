@@ -1,0 +1,70 @@
+# The gates of docs/plan.md section 14 that need no model key and no Docker:
+# typecheck, lint, the unit suites, the Pi contract tests and the Playwright chromium flows.
+# The Docker suites (egress, sandbox, restore drill) and the Python sidecar tests run locally.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # The e5 embedding model is downloaded once per cache key, then read from here.
+  MODELS_DIR: ${{ github.workspace }}/.models
+
+jobs:
+  node:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        # The version comes from "packageManager" in package.json.
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Cache the embedding model
+        uses: actions/cache@v4
+        with:
+          path: .models
+          key: models-multilingual-e5-small-q8
+
+      - run: node scripts/download-models.mjs "$MODELS_DIR"
+
+      - run: pnpm --workspace-concurrency=1 -r typecheck
+      - run: pnpm lint
+
+      - run: pnpm --filter @pa/protocol --filter @pa/db --filter @pa/server --filter @pa/web test
+      - run: pnpm -r --if-present --filter './packages/pi-ext-*' test
+      - run: pnpm test:contract
+      - run: pnpm --filter @pa/masked-only-tests test
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - run: pnpm --filter @pa/e2e exec playwright install --with-deps chromium
+      - run: pnpm --filter @pa/e2e test
+
+      - name: Keep the Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: tests/e2e/playwright-report
+          retention-days: 7
