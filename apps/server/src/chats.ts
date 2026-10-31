@@ -40,6 +40,7 @@ export const summary = (r: ChatRow): ChatSummary => ({
   pinned: r.pinned,
   archived: r.archived,
   titleLocked: r.titleLocked,
+  tainted: r.tainted,
   ...(r.forkedFromChatId ? { forkedFrom: r.forkedFromChatId } : {}),
   modelPolicy: policyOf(r),
   modes: r.modes,

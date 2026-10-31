@@ -16,9 +16,9 @@ import {
   WEB_SEARCH_TOOL,
 } from '@pa/protocol';
 import { and, eq } from 'drizzle-orm';
-import { extractArtifacts } from '../artifacts.ts';
+import { extractArtifacts, maskedTexts, messageArtifacts } from '../artifacts.ts';
 import { chatRow, summary } from '../chats.ts';
-import { searchView, toMessage, toolRows, toolStatus } from '../history.ts';
+import { history, searchView, toMessage, toolRows, toolStatus } from '../history.ts';
 import { isZdrRefusal, policyOf, providerStatus } from '../pi/models.ts';
 import type { ChatEvent } from '../pi/registry.ts';
 import { release, restorer } from '../restore.ts';
@@ -74,6 +74,8 @@ function forward(
   { db, rooms, log, userId, pseudo, push, catalog, refusals, registry }: BridgeDeps,
 ) {
   const emit = (msg: ServerMessage) => broadcast(rooms, chatId, msg);
+  /** Phase-30 decision 14: the chat's taint as the room last heard it (a gone row counts). */
+  let tainted = chatRow(db, userId, chatId)?.tainted !== false;
   let streamId: string = randomUUID();
   /** Phase 26: the stream id of the reply whose request is out; its `message_start` takes it. */
   let nextId: string | undefined;
@@ -103,10 +105,27 @@ function forward(
       });
   };
 
+  /**
+   * The chat turned tainted in this run: the room hears it, and its pages and components made
+   * before come again with their masked sources, built as `chat.state` builds them.
+   */
+  const taintNow = async () => {
+    const r = chatRow(db, userId, chatId);
+    const now = r?.tainted !== false;
+    if (!now || tainted) return now;
+    tainted = true;
+    if (r) emit({ type: 'chat.updated', chat: summary(r) });
+    const messages = await history(session, [], restore);
+    for (const artifact of messageArtifacts(messages, maskedTexts(session)))
+      if (artifact.masked !== undefined) emit({ type: 'artifact.upsert', chatId, artifact });
+    return now;
+  };
+
   const flush = async () => {
     const m = pending;
     pending = undefined;
     if (!m) return;
+    const taint = await taintNow();
     const entry = session.sessionManager
       .getEntries()
       .findLast(
@@ -122,9 +141,7 @@ function forward(
     emit({ type: 'message.final', chatId, message });
     if (!entry) return;
     // Ids must match `chat.state`; without the entry id the next `chat.state` carries them.
-    // Phase-30 decision 14: a tainted chat (or one gone meanwhile) sends the masked sources too.
-    const tainted = chatRow(db, userId, chatId)?.tainted !== false;
-    for (const artifact of extractArtifacts(entry.id, message.text, tainted ? masked : undefined))
+    for (const artifact of extractArtifacts(entry.id, message.text, taint ? masked : undefined))
       emit({ type: 'artifact.upsert', chatId, artifact });
   };
 

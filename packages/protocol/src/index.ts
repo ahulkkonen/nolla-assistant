@@ -172,6 +172,11 @@ export const ChatSummary = z.object({
   archived: z.boolean(),
   /** True after a manual rename: automatic titling no longer changes the title. */
   titleLocked: z.boolean().optional(),
+  /**
+   * Phase-30 decision 14: external content entered the chat; its pages and components run
+   * masked. The server always sets it; optional for older servers and fixtures.
+   */
+  tainted: z.boolean().optional(),
   /** Phase-22 decision 3: the chat "Haarauta" started this one from; the sidebar marks it. */
   forkedFrom: id64.nullable().optional(),
   modelPolicy: ModelPolicy,

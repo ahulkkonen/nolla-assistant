@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import type { AgentSession } from '@earendil-works/pi-coding-agent';
 import {
   type Artifact,
   artifactKind,
@@ -6,6 +7,7 @@ import {
   type Message,
   stripConfidence,
 } from '@pa/protocol';
+import { textOf } from './session-text.ts';
 
 const MAX_INPUT = 200_000;
 const OPEN = /^ {0,3}(`{3,}|~{3,})(.*)$/;
@@ -73,4 +75,12 @@ export const messageArtifacts = (messages: Message[], masked?: Map<string, strin
     m.role === 'assistant'
       ? extractArtifacts(m.id, m.text, masked && (masked.get(m.id) ?? ''))
       : [],
+  );
+
+/** The text before the restore of each message on the session's branch, by entry id. */
+export const maskedTexts = (session: Pick<AgentSession, 'sessionManager'>) =>
+  new Map(
+    session.sessionManager
+      .getBranch()
+      .flatMap((e) => (e.type === 'message' ? [[e.id, textOf(e.message)] as const] : [])),
   );

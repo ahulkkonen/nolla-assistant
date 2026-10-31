@@ -12,13 +12,13 @@ import type { AgentSession } from '@earendil-works/pi-coding-agent';
 import { chats, files } from '@pa/db';
 import type { ClientMessage, ServerMessage } from '@pa/protocol';
 import { and, desc, eq } from 'drizzle-orm';
-import { messageArtifacts } from '../artifacts.ts';
+import { maskedTexts, messageArtifacts } from '../artifacts.ts';
 import { type ChatRow, forkLink, ownUsage, summary, threadFiles } from '../chats.ts';
 import { history } from '../history.ts';
 import { AUTO_MODEL } from '../pi/models.ts';
 import { restorer } from '../restore.ts';
 import { related } from '../search.ts';
-import { cutText, textOf, thinkingOf } from '../session-text.ts';
+import { cutText, thinkingOf } from '../session-text.ts';
 import { broadcast, errorMsg, NotFound, RunActive, send } from '../socket.ts';
 import { autoApproveOf } from './approvals.ts';
 import { type Conn, owned, toAll, update } from './connection.ts';
@@ -51,19 +51,12 @@ export const chatState = async (
   const restore = restorer(pseudo, () => send(socket, errorMsg('pseudo_down', r.id)));
   const messages = ownUsage(await history(session, threadFiles(db, userId, r), restore), r);
   const link = forkLink(db, userId, r);
-  // Phase-30 decision 14: the replies' masked text, for the masked sources of a tainted chat.
-  const masked = r.tainted
-    ? new Map(
-        session.sessionManager
-          .getBranch()
-          .flatMap((e) => (e.type === 'message' ? [[e.id, textOf(e.message)] as const] : [])),
-      )
-    : undefined;
   return {
     type: 'chat.state',
     chat: summary(r),
     messages,
-    artifacts: messageArtifacts(messages, masked),
+    // Phase-30 decision 14: a tainted chat sends the masked sources too.
+    artifacts: messageArtifacts(messages, r.tainted ? maskedTexts(session) : undefined),
     running: registry.running(r.id),
     autoApprove: autoApproveOf(conn, r),
     ...(link ? { forkedFrom: link } : {}),
