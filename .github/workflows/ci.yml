@@ -19,12 +19,13 @@ jobs:
   node:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
-    env:
-      # The e5 embedding model is downloaded once per cache key, then read from here. Outside the
-      # workspace, so Biome and the other tools never scan it. `runner` exists only at job level.
-      MODELS_DIR: ${{ runner.temp }}/pa-models
     steps:
       - uses: actions/checkout@v4
+
+      # The e5 embedding model is downloaded once per cache key, then read from here. Outside the
+      # workspace, so Biome and the other tools never scan it. The `runner` context exists only in
+      # steps, so the path goes through GITHUB_ENV.
+      - run: echo "MODELS_DIR=$RUNNER_TEMP/pa-models" >> "$GITHUB_ENV"
 
       - uses: pnpm/action-setup@v4
         # The version comes from "packageManager" in package.json.
@@ -39,7 +40,7 @@ jobs:
       - name: Cache the embedding model
         uses: actions/cache@v4
         with:
-          path: ${{ runner.temp }}/pa-models
+          path: ${{ env.MODELS_DIR }}
           key: models-multilingual-e5-small-q8
 
       - run: node scripts/download-models.mjs "$MODELS_DIR"
