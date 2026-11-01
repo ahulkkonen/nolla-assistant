@@ -49,7 +49,9 @@ The phase-12 run had 14 misses on 554 lines:
    adds an entity, so the owner cannot add a nickname from the app yet (see "Left as they are").
 4. **Gate thresholds at the measured floor.** `tests/pii/harness.py` now has the measured value of
    each gate, rounded down to a whole percent. A kind with a miss never gets 100 %. Precision has
-   one minimum per kind.
+   one minimum per kind. PERSON recall and precision (423 of 427) sit one count above 0.99, so one
+   new miss or one new false positive fails the gate. That is the intent: a change that costs a
+   name is a decision, and it has to raise the corpus or the record.
 
    | Gate | Phase 12 | Phase 33 |
    |---|---|---|
@@ -108,9 +110,13 @@ Misses: 14 before (2 partly masked), 8 after (none partly masked): four plates, 
 ## Left as they are
 
 - A first name before a place word that is also a common surname is masked with it: `Mika
-  rannalla, tulee kuudelta` masks `Mika rannalla` as Mika Ranta (decoy hit c559). This is the same
-  trade as `Pekka koski minua` in phase-12 decision 19: a leaked surname costs more than a masked
-  word.
+  rannalla, tulee kuudelta` masks `Mika rannalla` as Mika Ranta (decoy hit c559). The class is
+  wider than the one decoy: every nominative first name plus an inflected surname with a place
+  reading and at least 200 holders (`Kaisa mäellä`, `Matti koskella`, `Aino saarella`, `Tuula
+  niemelle`) masks at 0.75. This is the same trade as `Pekka koski minua` in phase-12 decision 19:
+  a leaked surname costs more than a masked word.
+- A nominative after the number (`kauppatorilla 1 mies myi`) and a genitive duration (`rantatie 2
+  viikon ajan`) still mask as ADDRESS. The check reads only the partitive and the translative.
 - A partitive or translative after a real house number hides the address:
   `asun puistokadulla 12 kolmatta vuotta` is not masked.
 - Another case that a number counts is still an address: `uimarannalle 2 päivässä` (inessive) is

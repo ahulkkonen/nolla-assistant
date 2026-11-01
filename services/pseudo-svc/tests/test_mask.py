@@ -588,7 +588,7 @@ def test_first_name_and_inflected_surname_with_a_place_reading(vault):
 def test_nickname_in_the_vault_is_masked(vault):
     # phase-33 decision 3: the detector does not guess nicknames; the user adds one to the vault once
     text = "Lauri Mattila tuli jo. Late odottaa autossa."
-    assert "Late" in mask(vault, text)[0]
+    assert "Late" in mask(vault, text)[0]  # decision 3: a nickname leaks before the vault knows it
     S.get_or_create_entity(vault, U, "PERSON", "Late")  # what POST /vault/seed does
     masked, spans = mask(vault, text, "s2")
     assert "Late" not in masked and "Late" in [s["real_form"] for s in spans]
