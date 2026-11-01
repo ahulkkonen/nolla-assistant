@@ -19,13 +19,15 @@ hit. For the second class, the owner adds the nickname on the vault screen.
    - The word is an inflected form, not the nominative, of a DVV surname that ends in `-nen` and has
      at least 5,000 holders (`FREQUENT_SURNAME_MIN`, `surname_shaped(word, minimum)`). The DVV list
      has 81 such surnames.
-   - The word before it is not a first name in the nominative. Phase-33 decision 2 and the pair rule
-     of `lower_names` decide that case.
+   - The word before it is no first name in any case: `lemmas()` of the word before gives no
+     first-name lemma. Phase-33 decision 2 and the pair rules decide `Mika hämäläistä` and
+     `Liisan hämäläistä`. The check reads at most 40 characters before the word, and only after the
+     cheap surname check, because it runs on every ordinary lower-case word.
    - The word has no place reading.
 
    The score is below `PENDING_BELOW` (0.6). Thus the sidecar masks the word and parks it as
    pending: the owner confirms, sends it as it is, or dismisses it on the vault screen. A dismissed
-   word goes to `never_detect` and is not asked again. Adjectives that are no frequent surname stay
+   word is not asked again (decision 7). Adjectives that are no frequent surname stay
    unmasked: `punaista`, `iloiseksi` (no DVV surname) and `suomalaista` (Suomalainen has 3,114
    holders). The check is `gazetteer.frequent_surname`.
 2. **Only `-nen` surnames.** The frequent surnames without `-nen` are mostly nature words: `koski`,
@@ -38,17 +40,39 @@ hit. For the second class, the owner adds the nickname on the vault screen.
    value that is not valid for its kind, for example a lower-case name or a bad hetu) answers the
    error `invalid`, and the client shows "Virheellinen arvo.". The server never logs the text. The
    sidecar route did not change.
-4. **The add form on the vault screen.** The form is under the "Näytä mitä malli näki" row, so it
-   is also there when the vault is empty. It has a kind select (the Finnish kind names of the
-   screen, "henkilö" first), a text field with the placeholder "Esim. lempinimi" and the button
-   "Lisää". On a phone the select and the field share one row and the button is under them. The
-   field empties after a send. The hint line "Lempinimet tunnistetaan vain, jos lisäät ne käsin
-   aliaksiksi." lost the word "aliaksiksi": the add makes an entity of its own, not an alias.
+4. **The add form on the vault screen.** The form leads the "Tunnistetut" section, under any
+   pending card, so an open question keeps the first position. The section shows also when the
+   vault is empty; the empty state then stands under the form. The form has the lead-in "Lisää
+   suojattava" in the meta style, a kind select (the Finnish kind names of the screen, "henkilö"
+   first), a text field and the button "Lisää". The placeholder is "Esim. lempinimi" for a person
+   and the capitalised kind name for the other kinds. On a phone the lead-in is above one 44 px
+   row; the button is a 44 px icon button with `aria-label="Lisää"`. On a wider screen everything
+   is in one row and the field is at most 360 px wide. A disabled button keeps its full border;
+   only the label and the icon fade. The text stays until the next `vault.state` arrives. An error
+   toast (`invalid`, `pseudo_down`) ends the wait and leaves the text for a fix. The button is
+   disabled while the add waits. The footnote "Lempinimet tunnistetaan vain, jos lisäät ne käsin
+   aliaksiksi." moved under the form as its helper text and lost the word "aliaksiksi": the add
+   makes an entity of its own, not an alias. The empty-state line is now "Ne näkyvät täällä, kun
+   viestissä on nimi tai tunnus tai kun lisäät sen itse."
 5. **The fake sidecar learns a seeded value.** `startFakeSidecar` now masks a seeded value that is
    not in its dictionary from the next `/mask` on, as `pseudo-svc` does, and answers 422 for a
-   seeded PERSON that does not start with a capital letter (`PERSON_RE` in short).
+   seeded PERSON that does not start with a capital letter (`PERSON_RE` in short). The fake does
+   not validate the code kinds (HETU, IBAN, PHONE and the others): it accepts every such value.
 6. **Three corpus decoys (c560 to c562).** `punaista`, `suomalaista` and `iloiseksi` in lower-case
    phone text, tag `adjective-vs-surname`. A hit counts in `decoy_hits`, not as a false positive.
+7. **A dismissed lower-case hit keys `never_detect` on the lower-case canonical.** The pending
+   route (`POST /vault/pending/{id}`, action `dismiss`) stores `(PERSON, "hämäläinen")` in place of
+   `(PERSON, "Hämäläinen")` when the pending text is all lower case. `resolve()` drops a candidate
+   on that key only when its surface is lower case. Thus "Hylkää" on `ruotsalaista kahvia` stops
+   every lower-case form of the word (`ruotsalaista`, `ruotsalaisia`), and a real Ruotsalainen,
+   written with a capital letter, still masks. The old key, the canonical itself, would have
+   stopped the masking of the person in every form for good. The same key applies to a lower-case
+   pair from `lower_names` (`liisa savolaiselle`). A capitalised pending hit keeps the canonical
+   key. `test_dismissed_lower_case_hit_keeps_the_surname` covers it.
+8. **Voikko absent, Omorfi present.** The rule then runs on Omorfi alone: `lower_names` treats
+   Omorfi as the lexicon, and `common_word` and `known_name` read Omorfi's analyses.
+   `test_frequent_surname_rule_with_omorfi_alone` stubs `_voikko` and checks `hämäläistä` and
+   `punaista`. With neither lexicon, nothing tells an ordinary word, and the rule does not run.
 
 ## Measured numbers
 
@@ -91,10 +115,9 @@ above 0.99.
 
 - A demonym that is also a frequent `-nen` surname asks the owner: `ruotsalaista kahvia`
   (Ruotsalainen), `karjalaiset tulee` (Karjalainen, plural), `lappalaista` (Lappalainen). The word
-  is masked until the owner answers. "Hylkää" stops it for good. This is the trade of phase-12
+  is masked until the owner answers. "Hylkää" stops its lower-case forms for good (decision 7).
+  This is the trade of phase-12
   decision 19: a leaked surname costs more than a masked word. No corpus line holds such a word.
-- The rule reads only the word before. `Liisan hämäläistä` (a genitive first name) still goes to the
-  pending lane.
 - A nickname leaks until the owner adds it. The add form does not suggest names.
 - `test_old_one_word_surrogate_still_collides_after_the_upgrade` fails in some runs (3 of 6 runs
   on `main`). The vault secret is random per test, so the one-word surrogate changes. Some drawn
@@ -106,11 +129,25 @@ above 0.99.
 - A value added with the wrong kind (a nickname as a phone number) is refused by the sidecar with
   `invalid`. The form does not say which check failed.
 
+## Review
+
+- **Code review.** Eight findings, all fixed: the bounded previous-word read after the cheap surname
+  check (decision 1), the lower-case dismiss key (decision 7), a first name in any case before the
+  word (decision 1), the Omorfi-only path (decision 8), the text that stays until `vault.state`
+  and the button that waits (decision 4), the placeholder per kind (decision 4), the fake's comment
+  width and its PERSON-only check (decision 5), and the e2e case for a refused value.
+- **Blind scored screenshot review** of the vault screenshots at 390 and 1440 px, light and dark.
+  No blocking finding. Several criteria scored 3 and were fixed: the form pushed the pending card
+  down, the select had no lead-in, the disabled button read as an empty slab in dark mode, the
+  empty-state line ignored the add, the field was too wide at 1440 px, and the nickname footnote
+  belonged to the form (decision 4). Nice-to-have left as it is: no screenshot shows the focus
+  state of the field and the select.
+
 ## Status
 
-Done 2026-11-01. The corpus gate passes at the phase-33 thresholds (562 lines). The pseudo-svc
-pytest suite passes in the image (155 tests; `test_old_one_word_surrogate_still_collides_after_the_upgrade`
-is flaky, see "Left as they are"). Typecheck, lint, the protocol, server and web vitest suites,
-`pnpm test:contract`, the Playwright `chromium` flows (660 passed) and `tests/masked-only` pass. The
-`screens` project rewrote the `vault`, `vault-merge`, `vault-collision` and `vault-empty` baselines
-at 390 and 1440 px for the add form. No blind scored screenshot review ran for this change.
+Done 2026-11-01. The corpus gate passes at the phase-33 thresholds (562 lines); the numbers above
+are the same after the review fixes. The pseudo-svc pytest suite passes in the image (157 tests;
+`test_old_one_word_surrogate_still_collides_after_the_upgrade` is flaky, see "Left as they are").
+Typecheck, lint, the protocol, server and web vitest suites, `pnpm test:contract`, the Playwright
+`chromium` flows (661 passed) and `tests/masked-only` pass. The `screens` project rewrote the
+`vault`, `vault-merge`, `vault-collision` and `vault-empty` baselines at 390 and 1440 px.
