@@ -3,7 +3,8 @@
 Aleksi Hulkkonen · built with Claude Code in seven days, 25 to 31 October 2026
 
 *Nolla* is Finnish for zero: zero personal data reaches the model, zero data retention, zero cloud you
-do not own.
+do not own. Measured, not promised: 99.5 % of names on 562 Finnish test texts; a doubtful one is
+masked and queued for you, and a name you add once stays known.
 
 A self-hosted personal assistant for one person, built on the
 [Pi](https://www.npmjs.com/package/@earendil-works/pi-coding-agent) agent runtime, that you talk to
