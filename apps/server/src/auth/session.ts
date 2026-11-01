@@ -12,6 +12,10 @@ export const sessionCookieName = (secure: boolean) => (secure ? '__Host-pa_sessi
 const DAY = 86_400_000;
 const TTL = 30 * DAY;
 const REFRESH_BELOW = 15 * DAY;
+/** Hard cap from the login (phase 35): use extends a session, but never past this age. */
+export const MAX_AGE = 90 * DAY;
+/** The sliding expiry, capped at `MAX_AGE` after `created`. */
+const expiry = (created: number, now: number) => Math.min(now + TTL, created + MAX_AGE);
 
 export const sessionCookie = (secure: boolean) =>
   ({
@@ -125,7 +129,7 @@ export function revokeAll(db: Db, userId: string, currentId: string) {
       .values({
         ...cur,
         id,
-        expiresAt: new Date(now + TTL).toISOString(),
+        expiresAt: new Date(expiry(Date.parse(cur.createdAt), now)).toISOString(),
         lastSeenAt: new Date(now).toISOString(),
       })
       .run();
@@ -146,17 +150,20 @@ export function getUser(
   const row = db.select().from(authSessions).where(eq(authSessions.id, id)).get();
   if (!row) return null;
   const now = Date.now();
+  const created = Date.parse(row.createdAt);
   const left = Date.parse(row.expiresAt) - now;
-  if (left <= 0) {
+  // The age check also ends a row whose expiry was set before the cap existed.
+  if (left <= 0 || now - created >= MAX_AGE) {
     db.delete(authSessions).where(eq(authSessions.id, id)).run();
     return null;
   }
-  const refreshed = left < REFRESH_BELOW;
+  const next = expiry(created, now);
+  const refreshed = left < REFRESH_BELOW && next > Date.parse(row.expiresAt);
   if (refreshed || now - Date.parse(row.lastSeenAt) > 60_000)
     db.update(authSessions)
       .set({
         lastSeenAt: new Date(now).toISOString(),
-        ...(refreshed ? { expiresAt: new Date(now + TTL).toISOString() } : {}),
+        ...(refreshed ? { expiresAt: new Date(next).toISOString() } : {}),
       })
       .where(eq(authSessions.id, id))
       .run();
