@@ -212,10 +212,11 @@ audit found no secret in the tracked files or in the history.
   hetu, IBAN and card numbers. A name or a nickname in the vault is masked in every later message
   (`POST /vault/seed`), but the vault screen has no action to add one yet. Closes it: an add
   action on the vault screen.
-- **Transitive advisories.** `undici` 8.10.2 inside Pi 1.4.0 (4 high) and `body-parser` 2.3.0
-  through the MCP SDK (1 high). Pi's `undici` talks only to LiteLLM and `mcp-workspace`, and the
-  SDK's express server never runs. Closes it: overrides or the next Pi bump, once the fixed releases
-  are 7 days old (phase 30, "Left as they are").
+- **Transitive advisories.** `body-parser` 2.3.0 through the MCP SDK (1 high); the SDK's express
+  server never runs. `cryptography` 48.0.1 in `pseudo-svc` (2 high, PKCS#7 and X.509 paths the
+  service does not use), held by the `presidio-anonymizer` 2.2.364 pin; presidio 2.2.365 accepts
+  50.x and is old enough from 2026-11-02. `undici` inside Pi was moved to 8.12.3 on 2026-11-01 with a
+  scoped override in `pnpm-workspace.yaml`. Closes the rest: the presidio bump, then the next Pi bump.
 - **Other open items** from the security audit, nice-to-have list, still in the code:
   - Attachment text joins the user message (`apps/server/src/bridge/turns.ts:414`), so a URL in an
     untrusted PDF runs `fetch_url` with no card. Only an exact URL matches: a beacon, not a channel.

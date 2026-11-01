@@ -351,4 +351,6 @@ Dependency follow-ups (`docs/audits/2026-10-31-dependencies.md`, "Recommended ac
 - Checked with `docker compose config` and a placeholder env. The images were not built and the
   stack did not run in this batch (no pull). Run the compose smoke before the merge.
 - Not done, on purpose: `undici` and `cryptography`. The fixed releases are younger than 7 days.
+  Update 2026-11-01: `undici` overridden to 8.12.3 in the Pi tree. `cryptography` 50.x needs
+  presidio 2.2.365, old enough from 2026-11-02 19:03 UTC; that bump is its own change.
 - Not in scope: `pnpm install` to drop the orphan Pi 1.3.0 folders (local `node_modules` only).
