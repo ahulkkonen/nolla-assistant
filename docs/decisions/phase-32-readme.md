@@ -17,11 +17,22 @@ Date: 2026-10-31. Follows phase 31 (`phase-31-publication.md`).
    facts and a broken badge, round 2 one rounding error. The short form was written after both.
 4. **Threat model.** `docs/threat-model.md`, the note that plan §14 asked for. `docs/plan.md` got
    an "As built" section that lists where the built system differs from the plan text.
-5. **Name: `nolla-assistant`.** Nolla is Finnish for zero: zero real names reach the model, zero data
-   retention. The user chose it on 2026-10-31 from proposals by a Finnish-native designer agent,
+5. **Name: `nolla-assistant`.** Nolla is Finnish for zero: zero personal data reaches the model, zero
+   data retention. The user chose it on 2026-10-31 from proposals by a Finnish-native designer agent,
    Gemini 4 Argon and Grok 4.7 (through the stack's own LiteLLM). The H1 is "Nolla Assistant"; the in-app
    agent keeps the name Avustaja. The CI badge points at `ahulkkonen/nolla-assistant`.
    the CI badge line follows the name.
+
+6. **Hero example and social preview (2026-11-01).** The hero pair shows a calendar event through
+   the MCP approval gate (`masking-action.png`, `masking-action-model.png`): the reminder example of
+   the first version showed no tool at work. The shot runs through the fake Workspace MCP server of
+   `tests/mcp`, so the e2e fixture got an `mcp: true` option and `flows.spec.ts` a flow that checks
+   the card and the calendar get the real names while no model request does. Tool rows and approval
+   cards show an MCP tool without its `mcp__<server>__` prefix (`toolLabel` in `apps/web/src/thread.ts`).
+   The social preview is variant C of three (Bricolage Grotesque wordmark, the three zeros, the tool
+   row and reply at 1.7x); the HTML lives only in the session scratchpad. The tagline says "personal
+   data", not "real names", because names are one of eight masked kinds; the recall numbers that
+   qualify the word "zero" are in `docs/threat-model.md` section 5.
 
 ## Status
 

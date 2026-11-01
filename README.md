@@ -2,7 +2,7 @@
 
 Aleksi Hulkkonen · built with Claude Code in seven days, 25 to 31 October 2026
 
-*Nolla* is Finnish for zero: zero real names reach the model, zero data retention, zero cloud you
+*Nolla* is Finnish for zero: zero personal data reaches the model, zero data retention, zero cloud you
 do not own.
 
 A self-hosted personal assistant for one person, built on the
@@ -13,11 +13,11 @@ proxy to OpenRouter endpoints with zero data retention (ZDR).
 
 [![ci](https://github.com/ahulkkonen/nolla-assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/ahulkkonen/nolla-assistant/actions/workflows/ci.yml)
 
-![A reply that shows the real names Matti Virtanen and Liisa Korhonen in the user's message and in the reply, with a tooltip: the model saw Pekka Laaksonen](docs/media/masking-screen.png)
+![Your message names Matti Virtanen and Liisa Korhonen; the approved calendar tool ran; the reply shows the real names, with a tooltip: the model saw Anna Mäkinen](docs/media/masking-action.png)
 
-*On your screen: your message and the reply show the real names. A mark tells you what the model saw.*
+*On your screen: your message, the calendar tool that ran and the reply show the real names. A mark tells you what the model saw. The calendar got the real names too; no model request did.*
 
-![The same reply as the model wrote it, with the surrogates Pekka Laaksonen and Anna Mäkinen](docs/media/masking-model.png)
+![The same reply as the model wrote it, with the surrogates Pekka Laaksonen and Anna Mäkinen](docs/media/masking-action-model.png)
 
 *The reply as the model wrote it: realistic surrogates in place of the names.*
 
