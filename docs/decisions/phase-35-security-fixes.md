@@ -39,6 +39,12 @@ Close four small gaps, one commit each:
      nothing, and it has its own rate limit.
    - The OAuth callback needs no exemption. Google redirects to it with a GET
      (`0005-mcp-integrations.md`, "Callback format").
+   - Rule: a route that changes state must not be GET. A request without `Origin` passes the
+     check, and only `SameSite` covers a GET. The OAuth callback is the one exception that OAuth
+     requires; the single-use `state` with PKCE protects it.
+   - `GET /api/export` only reads the job. `GET /api/export/:id/download` changes no state except
+     the one-time removal of the file and its job after a complete response (phase-15 decision 17).
+     Every authenticated GET can also move the session's `lastSeenAt` and expiry.
 3. **A session ends 90 days after its login** (`MAX_AGE` in `apps/server/src/auth/session.ts`).
    The sessions table already has `createdAt`, so no migration. The sliding expiry is capped at
    `createdAt + 90 days` when a session refreshes and at revoke-all. Revoke-all keeps `createdAt`
@@ -52,11 +58,16 @@ Close four small gaps, one commit each:
    the passphrase and the salt, 600,000 rounds (`EXPORT_PBKDF2_ITER`). The 37-byte header is the
    additional data, so a changed header also fails the tag. The 2 GiB input cap is far below the
    GCM limit for one nonce (about 64 GiB).
+   - The header has no round count. Version 2 keeps 600,000 rounds. A change of the rounds needs
+     `EXPORT_VERSION` 3, so that a version-2 file still decrypts with its own count.
    - `openssl enc` refuses AEAD ciphers, so this changes phase-15 decision 13 ("the stock
      `openssl` decrypts it with one command"). `scripts/decrypt-export.mjs` decrypts in the
-     repository with Node and no new dependency. It writes `<zip>.part` (mode 600), checks the tag
-     at the end of the stream, and only then renames the file to the zip. A wrong passphrase or a
-     changed byte removes the part file and writes nothing. The passphrase comes from stdin only;
+     repository with Node and no new dependency. It removes any `<zip>.part`, creates it again with
+     `wx` (mode 600), so a planted symlink is not followed, checks the tag at the end of the stream,
+     and only then renames the file to the zip. A wrong passphrase or a changed byte removes the
+     part file and writes nothing. A zip that appears during the decrypt fails with
+     `DestinationExists`; a file of at most header and tag fails as "not an export file". The
+     script names a wrong passphrase only for a failed tag and prints the error text otherwise. The passphrase comes from stdin only;
      the prompt is shared with `hash-password.mjs` (`scripts/read-secret.mjs`).
    - A version-1 file starts with `Salted__`. The script refuses it with a message that names the
      `openssl` command for it, not a garbage restore. An unknown version byte fails by name.
@@ -75,6 +86,8 @@ Close four small gaps, one commit each:
   90-day cap limits how long the cookie works.
 - The decrypt needs Node and a checkout of this repository on the machine that opens the file.
 - A killed decrypt leaves `<zip>.part` with plain bytes (mode 600) on the owner's machine.
+- The target check before the rename is not atomic: a file that appears between the check and the
+  rename is replaced. `link()` would close it but fails on file systems without hard links.
 
 ## Status
 
