@@ -5,7 +5,7 @@ This is the long form of the README. [`README.md`](../README.md) is the short fo
 **A self-hosted personal assistant with Finnish PII pseudonymization and zero-data-retention model
 egress.**
 
-Aleksi Hulkkonen · built with Claude Code in seven days, 25 to 31 October 2026
+Aleksi Hulkkonen · built with Claude Code in about 62 active hours
 
 ![Your message names Matti Virtanen and Liisa Korhonen; the approved calendar tool ran; the reply shows the real names, with a tooltip: the model saw Anna Mäkinen](media/masking-action.png)
 
@@ -148,10 +148,23 @@ section 7): a cream canvas, serif replies in one centered column, ink for the on
 and controls that stay quiet until you need them. The UI is in Finnish. The names and data in these
 shots are synthetic.
 
+![The same chat with a line chart of electricity prices at three widths: a 390 px phone, a 1024 px window with the sidebar, and a 1440 px desktop](media/sizes.png)
+
+*One chat at 390, 1024 and 1440 px. Every screen is tested at these widths, in light and dark.*
+
+![Four 390 px phone screens: a chat with a web_search row and two sources, the drawer with the topic group Verot, the settings sheet with theme and privacy switches, and the Files screen with folders and a 10 GB quota bar](media/phone.png)
+
+*On a 390 px phone: a chat with its web sources, topics in the drawer, settings and files.*
+
 ![A reply streams in: the waiting line shows queued, thinking and writing times, then the reply appears with a caret on its last character](media/streaming.gif)
 
 A reply streams in. The waiting line counts the queue, the thinking and the writing, and the caret
 stays on the last character.
+
+![Four details of a chat at 1440 px: a reply with an inline line chart, an open thinking row, an expanded read tool row with its input and result, and a write approval card with reject and approve buttons](media/thread.png)
+
+*A chart inline in the reply, the model's thinking, a tool call with its input and result, and an
+approval card.*
 
 ![An approval card for profile_edit with a diff of the assistant's prompt](media/approval-diff.png)
 
@@ -178,6 +191,10 @@ it shows real values.*
 
 *Memory is a list of claims with evidence quotes. A proposed claim waits for your review.*
 
+![Four 390 px phone screens: the lower half of settings with speech, notifications, Google Workspace and data export, the output mode Luottamus in its editor, two signed-in devices with sign-out buttons, and the full export dialog that asks for a passphrase](media/settings.png)
+
+*Settings, an output mode in its editor, your signed-in devices and the encrypted full export.*
+
 ![Nimisuoja, the vault screen: real values, their type and their surrogates, and one detection to confirm](media/vault.png)
 
 *The vault screen lists each real value and its surrogate. A weak detection stays masked until you
@@ -195,18 +212,35 @@ confirm it.*
 
 ## How it was built
 
-One person and Claude Code, in more than 370 commits.
+One person and one Claude Code session, in over 430 commits. [`workflow.md`](workflow.md) is the
+full workflow: the roles and their models, the review and UI loops, the gates, how the person
+worked, what to change, and how the figures below were measured.
+
+| Measure | Figure |
+|---|---|
+| Active time (a gap over 30 min ends a block) | 61.8 h. With a 15 or 60 min gap: 43.9 h or 72.3 h |
+| Claude Code session counter | 76.2 h session time, 37.3 h API time |
+| Human messages and presence | 84 messages (9 with a screenshot), at least 13.3 h present |
+| Active time with no new instruction for 10 min | 79 % |
+| Subagent runs | 177: Opus 5.5 116 (90.2 h), Sonnet 5.5 59 (2.9 h), Haiku 5.5 2. Up to 8 at once |
+| Reviewer passes | 44 diff reviews (43 on Sonnet), 5 to 6 blind screenshot rounds on each large UI phase |
+| Output | Over 430 commits, 43 decision records, about 62,500 lines of TypeScript and 5,300 of Python |
 
 - **A plan before code.** [`docs/plan.md`](plan.md) fixed the invariants, the architecture,
   the protocol, the PII and memory designs, the UI spec, and the phases with their gates before the
   first commit.
-- **Claude Code as the orchestrator.** It held the plan, cut each phase into task cards, gave the
-  architecture-bearing tasks to Opus and the well-specified leaf tasks to Sonnet, and merged.
-- **Review before every merge.** A separate reviewer checked each change against its acceptance
-  test, the invariants and security. Review fixes land as their own commits before the merge, and
-  the commits keep their `Co-Authored-By: Claude` trailers.
+- **One conductor, many agents.** The conductor (Fable 5.1) held the plan and never called Edit. An
+  Opus architect opened each phase with a decision record and task cards. Builders took one card or
+  package each, Opus for the hard cards and Sonnet for the mechanical ones, up to eight at once.
+- **Review before every commit.** A reviewer checked each diff against its card, the invariants and
+  security. A fix agent closed every blocking and should-fix finding before the commit, and the
+  commits keep their `Co-Authored-By: Claude` trailers.
 - **A blind, scored screenshot review** of every UI change, at three widths in light and dark.
-- **29 phases done, numbered to 31** (phase 18 deferred, 29 reserved), with 39 decision records in
+- **Two deep research passes in Claude Web**, run by the person and pasted into
+  [0006](decisions/0006-ui-reference.md), [0007](decisions/0007-memory-and-search-research.md) and
+  [0008](decisions/0008-viz-research.md): the UI benchmark against Claude Web and ChatGPT, memory,
+  search and charts.
+- **33 phases done, numbered to 35** (phase 18 deferred, 29 reserved), with 43 decision records in
   [`docs/decisions/`](decisions/README.md): one per finished phase, plus ten for cross-cutting
   decisions such as the Pi contract and the Finnish PII stack. Each newer record lists the review
   findings that were left as they are, on purpose.
@@ -224,10 +258,10 @@ with scripted turns, and fakes stand in for `pseudo-svc` and the sandbox broker.
 
 | Suite | What it checks | Size or result |
 |---|---|---|
-| Vitest | the real server driven over its socket, the web app, the protocol, the database, the Pi extensions, MCP and the fake LLM | 572 tests: server 259, web 182, protocol 57, Pi extensions 49, mcp 14, fake-llm 7, db 4; one server test (OCR) skips without `tesseract` |
+| Vitest | the real server driven over its socket, the web app, the protocol, the database, the Pi extensions, MCP and the fake LLM | 582 tests: server 268, web 182, protocol 58, Pi extensions 49, mcp 14, fake-llm 7, db 4; one server test (OCR) skips without `tesseract` |
 | [`tests/contract`](../tests/contract/src/hooks.test.ts) | the hook payloads and session behaviour of the pinned Pi version | 28 tests |
 | [`tests/masked-only`](../tests/masked-only/src/masked-only.test.ts) | no real value in sessions, model requests or the server log | a 10-turn tool conversation and a restart |
-| Playwright `chromium` ([flows](../tests/e2e/src/flows.spec.ts), [screens](../tests/e2e/src/screens.spec.ts)) | user flows, and every screen at 390, 1024 and 1440 px, light and dark, with strict axe checks | 86 flows and 582 screen tests: 658 pass, 10 skip by design |
+| Playwright `chromium` ([flows](../tests/e2e/src/flows.spec.ts), [screens](../tests/e2e/src/screens.spec.ts)) | user flows, and every screen at 390, 1024 and 1440 px, light and dark, with strict axe checks | 89 flows and 582 screen tests: 671 in all, 10 skip by design |
 | [`tests/pii`](../tests/pii/README.md) | recall and precision gates on 562 labelled Finnish texts ([last run](../tests/pii/last-run.json)) | ID numbers, IBANs, phones, emails, postcodes, addresses: 100 % recall. Names: 0.995 recall (1.0 for names the vault knows, 0.993 for first-sight names), 0.991 precision. Plates: 0.714 recall, no gate |
 | [`tests/memory-eval`](../tests/memory-eval/src/run.ts) | 100 questions over 30 synthetic Finnish chats, with a real `pseudo-svc` and model ([result](../tests/memory-eval/results/2026-10-27-real.json)) | gold evidence reaches the model: 0.988; answer accuracy 0.72 to 0.82 over six runs |
 | [`tests/egress`](../tests/egress/src/egress.test.ts), [`tests/sandbox`](../tests/sandbox/src/sandbox.test.ts) | LiteLLM and Presidio against a mock OpenRouter; the broker with real containers (Docker) | 25 and 19 tests |
