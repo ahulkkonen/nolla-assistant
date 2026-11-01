@@ -68,7 +68,7 @@ function holdOf(s: string, surrogates: string[]) {
 
 /** `handle` result for an answered pending item (the real sidecar answers 409). */
 const CONFLICT = Symbol('conflict');
-/** `handle` result for a seed value that is not valid for its kind (the real sidecar answers 422). */
+/** `handle` result for a seed value not valid for its kind (the real sidecar answers 422). */
 const INVALID = Symbol('invalid');
 
 /** Upper case, as the real sidecar sends kinds. */
@@ -79,13 +79,16 @@ type PendingSeed = Omit<VaultPendingRow, 'id' | 'session_id' | 'reason' | 'entit
 /**
  * Test double for `pseudo-svc` (contract in docs/decisions/phase-3.md). `dictionary` maps real
  * values to surrogates; entity ids are 1-based dictionary positions. Offsets are UTF-16 code units
- * (native JS string indexes), as the contract requires. `passthrough` makes `/mask`
- * return its input unchanged (for seeding a leak); `scanFail` makes `/scan` answer 404. Vault entities appear on their first mask (or
- * seed; a seeded value that is not in `dictionary` masks from then on); `pending` fills the pending lane. `learn` adds every unknown email and `Name Surname`
- * pair seen by `/mask` to the dictionary with a generated surrogate (digits keep surrogates from
- * matching again). `collide` lists texts that `/mask` with `user_input` reports as collisions
- * (phase 12) until the pending row is answered: accept adds the text with a new surrogate, reject
- * leaves it as it is. `unresolved` lists surrogate-like forms that `/unmask` reports as unresolved.
+ * (native JS string indexes), as the contract requires. `passthrough` makes `/mask` return its
+ * input unchanged (for seeding a leak); `scanFail` makes `/scan` answer 404. Vault entities appear
+ * on their first mask (or seed; a seeded value that is not in `dictionary` masks from then on);
+ * `pending` fills the pending lane. `learn` adds every unknown email and `Name Surname` pair seen
+ * by `/mask` to the dictionary with a generated surrogate (digits keep surrogates from matching
+ * again). `collide` lists texts that `/mask` with `user_input` reports as collisions (phase 12)
+ * until the pending row is answered: accept adds the text with a new surrogate, reject leaves it as
+ * it is. `unresolved` lists surrogate-like forms that `/unmask` reports as unresolved.
+ * `/vault/seed` checks only that a PERSON starts with a capital letter (422 otherwise); it does not
+ * check the code kinds.
  */
 export async function startFakeSidecar(
   seed: Record<string, string>,

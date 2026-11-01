@@ -513,6 +513,7 @@ test.describe('vault', () => {
     const form = page.getByRole('form', { name: 'Lisää nimi tai tunnus' });
     await form.getByLabel('Lisättävä arvo').fill('Late');
     await form.getByRole('button', { name: 'Lisää', exact: true }).click();
+    // The field empties when the fresh vault.state has the entity.
     await expect(page.locator('tbody tr').filter({ hasText: 'Late' })).toHaveCount(1);
     await expect(form.getByLabel('Lisättävä arvo')).toHaveValue('');
 
@@ -523,6 +524,19 @@ test.describe('vault', () => {
     const body = JSON.stringify(app.llm.requests.map((r) => r.body));
     expect(body).toContain('tulee huomenna');
     expect(body).not.toContain('Late');
+  });
+
+  test('a value the sidecar refuses keeps the text for a fix', async ({ app, page }) => {
+    await app.login(page);
+    await openVault(page);
+    const form = page.getByRole('form', { name: 'Lisää nimi tai tunnus' });
+    const field = form.getByLabel('Lisättävä arvo');
+    await field.fill('late'); // a name starts with a capital letter: 422
+    await form.getByRole('button', { name: 'Lisää', exact: true }).click();
+    await expect(page.getByText('Virheellinen arvo.')).toBeVisible();
+    await expect(field).toHaveValue('late');
+    await expect(form.getByRole('button', { name: 'Lisää', exact: true })).toBeEnabled();
+    await expect(page.locator('tbody tr').filter({ hasText: 'late' })).toHaveCount(0);
   });
 });
 
