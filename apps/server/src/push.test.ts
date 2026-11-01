@@ -52,6 +52,9 @@ async function fakePushService() {
   return { url: `${origin}/push/abc`, hits, state };
 }
 
+// A GitHub runner needs over a second for the first encrypted push; vi.waitFor defaults to 1 s.
+const SLOW_RUNNER = { timeout: 10_000 };
+
 test('push: settled and approval notify unfocused chats; 410 drops the row', {
   timeout: 60_000,
 }, async () => {
@@ -80,7 +83,7 @@ test('push: settled and approval notify unfocused chats; 410 drops the row', {
   // No socket has the chat focused: one encrypted POST with a VAPID header.
   c.send({ type: 'user.message', chatId: chat.id, text: 'Moi' });
   await c.idle();
-  await vi.waitFor(() => expect(fake.hits).toHaveLength(1));
+  await vi.waitFor(() => expect(fake.hits).toHaveLength(1), SLOW_RUNNER);
   const hit = fake.hits[0];
   expect(String(hit?.headers.authorization)).toMatch(/^vapid t=.+, k=/);
   expect(hit?.headers['content-encoding']).toBe('aes128gcm');
@@ -103,7 +106,10 @@ test('push: settled and approval notify unfocused chats; 410 drops the row', {
   fake.state.status = 410;
   c.send({ type: 'user.message', chatId: chat.id, text: 'Moi' });
   await c.idle();
-  await vi.waitFor(() => expect(srv.db.select().from(pushSubscriptions).all()).toHaveLength(0));
+  await vi.waitFor(
+    () => expect(srv.db.select().from(pushSubscriptions).all()).toHaveLength(0),
+    SLOW_RUNNER,
+  );
   expect(fake.hits).toHaveLength(2);
 
   // approval.request pushes with kind approval.
@@ -112,7 +118,7 @@ test('push: settled and approval notify unfocused chats; 410 drops the row', {
   c.send({ type: 'user.message', chatId: chat.id, text: 'Kirjoita' });
   const req = await c.next('approval.request');
   expect(req.callId).toBeTruthy();
-  await vi.waitFor(() => expect(fake.hits).toHaveLength(3));
+  await vi.waitFor(() => expect(fake.hits).toHaveLength(3), SLOW_RUNNER);
   expect(payloads().at(-1)).toEqual({
     title: 'Uusi keskustelu',
     chatId: chat.id,
