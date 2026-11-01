@@ -2,15 +2,12 @@
 
 Aleksi Hulkkonen · built with Claude Code in about 62 active hours
 
-*Nolla* is Finnish for zero: zero personal data reaches the model, zero data retention, zero cloud you
-do not own. The test corpus measures 99.5 % name recall on 562 Finnish texts. A doubtful name is
-masked and queued for your decision. A name you add once stays known.
+**Self-hosted personal assistant with Finnish PII pseudonymization and a UI built for the phone.**
 
-A self-hosted personal assistant for one person, built on the
-[Pi](https://www.npmjs.com/package/@earendil-works/pi-coding-agent) agent runtime. You talk to it
-in Finnish from a phone or a desktop browser. Before any model sees a message, its names, ID
-numbers, addresses and emails become realistic surrogates. All model traffic leaves through one
-proxy to OpenRouter endpoints with zero data retention (ZDR).
+*Nolla* is Finnish for zero: zero personal data reaches the model, zero data retention, zero cloud
+you do not own. Names, ID numbers, addresses and emails become realistic surrogates before any
+model call: 99.5 % name recall on 562 Finnish texts. One proxy, OpenRouter zero-data-retention
+endpoints only, on the Pi agent runtime.
 
 [![ci](https://github.com/ahulkkonen/nolla-assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/ahulkkonen/nolla-assistant/actions/workflows/ci.yml)
 
@@ -24,29 +21,26 @@ proxy to OpenRouter endpoints with zero data retention (ZDR).
 
 ## Why
 
-I built it for four things that I did not find together in one open-source assistant:
-
-- **A modern web UI with a smooth phone experience.** Claude Web is the reference for the thread,
-  colours and type. ChatGPT is the reference for the composer and inline blocks
-  ([UI research](docs/decisions/0006-ui-reference.md)). The open-source assistants that I tried were
-  not at that level, mainly on a phone. A reviewer that never sees the code scores every screen 1 to
-  5 on six criteria against that bar ([brief and protocol](docs/decisions/phase-9-ui.md)).
-- **Finnish pseudonymization of personally identifiable information (PII).** This is hard. Finnish names inflect (`Virtanen` becomes
-  `Virtaselle` in "to Virtanen"), and many common surnames are ordinary words (`Koski` is "rapids",
-  `Salmi` is "strait"). Each surrogate inflects like the real name
+- **A web UI that holds up on a phone.** Claude Web sets the thread, colours and type; ChatGPT the
+  composer and inline blocks ([0006](docs/decisions/0006-ui-reference.md)). A blind reviewer scores
+  every screen ([phase 9](docs/decisions/phase-9-ui.md)).
+- **Finnish PII pseudonymization.** Names inflect (`Virtanen`, `Virtaselle`) and common surnames are
+  ordinary words (`Koski`, "rapids"). Surrogates inflect the same way
   ([phase 12](docs/decisions/phase-12-pseudo.md), [phase 33](docs/decisions/phase-33-recall.md)).
-- **A self-hosted, zero-data-retention path to frontier models.** It runs as one Docker Compose
-  stack on a 4 vCPU, 8 GB VPS ([plan, section 3](docs/plan.md#3-architecture-and-repository-layout)). Only the LiteLLM proxy holds
-  the keys, and it sends only to OpenRouter ZDR endpoints ([0004](docs/decisions/0004-litellm-openrouter-zdr.md)).
-- **The Pi agent harness.** Pi runs the agent loop. It has subagents
-  ([`pi-ext-subagents`](packages/pi-ext-subagents/src)), MCP tools for Google Workspace
-  ([0005](docs/decisions/0005-mcp-integrations.md)) and skills that run in throwaway containers
-  ([`skills/`](skills/README.md), none vendored yet).
+- **A self-hosted ZDR path to frontier models.** One Docker Compose stack on a 4 vCPU, 8 GB VPS
+  ([plan, section 3](docs/plan.md#3-architecture-and-repository-layout)). Only LiteLLM holds keys, and
+  it sends to OpenRouter ZDR endpoints only ([0004](docs/decisions/0004-litellm-openrouter-zdr.md)).
+- **Pi runs the agent loop.** Subagents ([`pi-ext-subagents`](packages/pi-ext-subagents/src)),
+  Google Workspace through MCP ([0005](docs/decisions/0005-mcp-integrations.md)), skills in
+  throwaway containers ([`skills/`](skills/README.md)).
 
 <p align="center"><img src="docs/media/streaming.gif" width="480" alt="A reply streams in: the waiting line shows queued, thinking and writing times, then the reply appears with a caret on its last character"></p>
 <p align="center"><sub>A reply streams in. The waiting line counts the queue, the thinking and the writing, and the caret stays on the last character.</sub></p>
 
 ## What it does
+
+One person, one box. You talk to it in Finnish from a phone or a desktop browser, and it answers in
+your language.
 
 <table>
 <tr><td><img src="docs/media/sizes.png" alt="The same chat with a line chart of electricity prices at three widths: a 390 px phone, a 1024 px window with the sidebar, and a 1440 px desktop"></td></tr>
