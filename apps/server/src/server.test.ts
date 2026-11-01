@@ -228,6 +228,36 @@ test('auth: on https the session cookie is __Host- and Secure', async () => {
   expect(out.headers.getSetCookie()[0]).toMatch(/^__Host-pa_session=;.*Secure/);
 });
 
+test('a non-GET request with a foreign Origin gets 403; own or no Origin passes', async () => {
+  const { config, run } = await boot([]);
+  await run();
+  const { cookie } = await login(config.port);
+  const post = (path: string, origin?: string) =>
+    api(config.port, path, {
+      method: 'POST',
+      headers: { cookie, ...(origin ? { origin } : {}) },
+    }).then((r) => r.status);
+  const evil = 'https://evil.example.invalid';
+  expect(await post('/api/auth/sessions/revoke-all', evil)).toBe(403);
+  expect(await post('/api/auth/logout', evil)).toBe(403);
+  expect((await api(config.port, '/api/auth/me', { headers: { cookie } })).status).toBe(200);
+  expect(
+    (await api(config.port, '/api/auth/me', { headers: { cookie, origin: evil } })).status,
+  ).toBe(200);
+  // The CSP report route has no session and stays open.
+  expect(await post('/api/csp-report', evil)).not.toBe(403);
+  expect(await post('/api/auth/logout', config.authOrigin)).toBe(204);
+  const again = await login(config.port);
+  expect(
+    (
+      await api(config.port, '/api/auth/logout', {
+        method: 'POST',
+        headers: { cookie: again.cookie },
+      })
+    ).status,
+  ).toBe(204);
+});
+
 test('the request log has no query string', async () => {
   const { config, run, logs } = await boot([], { LOG_LEVEL: 'info' });
   await run();
