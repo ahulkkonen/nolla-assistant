@@ -40,7 +40,7 @@ proxy to OpenRouter endpoints with zero data retention (ZDR).
 
 - **Masked-only sessions:** [`pi-ext-pseudo`](packages/pi-ext-pseudo/src/index.ts) masks messages and tool results, scans the context before each model call, and stops the turn if [`pseudo-svc`](services/pseudo-svc) is down.
 - **Checked end to end:** [`tests/masked-only`](tests/masked-only/src/masked-only.test.ts) runs a 10-turn tool conversation and a restart, then searches sessions, model requests and the server log for each real value.
-- **Finnish detection, measured** on 554 labelled texts: ID numbers, IBANs and phones at 100 % recall, names at 0.986 recall and 0.991 precision ([last run](tests/pii/last-run.json)).
+- **Finnish detection, measured** on 559 labelled texts: ID numbers, IBANs, phones, emails and addresses at 100 % recall, names at 0.991 recall and 0.991 precision (vault-known names 100 %, first sight 0.986) ([last run](tests/pii/last-run.json)).
 - **One egress URL:** only LiteLLM holds the OpenRouter keys, and [`zdr_guard.py`](infra/litellm/zdr_guard.py) pins each route to its provider block.
 - **Approval cards that code enforces:** `write`, `edit`, `bash` and the harness tools wait in a Pi hook for your answer ([`approval.ts`](apps/server/src/approval.ts)).
 - **Sandboxed commands, guarded fetches:** `bash` runs in throwaway containers with no network by default ([`index.ts`](services/sandbox-broker/src/index.ts)), and `fetch_url` refuses private addresses ([`net.ts`](services/sandbox-broker/src/net.ts)).
