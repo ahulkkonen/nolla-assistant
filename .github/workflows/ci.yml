@@ -16,8 +16,9 @@ permissions:
   contents: read
 
 env:
-  # The e5 embedding model is downloaded once per cache key, then read from here.
-  MODELS_DIR: ${{ github.workspace }}/.models
+  # The e5 embedding model is downloaded once per cache key, then read from here. Outside the
+  # workspace, so Biome and the other tools never scan it.
+  MODELS_DIR: ${{ runner.temp }}/pa-models
 
 jobs:
   node:
@@ -39,7 +40,7 @@ jobs:
       - name: Cache the embedding model
         uses: actions/cache@v4
         with:
-          path: .models
+          path: ${{ runner.temp }}/pa-models
           key: models-multilingual-e5-small-q8
 
       - run: node scripts/download-models.mjs "$MODELS_DIR"
