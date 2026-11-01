@@ -128,9 +128,14 @@ export function pushService({
             TTL,
             topic,
           });
+          // web-push sets Content-Length itself; Node 22's fetch rejects a caller-set one
+          // ("invalid content-length header"). fetch computes it from the body.
+          const headers = Object.fromEntries(
+            Object.entries(req.headers).filter(([k]) => k.toLowerCase() !== 'content-length'),
+          );
           const res = await fetch(req.endpoint, {
             method: req.method,
-            headers: req.headers,
+            headers,
             body: req.body as Uint8Array<ArrayBuffer>,
             signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
           });
