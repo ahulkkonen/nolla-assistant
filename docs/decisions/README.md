@@ -39,4 +39,5 @@ The build plan is `docs/plan.md`. Section numbers in records refer to it.
 - `phase-31-publication.md`: license, CI, the history rewrite, supply-chain settings, synthetic names.
 - `phase-32-readme.md`: the short and long README, the media, the threat model, the open name.
 - `phase-33-recall.md`: detection recall: lower-case streets with a house number mid-phrase, a first name with an inflected surname that has a place reading, nicknames through the vault, the corpus gate at the measured floor.
+- `phase-34-vault-add.md`: a lone lower-case form of a frequent `-nen` surname goes to the pending lane, the `vault.add` message and the add form on the vault screen.
 - `../threat-model.md`: the threat-model note of plan §14 (assets, trust boundaries, attackers, controls, residual risks). It lives outside this folder because it is not a decision record.

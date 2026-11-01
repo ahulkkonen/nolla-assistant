@@ -140,6 +140,7 @@ Start here for a topic. Each entry says what the document answers.
 | `docs/decisions/0001-pi-1.3.0-contract.md`, `0009-pi-1.4.0.md` | The Pi API surface the code depends on; what changed in 1.4.0 |
 | `docs/decisions/0002-workflow-and-pins.md` | Git workflow without a remote, the 7-day pin rule, TypeScript version choice |
 | `docs/decisions/0003-finnish-pii-stack.md`, `phase-12-pseudo.md`, `phase-33-recall.md` | How Finnish names, addresses and emails are recognised and replaced; surrogates, collisions, the corpus gate |
+| `docs/decisions/phase-34-vault-add.md` | Frequent lone surnames in the pending lane; how the owner adds a nickname or a value to the vault (`vault.add`) |
 | `docs/decisions/0004-litellm-openrouter-zdr.md`, `phase-10-models.md`, `phase-22-quick-wins.md` | LiteLLM config, ZDR enforcement, the per-chat ZDR override, model error reporting, the ZDR refusal classifier |
 | `docs/decisions/0005-mcp-integrations.md` | Google Workspace through MCP |
 | `docs/decisions/phase-9-ui.md`, `0006-ui-reference.md` | Design brief with exact values, review protocol, UI reference research |
