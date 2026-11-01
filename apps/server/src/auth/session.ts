@@ -124,12 +124,14 @@ export function revokeAll(db: Db, userId: string, currentId: string) {
     const rows = tx.select().from(authSessions).where(own).all();
     const cur = rows.find((r) => r.id === currentId);
     if (!cur) throw new Error('current session missing');
+    const created = Date.parse(cur.createdAt);
     tx.delete(authSessions).where(own).run();
     tx.insert(authSessions)
       .values({
         ...cur,
         id,
-        expiresAt: new Date(expiry(Date.parse(cur.createdAt), now)).toISOString(),
+        // An unparsable `createdAt` expires the row now: fail closed, never a RangeError.
+        expiresAt: new Date(Number.isFinite(created) ? expiry(created, now) : now).toISOString(),
         lastSeenAt: new Date(now).toISOString(),
       })
       .run();
@@ -152,8 +154,9 @@ export function getUser(
   const now = Date.now();
   const created = Date.parse(row.createdAt);
   const left = Date.parse(row.expiresAt) - now;
-  // The age check also ends a row whose expiry was set before the cap existed.
-  if (left <= 0 || now - created >= MAX_AGE) {
+  // The age check also ends a row whose expiry was set before the cap existed. Written as `!(x)`
+  // so that an unparsable date (NaN) fails closed.
+  if (!(left > 0) || !(now - created < MAX_AGE)) {
     db.delete(authSessions).where(eq(authSessions.id, id)).run();
     return null;
   }

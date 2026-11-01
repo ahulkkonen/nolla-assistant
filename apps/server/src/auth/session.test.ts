@@ -51,3 +51,19 @@ test('a row from before the cap with a later expiry ends at the cap', () => {
   expect(getUser(db, { cookies: { pa_session: token } } as never, false)).toBeNull();
   sqlite.close();
 });
+
+test('an unparsable createdAt fails closed; revoke-all does not throw on it', () => {
+  const { db, sqlite } = openDb(join(tempDir('pa-session-'), 'app.db'));
+  const bad = { createdAt: 'ei päivämäärä' };
+  const token = createSession(db, 'u1');
+  db.update(authSessions).set(bad).run();
+  expect(getUser(db, { cookies: { pa_session: token } } as never, false)).toBeNull();
+  expect(db.select().from(authSessions).all()).toHaveLength(0);
+  createSession(db, 'u1');
+  db.update(authSessions).set(bad).run();
+  const id = db.select().from(authSessions).all()[0]?.id ?? '';
+  expect(() => revokeAll(db, 'u1', id)).not.toThrow();
+  const row = db.select().from(authSessions).all()[0];
+  expect(Date.parse(row?.expiresAt ?? '')).toBeLessThanOrEqual(Date.now());
+  sqlite.close();
+});
