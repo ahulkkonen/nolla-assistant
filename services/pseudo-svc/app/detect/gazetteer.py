@@ -224,14 +224,16 @@ def surname_shaped(word: str, minimum: int = LONE_SURNAME_MIN) -> str | None:
 
 def frequent_surname(text: str, m) -> str | None:
     """The -nen surname with at least FREQUENT_SURNAME_MIN holders that the lone lower-case ordinary word m is an
-    inflected form of (hämäläistä -> Hämäläinen), when no first name in the nominative is the word before it
-    (phase-33 decision 2 has that case). Adjectives that are no such surname (punaista, iloiseksi, suomalaista
-    with 3,114 holders) give None. Only -nen: koski, mäki, laine and saari are far more often ordinary words."""
-    prev = text[:m.start()].split()[-1:]
-    if prev and cap(prev[0].strip(".,:;!?()\"'")) in names()["first"]:
-        return None
+    inflected form of (hämäläistä -> Hämäläinen), when the word before it is no first name in any case (phase-33
+    decision 2 and the pair rule have Mika hämäläistä; Liisan hämäläistä is no lone word either). Adjectives that
+    are no such surname (punaista, iloiseksi, suomalaista with 3,114 holders) give None. Only -nen: koski, mäki,
+    laine and saari are far more often ordinary words."""
     last = surname_shaped(cap(m.group(0)), FREQUENT_SURNAME_MIN)
-    return last if last and last.endswith("nen") else None
+    if not (last and last.endswith("nen")):
+        return None
+    prev = text[max(0, m.start() - 40):m.start()].split()[-1:]  # bounded: this runs on every ordinary word
+    w = cap(prev[0].strip(".,:;!?()\"'")) if prev else ""
+    return None if w and any(k == "first" for _, k in lemmas(w)) else last
 
 
 def lower_names(text: str) -> list[Candidate]:

@@ -597,9 +597,27 @@ def test_lone_lower_case_frequent_surname_goes_to_the_pending_lane(vault):
     # adjectives that are no such surname (Suomalainen has 3,114 holders); a nominative stays an adjective
     for text in ["ostin punaista lankaa", "tehdään suomalaista ruokaa", "koira tuli iloiseksi", "hän on hämäläinen"]:
         assert mask(vault, text)[1] == [], text
-    # after a first name the pair rules decide (phase-33 decision 2), not this one
-    _, spans = mask(vault, "Mika hämäläistä odotellaan")
-    assert [(s["real_form"], s["pending"]) for s in spans] == [("Mika hämäläistä", False)]
+    # after a first name in any case the pair rules decide (phase-33 decision 2), not this one
+    for text, real in [("Mika hämäläistä odotellaan", "Mika hämäläistä"),
+                       ("vein Liisan hämäläistä katsomaan", "Liisan hämäläistä")]:
+        _, spans = mask(vault, text)
+        assert [(s["real_form"], s["pending"]) for s in spans] == [(real, False)], text
+
+
+@pytest.mark.skipif(forms.omorfi() is None, reason="needs Omorfi")
+def test_frequent_surname_rule_with_omorfi_alone(monkeypatch):
+    # phase-34 decision 8: without Voikko, Omorfi alone tells the ordinary word (common_word, known_name)
+    cached = (gazetteer.common_word, gazetteer.known_name, gazetteer.lemmas, gazetteer.counted)
+    for f in cached:
+        f.cache_clear()
+    monkeypatch.setattr(gazetteer, "_voikko", lambda: None)
+    try:
+        got = [(c.surface, c.canonical, c.score) for c in gazetteer.lower_names("en oo nähny hämäläistä koko viikkona")]
+        assert got == [("hämäläistä", "Hämäläinen", 0.5)]
+        assert gazetteer.lower_names("ostin punaista lankaa") == []
+    finally:
+        for f in cached:
+            f.cache_clear()
 
 
 def test_nickname_in_the_vault_is_masked(vault):

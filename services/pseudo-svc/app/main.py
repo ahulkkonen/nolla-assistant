@@ -196,7 +196,9 @@ def pending(pending_id: int, req: m.PendingReq):
     if req.action == "confirm" and e:
         v.set_fields(req.user_id, e["id"], confirmed=1)  # later low-score mentions are not queued again
     if req.action == "dismiss" and e:
-        v.add_never_detect(req.user_id, e["kind"], e["canonical"])
+        # a lower-case hit (hämäläistä, liisa savolaiselle) says the word is no name, not that the person is none:
+        # the key is the lower-case canonical, which resolve() matches only on lower-case text (phase-34 decision 7)
+        v.add_never_detect(req.user_id, e["kind"], e["canonical"].lower() if p["text"].islower() else e["canonical"])
     if req.action == "accept":
         S.accept_collision(v, req.user_id, p)
     # reject: the row's status alone makes later input with this text that entity's surrogate again
