@@ -1,6 +1,6 @@
 import { createCipheriv, createDecipheriv, pbkdf2, randomBytes } from 'node:crypto';
 import { createWriteStream } from 'node:fs';
-import { open, rename, rm } from 'node:fs/promises';
+import { lstat, open, rename, rm } from 'node:fs/promises';
 import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { promisify } from 'node:util';
@@ -117,6 +117,10 @@ export async function* zip(
 
 /** Export file header (phase 35): magic, version byte, 16-byte salt, 12-byte GCM nonce. */
 const MAGIC = Buffer.from('PAEXPORT');
+/**
+ * The format version. The header has no round count: version 2 always means
+ * `EXPORT_PBKDF2_ITER` = 600,000 rounds. A change of the rounds needs version 3.
+ */
 export const EXPORT_VERSION = 2;
 const HEAD = MAGIC.length + 1 + 16 + 12;
 const TAG = 16;
@@ -125,6 +129,8 @@ const OPENSSL_MAGIC = 'Salted__';
 
 /** A file that is not a version-2 export; the message says what it is. */
 export class ExportFormatError extends Error {}
+/** The decrypt target appeared while the decrypt ran; the plain bytes are not moved over it. */
+export class DestinationExists extends Error {}
 
 const exportKey = (passphrase: string, salt: Buffer) =>
   promisify(pbkdf2)(passphrase, salt, EXPORT_PBKDF2_ITER, 32, 'sha256');
@@ -169,7 +175,7 @@ export async function exportDecrypt(src: string, dst: string, passphrase: string
       throw new ExportFormatError(
         `version 1 file (AES-256-CBC): openssl enc -d -aes-256-cbc -pbkdf2 -iter ${EXPORT_PBKDF2_ITER} -md sha256`,
       );
-    if (size < HEAD + TAG || !head.subarray(0, MAGIC.length).equals(MAGIC))
+    if (size <= HEAD + TAG || !head.subarray(0, MAGIC.length).equals(MAGIC))
       throw new ExportFormatError('not an export file');
     if (head[MAGIC.length] !== EXPORT_VERSION)
       throw new ExportFormatError(`unknown export version ${head[MAGIC.length]}`);
@@ -183,12 +189,23 @@ export async function exportDecrypt(src: string, dst: string, passphrase: string
     );
     d.setAAD(head).setAuthTag(tag);
     const part = `${dst}.part`;
+    // `wx` after the removal: a symlink planted at the part path is never followed.
+    await rm(part, { force: true });
     try {
       await pipeline(
         fh.createReadStream({ start: HEAD, end: size - TAG - 1, autoClose: false }),
         d,
-        createWriteStream(part, { mode: 0o600 }),
+        createWriteStream(part, { mode: 0o600, flags: 'wx' }),
       );
+      // ponytail: check, then rename; a file that appears in between is replaced. link() would close
+      // it but fails on file systems without hard links.
+      if (
+        await lstat(dst).then(
+          () => true,
+          () => false,
+        )
+      )
+        throw new DestinationExists(`${dst} exists`);
       await rename(part, dst);
     } catch (err) {
       await rm(part, { force: true });

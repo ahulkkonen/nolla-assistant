@@ -16,6 +16,7 @@ import { type AttachmentRef, ChatExport, type ExportJob } from '@pa/protocol';
 import { afterEach, expect, test } from 'vitest';
 import { api, bootChat, bootPseudo, login, runCleanups, tempDir } from './test-utils.ts';
 import {
+  DestinationExists,
   EXPORT_VERSION,
   ExportFormatError,
   exportDecrypt,
@@ -140,6 +141,32 @@ test('encrypt: round trip; a flipped byte, a wrong passphrase or a version-1 fil
   const v9 = Buffer.from(file);
   v9[8] = 9;
   expect(((await fails(v9)) as Error).message).toBe('unknown export version 9');
+});
+
+test('decrypt: a planted part symlink is not followed; an existing target or a short file fails', {
+  timeout: 20_000,
+}, async () => {
+  const plain = Buffer.from('synteettinen sisältö');
+  const file = await buffer(Readable.from([plain]).pipe(await exportEncrypt('oikein hevonen')));
+  const dir = tempDir('pa-dec-');
+  const src = join(dir, 'x.zip.enc');
+  const dst = join(dir, 'x.zip');
+  writeFileSync(src, file);
+  writeFileSync(join(dir, 'kohde.txt'), 'alkuperäinen');
+  symlinkSync(join(dir, 'kohde.txt'), `${dst}.part`);
+  await exportDecrypt(src, dst, 'oikein hevonen');
+  expect(readFileSync(join(dir, 'kohde.txt'), 'utf8')).toBe('alkuperäinen');
+  expect(readFileSync(dst).equals(plain)).toBe(true);
+  // The target is there at the check: a named error, the target unchanged, no part file left.
+  writeFileSync(dst, 'olemassa');
+  await expect(exportDecrypt(src, dst, 'oikein hevonen')).rejects.toBeInstanceOf(DestinationExists);
+  expect(readFileSync(dst, 'utf8')).toBe('olemassa');
+  expect(existsSync(`${dst}.part`)).toBe(false);
+  // Header and tag only, no ciphertext.
+  writeFileSync(src, Buffer.concat([file.subarray(0, 37), file.subarray(-16)]));
+  await expect(exportDecrypt(src, join(dir, 'y.zip'), 'oikein hevonen')).rejects.toThrow(
+    new ExportFormatError('not an export file'),
+  );
 });
 
 const REPLY = 'Hei Pekka Laaksonen.';

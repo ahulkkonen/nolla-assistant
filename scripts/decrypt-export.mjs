@@ -3,7 +3,7 @@
 //   node scripts/decrypt-export.mjs pa-vienti-2026-11-01-masked.zip.enc
 //   printf %s "$PASS" | node scripts/decrypt-export.mjs <file>.zip.enc
 import { existsSync } from 'node:fs';
-import { ExportFormatError, exportDecrypt } from '../apps/server/src/zip.ts';
+import { exportDecrypt } from '../apps/server/src/zip.ts';
 import { readSecret } from './read-secret.mjs';
 
 const src = process.argv[2];
@@ -20,10 +20,12 @@ try {
   await exportDecrypt(src, dst, await readSecret('Passphrase'));
   console.error(`wrote ${dst}`);
 } catch (err) {
+  // Only a failed GCM tag means a wrong passphrase or a changed file.
+  const auth =
+    err?.code === 'ERR_CRYPTO_INVALID_AUTH_TAG' ||
+    err?.message === 'Unsupported state or unable to authenticate data';
   console.error(
-    err instanceof ExportFormatError
-      ? err.message
-      : 'wrong passphrase, or the file has changed; nothing was written',
+    auth ? 'wrong passphrase, or the file has changed; nothing was written' : String(err?.message),
   );
   process.exit(1);
 }
