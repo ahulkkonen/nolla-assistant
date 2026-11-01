@@ -15,15 +15,14 @@ concurrency:
 permissions:
   contents: read
 
-env:
-  # The e5 embedding model is downloaded once per cache key, then read from here. Outside the
-  # workspace, so Biome and the other tools never scan it.
-  MODELS_DIR: ${{ runner.temp }}/pa-models
-
 jobs:
   node:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    env:
+      # The e5 embedding model is downloaded once per cache key, then read from here. Outside the
+      # workspace, so Biome and the other tools never scan it. `runner` exists only at job level.
+      MODELS_DIR: ${{ runner.temp }}/pa-models
     steps:
       - uses: actions/checkout@v4
 
