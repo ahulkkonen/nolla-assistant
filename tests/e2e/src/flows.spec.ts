@@ -1756,7 +1756,9 @@ test.describe('admin', () => {
     await start.click();
     const link = dialog.getByRole('link', { name: 'Lataa' });
     await expect(link).toBeVisible();
-    await expect(dialog.locator('code')).toHaveText(/^openssl enc -d -aes-256-cbc .+\.zip$/);
+    await expect(dialog.locator('code')).toHaveText(
+      /^node scripts\/decrypt-export\.mjs .+\.zip\.enc$/,
+    );
     const href = await link.getAttribute('href');
     const download = page.waitForEvent('download');
     await link.click();
@@ -1766,7 +1768,7 @@ test.describe('admin', () => {
       readFileSync(await file.path())
         .subarray(0, 8)
         .toString(),
-    ).toBe('Salted__');
+    ).toBe('PAEXPORT');
     await expect(dialog).toHaveCount(0);
     // Once: the file is gone after the download.
     await expect.poll(async () => (await page.request.get(href ?? '')).status()).not.toBe(200);

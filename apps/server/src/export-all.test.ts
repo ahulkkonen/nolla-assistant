@@ -1,15 +1,29 @@
 import { spawnSync } from 'node:child_process';
-import { createDecipheriv, pbkdf2Sync } from 'node:crypto';
-import { existsSync, mkdirSync, readdirSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { buffer } from 'node:stream/consumers';
 import { inflateRawSync } from 'node:zlib';
 import { authSessions, claims, type Db } from '@pa/db';
-import { type AttachmentRef, ChatExport, EXPORT_PBKDF2_ITER, type ExportJob } from '@pa/protocol';
+import { type AttachmentRef, ChatExport, type ExportJob } from '@pa/protocol';
 import { afterEach, expect, test } from 'vitest';
 import { api, bootChat, bootPseudo, login, runCleanups, tempDir } from './test-utils.ts';
-import { opensslEncrypt, type ZipEntry, ZipTooLarge, zip } from './zip.ts';
+import {
+  EXPORT_VERSION,
+  ExportFormatError,
+  exportDecrypt,
+  exportEncrypt,
+  type ZipEntry,
+  ZipTooLarge,
+  zip,
+} from './zip.ts';
 
 afterEach(runCleanups);
 
@@ -48,12 +62,12 @@ function unzip(buf: Buffer): Map<string, Buffer> {
   return out;
 }
 
-/** The OpenSSL `enc` format back to plain bytes, in Node. */
-function decrypt(file: Buffer, passphrase: string): Buffer {
-  expect(file.subarray(0, 8).toString()).toBe('Salted__');
-  const km = pbkdf2Sync(passphrase, file.subarray(8, 16), EXPORT_PBKDF2_ITER, 48, 'sha256');
-  const d = createDecipheriv('aes-256-cbc', km.subarray(0, 32), km.subarray(32));
-  return Buffer.concat([d.update(file.subarray(16)), d.final()]);
+/** An export file back to plain bytes through `exportDecrypt`. */
+async function decrypt(file: Buffer, passphrase: string): Promise<Buffer> {
+  const dir = tempDir('pa-dec-');
+  writeFileSync(join(dir, 'x.zip.enc'), file);
+  await exportDecrypt(join(dir, 'x.zip.enc'), join(dir, 'x.zip'), passphrase);
+  return readFileSync(join(dir, 'x.zip'));
 }
 
 const collect = async (entries: ZipEntry[], max?: number) => {
@@ -92,23 +106,40 @@ test('zip: entries round-trip, UTF-8 names, cap', async () => {
   );
 });
 
-test('encrypt: openssl decrypts the file', { timeout: 20_000 }, async () => {
+test('encrypt: round trip; a flipped byte, a wrong passphrase or a version-1 file writes nothing', {
+  timeout: 20_000,
+}, async () => {
   const plain = Buffer.concat([Buffer.from('salainen '), Buffer.alloc(70_000, 7)]);
-  const cipher = await opensslEncrypt('oikein hevonen akku');
+  const cipher = await exportEncrypt('oikein hevonen akku');
   const file = await buffer(Readable.from([plain.subarray(0, 5), plain.subarray(5)]).pipe(cipher));
-  expect(decrypt(file, 'oikein hevonen akku').equals(plain)).toBe(true);
-  expect(() => decrypt(file, 'väärä salasana')).toThrow();
-  if (!has('openssl')) return;
-  const dir = tempDir('pa-enc-');
-  writeFileSync(join(dir, 'x.zip.enc'), file);
-  const args = ['enc', '-d', '-aes-256-cbc', '-pbkdf2', '-iter', String(EXPORT_PBKDF2_ITER)];
-  const r = spawnSync(
-    'openssl',
-    [...args, '-md', 'sha256', '-in', join(dir, 'x.zip.enc'), '-pass', 'pass:oikein hevonen akku'],
-    { maxBuffer: 1 << 24 },
+  expect(file.subarray(0, 9).toString('latin1')).toBe(
+    `PAEXPORT${String.fromCharCode(EXPORT_VERSION)}`,
   );
-  expect(r.status).toBe(0);
-  expect(Buffer.from(r.stdout).equals(plain)).toBe(true);
+  expect((await decrypt(file, 'oikein hevonen akku')).equals(plain)).toBe(true);
+  const dir = tempDir('pa-dec-');
+  const fails = async (bytes: Buffer, passphrase = 'oikein hevonen akku') => {
+    writeFileSync(join(dir, 'x.zip.enc'), bytes);
+    const err = await exportDecrypt(join(dir, 'x.zip.enc'), join(dir, 'x.zip'), passphrase).then(
+      () => undefined,
+      (e: unknown) => e,
+    );
+    expect(readdirSync(dir)).toEqual(['x.zip.enc']);
+    return err;
+  };
+  // A changed byte anywhere: in the ciphertext, the header (the AAD) or the tag.
+  for (const at of [file.length >> 1, 12, file.length - 1]) {
+    const bad = Buffer.from(file);
+    bad[at] = (bad[at] ?? 0) ^ 1;
+    expect(await fails(bad)).toBeInstanceOf(Error);
+  }
+  expect(await fails(file, 'väärä salasana')).toBeInstanceOf(Error);
+  const old = Buffer.concat([Buffer.from('Salted__'), Buffer.alloc(64, 1)]);
+  const err = await fails(old);
+  expect(err).toBeInstanceOf(ExportFormatError);
+  expect((err as Error).message).toMatch(/^version 1 file/);
+  const v9 = Buffer.from(file);
+  v9[8] = 9;
+  expect(((await fails(v9)) as Error).message).toBe('unknown export version 9');
 });
 
 const REPLY = 'Hei Pekka Laaksonen.';
@@ -187,7 +218,7 @@ test('export job: open export has chats, vault, memory, work dir and uploads; do
   expect(dl.headers.get('content-disposition')).toBe(`attachment; filename="${job.fileName}"`);
   const file = Buffer.from(await dl.arrayBuffer());
   expect(file.length).toBe(job.size);
-  const entries = unzip(decrypt(file, 'pitkä salasana 42'));
+  const entries = unzip(await decrypt(file, 'pitkä salasana 42'));
   const names = [...entries.keys()];
   const md = names.find((n) => /^keskustelut\/.*-avoin-.{8}\.md$/.test(n)) ?? '';
   expect(md.endsWith(`-${chat.id.slice(0, 8)}.md`)).toBe(true);
@@ -251,7 +282,7 @@ test('export job: masked export has only chats; bad passphrase, cancel, pseudo d
   expect(job).toMatchObject({ status: 'ready', masked: true });
   expect(job.fileName).toMatch(/-masked\.zip\.enc$/);
   const dl = await api(port, `/api/export/${job.id}/download`, { headers: { cookie } });
-  const entries = unzip(decrypt(Buffer.from(await dl.arrayBuffer()), 'pitkä salasana 42'));
+  const entries = unzip(await decrypt(Buffer.from(await dl.arrayBuffer()), 'pitkä salasana 42'));
   const names = [...entries.keys()];
   expect(names.every((n) => n.startsWith('keskustelut/') || n === 'manifest.json')).toBe(true);
   expect(names).toHaveLength(3);

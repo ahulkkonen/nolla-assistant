@@ -844,9 +844,11 @@ export type ExportJob = z.infer<typeof ExportJob>;
 
 /** PBKDF2-HMAC-SHA256 rounds of the export file (OWASP 2023), the `-iter` of the command below. */
 export const EXPORT_PBKDF2_ITER = 600_000;
-/** The command that decrypts an export file into the zip; it asks for the passphrase. */
-export const decryptCommand = (fileName: string) =>
-  `openssl enc -d -aes-256-cbc -pbkdf2 -iter ${EXPORT_PBKDF2_ITER} -md sha256 -in ${fileName} -out ${fileName.replace(/\.enc$/, '')}`;
+/**
+ * The command, run in the repository, that checks and decrypts an export file into the zip next
+ * to it; it asks for the passphrase (AES-256-GCM, phase 35: `openssl enc` has no AEAD mode).
+ */
+export const decryptCommand = (fileName: string) => `node scripts/decrypt-export.mjs ${fileName}`;
 
 /** `{ error }` codes of the admin routes; `bad_message` also has `path` and `message`. */
 export const AdminError = z.enum([
