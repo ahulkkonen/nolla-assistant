@@ -223,7 +223,7 @@ worked, what to change, and how the figures below were measured.
 | Human messages and presence | 84 messages (9 with a screenshot), at least 13.3 h present |
 | Active time with no new instruction for 10 min | 79 % |
 | Subagent runs | 177: Opus 5.5 116 (90.2 h), Sonnet 5.5 59 (2.9 h), Haiku 5.5 2. Up to 8 at once |
-| Reviewer passes | 44 diff reviews (43 on Sonnet), 5 to 6 blind screenshot rounds on each large UI phase |
+| Reviewer passes | 44 diff reviews (43 on Sonnet), up to five blind screenshot rounds per slice, more across slices |
 | Output | Over 430 commits, 43 decision records, about 62,500 lines of TypeScript and 5,300 of Python |
 
 - **A plan before code.** [`docs/plan.md`](plan.md) fixed the invariants, the architecture,

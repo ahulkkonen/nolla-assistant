@@ -139,6 +139,7 @@ Start here for a topic. Each entry says what the document answers.
 | `docs/deploy.md` | Runbook for Coolify on a VPS, the local Docker run, the phone on the wifi, backups and restore, Google OAuth |
 | `docs/threat-model.md` | What the system protects, against whom, the controls with their files and tests, the residual risks (plan §14) |
 | `docs/workflow.md` | How the project was built: the roles and their models, the review and UI loops, the gates, how the person worked, what to change; the build figures and how they were measured |
+| `docs/build-stats.md` | The build totals (active time, human attention, agent work, tool calls, commits) and how they were measured |
 | `docs/roadmap.md` | Planned work that is not built, what each item closes and what it costs |
 | `docs/decisions/README.md` | Index of every decision record and phase record |
 | `docs/decisions/0001-pi-1.3.0-contract.md`, `0009-pi-1.4.0.md` | The Pi API surface the code depends on; what changed in 1.4.0 |
