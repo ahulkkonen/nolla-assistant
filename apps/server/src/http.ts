@@ -20,6 +20,8 @@ import { sttRoutes } from './stt.ts';
 import { treeRoutes, type WorkStore } from './tree.ts';
 
 const NO_CACHE = new Set(['index.html', 'sw.js', 'manifest.webmanifest']);
+/** Methods that change nothing; every other method gets the Origin check. */
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 const HTML_CSP = [
   "default-src 'self'",
   "script-src 'self'",
@@ -114,6 +116,16 @@ export async function buildServer({
     trustProxy: typeof tp === 'number' ? (_addr: string, hop: number) => hop < tp : tp,
   });
   const auth = requireUser(db, config.cookieSecure);
+  // Browsers always send Origin on a WebSocket and a POST; non-browser clients may omit it.
+  const foreign = (origin: string | undefined) =>
+    origin !== undefined && !config.wsOrigins.has(origin);
+  // A page on a sibling subdomain is same-site, so SameSite=Strict lets its POST through (phase 35).
+  // The CSP report route has no session and changes nothing.
+  app.addHook('onRequest', async (req, reply) => {
+    if (SAFE_METHODS.has(req.method) || !foreign(req.headers.origin)) return;
+    if (req.url.split('?', 1)[0] === CSP_REPORT_PATH) return;
+    return reply.code(403).send({ error: 'forbidden_origin' });
+  });
   await app.register(cookie, { secret: config.cookieSecret });
   await app.register(multipart, {
     limits: { fileSize: MAX_FILE_BYTES, files: MAX_FILES, fields: 5, fieldSize: 128, parts: 15 },
@@ -201,9 +213,7 @@ export async function buildServer({
     {
       websocket: true,
       preValidation: async (req, reply) => {
-        // Browsers always send Origin; non-browser clients may omit it.
-        const origin = req.headers.origin;
-        if (origin !== undefined && !config.wsOrigins.has(origin)) return reply.code(403).send();
+        if (foreign(req.headers.origin)) return reply.code(403).send();
         return auth(req, reply);
       },
     },

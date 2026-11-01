@@ -1,11 +1,14 @@
-import { createCipheriv, pbkdf2, randomBytes } from 'node:crypto';
+import { createCipheriv, createDecipheriv, pbkdf2, randomBytes } from 'node:crypto';
+import { createWriteStream } from 'node:fs';
+import { lstat, open, rename, rm } from 'node:fs/promises';
 import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { promisify } from 'node:util';
 import { crc32, createDeflateRaw } from 'node:zlib';
 import { EXPORT_PBKDF2_ITER } from '@pa/protocol';
 
-// The full export's archive and its encryption (docs/decisions/phase-15-admin.md, decision 13).
+// The full export's archive (docs/decisions/phase-15-admin.md, decision 13) and its encryption
+// (docs/decisions/phase-35-security-fixes.md).
 
 export type ZipEntry = { name: string; data: Buffer | AsyncIterable<Buffer>; mtime?: Date };
 
@@ -112,16 +115,36 @@ export async function* zip(
   yield Buffer.concat([directory, end]);
 }
 
+/** Export file header (phase 35): magic, version byte, 16-byte salt, 12-byte GCM nonce. */
+const MAGIC = Buffer.from('PAEXPORT');
 /**
- * A stream that encrypts into the OpenSSL `enc -aes-256-cbc -pbkdf2 -iter 600000 -md sha256`
- * format: `Salted__`, an 8-byte salt, then AES-256-CBC with PKCS#7 padding. Key and IV are the 48
- * bytes PBKDF2 derives from the passphrase and the salt.
+ * The format version. The header has no round count: version 2 always means
+ * `EXPORT_PBKDF2_ITER` = 600,000 rounds. A change of the rounds needs version 3.
  */
-export async function opensslEncrypt(passphrase: string): Promise<Transform> {
-  const salt = randomBytes(8);
-  const km = await promisify(pbkdf2)(passphrase, salt, EXPORT_PBKDF2_ITER, 48, 'sha256');
-  const cipher = createCipheriv('aes-256-cbc', km.subarray(0, 32), km.subarray(32));
-  let head: Buffer | undefined = Buffer.concat([Buffer.from('Salted__'), salt]);
+export const EXPORT_VERSION = 2;
+const HEAD = MAGIC.length + 1 + 16 + 12;
+const TAG = 16;
+/** The magic of the version-1 files (OpenSSL `enc`, AES-256-CBC, no MAC). */
+const OPENSSL_MAGIC = 'Salted__';
+
+/** A file that is not a version-2 export; the message says what it is. */
+export class ExportFormatError extends Error {}
+/** The decrypt target appeared while the decrypt ran; the plain bytes are not moved over it. */
+export class DestinationExists extends Error {}
+
+const exportKey = (passphrase: string, salt: Buffer) =>
+  promisify(pbkdf2)(passphrase, salt, EXPORT_PBKDF2_ITER, 32, 'sha256');
+
+/**
+ * A stream that encrypts into the export format: the header, AES-256-GCM with the header as
+ * additional data, then the 16-byte tag. The key is PBKDF2-HMAC-SHA256 of the passphrase and salt.
+ */
+export async function exportEncrypt(passphrase: string): Promise<Transform> {
+  const salt = randomBytes(16);
+  const nonce = randomBytes(12);
+  let head: Buffer | undefined = Buffer.concat([MAGIC, Buffer.of(EXPORT_VERSION), salt, nonce]);
+  const cipher = createCipheriv('aes-256-gcm', await exportKey(passphrase, salt), nonce);
+  cipher.setAAD(head);
   const withHead = (b: Buffer) => {
     const out = head ? Buffer.concat([head, b]) : b;
     head = undefined;
@@ -132,7 +155,63 @@ export async function opensslEncrypt(passphrase: string): Promise<Transform> {
       done(null, withHead(cipher.update(chunk)));
     },
     flush(done) {
-      done(null, withHead(cipher.final()));
+      done(null, withHead(Buffer.concat([cipher.final(), cipher.getAuthTag()])));
     },
   });
+}
+
+/**
+ * Decrypts the export file `src` into `dst`. The plain bytes go to `dst.part`, which becomes `dst`
+ * only after the tag checks out; a wrong passphrase or a changed byte leaves no file. Throws
+ * `ExportFormatError` for a version-1 or a foreign file.
+ */
+export async function exportDecrypt(src: string, dst: string, passphrase: string): Promise<void> {
+  const fh = await open(src);
+  try {
+    const { size } = await fh.stat();
+    const head = Buffer.alloc(HEAD);
+    await fh.read(head, 0, HEAD, 0);
+    if (head.subarray(0, 8).toString('latin1') === OPENSSL_MAGIC)
+      throw new ExportFormatError(
+        `version 1 file (AES-256-CBC): openssl enc -d -aes-256-cbc -pbkdf2 -iter ${EXPORT_PBKDF2_ITER} -md sha256`,
+      );
+    if (size <= HEAD + TAG || !head.subarray(0, MAGIC.length).equals(MAGIC))
+      throw new ExportFormatError('not an export file');
+    if (head[MAGIC.length] !== EXPORT_VERSION)
+      throw new ExportFormatError(`unknown export version ${head[MAGIC.length]}`);
+    const tag = Buffer.alloc(TAG);
+    await fh.read(tag, 0, TAG, size - TAG);
+    const salt = head.subarray(MAGIC.length + 1, MAGIC.length + 17);
+    const d = createDecipheriv(
+      'aes-256-gcm',
+      await exportKey(passphrase, salt),
+      head.subarray(-12),
+    );
+    d.setAAD(head).setAuthTag(tag);
+    const part = `${dst}.part`;
+    // `wx` after the removal: a symlink planted at the part path is never followed.
+    await rm(part, { force: true });
+    try {
+      await pipeline(
+        fh.createReadStream({ start: HEAD, end: size - TAG - 1, autoClose: false }),
+        d,
+        createWriteStream(part, { mode: 0o600, flags: 'wx' }),
+      );
+      // ponytail: check, then rename; a file that appears in between is replaced. link() would close
+      // it but fails on file systems without hard links.
+      if (
+        await lstat(dst).then(
+          () => true,
+          () => false,
+        )
+      )
+        throw new DestinationExists(`${dst} exists`);
+      await rename(part, dst);
+    } catch (err) {
+      await rm(part, { force: true });
+      throw err;
+    }
+  } finally {
+    await fh.close();
+  }
 }

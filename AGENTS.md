@@ -75,7 +75,7 @@ agents/             assistant.yaml (profile), prompts/assistant.md, modes/*.md (
 automations/        cron automations as YAML; see automations/README.md
 skills/             vendored skills; see skills/README.md
 infra/              compose.yaml, compose.local.yaml, Dockerfiles, LiteLLM config, backup
-scripts/            hash-password, restore, restore-drill, download-models, build-skill-runner
+scripts/            hash-password, decrypt-export, restore, restore-drill, download-models, build-skill-runner
 tests/              contract, e2e (Playwright), egress, fake-llm, masked-only, mcp, memory-eval, pii, sandbox
 docs/               plan.md, deploy.md, development.md, overview.md, threat-model.md, roadmap.md, decisions/, audits/, media/ (README images)
 ```

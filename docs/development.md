@@ -25,7 +25,7 @@ skills/             vendored skills (none yet; see skills/README.md)
 agents/             agent profiles (YAML) and prompts
 automations/        cron automations
 infra/              compose.yaml, Dockerfiles, LiteLLM, backup, MCP config
-scripts/            password hash, restore, restore drill, model download, skill-runner image
+scripts/            password hash, export decrypt, restore, restore drill, model download, skill-runner image
 tests/              contract, e2e, egress, fake-llm, masked-only, mcp, memory-eval, pii, sandbox
 docs/               plan.md, deploy.md, decisions/
 ```
@@ -180,3 +180,4 @@ Status on 2026-10-31. The plan, section 13, defines each gate.
 | 31 | Publication preparation: MIT license, GitHub Actions gate, history rewrite (model blob, screenshot churn, session trailers, author email), synthetic names (`docs/decisions/phase-31-publication.md`) | done |
 | 32 | README for readers (short form plus `docs/overview.md`), curated media, the threat model (`docs/decisions/phase-32-readme.md`) | done |
 | 33 | Detection recall: lower-case streets with a house number mid-phrase, first name plus inflected surname with a place reading, corpus decoys, gate at the measured floor (`docs/decisions/phase-33-recall.md`) | done |
+| 35 | Security fixes: a URL from an attachment asks before `fetch_url`, `Origin` check on non-GET routes, 90-day session cap, export file with AES-256-GCM and `scripts/decrypt-export.mjs` (`docs/decisions/phase-35-security-fixes.md`) | done |

@@ -15,7 +15,7 @@ import type { BridgeDeps } from './bridge/connection.ts';
 import { chatExport, dateOf, fileName, toMarkdown } from './export.ts';
 import type { MemoryStore } from './memory.ts';
 import { openFile, type WorkStore } from './tree.ts';
-import { opensslEncrypt, type ZipEntry, ZipTooLarge, zip } from './zip.ts';
+import { exportEncrypt, type ZipEntry, ZipTooLarge, zip } from './zip.ts';
 
 // "Vie kaikki tiedot" (docs/decisions/phase-15-admin.md, decisions 13 to 18).
 
@@ -209,7 +209,7 @@ export function exportJobs(deps: Deps) {
   const run = async (j: Job, passphrase: string, unmask: boolean) => {
     const part = `${j.path}.part`;
     try {
-      const cipher = await opensslEncrypt(passphrase);
+      const cipher = await exportEncrypt(passphrase);
       await pipeline(
         zip(entries(j, unmask), EXPORT_MAX_BYTES),
         cipher,

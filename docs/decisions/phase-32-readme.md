@@ -40,3 +40,14 @@ Done 2026-10-31. Follow-ups the threat model lists: a URL inside an attached fil
 counts as written by the user, so `fetch_url` skips the card (`bridge/turns.ts` joins attachment
 text to the message); no `Origin` check on non-GET routes; the broker listens on all interfaces; no
 size limit on the work dir; sessions have no absolute expiry; the full export has no MAC.
+
+Phase 35 (`phase-35-security-fixes.md`) fixed items 1, 2, 5 and 6. Items 3 and 4 stay as they are:
+
+- Item 3, the broker listens on all interfaces. The broker must listen on the container's
+  interfaces, because `pa-server` reaches it over the compose network. The compose network and
+  `BROKER_TOKEN` (at least 32 characters, constant-time compare) are the fence.
+- Item 4, no size limit on the work dir. Every `bash` call needs the owner's approval card
+  (`approval.always` in `agents/assistant.yaml`), the per-chat toggle is in memory only, and no
+  skill is vendored. A runaway command fills the disk only after the owner approves it. The 10 GB
+  quota covers uploads and Pi writes (`phase-11-files.md`, decision 7). A limit needs a
+  size-limited volume or a `du` after each run. Closes it: a size-limited `/work` volume.

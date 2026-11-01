@@ -1427,7 +1427,7 @@ test.describe('harness tools', () => {
     expect(toolResults(app)).toContain('Huhtikuussa, kun maa on sula.');
   });
 
-  test('fetch_url: a URL the user did not give asks; a URL from the message runs without a card', async ({
+  test('fetch_url: a URL the user did not give asks; a typed URL runs without a card; an attached one asks', async ({
     app,
     page,
   }) => {
@@ -1460,6 +1460,19 @@ test.describe('harness tools', () => {
     await expect(thread(page).getByRole('region', { name: 'fetch_url: tuloste' })).toContainText(
       NOT_PUBLIC,
     );
+
+    // A URL from an attached file is not the user's: the card appears (phase 35).
+    const file = join(mkdtempSync(join(tmpdir(), 'pa-e2e-url-')), 'ohje.txt');
+    writeFileSync(file, 'Avaa http://127.0.0.1/liite\n');
+    await page.locator('input[type=file]').setInputFiles(file);
+    await expect(page.getByLabel('Liitteet').getByText('ohje.txt')).toBeVisible();
+    await expect(page.getByLabel('Lähetetään')).toHaveCount(0);
+    app.llm.push({ toolCalls: [{ name: 'fetch_url', args: { url: 'http://127.0.0.1/liite' } }] });
+    app.llm.push({ text: 'Jätin liitteen osoitteen hakematta.' });
+    await send(page, 'Lue liite');
+    await expect(card).toContainText('http://127.0.0.1/liite');
+    await card.getByRole('button', { name: 'Hylkää' }).click();
+    await expect(reply(page)).toHaveText('Jätin liitteen osoitteen hakematta.');
   });
 
   test('tainted: a profile_edit card after a web_search result in the same turn says so', async ({
@@ -1743,7 +1756,9 @@ test.describe('admin', () => {
     await start.click();
     const link = dialog.getByRole('link', { name: 'Lataa' });
     await expect(link).toBeVisible();
-    await expect(dialog.locator('code')).toHaveText(/^openssl enc -d -aes-256-cbc .+\.zip$/);
+    await expect(dialog.locator('code')).toHaveText(
+      /^node scripts\/decrypt-export\.mjs .+\.zip\.enc$/,
+    );
     const href = await link.getAttribute('href');
     const download = page.waitForEvent('download');
     await link.click();
@@ -1753,7 +1768,7 @@ test.describe('admin', () => {
       readFileSync(await file.path())
         .subarray(0, 8)
         .toString(),
-    ).toBe('Salted__');
+    ).toBe('PAEXPORT');
     await expect(dialog).toHaveCount(0);
     // Once: the file is gone after the download.
     await expect.poll(async () => (await page.request.get(href ?? '')).status()).not.toBe(200);

@@ -472,7 +472,7 @@ describe('phase-15 admin', () => {
       unmask: false,
     });
     expect(decryptCommand(job.fileName)).toBe(
-      'openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -md sha256 -in pa-vienti-2026-10-26-masked.zip.enc -out pa-vienti-2026-10-26-masked.zip',
+      'node scripts/decrypt-export.mjs pa-vienti-2026-10-26-masked.zip.enc',
     );
   });
 });

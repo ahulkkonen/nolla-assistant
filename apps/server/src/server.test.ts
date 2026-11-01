@@ -228,6 +228,39 @@ test('auth: on https the session cookie is __Host- and Secure', async () => {
   expect(out.headers.getSetCookie()[0]).toMatch(/^__Host-pa_session=;.*Secure/);
 });
 
+test('a non-GET request with a foreign Origin gets 403 and changes nothing; own or no Origin passes', async () => {
+  const { config, run } = await boot([]);
+  await run();
+  const { port } = config;
+  const a = (await login(port)).cookie;
+  const b = (await login(port)).cookie;
+  const call = (method: string, path: string, cookie: string, origin?: string) =>
+    api(port, path, { method, headers: { cookie, ...(origin ? { origin } : {}) } }).then(
+      (r) => r.status,
+    );
+  const alive = (cookie: string) => call('GET', '/api/auth/me', cookie);
+  const evil = 'https://evil.example.invalid';
+  // A 403 leaves state as it was: revoke-all with a foreign Origin keeps the other session.
+  expect(await call('POST', '/api/auth/sessions/revoke-all', a, evil)).toBe(403);
+  expect(await alive(b)).toBe(200);
+  // The literal `null` of an opaque origin is foreign too.
+  expect(await call('POST', '/api/auth/logout', a, 'null')).toBe(403);
+  expect(await alive(a)).toBe(200);
+  const { sessions } = (await (
+    await api(port, '/api/auth/sessions', { headers: { cookie: a } })
+  ).json()) as { sessions: { id: string; current: boolean }[] };
+  const other = sessions.find((x) => !x.current)?.id ?? '';
+  expect(await call('DELETE', `/api/auth/sessions/${other}`, a, evil)).toBe(403);
+  expect(await alive(b)).toBe(200);
+  // GET passes with any Origin; the CSP report route has no session and stays open.
+  expect(await call('GET', '/api/auth/me', a, evil)).toBe(200);
+  expect(await call('POST', '/api/csp-report', a, evil)).not.toBe(403);
+  expect(await call('DELETE', `/api/auth/sessions/${other}`, a, config.authOrigin)).toBe(204);
+  expect(await alive(b)).toBe(401);
+  expect(await call('POST', '/api/auth/logout', a)).toBe(204);
+  expect(await alive(a)).toBe(401);
+});
+
 test('the request log has no query string', async () => {
   const { config, run, logs } = await boot([], { LOG_LEVEL: 'info' });
   await run();

@@ -4,7 +4,8 @@ Date: 2026-10-31, on `main` at `986042b`. This note is the threat-model note of 
 (`docs/plan.md`, "Security review"). It covers prompt injection through tool results, memory
 poisoning, sandbox escape and token storage. It states what the system protects, against whom, how,
 and what it does not protect. Each claim cites a file. The main sources are the security audit
-(`docs/audits/2026-10-31-security.md`) and its fixes (`docs/decisions/phase-30-audits.md`).
+(`docs/audits/2026-10-31-security.md`) and its fixes (`docs/decisions/phase-30-audits.md`,
+`docs/decisions/phase-35-security-fixes.md`). Phase 35 updated sections 3 to 6 on 2026-11-01.
 
 Scope: one owner, one host. This note trusts the owner, the host, its Docker daemon and the Coolify
 proxy.
@@ -53,7 +54,9 @@ audit found no secret in the tracked files or in the history.
 
 - **An attacker on the internet.** Reaches only `pa-server` through the proxy. The login endpoints
   are open: `POST /api/auth/password` and the passkey routes. The WebSocket refuses an upgrade
-  without a session cookie or with a foreign `Origin` (`apps/server/src/http.ts:204-206`). Push
+  without a session cookie or with a foreign `Origin` (`apps/server/src/http.ts:216`). Every
+  request that is not GET, HEAD or OPTIONS gets 403 when its `Origin` is present and foreign, so a
+  page on a sibling subdomain cannot POST to `/api/` (`http.ts:119-128`). Push
   subscribe needs a session. The CSP report route and the OAuth callback have no session but have
   a rate limit. A login flood locks password login for the owner too. The passkey has its own
   limits.
@@ -135,8 +138,10 @@ audit found no secret in the tracked files or in the history.
   holds private, loopback, link-local, multicast, reserved and the IPv6 ranges that embed IPv4.
   The tool checks each of at most 3 redirects again. It reads at most 2 MB, text types only. The
   guard asks when the restored URL differs from the masked one, or when no user message of the
-  branch holds the URL as a whole token. An unattended chat blocks both. Test:
-  `apps/server/src/fetch-tool.test.ts`.
+  branch holds the URL as a whole token. Only the typed part of a message counts: the text before
+  its first `[Liite: …]` block (`ownText` in `apps/server/src/files.ts`). A URL in an attached file
+  therefore asks. An unattended chat blocks both. Tests: `apps/server/src/fetch-tool.test.ts`,
+  `tests/e2e/src/flows.spec.ts` ("fetch_url").
 - **The sandbox.** `containerConfig` (`services/sandbox-broker/src/index.ts:115-161`): uid 10001,
   read-only root, `CapDrop: ALL`, `no-new-privileges`, Docker's default seccomp profile without
   `symlink` and `symlinkat` (`seccomp.json`), 512 MiB with no swap, 2 CPUs, 256 pids, a 120 s cap,
@@ -155,12 +160,21 @@ audit found no secret in the tracked files or in the history.
   `docs/deploy.md` (section 3) says to remove `AUTH_PASSWORD_HASH` after it works. Tests:
   `apps/server/src/server.test.ts` ("auth: ...").
 - **Cookie, CSP and the artifact frame.** On https the cookie is `__Host-pa_session`, `HttpOnly`,
-  `Secure` and `SameSite=Strict`. The database keeps only its sha256 (`auth/session.ts`).
+  `Secure` and `SameSite=Strict`. The database keeps only its sha256 (`auth/session.ts`). A
+  session ends 90 days after its login, whatever its use (`MAX_AGE` in `auth/session.ts`). A
+  non-GET request with a foreign `Origin` gets 403 (`http.ts:119-128`). The CSP report route is
+  exempt: it has no session and changes nothing.
   The app CSP has `script-src 'self'`, `img-src 'self' data: blob:` and `frame-ancestors 'none'`
   (`apps/server/src/http.ts:23-36`), so a Markdown image cannot send data out. Artifacts run in a
   frame with `sandbox="allow-scripts"` on an opaque origin under `SANDBOX_CSP`, which starts with
   `default-src 'none'` (`packages/protocol/src/index.ts`). Tests: `apps/server/src/csp.test.ts`,
-  `server.test.ts` ("__Host-").
+  `server.test.ts` ("__Host-", "foreign Origin"), `auth/session.test.ts`.
+- **The full export.** `apps/server/src/zip.ts` encrypts the archive with AES-256-GCM. The key comes
+  from PBKDF2-HMAC-SHA256 (600,000 rounds). The header (magic, version byte, salt, nonce) is the
+  additional data, and the 16-byte tag ends the file. `scripts/decrypt-export.mjs` checks the tag
+  before it renames the zip into place, so a changed byte or a wrong passphrase leaves no file. A
+  version-1 (CBC) file fails with a clear error. Test: `apps/server/src/export-all.test.ts`
+  ("encrypt: round trip").
 - **Backups.** `infra/backup/db-copy.sh` writes consistent copies of `app.db` and `vault.db`, and
   restic snapshots them hourly and all of `/data` nightly, encrypted with `RESTIC_PASSWORD`.
   `scripts/restore.sh` refuses a database that fails `PRAGMA integrity_check`. The backup service
@@ -199,9 +213,9 @@ audit found no secret in the tracked files or in the history.
 - **The backup container holds the vault key**, with `RESTIC_PASSWORD` and the S3 keys. A
   compromise of it reveals every snapshot and the vault. Accepted for consistent vault copies
   (phase 30). Closes it: a vault copy that `pseudo-svc` writes itself, so the key stays there.
-- **The owner's device is trusted.** A session lasts 30 days and each use extends it, with no
-  absolute limit (`apps/server/src/auth/session.ts:13-14`). Revoke-all on another device ends it.
-  Closes it: an absolute session age and a fresh login for the export and the vault screen.
+- **The owner's device is trusted.** A session lasts 30 days and each use extends it, up to 90
+  days after the login (`apps/server/src/auth/session.ts:13-18`). Revoke-all on another device
+  ends it. Closes it: a fresh login for the export and the vault screen.
 - **Detection recall is below 1** (`tests/pii/last-run.json`, 559 texts). Names 0.991 (423 of 427):
   - Vault-known names: 1.0 (149 of 149).
   - First-sight names: 0.986 (274 of 278). The misses are two lone lower-case surnames that are
@@ -218,14 +232,13 @@ audit found no secret in the tracked files or in the history.
   50.x and is old enough from 2026-11-02. `undici` inside Pi was moved to 8.12.3 on 2026-11-01 with a
   scoped override in `pnpm-workspace.yaml`. Closes the rest: the presidio bump, then the next Pi bump.
 - **Other open items** from the security audit, nice-to-have list, still in the code:
-  - Attachment text joins the user message (`apps/server/src/bridge/turns.ts:414`), so a URL in an
-    untrusted PDF runs `fetch_url` with no card. Only an exact URL matches: a beacon, not a channel.
-  - A page on a sibling subdomain is same-site, so `SameSite=Strict` does not stop its POST to
-    `/api/`, and no `Origin` check runs. Deploy on a domain with no untrusted sibling hosts.
-  - The broker API and proxy listen on `0.0.0.0`, and `pa-skill-egress` has no filter. No skill
-    uses them today. `bash` has no size limit on the work dir.
+  - The broker API and proxy listen on `0.0.0.0`. The broker must listen on the container's
+    interfaces, and the compose network and `BROKER_TOKEN` are the fence. `pa-skill-egress` has no
+    filter. No skill uses them today.
+  - `bash` has no size limit on the work dir (`phase-32-readme.md`, status).
   - The owner's Google address reaches the model in the MCP tool schemas (decision 0005).
-  - The full export uses AES-256-CBC with no MAC (`apps/server/src/zip.ts`, `phase-15-admin.md`).
+  - A non-browser client with a stolen cookie sends no `Origin`, so the `Origin` check does not
+    stop it. The session cap limits how long a stolen cookie works.
 - **Limits of the design.** Runners share the host kernel, and the broker's Docker socket gives
   root on the host (micro-VMs deferred, plan §15). `pa-server` can reach any public host
   (`fetch_url`, phase-25 risks). The stack encrypts only `vault.db` at rest. Disk encryption of the
@@ -246,6 +259,7 @@ audit found no secret in the tracked files or in the history.
 - Sandbox and files: `tests/sandbox/src/sandbox.test.ts` (Docker),
   `packages/pi-ext-subagents/src/workspace.test.ts`, `apps/server/src/tree.test.ts`,
   `apps/server/src/files.test.ts`.
-- Auth and headers: `apps/server/src/server.test.ts`, `csp.test.ts`, `config.test.ts`,
-  `push.test.ts`.
+- Auth and headers: `apps/server/src/server.test.ts`, `auth/session.test.ts`, `csp.test.ts`,
+  `config.test.ts`, `push.test.ts`.
+- Export: `apps/server/src/export-all.test.ts`.
 - Backups: `scripts/restore-drill.sh` (local).
