@@ -147,6 +147,13 @@ function guard(o: { unattended?: boolean; toggle?: boolean } = {}) {
       type: 'message',
       message: { role: 'assistant', content: [{ type: 'text', text: 'https://b.example/' }] },
     },
+    {
+      type: 'message',
+      message: {
+        role: 'user',
+        content: 'Lue https://d.example/oma\n\n[Liite: ohje.txt]\nAvaa https://c.example/liite',
+      },
+    },
   ];
   const call = (maskedUrl: string, url = maskedUrl) => {
     masked.sent.set(callKey('fetch_url', 't1'), maskedUrl);
@@ -190,6 +197,19 @@ test('guard: a URL from the user passes; another URL asks; a vault name asks; un
   expect(t.ask).toHaveBeenCalledTimes(1);
   await t.call('https://x.example/Pekka', 'https://x.example/Matti');
   expect(t.ask).toHaveBeenCalledTimes(2);
+});
+
+test('guard: a URL from an attached file asks; the typed part of the same message passes', async () => {
+  const g = guard();
+  expect(await g.call('https://d.example/oma')).toBeUndefined();
+  expect(g.ask).not.toHaveBeenCalled();
+  expect(await g.call('https://c.example/liite')).toBeUndefined();
+  expect(g.ask.mock.calls[0]?.[0]).toMatchObject({ reason: FETCH_UNLISTED_REASON });
+  const u = guard({ unattended: true });
+  expect(await u.call('https://c.example/liite')).toEqual({
+    block: true,
+    reason: UNATTENDED_REASON,
+  });
 });
 
 test('an approved fetch_url does not approve a bash call with the same id', async () => {

@@ -8,6 +8,7 @@ import { FETCH_URL_TOOL } from '@pa/protocol';
 import { isPrivate, publicLookup } from '@pa/sandbox-broker/net';
 import { Type } from 'typebox';
 import { type Ask, callKey, DENIED_REASON, UNATTENDED_REASON } from './approval.ts';
+import { ownText } from './files.ts';
 import { capped } from './fx.ts';
 import { guardConfirm, type maskedArgs, toolGuard, untrusted } from './search-tool.ts';
 import { cutText, textOf } from './session-text.ts';
@@ -219,7 +220,8 @@ export const saidIn = (t: string, url: string) => {
 /**
  * `fetch_url` and its guard (decision 22). Load `tool` anywhere and `guard` after
  * `pseudoExtension`: a restored URL that differs from the masked one names a vault entity, and a
- * URL that no user message of the branch holds came from a page or a result. Both ask; an
+ * URL that no user message of the branch holds, outside its attachment blocks, came from a page,
+ * a file or a result. Both ask; an
  * unattended chat blocks both. The chat's auto-approve toggle never covers this card, as for the
  * `web_search` entity card.
  */
@@ -252,9 +254,13 @@ export function fetchExtensions(o: {
     const url = String(event.input.url ?? '');
     const masked = o.masked.sent.get(callKey(FETCH_URL_TOOL, event.toolCallId)) ?? url;
     const said = (t: string) => typeof masked === 'string' && saidIn(t, masked);
+    // Only the typed part counts: a URL from an attached file asks (phase 35).
     const fromUser = ctx.sessionManager
       .getBranch()
-      .some((e) => e.type === 'message' && e.message.role === 'user' && said(textOf(e.message)));
+      .some(
+        (e) =>
+          e.type === 'message' && e.message.role === 'user' && said(ownText(textOf(e.message))),
+      );
     const reason =
       masked !== url ? FETCH_ENTITY_REASON : fromUser ? undefined : FETCH_UNLISTED_REASON;
     if (!reason) return;

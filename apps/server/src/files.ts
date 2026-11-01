@@ -403,6 +403,15 @@ export function splitBlocks(text: string, docs: string[]) {
   };
 }
 
+/**
+ * The user's own part of a prompt: the text before the first `[Liite: …]` block. Text after it can
+ * come from a file, so `fetch_url` does not count a URL there as written by the user (phase 35).
+ */
+export const ownText = (text: string) => {
+  const at = text.search(BLOCK);
+  return at < 0 ? text : text.slice(0, at);
+};
+
 /** Attachment refs of a chat's files, for rebuilding `chat.state`. */
 export function chatFiles(
   db: Db,
