@@ -137,7 +137,13 @@ export function pushService({
           if (res.status === 404 || res.status === 410) drop(endpoint);
           else if (!res.ok) log().warn({ status: res.status, kind }, 'push failed');
         } catch (err) {
-          log().warn({ error: err instanceof Error ? err.message : 'unknown' }, 'push failed');
+          // `fetch failed` hides the socket error in `cause`; the log needs it (CI runners differ).
+          const cause =
+            err instanceof Error && err.cause instanceof Error ? `: ${err.cause.message}` : '';
+          log().warn(
+            { error: err instanceof Error ? err.message + cause : 'unknown' },
+            'push failed',
+          );
         }
       }),
     );
