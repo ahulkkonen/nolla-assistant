@@ -599,6 +599,12 @@ no-pii,place-vs-surname :: Käyn dreijauskurssilla {{Vantaalla|!P|paikka titteli
 no-pii,mixed-case :: {{Ensi vuoden|!P|kaksi tavallista sanaa, ei nimi}} loppuun mennessä tavoittelen B1-tasoa.
 no-pii,sentence-initial-common-noun :: {{Mentorini|!P|lauseen alussa, ei nimi}} ehdotti, että hakisin johtamiskoulutukseen.
 no-pii,sentence-initial-common-noun :: {{Milloin Satamarahdin|!P|kysymyssana ja yritys, ei nimi}} sopimus uusitaan?
+# --- phase 33: a number that counts the next word after a lower-case street word, a place after a first name (c555-c559)
+lowercase,phone-typed,address-decoy,no-pii :: {{takapihalla 3|!A|lukumäärä, ei osoite}} lasta leikkii hiekkalaatikolla
+lowercase,phone-typed,address-decoy,no-pii :: {{kauppatorilla 2|!A|lukumäärä, ei osoite}} kojua myi mansikoita
+lowercase,phone-typed,address-decoy,no-pii :: mennään {{uimarannalle 2|!A|kesto, ei osoite}} tunniksi jos ehditään
+mixed-case,phone-typed,first-name-only,place-vs-surname :: vein {{Liisan|P|Liisa||etunimi}} {{rannalle|!P|paikka, ei sukunimi}} uimaan
+mixed-case,phone-typed,first-name-only,place-vs-surname :: {{Mika|P|Mika||etunimi}} {{rannalla|!P|paikka, ei sukunimi}}, tulee kuudelta
 """
 
 MARK = re.compile(r"\{\{(.+?)\}\}")
@@ -678,7 +684,7 @@ def text_slice(text: str, span: dict) -> str:
 def main() -> None:
     lines = [ln for ln in SRC.splitlines() if ln.strip() and not ln.startswith("#")]
     recs = [parse(i + 1, ln) for i, ln in enumerate(lines)]
-    assert len(recs) == 554, len(recs)
+    assert len(recs) == 559, len(recs)
     out = Path(__file__).with_name("corpus.jsonl")
     out.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in recs), encoding="utf-8")
     print(f"wrote {len(recs)} lines to {out}")

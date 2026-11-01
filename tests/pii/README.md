@@ -7,12 +7,12 @@ All names are synthetic combinations of common Finnish first names and surnames.
 
 | File | Purpose |
 |---|---|
-| `corpus.jsonl` | 554 labelled texts: c001–c312 from phase 3, c313–c516 from phase 12, c517–c550 from the mixed-case fix, c551–c554 from the memory eval false positives. Do not edit by hand. |
+| `corpus.jsonl` | 559 labelled texts: c001–c312 from phase 3, c313–c516 from phase 12, c517–c550 from the mixed-case fix, c551–c554 from the memory eval false positives, c555–c559 from phase 33 (street and surname decoys). Do not edit by hand. |
 | `generate.py` | Hand-written source of the corpus with inline markup. Edit this file, then run it to rebuild `corpus.jsonl`. |
 | `validate.py` | Checks the corpus and prints the counts per kind and per tag. |
 | `vault-seed.json` | The 15 people that the harness registers in the vault before a run. |
 | `harness.py` | Sends each text to `POST /mask` and computes recall and precision. Writes `last-run.json`. |
-| `last-run.json` | The result of the last full run (2026-10-27, all 554 lines). The root `README.md` links to it. |
+| `last-run.json` | The result of the last full run (2026-11-01, all 559 lines). The root `README.md` links to it. |
 
 Commands:
 
@@ -52,15 +52,16 @@ A `POSTCODE_CITY` span holds the postcode and the city, but only the postcode is
 4. A predicted span is a true positive when it overlaps a gold span that is not `ORG`. All other predictions are false positives.
 5. Recall is computed per gold kind and per group. Precision is computed per predicted kind and per `detector` value in the response. For each detector, the report also gives the share of gold spans that it found first.
 
-Thresholds (phase-12 gate, `docs/decisions/phase-12-pseudo.md`). A run fails (exit code 1) if one threshold is not met:
+Thresholds (phase-12 gate, `docs/decisions/phase-12-pseudo.md`, raised in `docs/decisions/phase-33-recall.md` to the measured floor, rounded down to a whole percent). A run fails (exit code 1) if one threshold is not met:
 
 | Gate | Spans | Minimum |
 |---|---|---|
 | `codes` | recall of `HETU`, `IBAN`, `PHONE` | 100 % |
-| `PERSON` | recall of all `PERSON` spans | 98 % |
-| `EMAIL` | recall of `EMAIL` spans | 95 % |
-| `ADDRESS` | recall of `ADDRESS` spans (street name and number) | 95 % |
+| `PERSON` | recall of all `PERSON` spans | 99 % |
+| `EMAIL` | recall of `EMAIL` spans | 100 % |
+| `ADDRESS` | recall of `ADDRESS` spans (street name and number) | 100 % |
 | `POSTCODE_CITY` | recall of `POSTCODE_CITY` spans (the postcode) | 100 % |
-| `precision <kind>` | precision of each predicted kind `PERSON`, `EMAIL`, `ADDRESS`, `POSTCODE_CITY`, `HETU`, `IBAN`, `PHONE` | 97 % |
+| `precision PERSON` | precision of predicted `PERSON` spans | 99 % |
+| `precision <kind>` | precision of each predicted kind `EMAIL`, `ADDRESS`, `POSTCODE_CITY`, `HETU`, `IBAN`, `PHONE` | 100 % |
 
 The report also gives recall for `vault_known_names` (`PERSON` spans whose `ref` is in `vault-seed.json`) and `unseen_names` (all other `PERSON` spans), and recall and precision for `PLATE`, without a threshold. Plates without a context word are expected misses (plan §6, layer 1).

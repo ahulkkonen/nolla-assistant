@@ -20,10 +20,11 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 CODE_KINDS = {"HETU", "IBAN", "PHONE"}
-# Phase-12 gate (docs/decisions/phase-12-pseudo.md): recall per group, precision per predicted kind.
-THRESHOLDS = {"codes": 1.0, "PERSON": 0.98, "EMAIL": 0.95, "ADDRESS": 0.95, "POSTCODE_CITY": 1.0}
-PRECISION_MIN = 0.97
-PRECISION_KINDS = ("PERSON", "EMAIL", "ADDRESS", "POSTCODE_CITY", "HETU", "IBAN", "PHONE")
+# Gate (docs/decisions/phase-12-pseudo.md, raised in phase-33-recall.md to the measured floor, rounded down to a
+# whole percent): recall per group, precision per predicted kind.
+THRESHOLDS = {"codes": 1.0, "PERSON": 0.99, "EMAIL": 1.0, "ADDRESS": 1.0, "POSTCODE_CITY": 1.0}
+PRECISION_MIN = {"PERSON": 0.99, "EMAIL": 1.0, "ADDRESS": 1.0, "POSTCODE_CITY": 1.0, "HETU": 1.0, "IBAN": 1.0,
+                 "PHONE": 1.0}
 # Not recall targets: brand names. A prediction that overlaps only these is a false positive.
 NOT_TARGETS = {"ORG"}
 
@@ -145,7 +146,7 @@ def score(recs: list[dict], preds: dict[str, list[dict]], known: set[str]) -> di
     ratio = lambda a, b: round(a / b, 4) if b else None  # noqa: E731
     total_targets = sum(1 for r in recs for s in r["spans"] if s["kind"] not in NOT_TARGETS)
     gates = {k: (v, ratio(gold_hit[k], gold_tot[k])) for k, v in THRESHOLDS.items()}
-    gates.update({f"precision {k}": (PRECISION_MIN, ratio(pred_tp[k], pred_tot[k])) for k in PRECISION_KINDS})
+    gates.update({f"precision {k}": (v, ratio(pred_tp[k], pred_tot[k])) for k, v in PRECISION_MIN.items()})
     return {
         "recall": {k: {"found": gold_hit[k], "total": gold_tot[k], "recall": ratio(gold_hit[k], gold_tot[k])} for k in sorted(gold_tot)},
         "precision_by_kind": {k: {"tp": pred_tp[k], "predicted": pred_tot[k], "precision": ratio(pred_tp[k], pred_tot[k])} for k in sorted(pred_tot)},
