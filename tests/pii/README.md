@@ -7,12 +7,12 @@ All names are synthetic combinations of common Finnish first names and surnames.
 
 | File | Purpose |
 |---|---|
-| `corpus.jsonl` | 559 labelled texts: c001–c312 from phase 3, c313–c516 from phase 12, c517–c550 from the mixed-case fix, c551–c554 from the memory eval false positives, c555–c559 from phase 33 (street and surname decoys). Do not edit by hand. |
+| `corpus.jsonl` | 562 labelled texts: c001–c312 from phase 3, c313–c516 from phase 12, c517–c550 from the mixed-case fix, c551–c554 from the memory eval false positives, c555–c559 from phase 33 (street and surname decoys), c560–c562 from phase 34 (adjective decoys). Do not edit by hand. |
 | `generate.py` | Hand-written source of the corpus with inline markup. Edit this file, then run it to rebuild `corpus.jsonl`. |
 | `validate.py` | Checks the corpus and prints the counts per kind and per tag. |
 | `vault-seed.json` | The 15 people that the harness registers in the vault before a run. |
 | `harness.py` | Sends each text to `POST /mask` and computes recall and precision. Writes `last-run.json`. |
-| `last-run.json` | The result of the last full run (2026-11-01, all 559 lines). The root `README.md` links to it. |
+| `last-run.json` | The result of the last full run (2026-11-01, all 562 lines). The root `README.md` links to it. |
 
 Commands:
 
@@ -48,7 +48,7 @@ A `POSTCODE_CITY` span holds the postcode and the city, but only the postcode is
 
 1. The harness registers the people in `vault-seed.json` through `seed_vault()`. The phase-3 contract has no create endpoint. Thus the function tries `POST /vault/seed` first. If the sidecar returns 404 or 405, the function sends one short sentence per person to `POST /mask`. Change only this function when the sidecar adds a seed endpoint. Each run uses a new vault user (`pii-harness-<random>`), because the entities of an earlier run would turn unseen names into vault hits.
 2. The harness sends each `text` to `POST /mask` with its own `session_id`. The response spans have offsets in the masked text. The harness maps them back to the original text with `real_form`.
-3. A gold span is found when predicted spans cover all of its characters (spaces do not count). The predicted kind does not have to match, because the requirement is that the value is masked. A gold span that predictions only overlap is a miss, marked `partial` in `last-run.json`: a partly masked name leaks the rest. For `POSTCODE_CITY` only the five digits must be covered.
+3. A gold span is found when predicted spans cover all of its characters (spaces do not count). The predicted kind does not have to match, because the requirement is that the value is masked. A gold span that predictions only overlap is a miss, marked `partial` in `last-run.json`: a partly masked name leaks the rest. For `POSTCODE_CITY` only the five digits must be covered. A span that the sidecar marks `pending` (score below 0.6, phase-34 decision 1) is masked, so it counts like any other span.
 4. A predicted span is a true positive when it overlaps a gold span that is not `ORG`. All other predictions are false positives.
 5. Recall is computed per gold kind and per group. Precision is computed per predicted kind and per `detector` value in the response. For each detector, the report also gives the share of gold spans that it found first.
 

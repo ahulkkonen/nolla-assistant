@@ -1,7 +1,7 @@
 {
-  "url": "http://127.0.0.1:18001",
+  "url": "http://127.0.0.1:18471",
   "seeded_via": "vault/seed",
-  "lines": 559,
+  "lines": 562,
   "person_mentions": {
     "vault_known": 149,
     "unseen": 278
@@ -29,9 +29,9 @@
       "recall": 1.0
     },
     "PERSON": {
-      "found": 423,
+      "found": 425,
       "total": 427,
-      "recall": 0.9906
+      "recall": 0.9953
     },
     "PHONE": {
       "found": 44,
@@ -54,9 +54,9 @@
       "recall": 1.0
     },
     "unseen_names": {
-      "found": 274,
+      "found": 276,
       "total": 278,
-      "recall": 0.9856
+      "recall": 0.9928
     },
     "vault_known_names": {
       "found": 149,
@@ -86,9 +86,9 @@
       "precision": 1.0
     },
     "PERSON": {
-      "tp": 423,
-      "predicted": 427,
-      "precision": 0.9906
+      "tp": 425,
+      "predicted": 429,
+      "precision": 0.9907
     },
     "PHONE": {
       "tp": 44,
@@ -115,11 +115,11 @@
       "recall_share": 0.398
     },
     "gazetteer": {
-      "predicted": 168,
-      "tp": 167,
-      "precision": 0.994,
-      "gold_found_first": 167,
-      "recall_share": 0.2332
+      "predicted": 170,
+      "tp": 169,
+      "precision": 0.9941,
+      "gold_found_first": 169,
+      "recall_share": 0.236
     },
     "ner": {
       "predicted": 2,
@@ -144,7 +144,7 @@
     },
     "PERSON": {
       "min": 0.99,
-      "value": 0.9906,
+      "value": 0.9953,
       "pass": true
     },
     "EMAIL": {
@@ -164,7 +164,7 @@
     },
     "precision PERSON": {
       "min": 0.99,
-      "value": 0.9906,
+      "value": 0.9907,
       "pass": true
     },
     "precision EMAIL": {
@@ -232,26 +232,6 @@
       "surface": "SUV-21",
       "groups": [
         "PLATE"
-      ],
-      "partial": false
-    },
-    {
-      "id": "c328",
-      "kind": "PERSON",
-      "surface": "hämäläistä",
-      "groups": [
-        "PERSON",
-        "unseen_names"
-      ],
-      "partial": false
-    },
-    {
-      "id": "c351",
-      "kind": "PERSON",
-      "surface": "lahtiseksi",
-      "groups": [
-        "PERSON",
-        "unseen_names"
       ],
       "partial": false
     },

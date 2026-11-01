@@ -425,9 +425,9 @@ def test_lowercase_lone_surname_rule(vault):
     for text, canonical in [("kysyin kettuselta", "Kettunen"), ("soitin eilen haliselle", "Halinen"),
                             ("vie tämä paasolle", "Paaso")]:
         assert [vault.entity(U, s["entity_id"])["canonical"] for s in mask(vault, text)[1]] == [canonical], text
-    # ordinary words that are surnames too (lahtiseksi: Voikko reads it as the adjective lahtinen), and
-    # English words that are DVV surnames
-    for text in ["kokko paloi juhannuksena", "meri oli tyyni", "nimi vaihtu lahtiseksi", "a gift from said friend"]:
+    # ordinary words that are surnames too (kokon: Kokko has 5,000 holders but no -nen, so phase-34 decision 2
+    # leaves it; lahtiseksi has its own test), and English words that are DVV surnames
+    for text in ["kokko paloi juhannuksena", "istuttiin kokon ääressä", "meri oli tyyni", "a gift from said friend"]:
         assert mask(vault, text)[1] == [], text
 
 
@@ -578,11 +578,28 @@ def test_first_name_and_inflected_surname_with_a_place_reading(vault):
     for text, real in [("soitin Anu rannalle mutta hän ei vastannut", "Anu rannalle"),
                        ("soitin Nina lehtiselle ja Mika salmelle", "Mika salmelle")]:
         masked, spans = mask(vault, text)
-        assert real in [s["real_form"] for s in spans] and real.split()[1] not in masked, text
+        # a word match: a surrogate such as Lehtorannalle holds the real form inside it
+        assert real in [s["real_form"] for s in spans] and not re.search(rf"\b{real.split()[1]}\b", masked), text
     _, spans = mask(vault, "vein Liisan rannalle uimaan")  # a genitive first name: no full name
     assert [s["real_form"] for s in spans] == ["Liisan"]
     _, spans = mask(vault, "onko Riikka kotona jo")  # koto has fewer than LONE_SURNAME_MIN holders
     assert [s["real_form"] for s in spans] == ["Riikka"]
+
+
+@needs_lexicon
+def test_lone_lower_case_frequent_surname_goes_to_the_pending_lane(vault):
+    # phase-34 decision 1: an ordinary word that is an inflected form of a -nen surname with 5,000 holders
+    for text, real in [("en oo nähny hämäläistä koko viikkona", "hämäläistä"),
+                       ("sen nimi vaihtu lahtiseksi häissä", "lahtiseksi")]:
+        masked, spans = mask(vault, text)
+        assert [(s["real_form"], s["pending"]) for s in spans] == [(real, True)] and real not in masked, text
+    assert {p["text"] for p in vault.pending_list(U)} == {"hämäläistä", "lahtiseksi"}
+    # adjectives that are no such surname (Suomalainen has 3,114 holders); a nominative stays an adjective
+    for text in ["ostin punaista lankaa", "tehdään suomalaista ruokaa", "koira tuli iloiseksi", "hän on hämäläinen"]:
+        assert mask(vault, text)[1] == [], text
+    # after a first name the pair rules decide (phase-33 decision 2), not this one
+    _, spans = mask(vault, "Mika hämäläistä odotellaan")
+    assert [(s["real_form"], s["pending"]) for s in spans] == [("Mika hämäläistä", False)]
 
 
 def test_nickname_in_the_vault_is_masked(vault):

@@ -25,6 +25,9 @@ TITLES = re.compile(
 MIN_SURNAME_COUNT = 40
 MIN_FIRST_COUNT = 50
 LONE_SURNAME_MIN = 200  # a lone lower-case surname the lexicon does not know needs this many DVV holders
+# A lone lower-case -nen surname that is also an ordinary word (hämäläistä, lahtiseksi) needs this many holders
+# and goes to the pending lane (phase-34 decision 1).
+FREQUENT_SURNAME_MIN = 5000
 
 
 @lru_cache(maxsize=1)
@@ -198,25 +201,37 @@ def known_name(word: str) -> bool:
     return bool(readings(word) & {"FIRST", "LAST"})
 
 
-@lru_cache(maxsize=1)
-def _common_surnames() -> dict[str, list[str]]:
-    """First two letters -> DVV surnames with at least LONE_SURNAME_MIN holders (all in the precomputed tables)."""
+@lru_cache(maxsize=2)
+def _common_surnames(minimum: int = LONE_SURNAME_MIN) -> dict[str, list[str]]:
+    """First two letters -> DVV surnames with at least `minimum` holders (all in the precomputed tables)."""
     idx = defaultdict(list)
     for n, c in names()["last"].items():
-        if c >= LONE_SURNAME_MIN and n.isalpha():
+        if c >= minimum and n.isalpha():
             idx[n[:2]].append(n)
     return idx
 
 
 @lru_cache(maxsize=50000)
-def surname_shaped(word: str) -> str | None:
-    """The DVV surname with at least LONE_SURNAME_MIN holders that the capitalised token is an inflected form
+def surname_shaped(word: str, minimum: int = LONE_SURNAME_MIN) -> str | None:
+    """The DVV surname with at least `minimum` holders that the capitalised token is an inflected form
     of (Nyströmille -> Nyström), else None. The bare nominative does not count: from and said are DVV surnames.
     Only the form tables are read, not Voikko or Omorfi: this runs on every unknown lower-case word."""
     if len(word) < 4:
         return None
-    return next((n for n in _common_surnames().get(word[:2], ()) if n != word and _lcp(n, word) >= max(2, len(n) - 3)
-                 and word in forms.generate_forms(n, "last").values()), None)
+    return next((n for n in _common_surnames(minimum).get(word[:2], ()) if n != word
+                 and _lcp(n, word) >= max(2, len(n) - 3) and word in forms.generate_forms(n, "last").values()), None)
+
+
+def frequent_surname(text: str, m) -> str | None:
+    """The -nen surname with at least FREQUENT_SURNAME_MIN holders that the lone lower-case ordinary word m is an
+    inflected form of (hämäläistä -> Hämäläinen), when no first name in the nominative is the word before it
+    (phase-33 decision 2 has that case). Adjectives that are no such surname (punaista, iloiseksi, suomalaista
+    with 3,114 holders) give None. Only -nen: koski, mäki, laine and saari are far more often ordinary words."""
+    prev = text[:m.start()].split()[-1:]
+    if prev and cap(prev[0].strip(".,:;!?()\"'")) in names()["first"]:
+        return None
+    last = surname_shaped(cap(m.group(0)), FREQUENT_SURNAME_MIN)
+    return last if last and last.endswith("nen") else None
 
 
 def lower_names(text: str) -> list[Candidate]:
@@ -224,8 +239,9 @@ def lower_names(text: str) -> list[Candidate]:
     word and an inflected form of a DVV surname with at least LONE_SURNAME_MIN holders (phase-12 decision 15):
     this also keeps the DVV lookups off ordinary words. A first name followed by a surname is a name unless
     both words are ordinary words (toivo laine); it goes to the pending lane if one of them is. A lone word
-    must be no ordinary word and no place, and a common first name or a surname. Without Voikko or Omorfi
-    only pairs are found: nothing tells an ordinary word."""
+    must be no ordinary word and no place, and a common first name or a surname; an ordinary word that is a
+    frequent -nen surname (frequent_surname) goes to the pending lane. Without Voikko or Omorfi only pairs are
+    found: nothing tells an ordinary word."""
     lexicon = _voikko() is not None or forms.omorfi() is not None
     info = []
     for m in LOWER_RE.finditer(text):
@@ -234,16 +250,17 @@ def lower_names(text: str) -> list[Candidate]:
             continue
         known = not lexicon or known_name(cap(w))
         shaped = None if known or common_word(w) else surname_shaped(cap(w))
-        if not (known or shaped):
+        frequent = frequent_surname(text, m) if lexicon and common_word(w) else None
+        if not (known or shaped or frequent):
             continue
-        lem = lemmas(cap(w)) if known else ((shaped, "last"),)
+        lem = lemmas(cap(w)) if known else ((shaped, "last"),) if shaped else ()
         first = next((l for l, k in lem if k == "first" and _count(l, "first") >= MIN_FIRST_COUNT), None)
         last = next((l for l, k in lem if k == "last" and _count(l, "last") >= MIN_SURNAME_COUNT), None)
-        if first or last:
-            info.append((m, first, last, common_word(w)))
+        if first or last or frequent:
+            info.append((m, first, last, common_word(w), frequent))
     out, i = [], 0
     while i < len(info):
-        m, first, last, common = info[i]
+        m, first, last, common, frequent = info[i]
         nxt = info[i + 1] if i + 1 < len(info) else None
         if first and nxt and nxt[2] and text[m.end():nxt[0].start()] == " " and not (common and nxt[3]):
             n2 = nxt[0]
@@ -254,6 +271,11 @@ def lower_names(text: str) -> list[Candidate]:
             i += 2
             continue
         i += 1
+        if frequent and not place(cap(m.group(0))):
+            # hämäläistä, lahtiseksi: masked, and the pending card asks (phase-34 decision 1)
+            out.append(Candidate(m.start(), m.end(), "PERSON", frequent, "gazetteer", 0.5, m.group(0),
+                                 [dict(start=m.start(), end=m.end(), part="last", lemma=frequent)]))
+            continue
         if common or not lexicon or place(cap(m.group(0))):
             continue
         if first and _count(first, "first") >= COMMON_NAME_COUNT and "ORG" not in readings(cap(m.group(0))):
