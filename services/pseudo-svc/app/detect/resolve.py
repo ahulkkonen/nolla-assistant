@@ -31,7 +31,10 @@ def resolve(cands: list[Candidate], never: set[tuple[str, str]]) -> list[Candida
         if c.kind == "PERSON" and not c.parts:
             c.parts = person_parts(c)
             c.canonical = " ".join(p["lemma"] for p in c.parts)
-    cands = [c for c in cands if (c.kind, c.canonical) not in never]
+    # a dismissed lower-case hit is keyed on the lower-case canonical (phase-34 decision 7): it hides lower-case
+    # forms only, so "ruotsalaista" stays dismissed and a capitalised Ruotsalainen still masks
+    cands = [c for c in cands if (c.kind, c.canonical) not in never
+             and not (c.surface.islower() and (c.kind, c.canonical.lower()) in never)]
     # codes first, then longer spans, then layer order: first match wins per span, longer wins on overlap
     cands.sort(key=lambda c: (LAYER[c.detector] != 0, -(c.end - c.start), LAYER[c.detector], c.start))
     taken: list[Candidate] = []

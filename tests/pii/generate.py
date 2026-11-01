@@ -605,6 +605,10 @@ lowercase,phone-typed,address-decoy,no-pii :: {{kauppatorilla 2|!A|lukumäärä,
 lowercase,phone-typed,address-decoy,no-pii :: mennään {{uimarannalle 2|!A|kesto, ei osoite}} tunniksi jos ehditään
 mixed-case,phone-typed,first-name-only,place-vs-surname :: vein {{Liisan|P|Liisa||etunimi}} {{rannalle|!P|paikka, ei sukunimi}} uimaan
 mixed-case,phone-typed,first-name-only,place-vs-surname :: {{Mika|P|Mika||etunimi}} {{rannalla|!P|paikka, ei sukunimi}}, tulee kuudelta
+# --- phase 34: a lower-case -inen adjective that is no frequent surname (c560-c562)
+lowercase,phone-typed,adjective-vs-surname,no-pii :: ostin {{punaista|!P|adjektiivi, ei sukunimi}} lankaa kaksi kerää
+lowercase,phone-typed,adjective-vs-surname,no-pii :: tehdään {{suomalaista|!P|adjektiivi, Suomalainen alle 5 000 haltijaa}} ruokaa juhliin
+lowercase,phone-typed,adjective-vs-surname,no-pii :: koira tuli tosi {{iloiseksi|!P|adjektiivi, ei sukunimi}} kun pääsi ulos
 """
 
 MARK = re.compile(r"\{\{(.+?)\}\}")
@@ -684,7 +688,7 @@ def text_slice(text: str, span: dict) -> str:
 def main() -> None:
     lines = [ln for ln in SRC.splitlines() if ln.strip() and not ln.startswith("#")]
     recs = [parse(i + 1, ln) for i, ln in enumerate(lines)]
-    assert len(recs) == 559, len(recs)
+    assert len(recs) == 562, len(recs)
     out = Path(__file__).with_name("corpus.jsonl")
     out.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in recs), encoding="utf-8")
     print(f"wrote {len(recs)} lines to {out}")

@@ -216,16 +216,17 @@ audit found no secret in the tracked files or in the history.
 - **The owner's device is trusted.** A session lasts 30 days and each use extends it, up to 90
   days after the login (`apps/server/src/auth/session.ts:13-18`). Revoke-all on another device
   ends it. Closes it: a fresh login for the export and the vault screen.
-- **Detection recall is below 1** (`tests/pii/last-run.json`, 559 texts). Names 0.991 (423 of 427):
+- **Detection recall is below 1** (`tests/pii/last-run.json`, 562 texts). Names 0.995 (425 of 427):
   - Vault-known names: 1.0 (149 of 149).
-  - First-sight names: 0.986 (274 of 278). The misses are two lone lower-case surnames that are
-    also ordinary words (`hämäläistä`, `lahtiseksi`) and two nicknames (`Late`, `Pirkkis`).
+  - First-sight names: 0.993 (276 of 278). The misses are two nicknames (`Late`, `Pirkkis`).
+    A lone lower-case form of a frequent `-nen` surname (`hämäläistä`) is masked and waits in the
+    pending lane (phase 34). A rarer surname that is also an ordinary word still leaks.
 
   Addresses 1.0 (86 of 86), plates 0.714 (no gate; plates without a context word). Codes, emails,
   phones and postcodes 1.0. A missed name reaches the model as written. The backstop checks only
-  hetu, IBAN and card numbers. A name or a nickname in the vault is masked in every later message
-  (`POST /vault/seed`), but the vault screen has no action to add one yet. Closes it: an add
-  action on the vault screen.
+  hetu, IBAN and card numbers. The owner adds a nickname on the vault screen ("Lisää"), and every
+  later message masks it. Before that, the first message with it leaks. Closes it: nothing in the
+  detector; the owner adds the nickname before first use.
 - **Transitive advisories.** `body-parser` 2.3.0 through the MCP SDK (1 high); the SDK's express
   server never runs. `cryptography` 48.0.1 in `pseudo-svc` (2 high, PKCS#7 and X.509 paths the
   service does not use), held by the `presidio-anonymizer` 2.2.364 pin; presidio 2.2.365 accepts

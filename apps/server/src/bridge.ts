@@ -150,6 +150,7 @@ export function attachBridge(socket: Socket, deps: BridgeDeps) {
       case 'vault.neverDetect':
       case 'vault.setMode':
       case 'vault.pending.resolve':
+      case 'vault.add':
         return vault(conn, msg);
       default:
         return send(socket, errorMsg('not_implemented'));

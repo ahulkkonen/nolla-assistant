@@ -180,4 +180,5 @@ Status on 2026-10-31. The plan, section 13, defines each gate.
 | 31 | Publication preparation: MIT license, GitHub Actions gate, history rewrite (model blob, screenshot churn, session trailers, author email), synthetic names (`docs/decisions/phase-31-publication.md`) | done |
 | 32 | README for readers (short form plus `docs/overview.md`), curated media, the threat model (`docs/decisions/phase-32-readme.md`) | done |
 | 33 | Detection recall: lower-case streets with a house number mid-phrase, first name plus inflected surname with a place reading, corpus decoys, gate at the measured floor (`docs/decisions/phase-33-recall.md`) | done |
+| 34 | Vault add: lone lower-case frequent `-nen` surnames to the pending lane, `vault.add` and the add form on the vault screen (`docs/decisions/phase-34-vault-add.md`) | done |
 | 35 | Security fixes: a URL from an attachment asks before `fetch_url`, `Origin` check on non-GET routes, 90-day session cap, export file with AES-256-GCM and `scripts/decrypt-export.mjs` (`docs/decisions/phase-35-security-fixes.md`) | done |

@@ -213,3 +213,20 @@ async def test_session_fork_compares_instants(client, vault):
     assert (await post(client, "/session/fork/drop", {"session_id": "f1"}))["entities"] == 1
     assert (await post(client, "/session/fork/drop", {"session_id": "src"}))["entities"] == 0
     assert vault.q("SELECT count(*) FROM span WHERE session_id='src'")[0][0] == 1
+
+
+async def test_dismissed_lower_case_hit_keeps_the_surname(client):
+    # phase-34 decision 7: "Hylkää" on hämäläistä hides lower-case forms only; Hämäläinen still masks
+    from app.detect import gazetteer
+    from app import forms
+
+    if gazetteer._voikko() is None and forms.omorfi() is None:
+        pytest.skip("needs Voikko or Omorfi")
+    m = await post(client, "/mask", {"session_id": "s", "text": "en oo nähny hämäläistä koko viikkona"})
+    assert [s["pending"] for s in m["spans"]] == [True] and "hämäläistä" not in m["masked"]
+    (row,) = (await client.get("/vault/entities", params=U)).json()["pending"]
+    assert (await post(client, f"/vault/pending/{row['id']}", {"action": "dismiss"}))["ok"]
+    m = await post(client, "/mask", {"session_id": "s2", "text": "en oo nähny hämäläistä koko viikkona"})
+    assert m["spans"] == [] and (await client.get("/vault/entities", params=U)).json()["pending"] == []
+    m = await post(client, "/mask", {"session_id": "s3", "text": "Soitin eilen Hämäläiselle."})
+    assert [s["real_form"] for s in m["spans"]] == ["Hämäläiselle"] and "Hämäläiselle" not in m["masked"]

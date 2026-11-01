@@ -60,3 +60,27 @@ test('vault: without PSEUDO_URL replies not_implemented', { timeout: 30_000 }, a
   c.send({ type: 'vault.list' });
   await expect(c.next('vault.state')).rejects.toThrow('not_implemented');
 });
+
+test('vault.add: seeds the entity, answers vault.state, the next message masks it', {
+  timeout: 30_000,
+}, async () => {
+  const { c, chat, sc, llm } = await bootPseudo({}, [{ text: 'ok' }]);
+  c.send({ type: 'vault.add', kind: 'PERSON', text: '  Late ' });
+  const state = await c.next('vault.state');
+  expect(state.entities.map((e) => [e.kind, e.canonical])).toEqual([['PERSON', 'Late']]);
+  expect(sc.requests.find((r) => r.path === '/vault/seed')?.body.entities).toEqual([
+    { kind: 'PERSON', canonical: 'Late' },
+  ]);
+
+  c.send({ type: 'user.message', chatId: chat.id, text: 'Late tulee huomenna' });
+  await c.idle();
+  const body = JSON.stringify(llm.requests.at(-1)?.body);
+  expect(body).not.toContain('Late');
+  expect(body).toContain(state.entities[0]?.surrogate);
+});
+
+test('vault.add: a value the sidecar refuses answers invalid', { timeout: 30_000 }, async () => {
+  const { c } = await bootPseudo({}, []);
+  c.send({ type: 'vault.add', kind: 'PERSON', text: 'late' });
+  await expect(c.next('vault.state')).rejects.toThrow('invalid');
+});

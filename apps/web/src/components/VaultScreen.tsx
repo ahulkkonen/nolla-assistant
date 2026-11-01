@@ -1,10 +1,11 @@
-import type { VaultEntity, VaultPending } from '@pa/protocol';
+import { VaultAddKind, type VaultEntity, type VaultPending } from '@pa/protocol';
 import {
   Brackets,
   Check,
   EyeOff,
   Pin,
   PinOff,
+  Plus,
   RefreshCw,
   ShieldAlert,
   ShieldCheck,
@@ -17,6 +18,7 @@ import {
 import { useEffect, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   Select,
   SelectContent,
@@ -216,6 +218,83 @@ function PendingLane({ pending, entities }: { pending: VaultPending[]; entities:
   );
 }
 
+/** The add field's placeholder per kind: an example for a name, else the kind's own label. */
+const placeholder = (k: VaultAddKind) =>
+  k === 'PERSON' ? 'Esim. lempinimi' : kind(k).charAt(0).toUpperCase() + kind(k).slice(1);
+
+/**
+ * Phase 34: the owner adds a value the detector misses (a nickname such as Late). The sidecar
+ * checks it. The text stays until the next `vault.state` (added) or an error toast ("Virheellinen
+ * arvo." for a refused value), so a refused value can be fixed; the button waits meanwhile.
+ */
+function AddForm() {
+  const vault = useStore((s) => s.vault);
+  const errors = useStore((s) => s.errorCount);
+  const [addKind, setAddKind] = useState<VaultAddKind>('PERSON');
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const value = text.trim();
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only when a new state arrives
+  useEffect(() => {
+    if (!busy) return;
+    setBusy(false);
+    setText('');
+  }, [vault]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: an error ends the wait; the text stays
+  useEffect(() => setBusy(false), [errors]);
+  return (
+    <form
+      aria-label="Lisää nimi tai tunnus"
+      className="flex flex-col gap-1.5"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!value || busy) return;
+        setBusy(true);
+        send({ type: 'vault.add', kind: addKind, text: value });
+      }}
+    >
+      {/* Phones: the lead-in above one 44 px row; wider: one row, the field capped at 360 px. */}
+      <div className="flex flex-wrap items-center gap-2 md:flex-nowrap">
+        <span className="w-full text-meta text-muted-foreground md:w-auto">Lisää suojattava</span>
+        <Select value={addKind} onValueChange={(v) => setAddKind(v as VaultAddKind)}>
+          <SelectTrigger aria-label="Tyyppi">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent position="popper">
+            {VaultAddKind.options.map((k) => (
+              <SelectItem key={k} value={k}>
+                {kind(k)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Input
+          aria-label="Lisättävä arvo"
+          placeholder={placeholder(addKind)}
+          value={text}
+          maxLength={80}
+          onChange={(e) => setText(e.target.value)}
+          className="min-w-0 flex-1 md:max-w-90"
+        />
+        {/* The border stays at full strength when disabled; only the label and icon fade. */}
+        <Button
+          type="submit"
+          variant="outline"
+          aria-label="Lisää"
+          disabled={!value || busy}
+          className="disabled:opacity-100 disabled:*:opacity-50 max-md:w-11 max-md:px-0"
+        >
+          <Plus size={16} />
+          <span className="max-md:hidden">Lisää</span>
+        </Button>
+      </div>
+      <p className="text-meta text-muted-foreground">
+        Lempinimet tunnistetaan vain, jos lisäät ne käsin.
+      </p>
+    </form>
+  );
+}
+
 /** Type and state as badges (brief 7.5). */
 function States({ e }: { e: VaultEntity }) {
   return (
@@ -279,134 +358,137 @@ export function VaultScreen() {
             </label>
             <Switch id="vault-model-saw" checked={showModelSaw} onCheckedChange={setShowModelSaw} />
           </div>
-          {!entities.length && !vault.pending.length && (
-            <EmptyState
-              Icon={ShieldCheck}
-              title="Ei vielä tunnistettuja nimiä tai tunnuksia"
-              line="Ne näkyvät täällä, kun viestissä tunnistetaan nimi tai tunnus."
-            />
-          )}
           {vault.pending.length > 0 && (
             <PendingLane pending={vault.pending} entities={vault.entities} />
           )}
-          {entities.length > 0 && (
-            <section aria-labelledby="entities-title" className="flex flex-col gap-3">
-              <h2 id="entities-title" className="text-heading">
-                Tunnistetut
-              </h2>
-              {selected.length >= 2 && target && (
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg bg-muted px-3 py-2">
-                  <span className="text-meta text-muted-foreground tabular-nums">
-                    {selected.length} valittu
-                  </span>
-                  <label htmlFor="merge-into" className="text-ui">
-                    Yhdistä kohteeseen
-                  </label>
-                  <Select value={String(target.id)} onValueChange={(v) => setInto(Number(v))}>
-                    <SelectTrigger id="merge-into" className="w-48">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent position="popper">
-                      {selected.map((e) => (
-                        <SelectItem key={e.id} value={String(e.id)}>
-                          {e.canonical}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Button onClick={merge} className="ml-auto">
-                    Yhdistä
-                  </Button>
-                </div>
-              )}
-              <div className="max-md:hidden">
-                <Table
-                  label="Tunnistetut nimet ja tunnukset"
-                  className="[&_td:first-child]:pl-0 [&_th:first-child]:pl-0"
-                >
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-8">
-                        <span className="sr-only">Valitse</span>
-                      </TableHead>
-                      <TableHead>Alkuperäinen</TableHead>
-                      <TableHead>Tyyppi</TableHead>
-                      <TableHead>Pseudonyymi</TableHead>
-                      <TableHead>Tila</TableHead>
-                      <TableHead className="text-right">Nähty</TableHead>
-                      <TableHead>Viimeksi</TableHead>
-                      <TableHead>
-                        <span className="sr-only">Toiminnot</span>
-                      </TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {entities.map((e) => {
-                      const { quick, more } = rowActions(e);
-                      return (
-                        <TableRow
-                          key={e.id}
-                          className="group/row"
-                          data-state={picked.includes(e.id) ? 'selected' : undefined}
-                        >
-                          <TableCell>{check(e)}</TableCell>
-                          <TableCell className="font-medium">{e.canonical}</TableCell>
-                          <TableCell>
-                            <Badge>{kind(e.kind)}</Badge>
-                          </TableCell>
-                          <TableCell className="text-muted-foreground">{e.surrogate}</TableCell>
-                          <TableCell>
-                            <States e={e} />
-                          </TableCell>
-                          <TableCell className="text-right tabular-nums">{e.seenCount}</TableCell>
-                          <TableCell className="text-muted-foreground tabular-nums">
-                            {when(e.lastSeen)}
-                          </TableCell>
-                          <TableCell className="w-0 pr-0">
-                            <div className="flex justify-end opacity-0 transition-opacity duration-100 group-focus-within/row:opacity-100 group-hover/row:opacity-100 has-aria-expanded:opacity-100 [@media(hover:none)]:opacity-100">
-                              <ActionRow actions={quick} small />
-                              <ActionMenu
-                                label={`Toiminnot: ${e.canonical}`}
-                                actions={more}
-                                small
-                              />
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
-              <ul className="flex flex-col gap-2 md:hidden" aria-label="Tunnistetut">
-                {entities.map((e) => (
-                  <li
-                    key={e.id}
-                    className="flex items-center gap-3 rounded-lg border bg-card py-3 pr-2 pl-4"
+          {/* The add form leads this section, under any pending card (an open question first). */}
+          <section aria-labelledby="entities-title" className="flex flex-col gap-3">
+            <h2 id="entities-title" className="text-heading">
+              Tunnistetut
+            </h2>
+            <AddForm />
+            {!entities.length && !vault.pending.length && (
+              <EmptyState
+                Icon={ShieldCheck}
+                title="Ei vielä tunnistettuja nimiä tai tunnuksia"
+                line="Ne näkyvät täällä, kun viestissä on nimi tai tunnus tai kun lisäät sen itse."
+              />
+            )}
+            {entities.length > 0 && (
+              <>
+                {selected.length >= 2 && target && (
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg bg-muted px-3 py-2">
+                    <span className="text-meta text-muted-foreground tabular-nums">
+                      {selected.length} valittu
+                    </span>
+                    <label htmlFor="merge-into" className="text-ui">
+                      Yhdistä kohteeseen
+                    </label>
+                    <Select value={String(target.id)} onValueChange={(v) => setInto(Number(v))}>
+                      <SelectTrigger id="merge-into" className="w-48">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent position="popper">
+                        {selected.map((e) => (
+                          <SelectItem key={e.id} value={String(e.id)}>
+                            {e.canonical}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button onClick={merge} className="ml-auto">
+                      Yhdistä
+                    </Button>
+                  </div>
+                )}
+                <div className="max-md:hidden">
+                  <Table
+                    label="Tunnistetut nimet ja tunnukset"
+                    className="[&_td:first-child]:pl-0 [&_th:first-child]:pl-0"
                   >
-                    {check(e)}
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate font-medium">{e.canonical}</div>
-                      <div className="text-meta text-muted-foreground [overflow-wrap:anywhere]">
-                        {e.surrogate} · {kind(e.kind)} · {MODE[e.mode]} · nähty {e.seenCount} ·{' '}
-                        {when(e.lastSeen)}
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-8">
+                          <span className="sr-only">Valitse</span>
+                        </TableHead>
+                        <TableHead>Alkuperäinen</TableHead>
+                        <TableHead>Tyyppi</TableHead>
+                        <TableHead>Pseudonyymi</TableHead>
+                        <TableHead>Tila</TableHead>
+                        <TableHead className="text-right">Nähty</TableHead>
+                        <TableHead>Viimeksi</TableHead>
+                        <TableHead>
+                          <span className="sr-only">Toiminnot</span>
+                        </TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {entities.map((e) => {
+                        const { quick, more } = rowActions(e);
+                        return (
+                          <TableRow
+                            key={e.id}
+                            className="group/row"
+                            data-state={picked.includes(e.id) ? 'selected' : undefined}
+                          >
+                            <TableCell>{check(e)}</TableCell>
+                            <TableCell className="font-medium">{e.canonical}</TableCell>
+                            <TableCell>
+                              <Badge>{kind(e.kind)}</Badge>
+                            </TableCell>
+                            <TableCell className="text-muted-foreground">{e.surrogate}</TableCell>
+                            <TableCell>
+                              <States e={e} />
+                            </TableCell>
+                            <TableCell className="text-right tabular-nums">{e.seenCount}</TableCell>
+                            <TableCell className="text-muted-foreground tabular-nums">
+                              {when(e.lastSeen)}
+                            </TableCell>
+                            <TableCell className="w-0 pr-0">
+                              <div className="flex justify-end opacity-0 transition-opacity duration-100 group-focus-within/row:opacity-100 group-hover/row:opacity-100 has-aria-expanded:opacity-100 [@media(hover:none)]:opacity-100">
+                                <ActionRow actions={quick} small />
+                                <ActionMenu
+                                  label={`Toiminnot: ${e.canonical}`}
+                                  actions={more}
+                                  small
+                                />
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+                <ul className="flex flex-col gap-2 md:hidden" aria-label="Tunnistetut">
+                  {entities.map((e) => (
+                    <li
+                      key={e.id}
+                      className="flex items-center gap-3 rounded-lg border bg-card py-3 pr-2 pl-4"
+                    >
+                      {check(e)}
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate font-medium">{e.canonical}</div>
+                        <div className="text-meta text-muted-foreground [overflow-wrap:anywhere]">
+                          {e.surrogate} · {kind(e.kind)} · {MODE[e.mode]} · nähty {e.seenCount} ·{' '}
+                          {when(e.lastSeen)}
+                        </div>
                       </div>
-                    </div>
-                    <ActionMenu
-                      label={`Toiminnot: ${e.canonical}`}
-                      actions={actionsOf(e, setNeverDetect)}
-                    />
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
+                      <ActionMenu
+                        label={`Toiminnot: ${e.canonical}`}
+                        actions={actionsOf(e, setNeverDetect)}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </section>
           {(entities.length > 0 || vault.pending.length > 0) && (
             <ul className="flex flex-col gap-1 text-meta text-muted-foreground text-pretty">
               <li>
                 Tunnistus ei ole täydellinen. Tunnistamatta jääneet arvot näkyvät korostamattomina.
               </li>
-              <li>Lempinimet tunnistetaan vain, jos lisäät ne käsin aliaksiksi.</li>
               <li>
                 Pelkkä etunimi yhdistetään keskustelun viimeisimpään samannimiseen henkilöön.
                 Epäselvät tapaukset merkitään.

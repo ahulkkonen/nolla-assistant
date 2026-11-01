@@ -504,6 +504,40 @@ test.describe('vault', () => {
     await expect(rows).toHaveCount(3);
     await expect(rows.filter({ hasText: 'Koski' })).toHaveCount(1);
   });
+
+  // Phase 34: a nickname the detector misses goes to the vault by hand and masks from then on.
+  test('add a nickname on the vault screen, the next message masks it', async ({ app, page }) => {
+    app.llm.push({ text: 'Selvä.' });
+    await app.login(page);
+    await openVault(page);
+    const form = page.getByRole('form', { name: 'Lisää nimi tai tunnus' });
+    await form.getByLabel('Lisättävä arvo').fill('Late');
+    await form.getByRole('button', { name: 'Lisää', exact: true }).click();
+    // The field empties when the fresh vault.state has the entity.
+    await expect(page.locator('tbody tr').filter({ hasText: 'Late' })).toHaveCount(1);
+    await expect(form.getByLabel('Lisättävä arvo')).toHaveValue('');
+
+    await page.getByRole('button', { name: 'Uusi keskustelu' }).first().click();
+    await send(page, 'Late tulee huomenna');
+    await expect(page.locator('.md').last()).toHaveText('Selvä.');
+    // Every model call (the chat turn and a title job, if it ran) saw the surrogate only.
+    const body = JSON.stringify(app.llm.requests.map((r) => r.body));
+    expect(body).toContain('tulee huomenna');
+    expect(body).not.toContain('Late');
+  });
+
+  test('a value the sidecar refuses keeps the text for a fix', async ({ app, page }) => {
+    await app.login(page);
+    await openVault(page);
+    const form = page.getByRole('form', { name: 'Lisää nimi tai tunnus' });
+    const field = form.getByLabel('Lisättävä arvo');
+    await field.fill('late'); // a name starts with a capital letter: 422
+    await form.getByRole('button', { name: 'Lisää', exact: true }).click();
+    await expect(page.getByText('Virheellinen arvo.')).toBeVisible();
+    await expect(field).toHaveValue('late');
+    await expect(form.getByRole('button', { name: 'Lisää', exact: true })).toBeEnabled();
+    await expect(page.locator('tbody tr').filter({ hasText: 'late' })).toHaveCount(0);
+  });
 });
 
 test.describe('collision', () => {
