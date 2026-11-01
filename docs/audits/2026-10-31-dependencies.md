@@ -54,6 +54,8 @@ Advisories (vulnerabilities, not malware). Recommended action: upgrade at the ne
 | serialize-javascript | 7.1.2 | GHSA-m5mm-p8h7-m29v | low | vite-plugin-pwa > workbox-build (build time) | Accept. |
 | deepmerge | 4.3.1 | GHSA-gcqx-w48m-w2h4 | low | workbox-build (build time) | No fix exists. Accept. |
 
+Resolved 2026-11-01: `undici` in the Pi tree is 8.12.3 (published 2026-10-19) through the scoped override `'@earendil-works/pi-coding-agent>undici': 8.12.3` in `pnpm-workspace.yaml`. pnpm 12 ignores `pnpm.overrides` in `package.json`. `services/sandbox-broker` keeps its own pin 8.12.2.
+
 Deprecated versions in the lock (no security impact found): @esbuild-kit/core-utils 3.3.2, @esbuild-kit/esm-loader 2.6.5, glob 11.1.0, node-domexception 1.0.0, @smithy/core 3.36.0 (deprecated for a logger-redaction bug, aws-sdk-js-v3 issue 8393; reached through Pi's Bedrock provider, which this project does not use).
 
 ## 2. Typosquats and look-alikes

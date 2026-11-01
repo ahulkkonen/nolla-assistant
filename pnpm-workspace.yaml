@@ -17,3 +17,6 @@ allowBuilds:
   protobufjs: false
   # Binaries ship in the package; postinstall only fetches optional CUDA files.
   onnxruntime-node: false
+# Pi 1.4.0 pins undici 8.10.2 (advisories fixed in 8.12.2); see docs/audits/2026-10-31-dependencies.md
+overrides:
+  '@earendil-works/pi-coding-agent>undici': 8.12.3
