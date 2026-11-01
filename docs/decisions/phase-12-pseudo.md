@@ -112,7 +112,9 @@ lines and the harness enforces the plan's thresholds.
     text (user input) also finds streets in lower case, but only with an address shape: a staircase
     or an apartment (`koivukuja 7 b 12`), or the number at a phrase end or before a postcode. So
     `uimaranta 2 kertaa` and `lasiportti 3 metriä` are no addresses, and neither is
-    `kauppakadulta 14 ennen kuutta`. The surrogate is a fake street of the same suffix class (a
+    `kauppakadulta 14 ennen kuutta`. Phase 33 changes the last case: with Voikko, a bare number in the
+    middle of a phrase is a house number unless the next word is a partitive or a translative
+    (`phase-33-recall.md`, decision 1). The surrogate is a fake street of the same suffix class (a
     Swedish street for a Swedish class), a random number and the same staircase shape. It takes the
     case of the real mention.
 15. **Lone lower-case surnames.** The DVV surname file already has the counts (`surnames.csv`, names
@@ -177,7 +179,8 @@ lines and the harness enforces the plan's thresholds.
       old one-word surrogate in `entity.lone_surrogate`, so user input equal to that word alone still
       goes to the collision lane (decision 6).
     - Not covered: a lower-case surname that Omorfi also knows as a place (`Anu rannalle`, `Mika
-      salmelle`) stays unmasked after a first name. A lone lower-case surname that is also an ordinary
+      salmelle`) stays unmasked after a first name. Phase 33 covers it (`phase-33-recall.md`,
+      decision 2). A lone lower-case surname that is also an ordinary
       word (`pouta`) stays unmasked after the upgrade too (decision 15).
 20. **Four false positives from the memory eval (2026-10-27).** The real extraction run of phase 17
     showed `Vantaalla`, `Ensi vuoden`, `Mentorini` and `Milloin Satamarahdin` masked as persons. Each had
@@ -261,14 +264,18 @@ Nimisuojaa" while the chat is held. The vault screen maps the upper-case kinds t
 
 `tests/pii/harness.py` in the Docker image, all layers on (Omorfi, Voikko, spaCy NER):
 
+Phase 33 raised the minimums to the measured floor, rounded down to a whole percent
+(`phase-33-recall.md`, decision 4). The phase-12 values are in brackets.
+
 | Gate | Minimum |
 |---|---|
-| PERSON recall | 0.98 |
-| EMAIL recall | 0.95 |
-| ADDRESS (street name and number) recall | 0.95 |
+| PERSON recall | 0.99 (0.98) |
+| EMAIL recall | 1.0 (0.95) |
+| ADDRESS (street name and number) recall | 1.0 (0.95) |
 | POSTCODE_CITY recall (the five digits) | 1.0 |
 | codes (HETU, IBAN, PHONE) recall | 1.0 |
-| Precision of each predicted kind PERSON, EMAIL, ADDRESS, POSTCODE_CITY, HETU, IBAN, PHONE | 0.97 |
+| PERSON precision | 0.99 (0.97) |
+| Precision of each predicted kind EMAIL, ADDRESS, POSTCODE_CITY, HETU, IBAN, PHONE | 1.0 (0.97) |
 
 Recall counts a gold span only when it is masked whole (decision 18). `ORG` spans are not recall
 targets. Each run uses a new vault user, because entities from an earlier run would turn unseen names
@@ -323,6 +330,7 @@ scoring showed one partly masked name (`tiina kokko`). Overlap scoring counted i
   not ask.
 - Reject is remembered per exact text. Another inflection of the same name asks again.
 - Lower-case streets with a bare number in the middle of a phrase are not masked (decision 14).
+  Fixed in phase 33.
 
 Commits: `342313a` (first round) and `2f667e5` (review round), web collision UI `1e1bfb5` and
 `e8149ef`. The code review found no leak and eight should-fix items, all fixed. The scored UI review

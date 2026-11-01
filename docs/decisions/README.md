@@ -38,4 +38,5 @@ The build plan is `docs/plan.md`. Section numbers in records refer to it.
 - `phase-30-audits.md`: the three audits before publication (`docs/audits/`) and their fixes in batches A (security) and B (architecture, lint, masked artifacts in a tainted chat).
 - `phase-31-publication.md`: license, CI, the history rewrite, supply-chain settings, synthetic names.
 - `phase-32-readme.md`: the short and long README, the media, the threat model, the open name.
+- `phase-33-recall.md`: detection recall: lower-case streets with a house number mid-phrase, a first name with an inflected surname that has a place reading, nicknames through the vault, the corpus gate at the measured floor.
 - `../threat-model.md`: the threat-model note of plan §14 (assets, trust boundaries, attackers, controls, residual risks). It lives outside this folder because it is not a decision record.
