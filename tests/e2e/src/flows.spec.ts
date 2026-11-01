@@ -611,6 +611,45 @@ test.describe('approval', () => {
     await expect(page.locator('.md').last()).toHaveText('Kirjoitettu.');
     await expect(page.getByRole('button', { name: /^write valmis/ })).toBeVisible();
   });
+
+  test.describe('MCP', () => {
+    test.use({ mcp: true });
+
+    test('manage_event: the card and the calendar get the real names, the model never does', async ({
+      app,
+      page,
+    }) => {
+      app.llm.push({
+        toolCalls: [
+          {
+            name: 'mcp__workspace__manage_event',
+            args: {
+              action: 'create',
+              summary: 'Kahvit: Pekka Laaksonen ja Anna Mäkinen',
+              start_time: '2026-11-05T10:00:00+02:00',
+              end_time: '2026-11-05T10:30:00+02:00',
+            },
+          },
+        ],
+      });
+      app.llm.push({ text: 'Varattu: Pekka Laaksonen ja Anna Mäkinen.' });
+      await app.login(page);
+      await page
+        .getByLabel('Viesti')
+        .fill('Varaa kahvit torstaille: Matti Virtanen ja Liisa Korhonen.');
+      await page.getByLabel('Viesti').press('ControlOrMeta+Enter');
+      // The row and the card show the tool without its `mcp__workspace__` prefix.
+      const card = page.getByRole('region', { name: /Hyväksytäänkö työkalu manage_event/ });
+      await expect(card).toContainText('Matti Virtanen ja Liisa Korhonen');
+      await card.getByRole('button', { name: 'Hyväksy' }).click();
+      await expect(page.locator('.md').last()).toHaveText(
+        'Varattu: Matti Virtanen ja Liisa Korhonen.',
+      );
+      await expect(page.getByRole('button', { name: /^manage_event valmis/ })).toBeVisible();
+      expect(app.mcp?.state.created[0]?.summary).toBe('Kahvit: Matti Virtanen ja Liisa Korhonen');
+      for (const r of app.llm.requests) expect(JSON.stringify(r.body)).not.toContain('Virtanen');
+    });
+  });
 });
 
 for (const viewport of VIEWPORTS)

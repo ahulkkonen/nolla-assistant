@@ -23,6 +23,7 @@ import { Collapsible } from 'radix-ui';
 import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 import { type ToolView, useStore } from '../store.ts';
+import { toolLabel } from '../thread.ts';
 
 /** Status icons (brief 7.5): spinner muted, done success, error destructive, waiting warning. */
 const ICON = {
@@ -224,8 +225,8 @@ export function ToolRow({ tool }: { tool: ToolView }) {
       label={
         <>
           <ToolIcon size={16} aria-hidden="true" className="shrink-0 text-muted-foreground" />
-          <span className="truncate font-mono">{tool.name}</span> <span aria-hidden="true">·</span>{' '}
-          <span className="shrink-0">{word}</span>
+          <span className="truncate font-mono">{toolLabel(tool.name)}</span>{' '}
+          <span aria-hidden="true">·</span> <span className="shrink-0">{word}</span>
         </>
       }
     >

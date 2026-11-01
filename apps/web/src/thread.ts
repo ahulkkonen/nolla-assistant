@@ -641,3 +641,6 @@ export function threadKey(e: {
   if (e.key === 'End') return 'end';
   if (e.key === 'ArrowUp' || e.key === 'PageUp' || e.key === 'Home') return 'up';
 }
+
+/** The name a tool row and an approval card show: `mcp__workspace__manage_event` as `manage_event`. */
+export const toolLabel = (name: string) => name.replace(/^mcp__.+?__/, '');

@@ -13,6 +13,7 @@ import { loadConfig } from '@pa/server/src/config.ts';
 import { start } from '@pa/server/src/main.ts';
 import { seedAgents } from '@pa/server/src/test-utils.ts';
 import { type Browser, test as base, expect, type Page } from '@playwright/test';
+import { startFakeWorkspace } from '../../mcp/fixtures/fake-workspace-server.ts';
 import { WEB } from './global-setup.ts';
 
 export const PASSWORD = 'salasana';
@@ -386,6 +387,8 @@ export type App = {
   dataDir: string;
   llm: Awaited<ReturnType<typeof startFakeLlm>>;
   login: (page: Page) => Promise<void>;
+  /** The fake Google Workspace MCP server, with `mcp: true`. */
+  mcp?: Awaited<ReturnType<typeof startFakeWorkspace>>;
 };
 
 /** One automation for `automation: true` (never fires by itself: 1 January at 03:00). */
@@ -404,6 +407,7 @@ export const test = base.extend<{
   memoryUser: string;
   workFiles: boolean;
   broker: boolean;
+  mcp: boolean;
 }>({
   // Starts the fake sidecar and sets PSEUDO_URL: `full` has DICT plus one pending item;
   // `collision` has DICT, and typing COLLIDING holds the message (phase 12).
@@ -418,7 +422,12 @@ export const test = base.extend<{
   workFiles: [false, { option: true }],
   // The fake sandbox broker (runs `bash` on the host, in the work dir): the `bash` tool exists.
   broker: [false, { option: true }],
-  app: async ({ pseudo, automation, approvalTimeoutMs, memoryUser, workFiles, broker }, use) => {
+  // The fake Google Workspace MCP server (tests/mcp): `manage_event` behind the approval gate.
+  mcp: [false, { option: true }],
+  app: async (
+    { pseudo, automation, approvalTimeoutMs, memoryUser, workFiles, broker, mcp },
+    use,
+  ) => {
     const llm = await startFakeLlm([]);
     const sidecar =
       pseudo === 'off'
@@ -437,6 +446,13 @@ export const test = base.extend<{
       ? await startFakeBroker({ token: 'broker-e2e', root: join(dataDir, 'work/aleksi') })
       : undefined;
     mkdirSync(join(dataDir, 'automations'));
+    const fakeMcp = mcp ? await startFakeWorkspace() : undefined;
+    if (fakeMcp)
+      writeFileSync(
+        join(dataDir, 'mcp.yaml'),
+        `servers:\n  workspace:\n    url: ${fakeMcp.mcpUrl}\n    tools:\n` +
+          '      - { name: get_events, write: false }\n      - { name: manage_event, write: true }\n',
+      );
     // The repository's agents plus a second profile for the picker and editor tests.
     seedAgents(join(dataDir, 'agents'));
     if (automation) writeFileSync(join(dataDir, 'automations/aamu.yaml'), AUTOMATION);
@@ -474,6 +490,7 @@ export const test = base.extend<{
         ...(approvalTimeoutMs ? { APPROVAL_TIMEOUT_MS: String(approvalTimeoutMs) } : {}),
         ...(sidecar ? { PSEUDO_URL: sidecar.url } : {}),
         ...(fakeBroker ? { BROKER_URL: fakeBroker.url, BROKER_TOKEN: 'broker-e2e' } : {}),
+        ...(fakeMcp ? { MCP_CONFIG: join(dataDir, 'mcp.yaml') } : {}),
       }),
     );
     const url = `http://127.0.0.1:${port}`;
@@ -483,8 +500,9 @@ export const test = base.extend<{
       await page.getByRole('button', { name: 'Kirjaudu', exact: true }).click();
       await expect(page.getByRole('button', { name: 'Uusi keskustelu' }).first()).toBeVisible();
     };
-    await use({ url, dataDir, llm, login });
+    await use({ url, dataDir, llm, login, ...(fakeMcp ? { mcp: fakeMcp } : {}) });
     await srv.close();
+    await fakeMcp?.close();
     await llm.close();
     await sidecar?.close();
     await fakeBroker?.close();

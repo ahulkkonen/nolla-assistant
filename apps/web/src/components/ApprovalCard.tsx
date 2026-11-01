@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { runText } from '../cron.ts';
 import { type Approval, useStore } from '../store.ts';
+import { toolLabel } from '../thread.ts';
 import { respondApproval } from '../ws.ts';
 import { UNTITLED } from './Sidebar.tsx';
 
@@ -375,7 +376,7 @@ export function ApprovalCard({ a }: { a: Approval }) {
           <span>{heading(harness, record ?? {})}</span>
         ) : (
           <span>
-            Hyväksytäänkö työkalu <span className="font-mono">{a.tool}</span>?
+            Hyväksytäänkö työkalu <span className="font-mono">{toolLabel(a.tool)}</span>?
           </span>
         )}
       </h2>
