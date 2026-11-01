@@ -1,5 +1,6 @@
 import pytest
 
+from app.detect import gazetteer
 from app.detect.codes import detect, hetu_valid, iban_valid
 
 
@@ -97,6 +98,24 @@ def test_phase12_lowercase_street_needs_an_address_shape():
     assert found("oon koulutiellä 3") == ["koulutiellä 3"]  # the number at a phrase end
     assert found("asun koivukuja 7 e 12 jos tuut") == ["koivukuja 7 e 12"]  # staircase e, not euros
     assert found("rantatie 22 40100 jyväskylä") == ["rantatie 22"]  # before a postcode
+
+
+@pytest.mark.skipif(gazetteer._voikko() is None, reason="the counted-word check needs Voikko (the Docker image)")
+def test_phase33_lowercase_street_with_a_house_number_mid_phrase():
+    from app.mask import Ctx
+
+    def found(text):
+        return [c.surface for c in detect(text, Ctx(None, "u", lower=True)) if c.kind == "ADDRESS"]
+
+    for text, street in [("paketti pitää hakea kauppakadulta 14 ennen kuutta", "kauppakadulta 14"),
+                         ("oon koulutiellä 3 odottamassa", "koulutiellä 3"),
+                         ("tuu puistokatu 12 ovikoodi on 1234", "puistokatu 12"),
+                         ("kerhohuone on myllypiha 2 sisäpihan perällä", "myllypiha 2")]:
+        assert found(text) == [street], text
+    # the number counts the next word (a partitive or a translative): no address
+    for decoy in ["takapihalla 3 lasta leikkii", "kauppatorilla 2 kojua myi mansikoita", "otin kahvia 2 kuppia",
+                  "artistien 3 levyä soi", "mennään uimarannalle 2 tunniksi"]:
+        assert found(decoy) == [], decoy
 
 
 def test_phase12_suffix_classes_keep_their_case_index():

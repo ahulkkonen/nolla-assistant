@@ -139,6 +139,17 @@ def common_word(word: str) -> bool:
 
 
 @lru_cache(maxsize=50000)
+def counted(word: str) -> bool | None:
+    """Voikko reads the word as a partitive or translative noun, adjective or numeral, the cases a number
+    counts (2 kertaa, 3 lasta, 2 tunniksi); None without Voikko."""
+    v = _voikko()
+    if not v:
+        return None
+    return any(a.get("SIJAMUOTO") in ("osanto", "tulento") and a.get("CLASS") in COMMON_CLASSES
+               for a in v.analyze(word))
+
+
+@lru_cache(maxsize=50000)
 def place(word: str) -> bool:
     """Municipality (any case) or a token Omorfi knows only as a place or a country."""
     if locality(word):
@@ -280,11 +291,12 @@ def _particle_name(text: str, m) -> tuple[int, int, str] | None:
 
 def _lower_surname(text: str, m) -> tuple[int, int, str, float] | None:
     """'Pekka pouta' after the first name m: (start, end, lemma, score) of the lower-case word after one space when
-    it is a DVV surname with at least MIN_SURNAME_COUNT holders, or an inflected form of one, and no place.
-    The score is 0.9, or 0.75 when the word is also an ordinary word. Without Voikko or Omorfi nothing tells an
-    ordinary word, so every pair scores 0.75: such a pair never upgrades an existing entity (decision 19)."""
+    it is a DVV surname with at least MIN_SURNAME_COUNT holders, or an inflected form of one, and no place (with
+    one exception, below). The score is 0.9, or 0.75 when the word is also an ordinary word. Without Voikko or
+    Omorfi nothing tells an ordinary word, so every pair scores 0.75: such a pair never upgrades an existing
+    entity (decision 19)."""
     lm = LOWER_RE.match(text, m.end() + 1) if text[m.end():m.end() + 1] == " " else None
-    if not lm or lm.group(0) in LOWER_STOP or not plain_word(text, lm.start(), lm.end()) or place(cap(lm.group(0))):
+    if not lm or lm.group(0) in LOWER_STOP or not plain_word(text, lm.start(), lm.end()):
         return None
     w = cap(lm.group(0))
     last = next((l for l, k in lemmas(w) if k == "last" and _count(l, "last") >= MIN_SURNAME_COUNT), None) \
@@ -292,6 +304,11 @@ def _lower_surname(text: str, m) -> tuple[int, int, str, float] | None:
     if not last:
         return None
     lexicon = _voikko() is not None or forms.omorfi() is not None
+    # "Anu rannalle", "Mika salmelle": a place reading (ranta, salmi) does not stop an ordinary word that is an
+    # inflected form of a surname with LONE_SURNAME_MIN holders, after a first name in the nominative (a Finnish
+    # full name inflects only the surname). "Liisan rannalle" and "Riikka kotona" stay (phase-33 decision 2).
+    if place(w) and not (lexicon and m.group(0) in names()["first"] and common_word(lm.group(0)) and surname_shaped(w)):
+        return None
     if lexicon and common_word(m.group(0)) and common_word(lm.group(0)):
         return None  # Ensi vuoden, Toivo laine: two ordinary words, as in lower_names
     # ponytail: a surname that is also an ordinary word (pouta, laine, koski, mäki) still scores 0.75, above

@@ -573,6 +573,29 @@ def test_two_ordinary_words_are_no_mixed_case_name(vault):
 
 
 @needs_lexicon
+def test_first_name_and_inflected_surname_with_a_place_reading(vault):
+    # phase-33 decision 2: ranta and salmi are places too, but after a nominative first name they are surnames
+    for text, real in [("soitin Anu rannalle mutta hän ei vastannut", "Anu rannalle"),
+                       ("soitin Nina lehtiselle ja Mika salmelle", "Mika salmelle")]:
+        masked, spans = mask(vault, text)
+        assert real in [s["real_form"] for s in spans] and real.split()[1] not in masked, text
+    _, spans = mask(vault, "vein Liisan rannalle uimaan")  # a genitive first name: no full name
+    assert [s["real_form"] for s in spans] == ["Liisan"]
+    _, spans = mask(vault, "onko Riikka kotona jo")  # koto has fewer than LONE_SURNAME_MIN holders
+    assert [s["real_form"] for s in spans] == ["Riikka"]
+
+
+def test_nickname_in_the_vault_is_masked(vault):
+    # phase-33 decision 3: the detector does not guess nicknames; the user adds one to the vault once
+    text = "Lauri Mattila tuli jo. Late odottaa autossa."
+    assert "Late" in mask(vault, text)[0]
+    S.get_or_create_entity(vault, U, "PERSON", "Late")  # what POST /vault/seed does
+    masked, spans = mask(vault, text, "s2")
+    assert "Late" not in masked and "Late" in [s["real_form"] for s in spans]
+    assert unmask(vault, masked)[0] == text
+
+
+@needs_lexicon
 def test_ner_drops_unknown_words_at_a_sentence_start():
     from app.detect.ner import plausible
 
