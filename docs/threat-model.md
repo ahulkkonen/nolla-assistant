@@ -202,11 +202,16 @@ audit found no secret in the tracked files or in the history.
 - **The owner's device is trusted.** A session lasts 30 days and each use extends it, with no
   absolute limit (`apps/server/src/auth/session.ts:13-14`). Revoke-all on another device ends it.
   Closes it: an absolute session age and a fresh login for the export and the vault screen.
-- **Detection recall is below 1** (`tests/pii/last-run.json`, 554 texts). Names 0.986 (419 of
-  425), names the vault has not seen 0.978 (270 of 276), addresses 0.953 (82 of 86), plates 0.714
-  (no gate). Codes, emails, phones and postcodes 1.0. A missed name reaches the model as written.
-  The backstop checks only hetu, IBAN and card numbers. The owner adds a missed name on the vault
-  screen.
+- **Detection recall is below 1** (`tests/pii/last-run.json`, 559 texts). Names 0.991 (423 of 427):
+  - Vault-known names: 1.0 (149 of 149).
+  - First-sight names: 0.986 (274 of 278). The misses are two lone lower-case surnames that are
+    also ordinary words (`hämäläistä`, `lahtiseksi`) and two nicknames (`Late`, `Pirkkis`).
+
+  Addresses 1.0 (86 of 86), plates 0.714 (no gate; plates without a context word). Codes, emails,
+  phones and postcodes 1.0. A missed name reaches the model as written. The backstop checks only
+  hetu, IBAN and card numbers. A name or a nickname in the vault is masked in every later message
+  (`POST /vault/seed`), but the vault screen has no action to add one yet. Closes it: an add
+  action on the vault screen.
 - **Transitive advisories.** `undici` 8.10.2 inside Pi 1.4.0 (4 high) and `body-parser` 2.3.0
   through the MCP SDK (1 high). Pi's `undici` talks only to LiteLLM and `mcp-workspace`, and the
   SDK's express server never runs. Closes it: overrides or the next Pi bump, once the fixed releases

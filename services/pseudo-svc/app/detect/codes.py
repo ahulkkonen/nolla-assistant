@@ -62,9 +62,11 @@ ROADS = frozenset("valtatie kantatie seututie yhdystie moottoritie".split())
 # a measure, not a house number: "kuntotie 5 km", "Kuntotie 3 h"; a letter before a number is a staircase
 # ("koivukuja 7 e 12")
 UNIT_RE = re.compile(r"\s?(?:km|cm|mm|m|min|h|s|kpl|%|€|e|euroa|metriä|kertaa)(?![\wåäö])(?!\s?\d)")
-# a lower-case street needs an address-like end: a staircase or an apartment, or the number at a phrase end
-# or before a postcode ("uimaranta 2 kertaa" and "lasiportti 3 metriä" are no addresses)
+# a lower-case street needs an address-like end: a staircase or an apartment, the number at a phrase end
+# or before a postcode, or (with Voikko) a next word that the number does not count: "uimaranta 2 kertaa" and
+# "lasiportti 3 metriä" are no addresses, "puistokatu 12 ovikoodi on 1234" is one (phase-33 decision 1)
 PHRASE_END = re.compile(r"\s*(?:[.,;:!?)\n]|$|\d{5}(?!\d))")
+NEXT_WORD = re.compile(r"\s+([a-zåäöA-ZÅÄÖ]+)")
 POSTCODE_RE = re.compile(r"\b(\d{5})\s+([A-ZÅÄÖ][A-Za-zÅÄÖåäö-]+)")
 # plain text: "rantatie 22 a 3 40100 jyväskylä" (only right after a street, see detect)
 POSTCODE_LOWER_RE = re.compile(r"\b(\d{5})\s+([a-zåäö][a-zåäö-]+)")
@@ -179,6 +181,16 @@ def email_case(surface: str) -> tuple[str, str | None]:
     return base, dict(zip(email_endings(base), EMAIL_CASES)).get(colon + rest)
 
 
+def _counted(text: str, end: int) -> bool:
+    """The word after a bare house number may be what the number counts: a partitive or a translative
+    (2 kertaa, 3 lasta, 2 tunniksi), or no word at all. True without Voikko, which keeps the phrase-end rule
+    of phase 12."""
+    from .gazetteer import counted  # gazetteer imports this module
+
+    w = NEXT_WORD.match(text, end)
+    return not w or counted(w.group(1).lower()) is not False
+
+
 def streets(text: str, lower: bool = False) -> list[Candidate]:
     out = []
     for rx in (STREET_RE, STREET_LOWER_RE) if lower else (STREET_RE,):
@@ -189,7 +201,8 @@ def streets(text: str, lower: bool = False) -> list[Candidate]:
             if name.lower() + cls in ROADS or num and UNIT_RE.match(text, m.start(3) + num.end()):
                 continue
             bare = re.fullmatch(r"\s\d{1,4}(?::[a-zä]{1,3})?", m.group(3))  # only the number
-            if rx is STREET_LOWER_RE and (not num or bare and not PHRASE_END.match(text, m.end())):
+            if rx is STREET_LOWER_RE and (not num or bare and not PHRASE_END.match(text, m.end())
+                                          and _counted(text, m.end())):
                 continue
             out.append(Candidate(m.start(), m.end(), "ADDRESS", name + STREET_SUFFIX[cls].split()[0]
                                  + m.group(3).split(":")[0], "codes", 1.0, m.group(0)))

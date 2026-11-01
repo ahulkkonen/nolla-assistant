@@ -1,17 +1,17 @@
 {
-  "url": "http://127.0.0.1:18000",
+  "url": "http://127.0.0.1:18001",
   "seeded_via": "vault/seed",
-  "lines": 554,
+  "lines": 559,
   "person_mentions": {
     "vault_known": 149,
-    "unseen": 276
+    "unseen": 278
   },
   "unaligned": [],
   "recall": {
     "ADDRESS": {
-      "found": 82,
+      "found": 86,
       "total": 86,
-      "recall": 0.9535
+      "recall": 1.0
     },
     "EMAIL": {
       "found": 45,
@@ -29,9 +29,9 @@
       "recall": 1.0
     },
     "PERSON": {
-      "found": 419,
-      "total": 425,
-      "recall": 0.9859
+      "found": 423,
+      "total": 427,
+      "recall": 0.9906
     },
     "PHONE": {
       "found": 44,
@@ -54,9 +54,9 @@
       "recall": 1.0
     },
     "unseen_names": {
-      "found": 270,
-      "total": 276,
-      "recall": 0.9783
+      "found": 274,
+      "total": 278,
+      "recall": 0.9856
     },
     "vault_known_names": {
       "found": 149,
@@ -66,8 +66,8 @@
   },
   "precision_by_kind": {
     "ADDRESS": {
-      "tp": 82,
-      "predicted": 82,
+      "tp": 86,
+      "predicted": 86,
       "precision": 1.0
     },
     "EMAIL": {
@@ -86,8 +86,8 @@
       "precision": 1.0
     },
     "PERSON": {
-      "tp": 421,
-      "predicted": 425,
+      "tp": 423,
+      "predicted": 427,
       "precision": 0.9906
     },
     "PHONE": {
@@ -108,18 +108,18 @@
   },
   "by_detector": {
     "codes": {
-      "predicted": 281,
-      "tp": 281,
+      "predicted": 285,
+      "tp": 285,
       "precision": 1.0,
-      "gold_found_first": 281,
-      "recall_share": 0.3936
+      "gold_found_first": 285,
+      "recall_share": 0.398
     },
     "gazetteer": {
-      "predicted": 167,
-      "tp": 166,
+      "predicted": 168,
+      "tp": 167,
       "precision": 0.994,
-      "gold_found_first": 164,
-      "recall_share": 0.2297
+      "gold_found_first": 167,
+      "recall_share": 0.2332
     },
     "ner": {
       "predicted": 2,
@@ -129,11 +129,11 @@
       "recall_share": 0.0028
     },
     "vault": {
-      "predicted": 256,
-      "tp": 253,
+      "predicted": 257,
+      "tp": 254,
       "precision": 0.9883,
-      "gold_found_first": 253,
-      "recall_share": 0.3543
+      "gold_found_first": 254,
+      "recall_share": 0.3547
     }
   },
   "thresholds": {
@@ -143,18 +143,18 @@
       "pass": true
     },
     "PERSON": {
-      "min": 0.98,
-      "value": 0.9859,
+      "min": 0.99,
+      "value": 0.9906,
       "pass": true
     },
     "EMAIL": {
-      "min": 0.95,
+      "min": 1.0,
       "value": 1.0,
       "pass": true
     },
     "ADDRESS": {
-      "min": 0.95,
-      "value": 0.9535,
+      "min": 1.0,
+      "value": 1.0,
       "pass": true
     },
     "POSTCODE_CITY": {
@@ -163,37 +163,37 @@
       "pass": true
     },
     "precision PERSON": {
-      "min": 0.97,
+      "min": 0.99,
       "value": 0.9906,
       "pass": true
     },
     "precision EMAIL": {
-      "min": 0.97,
+      "min": 1.0,
       "value": 1.0,
       "pass": true
     },
     "precision ADDRESS": {
-      "min": 0.97,
+      "min": 1.0,
       "value": 1.0,
       "pass": true
     },
     "precision POSTCODE_CITY": {
-      "min": 0.97,
+      "min": 1.0,
       "value": 1.0,
       "pass": true
     },
     "precision HETU": {
-      "min": 0.97,
+      "min": 1.0,
       "value": 1.0,
       "pass": true
     },
     "precision IBAN": {
-      "min": 0.97,
+      "min": 1.0,
       "value": 1.0,
       "pass": true
     },
     "precision PHONE": {
-      "min": 0.97,
+      "min": 1.0,
       "value": 1.0,
       "pass": true
     }
@@ -246,15 +246,6 @@
       "partial": false
     },
     {
-      "id": "c344",
-      "kind": "ADDRESS",
-      "surface": "kauppakadulta 14",
-      "groups": [
-        "ADDRESS"
-      ],
-      "partial": false
-    },
-    {
       "id": "c351",
       "kind": "PERSON",
       "surface": "lahtiseksi",
@@ -283,53 +274,6 @@
         "unseen_names"
       ],
       "partial": false
-    },
-    {
-      "id": "c468",
-      "kind": "ADDRESS",
-      "surface": "koulutiellä 3",
-      "groups": [
-        "ADDRESS"
-      ],
-      "partial": false
-    },
-    {
-      "id": "c470",
-      "kind": "ADDRESS",
-      "surface": "puistokatu 12",
-      "groups": [
-        "ADDRESS"
-      ],
-      "partial": false
-    },
-    {
-      "id": "c472",
-      "kind": "ADDRESS",
-      "surface": "myllypiha 2",
-      "groups": [
-        "ADDRESS"
-      ],
-      "partial": false
-    },
-    {
-      "id": "c520",
-      "kind": "PERSON",
-      "surface": "Anu rannalle",
-      "groups": [
-        "PERSON",
-        "unseen_names"
-      ],
-      "partial": true
-    },
-    {
-      "id": "c544",
-      "kind": "PERSON",
-      "surface": "Mika salmelle",
-      "groups": [
-        "PERSON",
-        "unseen_names"
-      ],
-      "partial": true
     }
   ],
   "false_positives": [
@@ -372,6 +316,11 @@
       "id": "c234",
       "decoy_kind": "PERSON",
       "surface": "Niemen"
+    },
+    {
+      "id": "c559",
+      "decoy_kind": "PERSON",
+      "surface": "rannalla"
     }
   ]
 }
