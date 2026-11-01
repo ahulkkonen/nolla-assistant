@@ -124,5 +124,6 @@ pnpm --filter @pa/web dev
 - Single user, Finnish first. Deferred: a direct search backend, text-to-speech and multi-user.
 - Detection is not perfect: nicknames outside the table and rare inflections can slip through.
 - Images and voice audio reach the model unmasked, through ZDR endpoints; a web search query reaches Exa unmasked when it names no vault entity.
+- What comes next, with costs: [`docs/roadmap.md`](docs/roadmap.md).
 
 MIT license, see [`LICENSE`](LICENSE).
