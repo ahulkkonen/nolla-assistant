@@ -59,6 +59,20 @@ describe('ClientMessage', () => {
       ClientMessage.safeParse({ type: 'vault.merge', fromIds: [1, 2], intoId: 2 }).success,
     ).toBe(false);
   });
+  it('vault.add trims the text and takes only the kinds the sidecar seeds', () => {
+    const add = (kind: string, text: string) =>
+      ClientMessage.safeParse({ type: 'vault.add', kind, text });
+    expect(add('PERSON', '  Late ').data).toEqual({
+      type: 'vault.add',
+      kind: 'PERSON',
+      text: 'Late',
+    });
+    expect(add('PERSON', 'x'.repeat(80)).success).toBe(true);
+    expect(add('PERSON', 'x'.repeat(81)).success).toBe(false);
+    expect(add('PERSON', '   ').success).toBe(false);
+    expect(add('SELF', 'Late').success).toBe(false);
+    expect(add('ORG', 'Late').success).toBe(false);
+  });
   it('rejects push.subscribe with a non-URL endpoint', () => {
     expect(
       ClientMessage.safeParse({

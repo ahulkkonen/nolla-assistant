@@ -1,6 +1,7 @@
 /**
  * The vault screen over the socket: `vault.*` frames go to the sidecar, and the asking socket gets
  * a fresh `vault.state`. A merge or a never-detect also drops the collision questions it settles.
+ * An add seeds one entity, so the next message masks it (phase 34).
  *
  * The vault holds real values. They go only to the asking socket (or every socket of the user, by
  * main.ts), never to a chat room, a log line or a Pi session.
@@ -53,6 +54,15 @@ export async function vault(conn: Conn, msg: Extract<ClientMessage, { type: `vau
         // 409: answered or closed meanwhile (a stale screen); the fresh state below shows it.
         if (!(err instanceof PseudoDownError && err.message.endsWith('status 409'))) throw err;
         collisions.drop(msg.pendingId);
+      }
+      break;
+    case 'vault.add':
+      try {
+        await pseudo.vaultSeed([{ kind: msg.kind, canonical: msg.text }]);
+      } catch (err) {
+        // 422: the sidecar finds no valid value of that kind (a bad hetu, a lower-case name).
+        if (!(err instanceof PseudoDownError && err.message.endsWith('status 422'))) throw err;
+        return send(socket, errorMsg('invalid'));
       }
       break;
   }

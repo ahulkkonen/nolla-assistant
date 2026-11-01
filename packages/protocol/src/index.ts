@@ -342,6 +342,19 @@ export const VaultPending = z.object({
 });
 export type VaultPending = z.infer<typeof VaultPending>;
 
+/** The kinds `POST /vault/seed` takes (`SeedEntity.kind` in pseudo-svc); `vault.add` sends one. */
+export const VaultAddKind = z.enum([
+  'PERSON',
+  'HETU',
+  'IBAN',
+  'PHONE',
+  'EMAIL',
+  'ADDRESS',
+  'POSTCODE_CITY',
+  'PLATE',
+]);
+export type VaultAddKind = z.infer<typeof VaultAddKind>;
+
 export const ArtifactKind = z.enum(['html', 'react', 'mermaid', 'vega-lite']);
 export type ArtifactKind = z.infer<typeof ArtifactKind>;
 
@@ -950,6 +963,12 @@ export const ClientMessage = z.discriminatedUnion('type', [
     type: z.literal('vault.pending.resolve'),
     pendingId: z.int(),
     action: z.enum(['confirm', 'dismiss', 'allowlist', 'accept', 'reject']),
+  }),
+  /** Phase 34: the owner adds a value the detector misses (a nickname); the sidecar checks it. */
+  z.object({
+    type: z.literal('vault.add'),
+    kind: VaultAddKind,
+    text: z.string().trim().min(1).max(80),
   }),
   z.object({ type: z.literal('memory.list') }),
   z.object({

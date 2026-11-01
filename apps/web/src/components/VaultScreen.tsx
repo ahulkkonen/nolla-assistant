@@ -1,10 +1,11 @@
-import type { VaultEntity, VaultPending } from '@pa/protocol';
+import { VaultAddKind, type VaultEntity, type VaultPending } from '@pa/protocol';
 import {
   Brackets,
   Check,
   EyeOff,
   Pin,
   PinOff,
+  Plus,
   RefreshCw,
   ShieldAlert,
   ShieldCheck,
@@ -17,6 +18,7 @@ import {
 import { useEffect, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   Select,
   SelectContent,
@@ -216,6 +218,53 @@ function PendingLane({ pending, entities }: { pending: VaultPending[]; entities:
   );
 }
 
+/**
+ * Phase 34: the owner adds a value the detector misses (a nickname such as Late). The sidecar
+ * checks it; a refused value answers the toast "Virheellinen arvo.".
+ */
+function AddForm() {
+  const [addKind, setAddKind] = useState<VaultAddKind>('PERSON');
+  const [text, setText] = useState('');
+  const value = text.trim();
+  return (
+    <form
+      aria-label="Lisää nimi tai tunnus"
+      className="grid grid-cols-[9rem_1fr] gap-2 md:flex"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!value) return;
+        send({ type: 'vault.add', kind: addKind, text: value });
+        setText('');
+      }}
+    >
+      <Select value={addKind} onValueChange={(v) => setAddKind(v as VaultAddKind)}>
+        <SelectTrigger aria-label="Tyyppi" className="w-full md:w-44">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent position="popper">
+          {VaultAddKind.options.map((k) => (
+            <SelectItem key={k} value={k}>
+              {kind(k)}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Input
+        aria-label="Lisättävä arvo"
+        placeholder="Esim. lempinimi"
+        value={text}
+        maxLength={80}
+        onChange={(e) => setText(e.target.value)}
+        className="min-w-0 md:flex-1"
+      />
+      <Button type="submit" variant="outline" disabled={!value} className="col-span-2 md:col-auto">
+        <Plus size={16} />
+        Lisää
+      </Button>
+    </form>
+  );
+}
+
 /** Type and state as badges (brief 7.5). */
 function States({ e }: { e: VaultEntity }) {
   return (
@@ -279,6 +328,7 @@ export function VaultScreen() {
             </label>
             <Switch id="vault-model-saw" checked={showModelSaw} onCheckedChange={setShowModelSaw} />
           </div>
+          <AddForm />
           {!entities.length && !vault.pending.length && (
             <EmptyState
               Icon={ShieldCheck}
@@ -406,7 +456,7 @@ export function VaultScreen() {
               <li>
                 Tunnistus ei ole täydellinen. Tunnistamatta jääneet arvot näkyvät korostamattomina.
               </li>
-              <li>Lempinimet tunnistetaan vain, jos lisäät ne käsin aliaksiksi.</li>
+              <li>Lempinimet tunnistetaan vain, jos lisäät ne käsin.</li>
               <li>
                 Pelkkä etunimi yhdistetään keskustelun viimeisimpään samannimiseen henkilöön.
                 Epäselvät tapaukset merkitään.
