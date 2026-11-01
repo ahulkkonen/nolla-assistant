@@ -57,7 +57,9 @@ section 2.
 - **Worktrees** go under `/tmp/pa-*`, not under `.claude/worktrees` (Biome ignores that path, so a
   worktree there is never linted).
 - **Commits** use Conventional Commits (`feat(web): …`, `fix(server): …`, `docs: …`). Review happens
-  before the commit, so `git log` is the review log. There is no remote; do not push.
+  before the commit, so `git log` is the review log. The remote is `origin`
+  (`github.com/ahulkkonen/nolla-assistant`); push `main` only after the gate below is green, because
+  CI runs on every push to `main`.
 
 ## Layout
 

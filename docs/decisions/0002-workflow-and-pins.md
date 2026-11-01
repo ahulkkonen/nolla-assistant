@@ -20,3 +20,6 @@ The plan (section 1 and 14) says every task is one PR with one review pass. The 
 ## Verified on
 
 2026-10-25, by querying `registry.npmjs.org` directly with curl (the `npm` CLI on the build machine is wrapped by a 1Password helper that fails in non-interactive shells).
+
+Update 2026-11-01: the repository has a remote since phase 31 (`origin`, GitHub, private at first). The
+workflow above stays; `main` is pushed after the merge gate, and `.github/workflows/ci.yml` runs on it.
