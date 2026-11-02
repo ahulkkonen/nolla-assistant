@@ -11,6 +11,9 @@ const chromium: PlaywrightTestConfig['use'] = {
 export default defineConfig({
   testDir: './src',
   timeout: 60_000,
+  // The GitHub runner streams replies slower than a laptop: 88 of 89 flows pass there, and the
+  // one that fails changes from run to run on the 5 s default.
+  expect: { timeout: process.env.CI ? 15_000 : 5_000 },
   retries: 0,
   reporter: 'list',
   globalSetup: './src/global-setup.ts',
