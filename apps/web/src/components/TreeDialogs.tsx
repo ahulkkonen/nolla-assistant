@@ -1,4 +1,4 @@
-import type { TreeEntry } from '@pa/protocol';
+import type { TreeEntry } from '@nolla/protocol';
 import { ChevronRight } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';

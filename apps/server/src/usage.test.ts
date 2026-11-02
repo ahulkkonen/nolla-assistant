@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { chats, openDb, usage } from '@pa/db';
-import type { CallUsage } from '@pa/protocol';
+import { chats, openDb, usage } from '@nolla/db';
+import type { CallUsage } from '@nolla/protocol';
 import { eq } from 'drizzle-orm';
 import { afterEach, expect, test } from 'vitest';
 import { bootBroker, bootChat, runCleanups, tempDir } from './test-utils.ts';

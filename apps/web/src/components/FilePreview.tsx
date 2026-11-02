@@ -1,4 +1,4 @@
-import { type FileRoot, PREVIEW_MAX, type TreeEntry } from '@pa/protocol';
+import { type FileRoot, PREVIEW_MAX, type TreeEntry } from '@nolla/protocol';
 import { Download, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { treeRawUrl } from '../api.ts';

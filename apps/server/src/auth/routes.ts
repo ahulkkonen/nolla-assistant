@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { type Db, passkeys } from '@pa/db';
+import { type Db, passkeys } from '@nolla/db';
 import {
   type AuthenticationResponseJSON,
   generateAuthenticationOptions,

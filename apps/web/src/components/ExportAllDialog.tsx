@@ -1,4 +1,4 @@
-import { decryptCommand } from '@pa/protocol';
+import { decryptCommand } from '@nolla/protocol';
 import { Download } from 'lucide-react';
 import { Fragment, type MouseEvent, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';

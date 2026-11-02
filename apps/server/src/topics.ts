@@ -1,6 +1,6 @@
-import { chats, type Db, tags, topicProposals, topics } from '@pa/db';
-import type { PseudoClient } from '@pa/pi-ext-pseudo';
-import type { ServerMessage } from '@pa/protocol';
+import { chats, type Db, tags, topicProposals, topics } from '@nolla/db';
+import type { PseudoClient } from '@nolla/pi-ext-pseudo';
+import type { ServerMessage } from '@nolla/protocol';
 import { and, count, eq, like } from 'drizzle-orm';
 import type { FastifyBaseLogger } from 'fastify';
 import { z } from 'zod';

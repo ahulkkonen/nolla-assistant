@@ -1,5 +1,5 @@
 {
-  "name": "@pa/protocol",
+  "name": "@nolla/protocol",
   "private": true,
   "type": "module",
   "exports": {

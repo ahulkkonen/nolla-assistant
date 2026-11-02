@@ -1,5 +1,5 @@
 {
-  "name": "@pa/pi-ext-topics",
+  "name": "@nolla/pi-ext-topics",
   "private": true,
   "type": "module",
   "exports": {

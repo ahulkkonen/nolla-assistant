@@ -4,7 +4,7 @@ import {
   type FxRate,
   formatCost,
   formatTokens,
-} from '@pa/protocol';
+} from '@nolla/protocol';
 import { useStore } from '../store.ts';
 import { cacheRate, count, fullTime, messageTime, tokensOf } from '../thread.ts';
 import { modelLabel } from '../useModel.ts';

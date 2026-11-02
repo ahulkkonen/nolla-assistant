@@ -1,4 +1,4 @@
-import type { Message } from '@pa/protocol';
+import type { Message } from '@nolla/protocol';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useStore, VERSION_FAILED } from './store.ts';
 import {

@@ -448,9 +448,9 @@ Rules:
 
 ### 7. Eval harness
 
-33. **Package.** `tests/memory-eval` (`@pa/memory-eval`), TypeScript (invariant 5). The root
-    `test` script filters it out, as `@pa/egress-tests`. It runs on demand:
-    `pnpm --filter @pa/memory-eval eval [--no-claims] [--out results/<date>.json]`. It needs
+33. **Package.** `tests/memory-eval` (`@nolla/memory-eval`), TypeScript (invariant 5). The root
+    `test` script filters it out, as `@nolla/egress-tests`. It runs on demand:
+    `pnpm --filter @nolla/memory-eval eval [--no-claims] [--out results/<date>.json]`. It needs
     `LITELLM_URL`, `LITELLM_MASTER_KEY` and `PSEUDO_URL`.
 34. **Data. Synthetic only.** No real chat goes into the repository.
     - `fixtures/chats.json`: about 30 synthetic chats over 3 simulated months, each with a date

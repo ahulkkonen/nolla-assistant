@@ -15,7 +15,7 @@ model call to OpenRouter endpoints with zero data retention (ZDR). The system ca
 names on 562 Finnish test texts.
 
 ```sh
-pnpm install && pnpm --filter @pa/web build
+pnpm install && pnpm --filter @nolla/web build
 node tests/e2e/src/demo.ts   # no keys, no Docker: localhost:3000, password salasana
 ```
 
@@ -148,8 +148,8 @@ and a single `$` in the shell.
 
 ```sh
 pnpm install
-set -a; source .env; set +a; pnpm --filter @pa/server dev
-pnpm --filter @pa/web dev
+set -a; source .env; set +a; pnpm --filter @nolla/server dev
+pnpm --filter @nolla/web dev
 ```
 
 The suite has 582 Vitest, 28 Pi contract and 671 Playwright tests. Playwright runs 89 flows and 582

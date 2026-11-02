@@ -1,7 +1,7 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { chats, topics } from '@pa/db';
-import { type AttachmentRef, ChatExport } from '@pa/protocol';
+import { chats, topics } from '@nolla/db';
+import { type AttachmentRef, ChatExport } from '@nolla/protocol';
 import { eq } from 'drizzle-orm';
 import sharp from 'sharp';
 import { afterEach, expect, test, vi } from 'vitest';

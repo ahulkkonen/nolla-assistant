@@ -5,7 +5,7 @@
  * It holds no state of its own (the rooms map belongs to the caller). It must not read the
  * database or Pi sessions, and an error frame must never carry details from the server log.
  */
-import type { ServerMessage } from '@pa/protocol';
+import type { ServerMessage } from '@nolla/protocol';
 
 export type Socket = {
   send(data: string): void;

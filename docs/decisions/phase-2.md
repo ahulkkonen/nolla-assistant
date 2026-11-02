@@ -8,7 +8,7 @@ manifest, icons, service worker registration and `apple-touch-icon` instead.
 Gate (plan §13): installs on an iPhone and on desktop Chrome; UI reviewer signs off sidebar,
 thread, composer; Lighthouse PWA checks pass.
 
-Gate command: `pnpm typecheck && pnpm lint && pnpm test && pnpm --filter @pa/e2e test`
+Gate command: `pnpm typecheck && pnpm lint && pnpm test && pnpm --filter @nolla/e2e test`
 
 ## Decisions for this phase
 
@@ -61,7 +61,7 @@ Gate command: `pnpm typecheck && pnpm lint && pnpm test && pnpm --filter @pa/e2e
 | # | Task | Owner | Files | Acceptance |
 |---|---|---|---|---|
 | 1 | Server: auth, cookies, passkeys, static, uploads, attachment ingest | Opus | `apps/server/src/auth/`, `apps/server/src/files.ts`, `apps/server/src/http.ts`, `packages/db` (2 tables), `scripts/hash-password.mjs` | tests: password login sets cookie and `/ws` without cookie is 401; upload + `user.message` with an image reaches fake-llm as an image part; a txt attachment text appears in the prompt |
-| 2 | Web: PWA shell (login, sidebar, thread, composer, attachments, theme, shortcuts, manifest, SW) | Opus | `apps/web/` | `pnpm --filter @pa/web build` passes; vitest unit tests for the WS client and the reducer |
+| 2 | Web: PWA shell (login, sidebar, thread, composer, attachments, theme, shortcuts, manifest, SW) | Opus | `apps/web/` | `pnpm --filter @nolla/web build` passes; vitest unit tests for the WS client and the reducer |
 | 3 | Infra: `Dockerfile.server`, `compose.yaml`, `.dockerignore` | Sonnet | `infra/` | `docker build -f infra/Dockerfile.server .` succeeds locally and `/healthz` answers in the container |
 | 4 | e2e: Playwright harness with fake-llm, flows + screenshots 390/1024/1440 light/dark | Sonnet, after 1–2 | `tests/e2e/` | flows: login, new chat, send, stream, attach image; screenshots stored as baselines |
 | 5 | UI review against §11 checklist, using task-4 screenshots | Opus (UI reviewer) | — | sign-off or numbered rejection list |

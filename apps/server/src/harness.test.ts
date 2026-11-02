@@ -1,10 +1,10 @@
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { chats, openDb, users } from '@pa/db';
-import { PseudoClient, PseudoDownError } from '@pa/pi-ext-pseudo';
-import { startFakeSidecar } from '@pa/pi-ext-pseudo/fake-sidecar';
-import { HARNESS_TOOLS } from '@pa/protocol';
+import { chats, openDb, users } from '@nolla/db';
+import { PseudoClient, PseudoDownError } from '@nolla/pi-ext-pseudo';
+import { startFakeSidecar } from '@nolla/pi-ext-pseudo/fake-sidecar';
+import { HARNESS_TOOLS } from '@nolla/protocol';
 import { afterEach, expect, test, vi } from 'vitest';
 import { adminWriters } from './admin.ts';
 import { loadAgents } from './agents.ts';

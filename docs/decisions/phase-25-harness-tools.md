@@ -176,7 +176,7 @@ Lines were read on 2026-10-29 at `d3263f1`.
     entity card, and `autoApproveTools` leaves `fetch_url` out. *The skill text "fetch only the URL the user gave" becomes a check: a URL
     that a page or a search result suggests waits for the user.*
 23. **Shared network rule.** `PRIVATE` and `publicLookup` move to
-    `services/sandbox-broker/src/net.ts` (export `@pa/sandbox-broker/net`); `proxy.ts` and
+    `services/sandbox-broker/src/net.ts` (export `@nolla/sandbox-broker/net`); `proxy.ts` and
     `fetch-tool.ts` import them. The list gains multicast and reserved ranges, the IPv6 transition
     ranges that embed an IPv4 address (NAT64 `64:ff9b::/96`, Teredo `2001::/32`, 6to4 `2002::/16`,
     the 6to4 relay `192.88.99.0/24`), and an IPv4-mapped IPv6 address is checked as IPv4 (H12). `apps/server` adds the workspace dependency;
@@ -278,7 +278,7 @@ layout (two columns under 768); a 200-line diff does not widen the card past the
 
 1. `pnpm typecheck`, `pnpm lint`, `pnpm test` and `pnpm test:contract` pass.
 2. `pnpm test:sandbox` passes (Docker), because S4 changes the broker and the sandbox test.
-3. `pnpm --filter @pa/e2e exec playwright test --project screens` passes with strict axe.
+3. `pnpm --filter @nolla/e2e exec playwright test --project screens` passes with strict axe.
 4. Docker image and compose smoke as phase-23 gate item 4. In the running stack, a one-off
    `node -e` in the `pa-server` container calls the fetch function on `http://pseudo-svc:8000/`
    and gets the refusal (Docker DNS gives a private address).

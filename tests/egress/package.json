@@ -1,5 +1,5 @@
 {
-  "name": "@pa/egress-tests",
+  "name": "@nolla/egress-tests",
   "private": true,
   "type": "module",
   "scripts": {

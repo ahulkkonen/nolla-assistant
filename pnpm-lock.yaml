@@ -199,28 +199,28 @@ importers:
       '@huggingface/transformers':
         specifier: 4.3.1
         version: 4.3.1(@types/node@26.6.5)
-      '@pa/db':
+      '@nolla/db':
         specifier: workspace:*
         version: link:../../packages/db
-      '@pa/pi-ext-memory':
+      '@nolla/pi-ext-memory':
         specifier: workspace:*
         version: link:../../packages/pi-ext-memory
-      '@pa/pi-ext-pseudo':
+      '@nolla/pi-ext-pseudo':
         specifier: workspace:*
         version: link:../../packages/pi-ext-pseudo
-      '@pa/pi-ext-sandbox':
+      '@nolla/pi-ext-sandbox':
         specifier: workspace:*
         version: link:../../packages/pi-ext-sandbox
-      '@pa/pi-ext-subagents':
+      '@nolla/pi-ext-subagents':
         specifier: workspace:*
         version: link:../../packages/pi-ext-subagents
-      '@pa/pi-ext-topics':
+      '@nolla/pi-ext-topics':
         specifier: workspace:*
         version: link:../../packages/pi-ext-topics
-      '@pa/protocol':
+      '@nolla/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
-      '@pa/sandbox-broker':
+      '@nolla/sandbox-broker':
         specifier: workspace:*
         version: link:../../services/sandbox-broker
       '@simplewebauthn/server':
@@ -260,7 +260,7 @@ importers:
         specifier: 4.6.7
         version: 4.6.7
     devDependencies:
-      '@pa/fake-llm':
+      '@nolla/fake-llm':
         specifier: workspace:*
         version: link:../../tests/fake-llm
       '@types/node':
@@ -293,12 +293,12 @@ importers:
       '@fontsource-variable/source-serif-4':
         specifier: 5.3.1
         version: 5.3.1
+      '@nolla/protocol':
+        specifier: workspace:*
+        version: link:../../packages/protocol
       '@observablehq/plot':
         specifier: 0.6.17
         version: 0.6.17
-      '@pa/protocol':
-        specifier: workspace:*
-        version: link:../../packages/protocol
       '@simplewebauthn/browser':
         specifier: 14.0.0
         version: 14.0.0
@@ -434,10 +434,10 @@ importers:
       '@earendil-works/pi-coding-agent':
         specifier: 1.4.0
         version: 1.4.0(@aws-sdk/credential-provider-node@3.972.86)(@modelcontextprotocol/sdk@1.32.1(zod@4.6.7))(@smithy/signature-v4@5.7.4)(ws@8.22.0)(zod@4.6.7)
-      '@pa/contract-tests':
+      '@nolla/contract-tests':
         specifier: workspace:*
         version: link:../../tests/contract
-      '@pa/fake-llm':
+      '@nolla/fake-llm':
         specifier: workspace:*
         version: link:../../tests/fake-llm
       '@types/node':
@@ -455,10 +455,10 @@ importers:
       '@earendil-works/pi-coding-agent':
         specifier: 1.4.0
         version: 1.4.0(@aws-sdk/credential-provider-node@3.972.86)(@modelcontextprotocol/sdk@1.32.1(zod@4.6.7))(@smithy/signature-v4@5.7.4)(ws@8.22.0)(zod@4.6.7)
-      '@pa/contract-tests':
+      '@nolla/contract-tests':
         specifier: workspace:*
         version: link:../../tests/contract
-      '@pa/fake-llm':
+      '@nolla/fake-llm':
         specifier: workspace:*
         version: link:../../tests/fake-llm
       '@types/node':
@@ -480,10 +480,10 @@ importers:
       '@earendil-works/pi-coding-agent':
         specifier: 1.4.0
         version: 1.4.0(@aws-sdk/credential-provider-node@3.972.86)(@modelcontextprotocol/sdk@1.32.1(zod@4.6.7))(@smithy/signature-v4@5.7.4)(ws@8.22.0)(zod@4.6.7)
-      '@pa/contract-tests':
+      '@nolla/contract-tests':
         specifier: workspace:*
         version: link:../../tests/contract
-      '@pa/fake-llm':
+      '@nolla/fake-llm':
         specifier: workspace:*
         version: link:../../tests/fake-llm
       '@types/node':
@@ -498,10 +498,10 @@ importers:
 
   packages/pi-ext-subagents:
     dependencies:
-      '@pa/pi-ext-pseudo':
+      '@nolla/pi-ext-pseudo':
         specifier: workspace:*
         version: link:../pi-ext-pseudo
-      '@pa/pi-ext-sandbox':
+      '@nolla/pi-ext-sandbox':
         specifier: workspace:*
         version: link:../pi-ext-sandbox
       typebox:
@@ -511,10 +511,10 @@ importers:
       '@earendil-works/pi-coding-agent':
         specifier: 1.4.0
         version: 1.4.0(@aws-sdk/credential-provider-node@3.972.86)(@modelcontextprotocol/sdk@1.32.1(zod@4.6.7))(@smithy/signature-v4@5.7.4)(ws@8.22.0)(zod@4.6.7)
-      '@pa/contract-tests':
+      '@nolla/contract-tests':
         specifier: workspace:*
         version: link:../../tests/contract
-      '@pa/fake-llm':
+      '@nolla/fake-llm':
         specifier: workspace:*
         version: link:../../tests/fake-llm
       '@types/node':
@@ -583,7 +583,7 @@ importers:
         specifier: 1.4.0
         version: 1.4.0(@aws-sdk/credential-provider-node@3.972.86)(@modelcontextprotocol/sdk@1.32.1(zod@4.6.7))(@smithy/signature-v4@5.7.4)(ws@8.22.0)(zod@4.6.7)
     devDependencies:
-      '@pa/fake-llm':
+      '@nolla/fake-llm':
         specifier: workspace:*
         version: link:../fake-llm
       '@types/node':
@@ -601,16 +601,16 @@ importers:
       '@axe-core/playwright':
         specifier: 4.14.0
         version: 4.14.0(playwright-core@1.64.1)
-      '@pa/fake-llm':
+      '@nolla/fake-llm':
         specifier: workspace:*
         version: link:../fake-llm
-      '@pa/pi-ext-pseudo':
+      '@nolla/pi-ext-pseudo':
         specifier: workspace:*
         version: link:../../packages/pi-ext-pseudo
-      '@pa/pi-ext-sandbox':
+      '@nolla/pi-ext-sandbox':
         specifier: workspace:*
         version: link:../../packages/pi-ext-sandbox
-      '@pa/server':
+      '@nolla/server':
         specifier: workspace:*
         version: link:../../apps/server
       '@playwright/test':
@@ -649,16 +649,16 @@ importers:
 
   tests/masked-only:
     devDependencies:
-      '@pa/fake-llm':
+      '@nolla/fake-llm':
         specifier: workspace:*
         version: link:../fake-llm
-      '@pa/pi-ext-pseudo':
+      '@nolla/pi-ext-pseudo':
         specifier: workspace:*
         version: link:../../packages/pi-ext-pseudo
-      '@pa/protocol':
+      '@nolla/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
-      '@pa/server':
+      '@nolla/server':
         specifier: workspace:*
         version: link:../../apps/server
       '@types/node':
@@ -682,16 +682,16 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: 1.32.1
         version: 1.32.1(zod@4.6.7)
-      '@pa/fake-llm':
+      '@nolla/fake-llm':
         specifier: workspace:*
         version: link:../fake-llm
-      '@pa/pi-ext-pseudo':
+      '@nolla/pi-ext-pseudo':
         specifier: workspace:*
         version: link:../../packages/pi-ext-pseudo
-      '@pa/protocol':
+      '@nolla/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
-      '@pa/server':
+      '@nolla/server':
         specifier: workspace:*
         version: link:../../apps/server
       '@types/node':
@@ -715,16 +715,16 @@ importers:
 
   tests/memory-eval:
     devDependencies:
-      '@pa/db':
+      '@nolla/db':
         specifier: workspace:*
         version: link:../../packages/db
-      '@pa/pi-ext-memory':
+      '@nolla/pi-ext-memory':
         specifier: workspace:*
         version: link:../../packages/pi-ext-memory
-      '@pa/pi-ext-pseudo':
+      '@nolla/pi-ext-pseudo':
         specifier: workspace:*
         version: link:../../packages/pi-ext-pseudo
-      '@pa/server':
+      '@nolla/server':
         specifier: workspace:*
         version: link:../../apps/server
       '@types/node':
@@ -742,7 +742,7 @@ importers:
 
   tests/sandbox:
     devDependencies:
-      '@pa/sandbox-broker':
+      '@nolla/sandbox-broker':
         specifier: workspace:*
         version: link:../../services/sandbox-broker
       '@types/node':

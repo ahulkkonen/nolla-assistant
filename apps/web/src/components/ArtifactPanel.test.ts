@@ -1,4 +1,4 @@
-import type { Artifact, ChatSummary } from '@pa/protocol';
+import type { Artifact, ChatSummary } from '@nolla/protocol';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeEach, expect, test } from 'vitest';

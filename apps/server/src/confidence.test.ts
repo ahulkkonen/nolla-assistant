@@ -1,5 +1,5 @@
-import { chats, chunks } from '@pa/db';
-import { ChatExport } from '@pa/protocol';
+import { chats, chunks } from '@nolla/db';
+import { ChatExport } from '@nolla/protocol';
 import { eq } from 'drizzle-orm';
 import { afterEach, expect, test, vi } from 'vitest';
 import { BUNDLED_AGENTS } from './config.ts';

@@ -202,7 +202,7 @@ turn's top (UI review 5: the turn gap is 60 px, 72 on phones; measured 24 px at 
 ## Gate
 
 1. `pnpm typecheck`, `pnpm lint`, `pnpm test` and `pnpm test:contract` pass.
-2. `pnpm --filter @pa/e2e exec playwright test --project screens` passes with strict axe.
+2. `pnpm --filter @nolla/e2e exec playwright test --project screens` passes with strict axe.
 3. The tests named in the task cards pass.
 4. Docker image and compose smoke as phase-23 gate item 4.
 5. P1 is done and U1 passes.

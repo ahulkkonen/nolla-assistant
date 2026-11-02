@@ -1,4 +1,4 @@
-import { formatCost, formatTokens } from '@pa/protocol';
+import { formatCost, formatTokens } from '@nolla/protocol';
 import { ChartColumn } from 'lucide-react';
 import { type ReactNode, useEffect, useState } from 'react';
 import { Badge } from '@/components/ui/badge';

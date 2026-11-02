@@ -1,5 +1,5 @@
 // OAuth proxy and connect routes (decision 0005) against the fake workspace server.
-import { api, boot, connect, login, runCleanups } from '@pa/server/src/test-utils.ts';
+import { api, boot, connect, login, runCleanups } from '@nolla/server/src/test-utils.ts';
 import { afterEach, expect, test } from 'vitest';
 import { AUTH_URL, startWorkspaceConfig } from '../fixtures/fake-workspace-server.ts';
 

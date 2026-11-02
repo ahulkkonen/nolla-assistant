@@ -1,5 +1,5 @@
-import { topics } from '@pa/db';
-import { PseudoDownError } from '@pa/pi-ext-pseudo';
+import { topics } from '@nolla/db';
+import { PseudoDownError } from '@nolla/pi-ext-pseudo';
 import {
   type ChatExport,
   type ExportFormat,
@@ -8,7 +8,7 @@ import {
   formatTokens,
   stripConfidence,
   TOOL_STATUS_WORD,
-} from '@pa/protocol';
+} from '@nolla/protocol';
 import { and, eq } from 'drizzle-orm';
 import type { FastifyInstance, preHandlerHookHandler } from 'fastify';
 import { extractArtifacts } from './artifacts.ts';

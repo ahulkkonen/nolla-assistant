@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { parseFrontmatter } from '@earendil-works/pi-coding-agent';
-import { ModeBody, ModeFile, ModeId, type ModeInfo } from '@pa/protocol';
+import { ModeBody, ModeFile, ModeId, type ModeInfo } from '@nolla/protocol';
 
 /** A loaded `agents/modes/<id>.md` (phase-23 decision 1); `body` is the prompt paragraph. */
 export type Mode = ModeInfo & { body: string };

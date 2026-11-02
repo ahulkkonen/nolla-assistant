@@ -4,7 +4,7 @@ import {
   type DataPolicy,
   type ModelPolicy,
   ServerMessage,
-} from '@pa/protocol';
+} from '@nolla/protocol';
 import { HttpError, me } from './api.ts';
 import {
   type ClaimChip,

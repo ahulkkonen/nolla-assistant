@@ -11,8 +11,8 @@ import {
   PseudoDownError,
   type VaultEntityRow,
   type VaultPendingRow,
-} from '@pa/pi-ext-pseudo';
-import type { ClientMessage, ServerMessage } from '@pa/protocol';
+} from '@nolla/pi-ext-pseudo';
+import type { ClientMessage, ServerMessage } from '@nolla/protocol';
 import { errorMsg, send } from '../socket.ts';
 import type { Conn } from './connection.ts';
 

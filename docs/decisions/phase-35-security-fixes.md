@@ -98,5 +98,5 @@ vitest suites and `pnpm test:contract` (28) pass. The Playwright `chromium` proj
 401 to the same POST with no `Origin` or the own one.
 
 The e2e global setup rebuilds the web app only when a file in `apps/web/src` is newer than `dist`.
-A change in `packages/protocol` alone (here `decryptCommand`) needs `pnpm --filter @pa/web build`
+A change in `packages/protocol` alone (here `decryptCommand`) needs `pnpm --filter @nolla/web build`
 before the flows.

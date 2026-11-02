@@ -1,4 +1,4 @@
-import { VaultAddKind, type VaultEntity, type VaultPending } from '@pa/protocol';
+import { VaultAddKind, type VaultEntity, type VaultPending } from '@nolla/protocol';
 import {
   Brackets,
   Check,

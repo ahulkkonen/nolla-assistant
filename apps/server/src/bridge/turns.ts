@@ -9,9 +9,9 @@
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { type AgentSession, SessionManager } from '@earendil-works/pi-coding-agent';
-import { chats } from '@pa/db';
-import { PseudoDownError } from '@pa/pi-ext-pseudo';
-import type { ClientMessage } from '@pa/protocol';
+import { chats } from '@nolla/db';
+import { PseudoDownError } from '@nolla/pi-ext-pseudo';
+import type { ClientMessage } from '@nolla/protocol';
 import { and, eq } from 'drizzle-orm';
 import { type ChatRow, summary, threadFiles } from '../chats.ts';
 import { ingestAttachments, splitBlocks } from '../files.ts';

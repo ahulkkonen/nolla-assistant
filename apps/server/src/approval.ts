@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { ExtensionFactory } from '@earendil-works/pi-coding-agent';
-import { type ApprovalView, isHarnessTool, type ServerMessage } from '@pa/protocol';
+import { type ApprovalView, isHarnessTool, type ServerMessage } from '@nolla/protocol';
 import type { AgentProfile } from './agents.ts';
 
 export const DENIED_REASON = 'käyttäjä esti työkalun';

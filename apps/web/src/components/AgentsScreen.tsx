@@ -4,7 +4,7 @@ import {
   type AgentList,
   DEFAULT_AGENT_ID,
   type ModeDoc,
-} from '@pa/protocol';
+} from '@nolla/protocol';
 import { Bot, Copy, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Badge } from '@/components/ui/badge';

@@ -14,5 +14,5 @@ const newest = (dir: string): number =>
 export default function globalSetup() {
   const index = join(WEB, 'dist/index.html');
   if (existsSync(index) && statSync(index).mtimeMs >= newest(join(WEB, 'src'))) return;
-  execFileSync('pnpm', ['--filter', '@pa/web', 'build'], { stdio: 'inherit' });
+  execFileSync('pnpm', ['--filter', '@nolla/web', 'build'], { stdio: 'inherit' });
 }

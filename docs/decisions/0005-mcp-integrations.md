@@ -187,7 +187,7 @@ Place `createMcpExtension` in `extensionFactories` after `pathGuard`. Its positi
 
 Pin `@modelcontextprotocol/sdk` `1.32.1` and `zod` `4.6.7` (already in the lockfile) as exact devDependencies of a new `tests/mcp` package. Put the fake server into the `tests/mcp` package. It already returns the real server's text format, the `{ result }` wrap and Finnish names (`Aino Häkkinen`, `aino.hakkinen@example.fi`, `Pekka Laaksonen`, `juha-pekka.nieminen@example.fi`, `Hämeenkatu 12, 33100 Tampere`). Its `GET /_created` returns the arguments of each `manage_event` call.
 
-The test boots `pa-server` with the real `pseudo-svc` (as `tests/masked-only` does), `@pa/fake-llm` and the fake server, with `infra/mcp.yaml` pointing at the fake.
+The test boots `pa-server` with the real `pseudo-svc` (as `tests/masked-only` does), `@nolla/fake-llm` and the fake server, with `infra/mcp.yaml` pointing at the fake.
 
 1. **Write needs approval and sends real values.** The fake LLM calls `mcp__workspace__manage_event` with `action: create` and the surrogate of a known vault person as attendee. Assert that `approval.request` arrives and its `args` hold the real name and address. Assert that `/_created` is empty before `approval.respond`. Approve. Assert that `/_created` holds the real values and no surrogate. Repeat with a denial and assert that `/_created` stays empty.
 2. **A new attendee becomes a vault entity.** Read the vault entity count. The fake LLM calls `mcp__workspace__get_events` with `detailed: true`. Assert that the vault holds a new `EMAIL` entity for `juha-pekka.nieminen@example.fi` and a `PERSON` entity for `Aino Häkkinen` (from the description).

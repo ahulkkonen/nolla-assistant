@@ -5,8 +5,8 @@
  * It must not change a chat's model or data policy (bridge/chats.ts does) and must not refresh
  * the catalog (pi/models.ts does).
  */
-import { modelFavorites } from '@pa/db';
-import type { ClientMessage, ModelChoice, ServerMessage } from '@pa/protocol';
+import { modelFavorites } from '@nolla/db';
+import type { ClientMessage, ModelChoice, ServerMessage } from '@nolla/protocol';
 import { and, asc, eq } from 'drizzle-orm';
 import { AUTO_MODEL, resolveModelId } from '../pi/models.ts';
 import { errorMsg, send } from '../socket.ts';

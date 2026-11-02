@@ -1,4 +1,4 @@
-import type { CatalogModel, ModelChoice } from '@pa/protocol';
+import type { CatalogModel, ModelChoice } from '@nolla/protocol';
 import {
   Check,
   ChevronDown,

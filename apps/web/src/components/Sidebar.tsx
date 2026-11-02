@@ -1,4 +1,4 @@
-import type { ChatSummary } from '@pa/protocol';
+import type { ChatSummary } from '@nolla/protocol';
 import {
   Archive,
   ArchiveRestore,

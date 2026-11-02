@@ -1,5 +1,5 @@
 {
-  "name": "@pa/fake-llm",
+  "name": "@nolla/fake-llm",
   "private": true,
   "type": "module",
   "exports": {

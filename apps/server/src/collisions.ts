@@ -1,5 +1,5 @@
-import type { Collision } from '@pa/pi-ext-pseudo';
-import type { ServerMessage } from '@pa/protocol';
+import type { Collision } from '@nolla/pi-ext-pseudo';
+import type { ServerMessage } from '@nolla/protocol';
 
 /**
  * User messages held because they name an issued surrogate (phase-12 decisions 7 and 8). The pseudo

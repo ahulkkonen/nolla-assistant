@@ -18,8 +18,8 @@ import type {
   TreeEntry,
   VaultEntity,
   VaultPending,
-} from '@pa/protocol';
-import { stripConfidence } from '@pa/protocol';
+} from '@nolla/protocol';
+import { stripConfidence } from '@nolla/protocol';
 import { toast } from 'sonner';
 import { create } from 'zustand';
 import type { Wait } from './thread.ts';

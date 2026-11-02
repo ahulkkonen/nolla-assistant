@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, realpathSync, watch } from 'node:fs';
 import { basename, join, resolve, sep } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
-import { AgentFile, DEFAULT_AGENT_ID } from '@pa/protocol';
+import { AgentFile, DEFAULT_AGENT_ID } from '@nolla/protocol';
 import { parse } from 'yaml';
 import type { z } from 'zod';
 

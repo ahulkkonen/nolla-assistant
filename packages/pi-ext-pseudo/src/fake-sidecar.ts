@@ -1,5 +1,5 @@
 import { createServer } from 'node:http';
-import { listenLocal } from '@pa/fake-llm';
+import { listenLocal } from '@nolla/fake-llm';
 import type { Collision, Json, VaultEntityRow, VaultPendingRow } from './client.ts';
 
 type Pair = { from: string; to: string; id: number };

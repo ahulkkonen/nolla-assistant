@@ -5,7 +5,7 @@
  * It must not decide whether a tool call needs a card or run a tool (approval.ts and the Pi
  * extensions do). A running automation keeps its own list; this module must not change it.
  */
-import type { ClientMessage } from '@pa/protocol';
+import type { ClientMessage } from '@nolla/protocol';
 import type { ChatRow } from '../chats.ts';
 import { errorMsg, NotFound, send } from '../socket.ts';
 import { type Conn, notify, owned } from './connection.ts';

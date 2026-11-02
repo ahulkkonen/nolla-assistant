@@ -6,7 +6,7 @@
  * It must not write memory files or claims itself (memory.ts and claims.ts do), and it must not
  * send memory state to a chat room.
  */
-import type { ClientMessage } from '@pa/protocol';
+import type { ClientMessage } from '@nolla/protocol';
 import { errorMsg, NotFound, send } from '../socket.ts';
 import { type Conn, toAll } from './connection.ts';
 

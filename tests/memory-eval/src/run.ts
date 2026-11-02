@@ -10,13 +10,13 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { type ClaimKind, chats, claims, evidence, openDb } from '@pa/db';
-import { CLAIMS_HEADER } from '@pa/pi-ext-memory';
-import { PseudoClient } from '@pa/pi-ext-pseudo';
-import { claimStore } from '@pa/server/src/claims.ts';
-import { taskSmall } from '@pa/server/src/llm.ts';
-import { memoryStore } from '@pa/server/src/memory.ts';
-import { indexChat, indexIdle, search } from '@pa/server/src/search.ts';
+import { type ClaimKind, chats, claims, evidence, openDb } from '@nolla/db';
+import { CLAIMS_HEADER } from '@nolla/pi-ext-memory';
+import { PseudoClient } from '@nolla/pi-ext-pseudo';
+import { claimStore } from '@nolla/server/src/claims.ts';
+import { taskSmall } from '@nolla/server/src/llm.ts';
+import { memoryStore } from '@nolla/server/src/memory.ts';
+import { indexChat, indexIdle, search } from '@nolla/server/src/search.ts';
 import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
 

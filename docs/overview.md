@@ -282,7 +282,7 @@ request. The Docker suites, the PII harness, the memory eval and the restore dri
 Try the interface with no keys and no Docker. A fake model echoes the masked text that it got:
 
 ```sh
-pnpm install && pnpm --filter @pa/web build
+pnpm install && pnpm --filter @nolla/web build
 node tests/e2e/src/demo.ts        # http://localhost:3000, password: salasana
 ```
 
@@ -291,8 +291,8 @@ commands below. For `AUTH_PASSWORD_HASH`, see [Develop](development.md#develop).
 
 ```sh
 pnpm install
-set -a; source .env; set +a; pnpm --filter @pa/server dev
-pnpm --filter @pa/web dev
+set -a; source .env; set +a; pnpm --filter @nolla/server dev
+pnpm --filter @nolla/web dev
 ```
 
 [`docs/deploy.md`](deploy.md) is the runbook for the VPS and for a full local run with Docker.

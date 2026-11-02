@@ -1,4 +1,4 @@
-import type { ApprovalView } from '@pa/protocol';
+import type { ApprovalView } from '@nolla/protocol';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { expect, test } from 'vitest';

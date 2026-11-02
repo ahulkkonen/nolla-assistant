@@ -12,7 +12,7 @@ import {
   loadConfig,
   PROXY_NETWORK,
   skillPolicy,
-} from '@pa/sandbox-broker';
+} from '@nolla/sandbox-broker';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { allowed } from '../../../services/sandbox-broker/src/proxy.ts';
 

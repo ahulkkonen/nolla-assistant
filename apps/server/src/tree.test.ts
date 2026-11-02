@@ -11,9 +11,9 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
-import { fileTrash } from '@pa/db';
-import type { FakeTurn } from '@pa/fake-llm';
-import { dirBytes, USER_QUOTA } from '@pa/pi-ext-subagents/workspace';
+import { fileTrash } from '@nolla/db';
+import type { FakeTurn } from '@nolla/fake-llm';
+import { dirBytes, USER_QUOTA } from '@nolla/pi-ext-subagents/workspace';
 import type {
   Artifact,
   AttachmentRef,
@@ -22,7 +22,7 @@ import type {
   TrashListing,
   TreeEntry,
   TreeListing,
-} from '@pa/protocol';
+} from '@nolla/protocol';
 import { afterEach, expect, test } from 'vitest';
 import { api, boot, bootChat, bootPseudo, login, runCleanups } from './test-utils.ts';
 import { artifactName, purgeTrash, workStore } from './tree.ts';

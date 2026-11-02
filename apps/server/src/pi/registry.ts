@@ -9,23 +9,23 @@ import {
   ModelRuntime,
   SessionManager,
 } from '@earendil-works/pi-coding-agent';
-import { type MemoryLog, memoryExtension, turnTaint } from '@pa/pi-ext-memory';
+import { type MemoryLog, memoryExtension, turnTaint } from '@nolla/pi-ext-memory';
 import {
   type Collision,
   type PseudoClient,
   type PseudoLog,
   pseudoExtension,
-} from '@pa/pi-ext-pseudo';
-import { sandboxExtension } from '@pa/pi-ext-sandbox';
-import { type Child, subagentsExtension } from '@pa/pi-ext-subagents';
-import { topicsExtension } from '@pa/pi-ext-topics';
+} from '@nolla/pi-ext-pseudo';
+import { sandboxExtension } from '@nolla/pi-ext-sandbox';
+import { type Child, subagentsExtension } from '@nolla/pi-ext-subagents';
+import { topicsExtension } from '@nolla/pi-ext-topics';
 import {
   DEFAULT_AGENT_ID,
   FETCH_URL_TOOL,
   HARNESS_TOOLS,
   isHarnessTool,
   WEB_SEARCH_TOOL,
-} from '@pa/protocol';
+} from '@nolla/protocol';
 import { type AgentProfile, type Agents, liveAgentId } from '../agents.ts';
 import { type Ask, approvalGate, childAsk, type View } from '../approval.ts';
 import type { ClaimStore } from '../claims.ts';

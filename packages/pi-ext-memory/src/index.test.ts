@@ -2,8 +2,8 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SessionManager } from '@earendil-works/pi-coding-agent';
-import { bootPi, onCleanup, setup } from '@pa/contract-tests/src/harness.ts';
-import { type FakeTurn, startFakeLlm } from '@pa/fake-llm';
+import { bootPi, onCleanup, setup } from '@nolla/contract-tests/src/harness.ts';
+import { type FakeTurn, startFakeLlm } from '@nolla/fake-llm';
 import { expect, test } from 'vitest';
 import {
   applyOp,

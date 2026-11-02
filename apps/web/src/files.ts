@@ -1,4 +1,4 @@
-import type { FileError, TreeEntry } from '@pa/protocol';
+import type { FileError, TreeEntry } from '@nolla/protocol';
 import { File, FileCode, FileImage, FileText, Folder, type LucideIcon } from 'lucide-react';
 import { HttpError, treeAttach } from './api.ts';
 import { useStore } from './store.ts';

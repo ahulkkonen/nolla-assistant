@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { chats, usage } from '@pa/db';
-import type { FakeTurn } from '@pa/fake-llm';
+import { chats, usage } from '@nolla/db';
+import type { FakeTurn } from '@nolla/fake-llm';
 import { eq } from 'drizzle-orm';
 import { afterEach, expect, test, vi } from 'vitest';
 import {

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AgentSessionEvent } from '@earendil-works/pi-coding-agent';
-import { onCleanup, setup } from '@pa/contract-tests/src/harness.ts';
+import { onCleanup, setup } from '@nolla/contract-tests/src/harness.ts';
 import { expect, test } from 'vitest';
 import { startFakeBroker } from './fake-broker.ts';
 import { sandboxExtension } from './index.ts';

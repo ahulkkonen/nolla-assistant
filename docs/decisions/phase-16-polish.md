@@ -264,7 +264,7 @@ older fixture stays valid. The server always sets them.
    ```sh
    docker build -f infra/Dockerfile.server --target server-test -t pa-server:test .
    docker run --rm -v "$PWD/apps/server/src:/app/apps/server/src:ro" pa-server:test \
-     pnpm --filter @pa/server exec vitest run src/ocr.test.ts
+     pnpm --filter @nolla/server exec vitest run src/ocr.test.ts
    ```
 
    `.dockerignore` drops `*.test.ts`, so the command mounts the server sources.

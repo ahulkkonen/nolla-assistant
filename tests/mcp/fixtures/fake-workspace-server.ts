@@ -7,8 +7,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import { listenLocal } from '@pa/fake-llm';
-import { cleanups } from '@pa/server/src/test-utils.ts';
+import { listenLocal } from '@nolla/fake-llm';
+import { cleanups } from '@nolla/server/src/test-utils.ts';
 import { z } from 'zod';
 
 export type FakeEvent = {

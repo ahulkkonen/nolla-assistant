@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { FAKE_ECB_CSV } from '@pa/fake-llm';
-import type { FxRate } from '@pa/protocol';
+import { FAKE_ECB_CSV } from '@nolla/fake-llm';
+import type { FxRate } from '@nolla/protocol';
 import { afterEach, expect, test } from 'vitest';
 import { ECB_PATH, fxRates, parseEcbCsv } from './fx.ts';
 import { runCleanups, tempDir } from './test-utils.ts';

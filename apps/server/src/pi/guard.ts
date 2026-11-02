@@ -1,7 +1,7 @@
 import { realpath } from 'node:fs/promises';
 import { relative, sep } from 'node:path';
 import type { ExtensionFactory } from '@earendil-works/pi-coding-agent';
-import { checkFileTool, entryPath, GUARD_REASON, piPath } from '@pa/pi-ext-subagents/workspace';
+import { checkFileTool, entryPath, GUARD_REASON, piPath } from '@nolla/pi-ext-subagents/workspace';
 
 export { GUARD_REASON };
 

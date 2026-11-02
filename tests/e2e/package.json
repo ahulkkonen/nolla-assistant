@@ -1,5 +1,5 @@
 {
-  "name": "@pa/e2e",
+  "name": "@nolla/e2e",
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,10 +8,10 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "4.14.0",
-    "@pa/fake-llm": "workspace:*",
-    "@pa/pi-ext-pseudo": "workspace:*",
-    "@pa/pi-ext-sandbox": "workspace:*",
-    "@pa/server": "workspace:*",
+    "@nolla/fake-llm": "workspace:*",
+    "@nolla/pi-ext-pseudo": "workspace:*",
+    "@nolla/pi-ext-sandbox": "workspace:*",
+    "@nolla/server": "workspace:*",
     "@playwright/test": "1.64.1",
     "@types/node": "26.6.5",
     "typescript": "5.9.3"

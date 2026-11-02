@@ -1,4 +1,4 @@
-import { type ApprovalView, SEARCH_ENTITY_REASON, WEB_SEARCH_TOOL } from '@pa/protocol';
+import { type ApprovalView, SEARCH_ENTITY_REASON, WEB_SEARCH_TOOL } from '@nolla/protocol';
 import { Clock, ShieldAlert } from 'lucide-react';
 import { type ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';

@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync 
 import { basename, dirname, join, resolve, sep } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { parseFrontmatter } from '@earendil-works/pi-coding-agent';
-import { automationRuns, chats, type Db } from '@pa/db';
+import { automationRuns, chats, type Db } from '@nolla/db';
 import {
   type AgentDoc,
   AgentFile,
@@ -17,7 +17,7 @@ import {
   ModeId,
   ModeSave,
   type ServerMessage,
-} from '@pa/protocol';
+} from '@nolla/protocol';
 import { and, eq } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, preHandlerHookHandler } from 'fastify';
 import { type Document, isMap, parseDocument, stringify, visit } from 'yaml';

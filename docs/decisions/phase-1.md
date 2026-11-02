@@ -7,7 +7,7 @@ Gate command: `pnpm typecheck && pnpm lint && pnpm test`
 
 ## Decisions for this phase
 
-- Model traffic in tests goes to `@pa/fake-llm`, an in-process OpenAI-compatible SSE server with
+- Model traffic in tests goes to `@nolla/fake-llm`, an in-process OpenAI-compatible SSE server with
   scripted turns. No real key is needed for any phase-1 test.
 - Pi provider is named `zdr`. Model ids are `zdr/<alias>` so a Pi model ref reads `zdr/zdr/strong`
   but the wire `model` field that LiteLLM sees is `zdr/strong`, matching plan §5 and §8.
@@ -24,7 +24,7 @@ Gate command: `pnpm typecheck && pnpm lint && pnpm test`
 
 | # | Task | Owner | Files | Acceptance |
 |---|---|---|---|---|
-| 1 | `@pa/fake-llm` scripted OpenAI-compatible server | Sonnet | `tests/fake-llm/` | unit test: text turn and tool-call turn stream as SSE and are parsed by the `openai` wire format |
+| 1 | `@nolla/fake-llm` scripted OpenAI-compatible server | Sonnet | `tests/fake-llm/` | unit test: text turn and tool-call turn stream as SSE and are parsed by the `openai` wire format |
 | 2 | `apps/server`: config, Pi host (`SessionRegistry`), bridge, HTTP+WS | Opus | `apps/server/`, `infra/models.json` | e2e test: WS client creates chat, sends message, receives `message.delta`+`message.final`, restarts server, `chat.open` returns the message |
 | 3 | `tests/contract`: hook payload shapes against Pi 1.3.0 | Opus | `tests/contract/` | asserts field names from `docs/decisions/0001` §1–2, chaining, `structuredContent` drop, `agent_settled` fires |
 

@@ -1,4 +1,4 @@
-import { cronToSchedule } from '@pa/protocol';
+import { cronToSchedule } from '@nolla/protocol';
 
 const DAYS = ['su', 'ma', 'ti', 'ke', 'to', 'pe', 'la', 'su'];
 const clock = (h: number, m: number) => `klo ${h}.${String(m).padStart(2, '0')}`;

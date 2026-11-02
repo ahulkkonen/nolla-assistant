@@ -1,5 +1,5 @@
 {
-  "name": "@pa/web",
+  "name": "@nolla/web",
   "private": true,
   "type": "module",
   "scripts": {
@@ -14,7 +14,7 @@
     "@fontsource-variable/jetbrains-mono": "5.3.0",
     "@fontsource-variable/source-serif-4": "5.3.1",
     "@observablehq/plot": "0.6.17",
-    "@pa/protocol": "workspace:*",
+    "@nolla/protocol": "workspace:*",
     "@simplewebauthn/browser": "14.0.0",
     "class-variance-authority": "0.7.1",
     "cmdk": "1.1.1",

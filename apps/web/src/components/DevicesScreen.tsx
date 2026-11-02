@@ -1,4 +1,4 @@
-import type { DeviceSession } from '@pa/protocol';
+import type { DeviceSession } from '@nolla/protocol';
 import { LogOut, MonitorSmartphone } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Badge } from '@/components/ui/badge';

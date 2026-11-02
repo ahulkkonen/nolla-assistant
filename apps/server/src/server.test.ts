@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { startFakeSidecar } from '@pa/pi-ext-pseudo/fake-sidecar';
-import type { AttachmentRef, ServerMessage } from '@pa/protocol';
+import { startFakeSidecar } from '@nolla/pi-ext-pseudo/fake-sidecar';
+import type { AttachmentRef, ServerMessage } from '@nolla/protocol';
 import sharp from 'sharp';
 import { afterEach, expect, test, vi } from 'vitest';
 import { verifyPassword } from './auth/password.ts';

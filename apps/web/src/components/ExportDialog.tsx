@@ -1,4 +1,4 @@
-import type { ExportFormat } from '@pa/protocol';
+import type { ExportFormat } from '@nolla/protocol';
 import { TriangleAlert } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';

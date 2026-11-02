@@ -1,15 +1,15 @@
 import { writeSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { openDb, users } from '@pa/db';
+import { openDb, users } from '@nolla/db';
 import {
   PSEUDO_COLLISION,
   PSEUDO_COLLISION_DROPPED,
   PSEUDO_DOWN,
   PseudoClient,
   type PseudoLog,
-} from '@pa/pi-ext-pseudo';
-import type { ServerMessage } from '@pa/protocol';
+} from '@nolla/pi-ext-pseudo';
+import type { ServerMessage } from '@nolla/protocol';
 import { adminWriters } from './admin.ts';
 import { liveAgentId, loadAgents, watchAgents } from './agents.ts';
 import { approvals as approvalStore } from './approval.ts';

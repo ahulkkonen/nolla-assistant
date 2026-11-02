@@ -9,7 +9,7 @@ import {
   CONFIDENCE_MARK,
   stripConfidence,
   type Versions,
-} from '@pa/protocol';
+} from '@nolla/protocol';
 import {
   AppWindow,
   Check,

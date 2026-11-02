@@ -1,8 +1,8 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { automationRuns, chats } from '@pa/db';
-import type { AgentDoc, AgentList, DeviceSession, ModeDoc } from '@pa/protocol';
+import { automationRuns, chats } from '@nolla/db';
+import type { AgentDoc, AgentList, DeviceSession, ModeDoc } from '@nolla/protocol';
 import { eq } from 'drizzle-orm';
 import { afterEach, expect, test, vi } from 'vitest';
 import type WebSocket from 'ws';

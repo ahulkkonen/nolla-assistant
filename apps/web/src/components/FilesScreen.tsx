@@ -1,4 +1,4 @@
-import type { FileRoot, FileUsage, TrashEntry, TreeEntry } from '@pa/protocol';
+import type { FileRoot, FileUsage, TrashEntry, TreeEntry } from '@nolla/protocol';
 import {
   Download,
   Eye,

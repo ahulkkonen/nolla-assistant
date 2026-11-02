@@ -1,5 +1,5 @@
 {
-  "name": "@pa/masked-only-tests",
+  "name": "@nolla/masked-only-tests",
   "private": true,
   "type": "module",
   "scripts": {
@@ -7,10 +7,10 @@
     "test": "vitest run"
   },
   "devDependencies": {
-    "@pa/fake-llm": "workspace:*",
-    "@pa/pi-ext-pseudo": "workspace:*",
-    "@pa/protocol": "workspace:*",
-    "@pa/server": "workspace:*",
+    "@nolla/fake-llm": "workspace:*",
+    "@nolla/pi-ext-pseudo": "workspace:*",
+    "@nolla/protocol": "workspace:*",
+    "@nolla/server": "workspace:*",
     "@types/node": "26.6.5",
     "@types/ws": "8.18.2",
     "typescript": "5.9.3",

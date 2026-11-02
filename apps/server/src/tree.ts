@@ -18,8 +18,8 @@ import { basename, dirname, extname, join, relative, resolve, sep } from 'node:p
 import type { Readable, Writable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type { AgentSession } from '@earendil-works/pi-coding-agent';
-import { chats, type Db, fileOrigins, files, fileTrash } from '@pa/db';
-import type { PseudoClient } from '@pa/pi-ext-pseudo';
+import { chats, type Db, fileOrigins, files, fileTrash } from '@nolla/db';
+import type { PseudoClient } from '@nolla/pi-ext-pseudo';
 import {
   dirBytes,
   entryPath,
@@ -29,7 +29,7 @@ import {
   TRASH,
   USER_QUOTA,
   within,
-} from '@pa/pi-ext-subagents/workspace';
+} from '@nolla/pi-ext-subagents/workspace';
 import {
   type Artifact,
   artifactExt,
@@ -47,7 +47,7 @@ import {
   TreeRawQuery,
   TreeRestore,
   TreeSaveArtifact,
-} from '@pa/protocol';
+} from '@nolla/protocol';
 import { and, desc, eq, inArray, lt, notInArray, or, sql, sum } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, preHandlerHookHandler } from 'fastify';
 import { extractArtifacts } from './artifacts.ts';

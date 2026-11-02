@@ -282,7 +282,7 @@ targets. Each run uses a new vault user, because entities from an earlier run wo
 into vault hits.
 
 Also: `services/pseudo-svc/.venv/bin/pytest` (and in the image), `pnpm typecheck`, `pnpm lint`,
-`pnpm --filter @pa/pi-ext-pseudo test`, `pnpm --filter @pa/server test`, `pnpm --filter @pa/web test`.
+`pnpm --filter @nolla/pi-ext-pseudo test`, `pnpm --filter @nolla/server test`, `pnpm --filter @nolla/web test`.
 
 ## Status 2026-10-26
 

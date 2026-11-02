@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { authSessions, openDb } from '@pa/db';
+import { authSessions, openDb } from '@nolla/db';
 import { afterEach, expect, test, vi } from 'vitest';
 import { runCleanups, tempDir } from '../test-utils.ts';
 import { createSession, getUser, MAX_AGE, revokeAll } from './session.ts';

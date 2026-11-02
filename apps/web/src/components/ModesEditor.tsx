@@ -1,4 +1,4 @@
-import type { AgentList, ModeDoc, ModeFile } from '@pa/protocol';
+import type { AgentList, ModeDoc, ModeFile } from '@nolla/protocol';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Badge } from '@/components/ui/badge';

@@ -3,8 +3,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { inflateSync } from 'node:zlib';
-import { FETCH_DENIED, NOT_PUBLIC } from '@pa/server/src/fetch-tool.ts';
-import { SEARCH_DENIED } from '@pa/server/src/search-tool.ts';
+import { FETCH_DENIED, NOT_PUBLIC } from '@nolla/server/src/fetch-tool.ts';
+import { SEARCH_DENIED } from '@nolla/server/src/search-tool.ts';
 import { devices, type Page } from '@playwright/test';
 import {
   type App,

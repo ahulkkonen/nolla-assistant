@@ -6,7 +6,7 @@ import {
   artifactTitle,
   type Message,
   stripConfidence,
-} from '@pa/protocol';
+} from '@nolla/protocol';
 import { textOf } from './session-text.ts';
 
 const MAX_INPUT = 200_000;

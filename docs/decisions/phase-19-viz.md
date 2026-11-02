@@ -38,14 +38,14 @@ version is the newest version on or before 2026-10-19.
 | @observablehq/plot | 0.6.17 | 2025-02-14 16:15 |
 | d3 | 7.9.0 | 2024-03-12 22:15 |
 | mermaid | 12.2.0 | installed before this phase |
-| zod | 4.6.7 | the version of `@pa/protocol`; now also a direct dependency of `@pa/web` |
+| zod | 4.6.7 | the version of `@nolla/protocol`; now also a direct dependency of `@nolla/web` |
 
 `vega-interpreter` is a dependency of `vega-embed` already. We import it directly, so it is pinned
 in `apps/web/package.json` (decision 2).
 
 ## Decisions
 
-1. **New artifact kind `vega-lite`.** `Artifact.kind` in `@pa/protocol` gets `vega-lite`. The server
+1. **New artifact kind `vega-lite`.** `Artifact.kind` in `@nolla/protocol` gets `vega-lite`. The server
    (`apps/server/src/artifacts.ts`) and the thread (`MessageView.tsx`) map the info string
    `vega-lite` to it. The title of the artifact is `title.text` (or `title`) of the spec, when the
    JSON parses. "Lataa" and "Tallenna tiedostoksi" write the spec as `.json`.
@@ -65,7 +65,7 @@ in `apps/web/package.json` (decision 2).
    frame-ancestors 'self'`, and `X-Frame-Options: SAMEORIGIN`. The page tells its parent (or its
    opener) "sandbox-ready". The parent posts the document once. The page writes it with
    `document.open()`, `document.write()` and `document.close()`. The CSP meta tag stays the first
-   element of every document. The policy string is `SANDBOX_CSP` in `@pa/protocol`, shared by the
+   element of every document. The policy string is `SANDBOX_CSP` in `@nolla/protocol`, shared by the
    header and the meta tag. "Avaa uudessa ikkunassa" opens `/api/sandbox` in a tab and posts the
    document there; the `sandbox` directive keeps the tab on an opaque origin.
    **Changed directive:** `font-src data:` is new. The document inlines Inter, Source Serif 4 and
@@ -159,7 +159,7 @@ in `apps/web/package.json` (decision 2).
 
 ## Gate
 
-- `pnpm typecheck`, `pnpm lint` and `pnpm --filter @pa/web test` pass.
+- `pnpm typecheck`, `pnpm lint` and `pnpm --filter @nolla/web test` pass.
 - The `screens` project passes with strict axe.
 - The chromium flows of the artifact panel pass.
 - The screenshots of the chart and kit artifacts match the brief: our fonts, legible axes at 390 px,
@@ -204,7 +204,7 @@ A blind UI review scored the first screenshots as FAIL. Changes:
 - Vega: `bandPaddingInner` 0.25; bar corner radius 4 at the end of the bar only.
 - The chart subtitle uses the body type (15/24) in `--muted-foreground`.
 - Mermaid: the artifact title is `accTitle` (else a `title` line). `accTitle` and `accDescr` show
-  as the heading and the caption, as in R1 (`mermaidMeta` in `@pa/protocol`). Edges are
+  as the heading and the caption, as in R1 (`mermaidMeta` in `@nolla/protocol`). Edges are
   `--muted-foreground` at 1.5 px with a non-scaling stroke. Nodes have radius 8, an `--input`
   border and a `--secondary` fill. Labels are 14 px, 13 px on phones.
 - Plot: `Plot.plot` is wrapped. The model cannot change these defaults: the width is the page
@@ -271,7 +271,7 @@ Ceilings:
 ## Status (2026-10-26)
 
 - Tasks 1 to 6 are done. `pnpm typecheck` and `pnpm lint` pass.
-- `pnpm --filter @pa/web test`: 46 tests pass (10 new in `viz.test.ts`). The server tests of
+- `pnpm --filter @nolla/web test`: 46 tests pass (10 new in `viz.test.ts`). The server tests of
   `artifacts.test.ts` and `csp.test.ts` pass (one new test for `/api/sandbox`).
 - e2e `screens` (strict axe): 456 pass, 2 skipped. New screens: `chart-artifact`,
   `mermaid-artifact` and `kit-artifact` at 390 and 1024, light and dark. `artifact-panel` changed,

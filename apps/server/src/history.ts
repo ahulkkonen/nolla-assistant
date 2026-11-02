@@ -12,7 +12,7 @@ import {
   ToolSearch,
   type ToolStatus,
   WEB_SEARCH_TOOL,
-} from '@pa/protocol';
+} from '@nolla/protocol';
 import { DENIED_REASON, TIMEOUT_REASON } from './approval.ts';
 import { type chatFiles, splitBlocks } from './files.ts';
 import { GUARD_REASON } from './pi/guard.ts';

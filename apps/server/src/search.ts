@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { chats, chunks, type Db } from '@pa/db';
-import type { PseudoClient } from '@pa/pi-ext-pseudo';
+import { chats, chunks, type Db } from '@nolla/db';
+import type { PseudoClient } from '@nolla/pi-ext-pseudo';
 import { and, desc, eq } from 'drizzle-orm';
 import { embed } from './embeddings.ts';
 

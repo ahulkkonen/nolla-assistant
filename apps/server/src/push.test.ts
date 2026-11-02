@@ -1,7 +1,7 @@
 import { createECDH, randomBytes } from 'node:crypto';
 import { createServer } from 'node:http';
-import { pushSubscriptions } from '@pa/db';
-import { listenLocal } from '@pa/fake-llm';
+import { pushSubscriptions } from '@nolla/db';
+import { listenLocal } from '@nolla/fake-llm';
 import { afterEach, expect, test, vi } from 'vitest';
 import webpush from 'web-push';
 import { api, boot, bootChat, cleanups, login, runCleanups } from './test-utils.ts';

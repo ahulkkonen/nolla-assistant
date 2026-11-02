@@ -1,8 +1,8 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { chats } from '@pa/db';
-import { startFakeSidecar } from '@pa/pi-ext-pseudo/fake-sidecar';
-import type { AttachmentRef } from '@pa/protocol';
+import { chats } from '@nolla/db';
+import { startFakeSidecar } from '@nolla/pi-ext-pseudo/fake-sidecar';
+import type { AttachmentRef } from '@nolla/protocol';
 import { eq } from 'drizzle-orm';
 import sharp from 'sharp';
 import { afterEach, expect, test } from 'vitest';

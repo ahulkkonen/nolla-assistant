@@ -273,7 +273,7 @@ hover); the phone "Tila" group uses the 44 px `SwitchRow`.
 
 ## Test plan
 
-- Unit: the cards above. Also `pnpm --filter @pa/db test` for the migration.
+- Unit: the cards above. Also `pnpm --filter @nolla/db test` for the migration.
 - E2E flows: W1–W4 flows plus the existing confidence and composer flows, rewritten for the chip.
 - Screens (`--project screens`): `composer-modes` (desktop, menu open), `sheet-modes` (390 px),
   `confidence-legend` (a reply with markers, "Näytä luvut" off and on), `agents-modes` (the
@@ -287,7 +287,7 @@ at 390, 1024 and 1440 px, light and dark, against brief section 7 and decisions 
 ## Gate
 
 1. `pnpm typecheck`, `pnpm lint` and `pnpm test` pass (unit suites and e2e `chromium` flows).
-2. `pnpm --filter @pa/e2e exec playwright test --project screens` passes with strict axe.
+2. `pnpm --filter @nolla/e2e exec playwright test --project screens` passes with strict axe.
 3. The tests named in the task cards pass.
 4. Docker: run `docker system df` first and prune when the Docker disk has less than 10 GB free
    (phase-20 gate item 4). Then build `infra/Dockerfile.server` and run the compose smoke.

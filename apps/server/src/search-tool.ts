@@ -5,7 +5,7 @@ import {
   type SearchCitation,
   type ToolSearch,
   WEB_SEARCH_TOOL,
-} from '@pa/protocol';
+} from '@nolla/protocol';
 import { Type } from 'typebox';
 import { type Ask, CALL_ID_REASON, callKey, confirm } from './approval.ts';
 import { capped } from './fx.ts';

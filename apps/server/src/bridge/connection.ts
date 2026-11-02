@@ -6,9 +6,9 @@
  * It must not handle a client message and must not import a handler module (bridge/*.ts);
  * bridge.ts dispatches to the handlers.
  */
-import { chats, type Db } from '@pa/db';
-import type { PseudoClient } from '@pa/pi-ext-pseudo';
-import type { ServerMessage } from '@pa/protocol';
+import { chats, type Db } from '@nolla/db';
+import type { PseudoClient } from '@nolla/pi-ext-pseudo';
+import type { ServerMessage } from '@nolla/protocol';
 import { and, eq } from 'drizzle-orm';
 import type { FastifyBaseLogger } from 'fastify';
 import type { Agents } from '../agents.ts';

@@ -1,6 +1,6 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { ChatExport } from '@pa/protocol';
+import type { ChatExport } from '@nolla/protocol';
 import { afterEach, expect, test } from 'vitest';
 import { api, bootChat, bootPseudo, login, open, runCleanups, turn } from './test-utils.ts';
 import { monthOf } from './usage.ts';

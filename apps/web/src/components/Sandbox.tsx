@@ -1,4 +1,4 @@
-import { SANDBOX_CSP } from '@pa/protocol';
+import { SANDBOX_CSP } from '@nolla/protocol';
 import { type RefObject, useEffect, useLayoutEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
 

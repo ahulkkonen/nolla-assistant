@@ -1,4 +1,4 @@
-import type { AttachmentRef } from '@pa/protocol';
+import type { AttachmentRef } from '@nolla/protocol';
 import {
   ArrowUp,
   Clock,

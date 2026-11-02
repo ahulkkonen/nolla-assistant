@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { chats, files, openDb } from '@pa/db';
+import { chats, files, openDb } from '@nolla/db';
 import { eq } from 'drizzle-orm';
 import { afterEach, expect, test } from 'vitest';
 import { threadFiles } from './chats.ts';

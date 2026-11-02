@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { authSessions, type Db } from '@pa/db';
-import type { DeviceSession } from '@pa/protocol';
+import { authSessions, type Db } from '@nolla/db';
+import type { DeviceSession } from '@nolla/protocol';
 import { and, desc, eq, gt, lt } from 'drizzle-orm';
 import type { FastifyRequest } from 'fastify';
 

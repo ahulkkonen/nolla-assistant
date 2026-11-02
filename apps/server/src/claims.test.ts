@@ -1,10 +1,10 @@
 import { join } from 'node:path';
 import { SessionManager } from '@earendil-works/pi-coding-agent';
-import { chats, claimEntities, claims, evidence, openDb } from '@pa/db';
-import { type FakeTurn, startFakeLlm } from '@pa/fake-llm';
-import { ATTACHMENT_MARKER } from '@pa/pi-ext-memory';
-import { type Json, PseudoClient } from '@pa/pi-ext-pseudo';
-import { startFakeSidecar } from '@pa/pi-ext-pseudo/fake-sidecar';
+import { chats, claimEntities, claims, evidence, openDb } from '@nolla/db';
+import { type FakeTurn, startFakeLlm } from '@nolla/fake-llm';
+import { ATTACHMENT_MARKER } from '@nolla/pi-ext-memory';
+import { type Json, PseudoClient } from '@nolla/pi-ext-pseudo';
+import { startFakeSidecar } from '@nolla/pi-ext-pseudo/fake-sidecar';
 import { eq, inArray } from 'drizzle-orm';
 import { afterEach, expect, test } from 'vitest';
 import { branchPoint, type ChatMsg, claimStore } from './claims.ts';

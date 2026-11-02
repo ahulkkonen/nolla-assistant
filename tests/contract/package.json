@@ -1,5 +1,5 @@
 {
-  "name": "@pa/contract-tests",
+  "name": "@nolla/contract-tests",
   "private": true,
   "type": "module",
   "scripts": {
@@ -10,7 +10,7 @@
     "@earendil-works/pi-coding-agent": "1.4.0"
   },
   "devDependencies": {
-    "@pa/fake-llm": "workspace:*",
+    "@nolla/fake-llm": "workspace:*",
     "@types/node": "26.6.5",
     "typescript": "5.9.3",
     "vitest": "4.1.12"

@@ -3,8 +3,8 @@
 import { cpSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { FakeTurn } from '@pa/fake-llm';
-import { bootPseudo, cleanups, runCleanups } from '@pa/server/src/test-utils.ts';
+import type { FakeTurn } from '@nolla/fake-llm';
+import { bootPseudo, cleanups, runCleanups } from '@nolla/server/src/test-utils.ts';
 import { afterEach, expect, test } from 'vitest';
 import { startWorkspaceConfig } from '../fixtures/fake-workspace-server.ts';
 

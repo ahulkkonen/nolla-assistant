@@ -1,7 +1,7 @@
 import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { automationRuns, chats, topics } from '@pa/db';
+import { automationRuns, chats, topics } from '@nolla/db';
 import { eq } from 'drizzle-orm';
 import { afterEach, expect, test, vi } from 'vitest';
 import { UNATTENDED_REASON } from './approval.ts';

@@ -86,13 +86,13 @@ docs/               plan.md, deploy.md, development.md, overview.md, threat-mode
 
 ```sh
 pnpm install
-set -a; source .env; set +a; pnpm --filter @pa/server dev
-pnpm --filter @pa/web dev
+set -a; source .env; set +a; pnpm --filter @nolla/server dev
+pnpm --filter @nolla/web dev
 pnpm typecheck                          # add --workspace-concurrency=1 if the machine is loaded
 pnpm lint
 pnpm test                               # workspace vitest suites and Playwright chromium; egress and sandbox (Docker) excluded
 pnpm test:contract                      # Pi contract tests
-pnpm --filter @pa/e2e exec playwright test --project screens   # screenshots at 390/1024/1440, light and dark, axe strict
+pnpm --filter @nolla/e2e exec playwright test --project screens   # screenshots at 390/1024/1440, light and dark, axe strict
 pnpm test:webkit
 pnpm test:egress                        # Docker
 pnpm test:sandbox                       # Docker

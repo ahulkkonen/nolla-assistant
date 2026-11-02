@@ -5,7 +5,7 @@ import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { promisify } from 'node:util';
 import { crc32, createDeflateRaw } from 'node:zlib';
-import { EXPORT_PBKDF2_ITER } from '@pa/protocol';
+import { EXPORT_PBKDF2_ITER } from '@nolla/protocol';
 
 // The full export's archive (docs/decisions/phase-15-admin.md, decision 13) and its encryption
 // (docs/decisions/phase-35-security-fixes.md).

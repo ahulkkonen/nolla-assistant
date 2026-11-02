@@ -55,7 +55,7 @@ These facts come from reading the code on 2026-10-26.
    without folders. Liitteet is read-only: no delete, rename or move. Deleting a chat deletes its
    uploads, as today.
 2. **Routes.** REST under `/api/files/tree`, with the same `requireUser` pre-handler as
-   `/api/files/:id`. Bodies and queries are zod schemas from `@pa/protocol`. Errors are
+   `/api/files/:id`. Bodies and queries are zod schemas from `@nolla/protocol`. Errors are
    `{ error: FileError }`. The table in "Routes" lists them.
 3. **Listing and pagination.** A listing shows folders first, then names in
    `Intl.Collator('fi', { numeric: true, sensitivity: 'base' })` order, with a code-point
@@ -136,7 +136,7 @@ These facts come from reading the code on 2026-10-26.
    the next walk.
 9. **Preview types and caps.** The server sets `preview` on each entry from the extension (work dir)
    or the mime (Liitteet), and sets it to null over the cap. The caps are in
-   `PREVIEW_MAX` in `@pa/protocol`.
+   `PREVIEW_MAX` in `@nolla/protocol`.
 
    | Kind | Extensions | Cap | How the screen shows it |
    | --- | --- | --- | --- |

@@ -1,4 +1,4 @@
-import type { CatalogModel, ModelChoice, ModelPolicy, ReasoningEffort } from '@pa/protocol';
+import type { CatalogModel, ModelChoice, ModelPolicy, ReasoningEffort } from '@nolla/protocol';
 import { useStore } from './store.ts';
 import { send } from './ws.ts';
 

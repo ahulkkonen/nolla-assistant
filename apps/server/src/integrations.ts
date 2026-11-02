@@ -1,5 +1,5 @@
 import { McpClient, StreamableHttpTransport } from '@earendil-works/pi-mcp';
-import type { ServerMessage } from '@pa/protocol';
+import type { ServerMessage } from '@nolla/protocol';
 import type { FastifyBaseLogger, FastifyInstance, preHandlerHookHandler } from 'fastify';
 import { limiter } from './auth/routes.ts';
 import type { McpServer } from './mcp.ts';

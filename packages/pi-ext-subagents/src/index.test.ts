@@ -1,10 +1,10 @@
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { bootPi, lastUserText, toolMessageContent } from '@pa/contract-tests/src/harness.ts';
-import { type FakeTurn, startFakeLlm } from '@pa/fake-llm';
-import { PseudoClient, pseudoExtension } from '@pa/pi-ext-pseudo';
-import { startFakeSidecar } from '@pa/pi-ext-pseudo/fake-sidecar';
+import { bootPi, lastUserText, toolMessageContent } from '@nolla/contract-tests/src/harness.ts';
+import { type FakeTurn, startFakeLlm } from '@nolla/fake-llm';
+import { PseudoClient, pseudoExtension } from '@nolla/pi-ext-pseudo';
+import { startFakeSidecar } from '@nolla/pi-ext-pseudo/fake-sidecar';
 import { afterEach, expect, test } from 'vitest';
 import { type AskInput, type Child, piCli as resolvePiCli, subagentsExtension } from './index.ts';
 

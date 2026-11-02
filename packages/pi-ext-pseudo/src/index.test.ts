@@ -1,8 +1,8 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AgentSessionEvent, ExtensionFactory } from '@earendil-works/pi-coding-agent';
-import { setup, toolMessageContent } from '@pa/contract-tests/src/harness.ts';
-import type { FakeTurn } from '@pa/fake-llm';
+import { setup, toolMessageContent } from '@nolla/contract-tests/src/harness.ts';
+import type { FakeTurn } from '@nolla/fake-llm';
 import { afterEach, expect, test, vi } from 'vitest';
 import { startFakeSidecar } from './fake-sidecar.ts';
 import { type Collision, PseudoClient, pseudoExtension } from './index.ts';

@@ -1,6 +1,6 @@
 import { createServer } from 'node:http';
 import type { LookupFunction } from 'node:net';
-import { isPrivate, publicLookup } from '@pa/sandbox-broker/net';
+import { isPrivate, publicLookup } from '@nolla/sandbox-broker/net';
 import { afterEach, expect, test, vi } from 'vitest';
 import { approvalGate, CALL_ID_REASON, callKey, UNATTENDED_REASON } from './approval.ts';
 import {

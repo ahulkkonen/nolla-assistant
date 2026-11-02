@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
-import { chats, type Db, pushSubscriptions } from '@pa/db';
-import { PushSubscription } from '@pa/protocol';
+import { chats, type Db, pushSubscriptions } from '@nolla/db';
+import { PushSubscription } from '@nolla/protocol';
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import type { FastifyBaseLogger, FastifyInstance, preHandlerHookHandler } from 'fastify';
 import webpush from 'web-push';

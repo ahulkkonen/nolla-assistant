@@ -1,7 +1,7 @@
 // Phase 20 (docs/decisions/phase-20-thread.md, decision 4): the one render and export path of
 // artifacts, shared by the thread's inline figures and the artifact panel. The sandbox documents
 // follow phase 19 (docs/decisions/phase-19-viz.md).
-import { type Artifact, mermaidMeta } from '@pa/protocol';
+import { type Artifact, mermaidMeta } from '@nolla/protocol';
 import { saveFile } from '@/lib/utils';
 import runtimeUrl from './artifact-runtime.ts?worker&url';
 import { htmlDocument } from './components/Sandbox.tsx';

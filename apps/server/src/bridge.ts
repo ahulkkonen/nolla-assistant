@@ -6,9 +6,9 @@
  * It must hold no business logic and no state: a new frame type gets a handler module, not a
  * branch here. No other module imports helpers from this file.
  */
-import { FULL } from '@pa/pi-ext-memory';
-import { PseudoDownError } from '@pa/pi-ext-pseudo';
-import { ClientMessage } from '@pa/protocol';
+import { FULL } from '@nolla/pi-ext-memory';
+import { PseudoDownError } from '@nolla/pi-ext-pseudo';
+import { ClientMessage } from '@nolla/protocol';
 import { respond, setAutoApprove } from './bridge/approvals.ts';
 import {
   archiveChat,

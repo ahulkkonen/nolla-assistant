@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { chats, files } from '@pa/db';
+import { chats, files } from '@nolla/db';
 import { afterEach, expect, test } from 'vitest';
 import { bootChat, bootPseudo, connect, runCleanups } from '../test-utils.ts';
 

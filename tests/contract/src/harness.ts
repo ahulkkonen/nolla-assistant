@@ -10,7 +10,7 @@ import {
   SessionManager,
   SettingsManager,
 } from '@earendil-works/pi-coding-agent';
-import { type FakeTurn, startFakeLlm } from '@pa/fake-llm';
+import { type FakeTurn, startFakeLlm } from '@nolla/fake-llm';
 import { afterEach } from 'vitest';
 
 export async function bootPi(opts: {

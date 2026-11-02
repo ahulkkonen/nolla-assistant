@@ -1,5 +1,5 @@
 {
-  "name": "@pa/db",
+  "name": "@nolla/db",
   "private": true,
   "type": "module",
   "exports": {

@@ -1,4 +1,4 @@
-import type { CallUsage } from '@pa/protocol';
+import type { CallUsage } from '@nolla/protocol';
 
 const clock = new Intl.DateTimeFormat('fi', { hour: 'numeric', minute: '2-digit' });
 const dayMonth = new Intl.DateTimeFormat('fi', { day: 'numeric', month: 'numeric' });

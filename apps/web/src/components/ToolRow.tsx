@@ -1,4 +1,9 @@
-import { FETCH_URL_TOOL, TOOL_STATUS_WORD, type ToolSearch, WEB_SEARCH_TOOL } from '@pa/protocol';
+import {
+  FETCH_URL_TOOL,
+  TOOL_STATUS_WORD,
+  type ToolSearch,
+  WEB_SEARCH_TOOL,
+} from '@nolla/protocol';
 import {
   Ban,
   Brain,

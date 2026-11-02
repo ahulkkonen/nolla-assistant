@@ -365,7 +365,7 @@ phase-19 rules, decisions 3, 8, 17 and 23–26):
 
 1. `pnpm typecheck`, `pnpm lint` and `pnpm test` pass (all unit suites and the e2e `chromium`
    flows).
-2. `pnpm --filter @pa/e2e exec playwright test --project screens` passes with strict axe.
+2. `pnpm --filter @nolla/e2e exec playwright test --project screens` passes with strict axe.
 3. The tests named in the task cards pass.
 4. Docker image. Before every image build, run `docker system df`. If the free space of the Docker disk is under 10 GB, run `docker builder
    prune -f` and `docker image prune -f` first. Then run `docker build -f infra/Dockerfile.server

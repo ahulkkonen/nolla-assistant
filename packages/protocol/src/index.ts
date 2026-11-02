@@ -664,7 +664,7 @@ export const FileError = z.enum([
 export type FileError = z.infer<typeof FileError>;
 
 /** Admin (docs/decisions/phase-15-admin.md). The agent every install has; it cannot be deleted. */
-/** Phase-17 claim kinds (same list as `CLAIM_KINDS` in `@pa/db`). */
+/** Phase-17 claim kinds (same list as `CLAIM_KINDS` in `@nolla/db`). */
 export const ClaimKind = z.enum([
   'preference',
   'rhythm',

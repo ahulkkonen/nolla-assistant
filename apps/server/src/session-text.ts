@@ -6,7 +6,7 @@
  * not import server modules: the bridge, tools and jobs all read it.
  */
 import type { AgentSession } from '@earendil-works/pi-coding-agent';
-import { stripConfidence } from '@pa/protocol';
+import { stripConfidence } from '@nolla/protocol';
 
 export type AgentMessage = AgentSession['messages'][number];
 

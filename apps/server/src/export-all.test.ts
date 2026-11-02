@@ -11,8 +11,8 @@ import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { buffer } from 'node:stream/consumers';
 import { inflateRawSync } from 'node:zlib';
-import { authSessions, claims, type Db } from '@pa/db';
-import { type AttachmentRef, ChatExport, type ExportJob } from '@pa/protocol';
+import { authSessions, claims, type Db } from '@nolla/db';
+import { type AttachmentRef, ChatExport, type ExportJob } from '@nolla/protocol';
 import { afterEach, expect, test } from 'vitest';
 import { api, bootChat, bootPseudo, login, runCleanups, tempDir } from './test-utils.ts';
 import {

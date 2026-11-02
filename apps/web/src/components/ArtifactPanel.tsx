@@ -1,4 +1,4 @@
-import { type Artifact, artifactExt } from '@pa/protocol';
+import { type Artifact, artifactExt } from '@nolla/protocol';
 import {
   Check,
   ChevronDown,

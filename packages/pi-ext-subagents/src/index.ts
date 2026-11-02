@@ -103,9 +103,9 @@ export function subagentsExtension(opts: SubagentsOptions): ExtensionFactory {
   const tools = opts.tools.filter((t) => t !== 'bash' || broker);
   const cli = piCli();
   const extensions = [
-    ...(opts.pseudoUrl ? [require.resolve('@pa/pi-ext-pseudo/cli')] : []),
+    ...(opts.pseudoUrl ? [require.resolve('@nolla/pi-ext-pseudo/cli')] : []),
     fileURLToPath(new URL('./child.ts', import.meta.url)),
-    ...(broker ? [require.resolve('@pa/pi-ext-sandbox/cli')] : []),
+    ...(broker ? [require.resolve('@nolla/pi-ext-sandbox/cli')] : []),
   ];
   const sessionDir = join(opts.dataDir, 'sessions', userId, chatId, 'sub');
 

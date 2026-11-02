@@ -1,4 +1,4 @@
-import type { Artifact, ChatSummary, Message } from '@pa/protocol';
+import type { Artifact, ChatSummary, Message } from '@nolla/protocol';
 import { toast } from 'sonner';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { effectiveModes, failedText, serverIdOf, useStore } from './store.ts';

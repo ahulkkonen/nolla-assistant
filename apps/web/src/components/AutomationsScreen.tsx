@@ -1,4 +1,4 @@
-import { type AgentList, cronToSchedule, type Schedule, scheduleToCron } from '@pa/protocol';
+import { type AgentList, cronToSchedule, type Schedule, scheduleToCron } from '@nolla/protocol';
 import { CalendarClock, Pencil, Play, Plus } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Badge } from '@/components/ui/badge';

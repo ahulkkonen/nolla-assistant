@@ -1,4 +1,4 @@
-import { TOOL_STATUS_WORD, WEB_SEARCH_TOOL } from '@pa/protocol';
+import { TOOL_STATUS_WORD, WEB_SEARCH_TOOL } from '@nolla/protocol';
 import { AlertCircle, ArrowDown, GitFork, MessageSquare, ShieldAlert } from 'lucide-react';
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';

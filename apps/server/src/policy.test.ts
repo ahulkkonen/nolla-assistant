@@ -2,9 +2,9 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'n
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { automationRuns, chats } from '@pa/db';
-import { startFakeSidecar } from '@pa/pi-ext-pseudo/fake-sidecar';
-import type { AttachmentRef, ClientMessageInput } from '@pa/protocol';
+import { automationRuns, chats } from '@nolla/db';
+import { startFakeSidecar } from '@nolla/pi-ext-pseudo/fake-sidecar';
+import type { AttachmentRef, ClientMessageInput } from '@nolla/protocol';
 import { eq } from 'drizzle-orm';
 import sharp from 'sharp';
 import { afterEach, expect, test, vi } from 'vitest';

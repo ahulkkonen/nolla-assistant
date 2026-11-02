@@ -10,8 +10,8 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { FAKE_CATALOG } from '@pa/fake-llm';
-import type { DataPolicy, ModelPolicy } from '@pa/protocol';
+import { FAKE_CATALOG } from '@nolla/fake-llm';
+import type { DataPolicy, ModelPolicy } from '@nolla/protocol';
 import { afterEach, expect, test, vi } from 'vitest';
 import {
   AUTO_MODEL,

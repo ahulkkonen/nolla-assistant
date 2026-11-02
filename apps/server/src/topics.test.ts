@@ -1,5 +1,5 @@
 import { setTimeout as sleep } from 'node:timers/promises';
-import { chats, tags, topicProposals, topics } from '@pa/db';
+import { chats, tags, topicProposals, topics } from '@nolla/db';
 import { eq } from 'drizzle-orm';
 import { afterEach, expect, test } from 'vitest';
 import { boot, bootPseudo, connect, KEY, runCleanups } from './test-utils.ts';

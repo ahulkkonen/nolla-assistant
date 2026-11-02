@@ -70,7 +70,7 @@ commit.
 
 ## 4. Round protocol
 
-1. Implementer applies the slice (or the fixes), runs `pnpm --filter @pa/e2e exec playwright
+1. Implementer applies the slice (or the fixes), runs `pnpm --filter @nolla/e2e exec playwright
    test --project screens`, confirms the run is green, and reports the list of changed files.
 2. Fable sends the reviewer the screen list for the slice. The reviewer views every
    screenshot of the slice in all six variants and returns one line per finding

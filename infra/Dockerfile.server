@@ -32,7 +32,7 @@ FROM deps AS web
 COPY tsconfig.base.json ./
 COPY apps/web apps/web
 COPY packages/protocol packages/protocol
-RUN pnpm --filter @pa/web build
+RUN pnpm --filter @nolla/web build
 
 FROM deps AS models
 # Build-time network only: the runtime loads the embedding model from /app/models offline.
@@ -53,7 +53,7 @@ COPY packages/pi-ext-subagents packages/pi-ext-subagents
 # The shared private-address rule of `fetch_url` (phase-25 decision 23); the rest of the broker stays out.
 COPY services/sandbox-broker/src/net.ts services/sandbox-broker/src/net.ts
 # Not `pnpm deploy`: it copies workspace packages into node_modules, where Node refuses to strip types.
-RUN pnpm install --frozen-lockfile --prod --filter @pa/server...
+RUN pnpm install --frozen-lockfile --prod --filter @nolla/server...
 # Prune what the server never loads. onnxruntime-node ships binaries for every OS/arch (~230 MB unused);
 # onnxruntime-web is the browser/wasm backend, never selected by transformers in Node.
 # better-sqlite3 prebuilds: only the glibc build for this arch loads (musl/darwin/win32/other arch are dead);

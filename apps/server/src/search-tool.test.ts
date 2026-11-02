@@ -1,7 +1,7 @@
 import { createServer } from 'node:http';
-import { usage } from '@pa/db';
-import { type FakeCitation, listenLocal, startFakeLlm } from '@pa/fake-llm';
-import { SEARCH_ENTITY_REASON } from '@pa/protocol';
+import { usage } from '@nolla/db';
+import { type FakeCitation, listenLocal, startFakeLlm } from '@nolla/fake-llm';
+import { SEARCH_ENTITY_REASON } from '@nolla/protocol';
 import { eq } from 'drizzle-orm';
 import { afterEach, expect, test, vi } from 'vitest';
 import { approvalGate } from './approval.ts';

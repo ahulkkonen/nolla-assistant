@@ -31,13 +31,13 @@ Run the server. Nothing loads `.env` for you, so export its variables first.
 
 ```sh
 set -a; source .env; set +a
-pnpm --filter @pa/server dev
+pnpm --filter @nolla/server dev
 ```
 
 Run the web dev server in a second terminal:
 
 ```sh
-pnpm --filter @pa/web dev
+pnpm --filter @nolla/web dev
 ```
 
 No test needs a model key.
@@ -62,7 +62,7 @@ Other root commands: `pnpm typecheck`, `pnpm lint`, `pnpm lint:fix`, `pnpm build
 Playwright needs Chromium. Install it once:
 
 ```sh
-pnpm --filter @pa/e2e exec playwright install chromium
+pnpm --filter @nolla/e2e exec playwright install chromium
 ```
 
 The first server test run downloads the embedding model once (`Xenova/multilingual-e5-small`,

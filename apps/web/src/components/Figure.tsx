@@ -1,4 +1,4 @@
-import type { Artifact } from '@pa/protocol';
+import type { Artifact } from '@nolla/protocol';
 import { ImageDown, PanelRight } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { cn } from '@/lib/utils';

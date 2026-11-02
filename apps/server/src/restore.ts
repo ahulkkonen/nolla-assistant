@@ -6,8 +6,8 @@
  * It only reads from the sidecar. It must not mask, store real values or send frames; callers
  * decide where the restored text goes and what `onDown` reports.
  */
-import type { PseudoClient } from '@pa/pi-ext-pseudo';
-import type { Annotation } from '@pa/protocol';
+import type { PseudoClient } from '@nolla/pi-ext-pseudo';
+import type { Annotation } from '@nolla/protocol';
 import { isHigh, isLow } from './session-text.ts';
 
 type Restored = { text: string; annotations: Annotation[]; hold: number };

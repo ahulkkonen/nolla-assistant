@@ -8,13 +8,13 @@
  */
 import { randomUUID } from 'node:crypto';
 import type { AgentSession } from '@earendil-works/pi-coding-agent';
-import { chats } from '@pa/db';
+import { chats } from '@nolla/db';
 import {
   type ServerMessage,
   type ToolSearch,
   type ToolStatus,
   WEB_SEARCH_TOOL,
-} from '@pa/protocol';
+} from '@nolla/protocol';
 import { and, eq } from 'drizzle-orm';
 import { extractArtifacts, maskedTexts, messageArtifacts } from '../artifacts.ts';
 import { chatRow, summary } from '../chats.ts';

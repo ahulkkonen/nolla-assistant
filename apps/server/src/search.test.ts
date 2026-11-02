@@ -1,9 +1,9 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { chats, openDb } from '@pa/db';
-import { PseudoClient } from '@pa/pi-ext-pseudo';
-import { startFakeSidecar } from '@pa/pi-ext-pseudo/fake-sidecar';
+import { chats, openDb } from '@nolla/db';
+import { PseudoClient } from '@nolla/pi-ext-pseudo';
+import { startFakeSidecar } from '@nolla/pi-ext-pseudo/fake-sidecar';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, expect, test } from 'vitest';
 import { indexChat, indexIdle, related, search, split } from './search.ts';

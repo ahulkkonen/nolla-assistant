@@ -24,7 +24,7 @@ Counts: blocking 1, should-fix 14, nice-to-have 29.
 
 ## 1. Structure and boundaries
 
-The layout matches `AGENTS.md` exactly. The boundaries hold: `apps/web` imports only `@pa/protocol` (no server code); no `packages/pi-ext-*` imports the server; every inbound frame is validated (`bridge.ts:1420-1428` server, `ws.ts:451-452` client). The problems are file size and one module that became a helper library.
+The layout matches `AGENTS.md` exactly. The boundaries hold: `apps/web` imports only `@nolla/protocol` (no server code); no `packages/pi-ext-*` imports the server; every inbound frame is validated (`bridge.ts:1420-1428` server, `ws.ts:451-452` client). The problems are file size and one module that became a helper library.
 
 Largest non-test source files, judged:
 
@@ -66,7 +66,7 @@ Largest non-test source files, judged:
   Fix: `export const ErrorCode = z.enum([...])` in protocol, then `Record<ErrorCode, string>` on both sides.
 - **nice-to-have** Three code-fence scanners with different rules: `apps/server/src/artifacts.ts:11-36` accepts `^ {0,3}` only, while `apps/web/src/thread.ts:280` also accepts a fence after a list or quote marker, and `thread.ts:451` has a third one. A ```` ```mermaid ```` block inside a list item renders inline on the web, but the server sends no `artifact.upsert`, so the panel list does not have it. Fix: one `fences()` in protocol.
 - **nice-to-have** `apps/server/src/bridge.ts:531-536` `toAll` repeats `sendAll` (`main.ts:59-66`), the same loop over `sockets`. Fix: put `sendAll` in `BridgeDeps`.
-- **nice-to-have** Unused code that a linter would catch: `bridge.ts:3` imports `join as joinPath` and never uses it; `policy.test.ts:367` destructures `refuseThenOpen` and never uses it. knip false positives that were checked and are in use: `apps/web/src/transpile.worker.ts` (`render.ts:78`), `packages/pi-ext-subagents/src/child.ts` (`index.ts:99`), `apps/web/public/push-sw.js` (workbox `importScripts`), `scripts/*.mjs`, `sucrase`, `tailwindcss`, `tw-animate-css`, and `@pa/pi-ext-sandbox` in subagents (`require.resolve`, `index.ts:100`). `tests/e2e/src/demo.ts` has no reference anywhere, but it is worth keeping (see 6).
+- **nice-to-have** Unused code that a linter would catch: `bridge.ts:3` imports `join as joinPath` and never uses it; `policy.test.ts:367` destructures `refuseThenOpen` and never uses it. knip false positives that were checked and are in use: `apps/web/src/transpile.worker.ts` (`render.ts:78`), `packages/pi-ext-subagents/src/child.ts` (`index.ts:99`), `apps/web/public/push-sw.js` (workbox `importScripts`), `scripts/*.mjs`, `sucrase`, `tailwindcss`, `tw-animate-css`, and `@nolla/pi-ext-sandbox` in subagents (`require.resolve`, `index.ts:100`). `tests/e2e/src/demo.ts` has no reference anywhere, but it is worth keeping (see 6).
 - **nice-to-have** Stale comments: `bridge.ts:380` and `packages/pi-ext-subagents/src/workspace.ts:23` describe "Pi 1.3.0" behaviour, while 1.4.0 is pinned. Fix: write "Pi 1.4.0 (unchanged from 1.3.0, decision 0009)".
 
 ## 3. Error handling and resilience
@@ -112,7 +112,7 @@ Coverage: the server suite (35 files, 248 tests) boots the real server with the 
   - `apps/server/src/policy.test.ts:223,281,351,544` sleep 100-200 ms to order a race against a 500 ms proxy delay, which fails on a loaded machine.
   Fix: make the debounce and `CACHE_MS` options, and wait on the fake sidecar's request count or a log line instead.
 - **nice-to-have** Duplicated test helpers. `freePort` (with a port race) exists 4 times: `test-utils.ts:32`, `tests/e2e/src/fixtures.ts:318`, `masked-only.test.ts:135`, `sandbox.test.ts:26`. "Start the server with fakes" exists 4 times: `test-utils.ts:40`, `fixtures.ts:447`, `masked-only.test.ts:205`, `demo.ts`. The socket client exists twice (`masked-only.test.ts:143` and `test-utils.ts:95`); `tests/mcp` already reuses `test-utils`. Fix: export `startTestServer` and `connect` from `test-utils`, and let `start()` take port 0 and return the bound port.
-- **nice-to-have** Production packages export test fakes: `@pa/pi-ext-pseudo` `./fake-sidecar` (364 lines) and `@pa/pi-ext-sandbox` `./fake-broker`. This is harmless in a private monorepo. Fix: move them to `tests/fakes` if a package is ever published.
+- **nice-to-have** Production packages export test fakes: `@nolla/pi-ext-pseudo` `./fake-sidecar` (364 lines) and `@nolla/pi-ext-sandbox` `./fake-broker`. This is harmless in a private monorepo. Fix: move them to `tests/fakes` if a package is ever published.
 
 The three most valuable missing tests:
 
@@ -145,7 +145,7 @@ Sound: exact pins everywhere, `minimumReleaseAge: 10080` (`pnpm-workspace.yaml:6
 
 - **should-fix** `biome.json:31` `"preset": "none"` turns every lint rule off, so `pnpm lint` checks only the format and the import order, while `AGENTS.md:55` says "Biome formats and lints". Evidence: the correctness and suspicious rules, run by hand, find the unused imports and variable in 2 and seven import cycles. Fix: `"preset": "recommended"` with the noisy rules turned off by name, and the findings fixed in one commit.
 - **should-fix** There is no CI configuration (no `.github/`), but plan §14 says "Automated (CI on every PR)", and a public repository is judged by its checks. Fix: one GitHub Actions workflow with `pnpm install --frozen-lockfile`, typecheck, lint, the vitest suites, `test:contract` and `pytest` (Playwright is optional), with the model cache from 5.
-- **nice-to-have** Unused devDependencies (knip, checked): `tests/mcp/package.json` has `@pa/pi-ext-pseudo`, `@pa/protocol`, `@types/ws` and `ws` (it imports only `@pa/server/src/test-utils.ts`); `packages/pi-ext-sandbox/package.json` has `@pa/fake-llm`.
+- **nice-to-have** Unused devDependencies (knip, checked): `tests/mcp/package.json` has `@nolla/pi-ext-pseudo`, `@nolla/protocol`, `@types/ws` and `ws` (it imports only `@nolla/server/src/test-utils.ts`); `packages/pi-ext-sandbox/package.json` has `@nolla/fake-llm`.
 - **nice-to-have** `infra/Dockerfile.server:4` and `infra/Dockerfile.broker:4` use `node:22.23.2-bookworm-slim` without `@sha256`, while every other image is digest-pinned.
 - **nice-to-have** `package.json:7` `engines.pnpm ">=10.16"` disagrees with `packageManager: pnpm@12.15.0` and the README ("pnpm 12").
 - **nice-to-have** About 60 exports are used only inside their own file (knip): for example `store.ts` `errorText`, `sortChats`, `DEFAULT_MODEL`; `claims.ts` `EXTRACT_PROMPT`, `Extraction`; `ws.ts` `createChat`. Removing `export` makes each module's surface visible. The unused exports in the vendored shadcn `ui/` components are fine.

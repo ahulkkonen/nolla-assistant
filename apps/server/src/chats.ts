@@ -5,8 +5,8 @@
  * Reads the database only. It must not write rows, send frames or touch Pi sessions; the bridge
  * handlers, the export, the tools and the title job build on it.
  */
-import { chats, type Db } from '@pa/db';
-import type { ChatSummary, ForkLink, Message } from '@pa/protocol';
+import { chats, type Db } from '@nolla/db';
+import type { ChatSummary, ForkLink, Message } from '@nolla/protocol';
 import { and, eq } from 'drizzle-orm';
 import { chatFiles } from './files.ts';
 import { policyOf } from './pi/models.ts';

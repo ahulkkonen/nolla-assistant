@@ -1,4 +1,4 @@
-import type { ChatSummary } from '@pa/protocol';
+import type { ChatSummary } from '@nolla/protocol';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { applyPath, pathOf, startRouter } from './router.ts';
 import { useStore } from './store.ts';

@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { FxRate } from '@pa/protocol';
+import { FxRate } from '@nolla/protocol';
 import { z } from 'zod';
 
 /**

@@ -1,4 +1,4 @@
-import type { ServerMessage } from '@pa/protocol';
+import type { ServerMessage } from '@nolla/protocol';
 import { afterEach, expect, test, vi } from 'vitest';
 import { collisionWaits } from './collisions.ts';
 import { bootPseudo, runCleanups } from './test-utils.ts';

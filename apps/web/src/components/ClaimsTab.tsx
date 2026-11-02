@@ -1,4 +1,4 @@
-import { CLAIM_TEXT_MAX, type Claim, type ClaimKind } from '@pa/protocol';
+import { CLAIM_TEXT_MAX, type Claim, type ClaimKind } from '@nolla/protocol';
 import { ChevronRight, Lightbulb } from 'lucide-react';
 import { type ReactNode, useEffect, useId, useState } from 'react';
 import { Button } from '@/components/ui/button';

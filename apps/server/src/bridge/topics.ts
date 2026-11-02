@@ -6,8 +6,8 @@
  * the connected user.
  */
 import { randomUUID } from 'node:crypto';
-import { topicProposals, topics } from '@pa/db';
-import type { ClientMessage } from '@pa/protocol';
+import { topicProposals, topics } from '@nolla/db';
+import type { ClientMessage } from '@nolla/protocol';
 import { and, eq } from 'drizzle-orm';
 import { NotFound, send } from '../socket.ts';
 import { topicState } from '../topics.ts';

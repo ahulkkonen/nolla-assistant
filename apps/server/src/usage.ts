@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import type { ExtensionFactory, MessageEndEvent } from '@earendil-works/pi-coding-agent';
-import { chats, type Db, usage } from '@pa/db';
-import type { CallUsage, ChatUsage, ServerMessage } from '@pa/protocol';
+import { chats, type Db, usage } from '@nolla/db';
+import type { CallUsage, ChatUsage, ServerMessage } from '@nolla/protocol';
 import { and, count, desc, eq, gte, lt, sql } from 'drizzle-orm';
 import type { Catalog } from './pi/models.ts';
 

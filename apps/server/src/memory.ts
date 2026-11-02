@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { chats, type Db, memoryPending } from '@pa/db';
+import { chats, type Db, memoryPending } from '@nolla/db';
 import {
   applyOp,
   CAPS,
@@ -10,9 +10,9 @@ import {
   NOT_FOUND,
   type Snippet,
   type Target,
-} from '@pa/pi-ext-memory';
-import type { PseudoClient } from '@pa/pi-ext-pseudo';
-import type { ServerMessage } from '@pa/protocol';
+} from '@nolla/pi-ext-memory';
+import type { PseudoClient } from '@nolla/pi-ext-pseudo';
+import type { ServerMessage } from '@nolla/protocol';
 import { and, desc, eq, inArray, isNotNull, ne } from 'drizzle-orm';
 import cron from 'node-cron';
 import type { ClaimStore } from './claims.ts';

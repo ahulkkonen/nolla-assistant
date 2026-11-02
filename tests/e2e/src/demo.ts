@@ -1,15 +1,15 @@
 // Local demo of the PWA with fakes: fake LLM (echo), fake pseudonymization sidecar, no Docker.
 //   node tests/e2e/src/demo.ts        then open http://localhost:3000 (password: salasana)
-// Build the web app first if apps/web/dist is missing: pnpm --filter @pa/web build
+// Build the web app first if apps/web/dist is missing: pnpm --filter @nolla/web build
 import { mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { startFakeLlm } from '@pa/fake-llm';
-import { startFakeSidecar } from '@pa/pi-ext-pseudo/fake-sidecar';
-import { hashPassword } from '@pa/server/src/auth/password.ts';
-import { loadConfig } from '@pa/server/src/config.ts';
-import { start } from '@pa/server/src/main.ts';
+import { startFakeLlm } from '@nolla/fake-llm';
+import { startFakeSidecar } from '@nolla/pi-ext-pseudo/fake-sidecar';
+import { hashPassword } from '@nolla/server/src/auth/password.ts';
+import { loadConfig } from '@nolla/server/src/config.ts';
+import { start } from '@nolla/server/src/main.ts';
 
 const root = fileURLToPath(new URL('../../../', import.meta.url));
 const port = process.env.PORT || '3000';

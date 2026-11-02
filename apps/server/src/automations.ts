@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, watch } from 'node:fs';
 import { basename, join } from 'node:path';
-import { automationRuns, chats, type Db, topics } from '@pa/db';
-import { isHarnessTool, type ServerMessage } from '@pa/protocol';
+import { automationRuns, chats, type Db, topics } from '@nolla/db';
+import { isHarnessTool, type ServerMessage } from '@nolla/protocol';
 import { and, eq } from 'drizzle-orm';
 import type { FastifyBaseLogger } from 'fastify';
 import cron from 'node-cron';

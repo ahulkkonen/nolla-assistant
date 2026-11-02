@@ -1,5 +1,5 @@
 {
-  "name": "@pa/sandbox-tests",
+  "name": "@nolla/sandbox-tests",
   "private": true,
   "type": "module",
   "scripts": {
@@ -7,7 +7,7 @@
     "test": "vitest run"
   },
   "devDependencies": {
-    "@pa/sandbox-broker": "workspace:*",
+    "@nolla/sandbox-broker": "workspace:*",
     "@types/node": "26.6.5",
     "typescript": "5.9.3",
     "vitest": "4.1.12"

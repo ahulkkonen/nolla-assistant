@@ -6,7 +6,7 @@ import type {
   ExtensionFactory,
   ToolResultEvent,
 } from '@earendil-works/pi-coding-agent';
-import type { FakeTurn } from '@pa/fake-llm';
+import type { FakeTurn } from '@nolla/fake-llm';
 import { describe, expect, test } from 'vitest';
 import {
   eventOf,

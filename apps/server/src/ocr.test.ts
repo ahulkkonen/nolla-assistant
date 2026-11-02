@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { copyFileSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { chats, files, openDb } from '@pa/db';
+import { chats, files, openDb } from '@nolla/db';
 import sharp from 'sharp';
 import { afterEach, expect, test } from 'vitest';
 import { ingestAttachments, splitBlocks } from './files.ts';

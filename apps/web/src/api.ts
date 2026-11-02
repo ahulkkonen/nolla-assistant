@@ -15,7 +15,7 @@ import type {
   TrashListing,
   TreeEntry,
   TreeListing,
-} from '@pa/protocol';
+} from '@nolla/protocol';
 import { startAuthentication, startRegistration } from '@simplewebauthn/browser';
 
 /**

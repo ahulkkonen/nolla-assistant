@@ -7,7 +7,7 @@ import {
   ModelId,
   ModelPolicy,
   ReasoningEffort,
-} from '@pa/protocol';
+} from '@nolla/protocol';
 import { z } from 'zod';
 
 /** What "Auto" routes to (phase-10 decision 6). Chats store 'auto', so a change moves them all. */

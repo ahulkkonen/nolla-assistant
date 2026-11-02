@@ -3,7 +3,7 @@ import cookie from '@fastify/cookie';
 import multipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
 import websocket from '@fastify/websocket';
-import { SANDBOX_CSP, type ServerMessage } from '@pa/protocol';
+import { SANDBOX_CSP, type ServerMessage } from '@nolla/protocol';
 import Fastify from 'fastify';
 import { adminRoutes } from './admin.ts';
 import { authRoutes, requireUser, type SessionSockets } from './auth/routes.ts';

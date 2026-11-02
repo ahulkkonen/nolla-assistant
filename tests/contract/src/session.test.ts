@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { SessionManager } from '@earendil-works/pi-coding-agent';
-import { startFakeLlm } from '@pa/fake-llm';
+import { startFakeLlm } from '@nolla/fake-llm';
 import { expect, test } from 'vitest';
 import { bootPi, keysOf, lastUserText, probe, type Seen, setup } from './harness.ts';
 
