@@ -200,7 +200,7 @@ Detection stack:
 
 1. In-house validators for hetu (rules in question 6), FI IBAN, FI phone (via `phonenumbers`, region `FI`), postcode regex, street regex, plates (question 9). Do not depend on Presidio's hetu recognizer. Register it only in the LiteLLM backstop, where its gaps do not matter.
 2. Vault recognizer over `entity_form`.
-3. DVV gazetteers (2026-08-04 release, CC BY 4.0, attribution in the UI about page), looked up on Voikko `BASEFORM`.
+3. DVV gazetteers (2026-08-04 release, CC BY 4.0, attribution in `data/dvv/LICENSE.txt` and the README license section), looked up on Voikko `BASEFORM`.
 4. Presidio + spaCy `fi_core_news_lg` 3.8.0 with the YAML in question 2.
 
 Generation stack: Omorfi `omorfi.generate.hfst` through `pyhfst` precomputes all forms for known names (97.5% of DVV surname types). Suffix rules keyed on the Omorfi paradigm class handle names not in the lexicon. Surrogate names are drawn only from DVV names that Omorfi knows.

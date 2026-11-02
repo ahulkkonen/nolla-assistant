@@ -211,4 +211,10 @@ The numbers come from the session transcript ([method](docs/build-stats.md)):
 - Images and voice audio reach the model unmasked through ZDR endpoints. A web search query reaches
   Exa unmasked when it contains no known person's name.
 
-MIT license, see [`LICENSE`](LICENSE).
+## License
+
+The code is MIT, see [`LICENSE`](LICENSE). Three parts come from elsewhere. The Finnish name lists
+from DVV are CC BY 4.0, with the license next to the files
+([`data/dvv`](services/pseudo-svc/data/dvv)). The `pseudo-svc` image pulls Omorfi (GPL-3) and
+voikko-fi (GPL-2 or later) at build time. Both stay inside that container, behind HTTP
+([0003, section 3](docs/decisions/0003-finnish-pii-stack.md)).
