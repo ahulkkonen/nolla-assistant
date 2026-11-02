@@ -79,7 +79,7 @@ skills/             vendored skills; see skills/README.md
 infra/              compose.yaml, compose.local.yaml, Dockerfiles, LiteLLM config, backup
 scripts/            hash-password, decrypt-export, restore, restore-drill, download-models, build-skill-runner
 tests/              contract, e2e (Playwright), egress, fake-llm, masked-only, mcp, memory-eval, pii, sandbox
-docs/               plan.md, deploy.md, development.md, overview.md, threat-model.md, roadmap.md, workflow.md, decisions/, audits/, media/ (README images)
+docs/               plan.md, deploy.md, development.md, overview.md, threat-model.md, roadmap.md, workflow.md, glossary.md, decisions/, audits/, media/ (README images)
 ```
 
 ## Commands
@@ -141,6 +141,7 @@ Start here for a topic. Each entry says what the document answers.
 | `docs/workflow.md` | How the project was built: the roles and their models, the review and UI loops, the gates, how the person worked, what to change; the build figures and how they were measured |
 | `docs/build-stats.md` | The build totals (active time, human attention, agent work, tool calls, commits) and how they were measured |
 | `docs/roadmap.md` | Planned work that is not built, what each item closes and what it costs |
+| `docs/glossary.md` | The terms the documents and the code use, with their plain meaning |
 | `docs/decisions/README.md` | Index of every decision record and phase record |
 | `docs/decisions/0001-pi-1.3.0-contract.md`, `0009-pi-1.4.0.md` | The Pi API surface the code depends on; what changed in 1.4.0 |
 | `docs/decisions/0002-workflow-and-pins.md` | Git workflow without a remote, the 7-day pin rule, TypeScript version choice |

@@ -1,7 +1,4 @@
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/media/social-preview-dark.png">
-  <img src="docs/media/social-preview.png" alt="Nolla: zero personal data reaches the model, zero data retention, zero cloud you do not own. A chat reply shows the real names on screen, and a tooltip shows the fake name the model saw.">
-</picture>
+<img src="docs/media/social-preview.png" alt="Nolla: zero personal data reaches the model, zero data retention, zero cloud you do not own. A chat reply shows the real names on screen, and a tooltip shows the fake name the model saw.">
 
 **Self-hosted personal assistant with Finnish PII masking and a smooth, native-feel mobile
 experience.**
@@ -128,34 +125,17 @@ encrypted backups ([tour with proofs](docs/overview.md)).
 
 ```mermaid
 flowchart LR
-  browser["Browser PWA<br/>phone or desktop"]
-  subgraph pseudo["network: pseudo, no internet"]
-    psvc["pseudo-svc<br/>mask, unmask, vault"]
-  end
-  subgraph internal["network: internal"]
-    server["pa-server<br/>Fastify, Pi, WebSocket bridge, PWA"]
-    backup["backup<br/>restic to S3, encrypted"]
-    litellm["litellm<br/>ZDR guard, holds the keys"]
-    broker["sandbox-broker<br/>the only Docker socket"]
-  end
-  subgraph presidio["network: presidio, no internet"]
-    analyzer["presidio-analyzer"]
-    anonymizer["presidio-anonymizer"]
-  end
-  openrouter["OpenRouter<br/>ZDR endpoints"]
-  runner["skill-runner<br/>throwaway containers"]
-  subgraph mcp["network: mcp"]
-    workspace["mcp-workspace<br/>Google Workspace"]
-  end
-  browser -- "HTTPS, typed WebSocket" --> server
-  server -- "real text in,<br/>fake names out" --> psvc
-  server -- "masked prompts" --> litellm
-  litellm -- "backstop scan" --> analyzer
-  litellm --> anonymizer
-  litellm == "the one way out for model calls" ==> openrouter
-  server --> broker
-  broker --> runner
-  server --> workspace
+  you["You<br/>phone or desktop browser"]
+  server["pa-server<br/>the app and the Pi agent"]
+  pseudo["pseudo-svc<br/>finds personal data,<br/>swaps in fake values<br/>no internet access"]
+  proxy["LiteLLM proxy<br/>holds the only API keys,<br/>second scan for leaks"]
+  cloud["OpenRouter<br/>zero data retention models"]
+  tools["Tools<br/>commands in throwaway containers,<br/>Google Workspace"]
+  you -- "real text" --> server
+  server <-- "real text in,<br/>fake values out" --> pseudo
+  server -- "masked text" --> proxy
+  proxy == "the only path to the internet<br/>for model calls" ==> cloud
+  server -- "real values at run time" --> tools
 ```
 
 ## Run it
@@ -181,6 +161,7 @@ screen tests at three widths with strict accessibility checks. No test needs a m
   the status of each phase.
 - [`docs/deploy.md`](docs/deploy.md): the runbook for a VPS and for a full local run with Docker.
 - [`docs/threat-model.md`](docs/threat-model.md): threats, controls and accepted risks.
+- [`docs/glossary.md`](docs/glossary.md): the terms the documents use, with their plain meaning.
 - [`AGENTS.md`](AGENTS.md): rules and the document index for contributors and coding agents.
 
 ## How it was built
