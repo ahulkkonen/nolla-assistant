@@ -17,7 +17,7 @@
     "test:sandbox": "pnpm --filter @nolla/sandbox-tests test",
     "test:webkit": "pnpm --filter @nolla/e2e exec playwright test --project webkit",
     "build": "pnpm -r --if-present build",
-    "prepare": "git config core.hooksPath .githooks",
+    "prepare": "git config core.hooksPath .githooks 2>/dev/null || true",
     "knip": "knip"
   },
   "devDependencies": {
