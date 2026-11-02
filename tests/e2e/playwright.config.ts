@@ -15,8 +15,10 @@ export default defineConfig({
   reporter: 'list',
   globalSetup: './src/global-setup.ts',
   projects: [
-    { name: 'chromium', use: chromium },
-    // The screenshot loop only: `playwright test --project screens`. Every test starts its own
+    // The flows. The screenshot file is its own project below: in one serial project it took the
+    // GitHub runner past the 60-minute job cap, and a full chromium run rewrote every baseline.
+    { name: 'chromium', testIgnore: 'screens.spec.ts', use: chromium },
+    // The screenshot loop: `playwright test --project screens`. Every test starts its own
     // server, so the tests of the one file can run in parallel.
     { name: 'screens', testMatch: 'screens.spec.ts', fullyParallel: true, use: chromium },
     // Safari check (phase 22): the phone screens in light and dark plus four flows, shot into

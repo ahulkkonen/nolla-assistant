@@ -61,6 +61,7 @@ jobs:
 
       - run: pnpm --filter @pa/e2e exec playwright install --with-deps chromium
       - run: pnpm --filter @pa/e2e test
+      - run: pnpm --filter @pa/e2e exec playwright test --project=screens
 
       - name: Keep the Playwright report on failure
         if: failure()
