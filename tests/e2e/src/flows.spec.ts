@@ -2653,7 +2653,8 @@ test('inline figure: a lazy frame off screen does not fall back after 30 s', asy
   app.llm.push({ text: `${CHART_REPLY}\n\n${prose}` });
   await app.login(page);
   await send(page, 'Piirrä ja selitä');
-  await expect(thread(page).getByText('Kappale 200:')).toBeVisible();
+  // 200 paragraphs stream in; the GitHub runner needs more than the 5 s default.
+  await expect(thread(page).getByText('Kappale 200:')).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole('button', { name: 'Pysäytä' })).toHaveCount(0);
   // The thread follows to the end: the figure is far above, and its lazy frame waits.
   await page.waitForTimeout(31_000);
