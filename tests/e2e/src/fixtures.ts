@@ -379,9 +379,9 @@ export const test = base.extend<{
   automation: [false, { option: true }],
   // 0 keeps the server default (10 minutes).
   approvalTimeoutMs: [0, { option: true }],
-  // Written to DATA_DIR/memory/aleksi/USER.md before start when non-empty.
+  // Written to DATA_DIR/memory/owner/USER.md before start when non-empty.
   memoryUser: ['', { option: true }],
-  // Seeds DATA_DIR/work/aleksi with WORK_FILES.
+  // Seeds DATA_DIR/work/owner with WORK_FILES.
   workFiles: [false, { option: true }],
   // The fake sandbox broker (runs `bash` on the host, in the work dir): the `bash` tool exists.
   broker: [false, { option: true }],
@@ -403,10 +403,10 @@ export const test = base.extend<{
                 pending: [{ kind: 'person', text: 'Koski', detector: 'gliner', score: 0.42 }],
               });
     const dataDir = mkdtempSync(join(tmpdir(), 'pa-e2e-'));
-    mkdirSync(join(dataDir, 'work/aleksi'), { recursive: true });
-    if (workFiles) seedWork(join(dataDir, 'work/aleksi'));
+    mkdirSync(join(dataDir, 'work/owner'), { recursive: true });
+    if (workFiles) seedWork(join(dataDir, 'work/owner'));
     const fakeBroker = broker
-      ? await startFakeBroker({ token: 'broker-e2e', root: join(dataDir, 'work/aleksi') })
+      ? await startFakeBroker({ token: 'broker-e2e', root: join(dataDir, 'work/owner') })
       : undefined;
     mkdirSync(join(dataDir, 'automations'));
     const fakeMcp = mcp ? await startFakeWorkspace() : undefined;
@@ -420,8 +420,8 @@ export const test = base.extend<{
     seedAgents(join(dataDir, 'agents'));
     if (automation) writeFileSync(join(dataDir, 'automations/aamu.yaml'), AUTOMATION);
     if (memoryUser) {
-      mkdirSync(join(dataDir, 'memory/aleksi'), { recursive: true });
-      writeFileSync(join(dataDir, 'memory/aleksi/USER.md'), memoryUser);
+      mkdirSync(join(dataDir, 'memory/owner'), { recursive: true });
+      writeFileSync(join(dataDir, 'memory/owner/USER.md'), memoryUser);
     }
     const port = await freePort();
     process.env.LITELLM_MASTER_KEY = KEY;
@@ -440,7 +440,7 @@ export const test = base.extend<{
         WEB_DIST: join(WEB, 'dist'),
         HOST: '127.0.0.1',
         PORT: String(port),
-        USER_ID: 'aleksi',
+        USER_ID: 'owner',
         LOG_LEVEL: 'warn',
         AUTOMATIONS_DIR: join(dataDir, 'automations'),
         // The editor tests write to this copy.
@@ -744,11 +744,11 @@ export function seedClaims(app: App, chatId: string) {
   const claim = db.prepare(
     `INSERT INTO claims (userId, kind, text, confidence, status, activatedBy, validFrom, validTo,
       recordedAt, supersedesId, sourceChatId, lastConfirmedAt, timesSeen, reviewedAt)
-     VALUES ('aleksi', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+     VALUES ('owner', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
   );
   const quote = db.prepare(
     `INSERT INTO evidence (userId, claimId, chatId, quote, stance, createdAt)
-     VALUES ('aleksi', ?, ?, ?, 'supports', ?)`,
+     VALUES ('owner', ?, ?, ?, 'supports', ?)`,
   );
   type Row = [
     kind: string,

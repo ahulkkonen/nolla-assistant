@@ -21,7 +21,7 @@ await modelReady();
 
 const KEY = 'sk-test-master';
 const PASSWORD = 'correct horse';
-const USER = 'aleksi';
+const USER = 'owner';
 const cleanups: (() => Promise<void> | void)[] = [];
 afterEach(async () => {
   for (const c of cleanups.splice(0).reverse()) await c();

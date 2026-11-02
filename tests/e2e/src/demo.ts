@@ -14,7 +14,7 @@ import { start } from '@nolla/server/src/main.ts';
 const root = fileURLToPath(new URL('../../../', import.meta.url));
 const port = process.env.PORT || '3000';
 const dataDir = process.env.DEMO_DATA_DIR || join(tmpdir(), 'pa-demo');
-mkdirSync(join(dataDir, 'work/aleksi'), { recursive: true });
+mkdirSync(join(dataDir, 'work/owner'), { recursive: true });
 mkdirSync(join(dataDir, 'automations'), { recursive: true });
 
 const DICT = {
@@ -67,7 +67,7 @@ await start(
     WEB_DIST: join(root, 'apps/web/dist'),
     HOST: '127.0.0.1',
     PORT: port,
-    USER_ID: 'aleksi',
+    USER_ID: 'owner',
     LOG_LEVEL: 'warn',
     AUTOMATIONS_DIR: join(dataDir, 'automations'),
     AGENTS_DIR: join(dataDir, 'agents'),

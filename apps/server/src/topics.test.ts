@@ -36,10 +36,10 @@ test('title: masked to the model and in the db, restored on the wire; rename loc
   srv.db
     .insert(topics)
     .values([
-      { id: 't-tax', userId: 'aleksi', name: 'Verot', description: 'Kallion Kirjasto', createdAt },
-      { id: 't-home', userId: 'aleksi', name: 'Koti', createdAt },
+      { id: 't-tax', userId: 'owner', name: 'Verot', description: 'Kallion Kirjasto', createdAt },
+      { id: 't-home', userId: 'owner', name: 'Koti', createdAt },
       // A name the user typed, with a vault entity: masked before the model (invariant 1).
-      { id: 't-person', userId: 'aleksi', name: 'Matti Virtanen – asiat', createdAt },
+      { id: 't-person', userId: 'owner', name: 'Matti Virtanen – asiat', createdAt },
     ])
     .run();
   const row = () => srv.db.select().from(chats).where(eq(chats.id, chat.id)).get();
@@ -150,7 +150,7 @@ test('topics: invalid JSON is retried; proposal lands in the inbox; accept and r
 
   const other = srv.db
     .insert(topicProposals)
-    .values({ userId: 'aleksi', chatId: chat.id, name: 'Muut', why: '-', createdAt: '' })
+    .values({ userId: 'owner', chatId: chat.id, name: 'Muut', why: '-', createdAt: '' })
     .returning()
     .get();
   c.send({ type: 'topic.reject', proposalId: other.id });

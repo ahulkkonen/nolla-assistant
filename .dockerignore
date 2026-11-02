@@ -5,6 +5,7 @@ node_modules
 data
 .env*
 tests/e2e/screenshots
+tests/e2e/screenshots-webkit
 **/*.test.ts
 .serena
 docs

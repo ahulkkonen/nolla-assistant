@@ -59,7 +59,7 @@ test('automations run as chats under Automaatiot', { timeout: 30_000 }, async ()
   expect(row?.title).toMatch(/^tick \d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
   expect(srv.db.select().from(topics).where(eq(topics.name, 'Automaatiot')).all()).toHaveLength(1);
   expect(
-    readdirSync(join(b.config.dataDir, 'sessions', 'aleksi')).some((f) =>
+    readdirSync(join(b.config.dataDir, 'sessions', 'owner')).some((f) =>
       f.includes(row?.id ?? '?'),
     ),
   ).toBe(true);

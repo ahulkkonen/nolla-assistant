@@ -1011,7 +1011,9 @@ test.describe('thread depth', () => {
     page,
   }) => {
     app.llm.push({ text: 'Vastaus.' });
-    app.llm.push({ text: 'Haaran vastaus.' });
+    // Matched: the title job of the first chat fires 2 s after its reply and would take an
+    // unmatched turn when the steps below take about that long.
+    app.llm.push({ match: 'Toisin kysytty', text: 'Haaran vastaus.' });
     // The first chat.fork gets an error from here; later ones go to the server, counted.
     let fail = true;
     let forks = 0;
@@ -2125,7 +2127,7 @@ test('streaming: a tool-only final keeps the open tool row; the text final keeps
   app,
   page,
 }) => {
-  writeFileSync(join(app.dataDir, 'work/aleksi/note.txt'), 'Muistiinpano.\n');
+  writeFileSync(join(app.dataDir, 'work/owner/note.txt'), 'Muistiinpano.\n');
   app.llm.push({ toolCalls: [{ name: 'read', args: { path: 'note.txt' } }] });
   app.llm.push({ text: 'Luin tiedoston.' });
   // Holds the frames after the first `tool.end`, then after the first delta of the reply.

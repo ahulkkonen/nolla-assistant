@@ -14,7 +14,7 @@ Branch `main` at `6ec0950`, audited 2026-10-31. Read only. Nothing in the reposi
 - `knip@5.62.0` (installed outside the repository, with TypeScript 5.9.3). Its false positives were checked and are listed as such.
 - `biome lint --only=<rule>` for a few correctness and suspicious rules (read only, no `--write`).
 - `EXPLAIN QUERY PLAN` on a scratch database built by `openDb` (`packages/db/src/index.ts`) outside the repository.
-- Docker was not started. The Serena language server did not start ("No language servers available"), so text searches used `awk`/`sed` over `git ls-files`.
+- Docker was not started. The code search tool did not start, so text searches used `awk`/`sed` over `git ls-files`.
 
 Severity: **blocking** = fix before the first public push. **should-fix** = a senior reviewer will notice; fix soon. **nice-to-have** = polish.
 

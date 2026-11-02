@@ -170,7 +170,7 @@ const CORPUS: [string, string, string, string][] = [
 ];
 
 const id = (i: number) => `c${String(i + 1).padStart(2, '0')}`;
-const USER = 'aleksi';
+const USER = 'owner';
 
 /** [query, expected chat]. */
 const QUERIES: [string, string][] = [

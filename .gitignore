@@ -10,9 +10,8 @@ __pycache__/
 .pytest_cache/
 playwright-report/
 test-results/
-tests/e2e/screenshots/*-actual.png
-tests/e2e/screenshots/*-diff.png
-.serena/cache/
+tests/e2e/screenshots-webkit/
+.serena/
 .DS_Store
 services/pseudo-svc/.venv/
 services/pseudo-svc/data/forms/

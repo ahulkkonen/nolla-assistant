@@ -15,7 +15,8 @@ export default defineConfig({
   // one that fails changes from run to run on the 5 s default.
   expect: { timeout: process.env.CI ? 15_000 : 5_000 },
   retries: 0,
-  reporter: 'list',
+  // The html report is what CI uploads on failure (`playwright-report/`).
+  reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
   globalSetup: './src/global-setup.ts',
   projects: [
     // The flows. The screenshot file is its own project below: in one serial project it took the

@@ -35,7 +35,7 @@ const seedClaim = (db: Db) =>
   db
     .insert(claims)
     .values({
-      userId: 'aleksi',
+      userId: 'owner',
       kind: 'relationship',
       text: 'Matti Virtanen on käyttäjän esihenkilö.',
       confidence: 0.9,
@@ -217,7 +217,7 @@ test('export job: open export has chats, vault, memory, work dir and uploads; do
   mkdirSync(join(work, '.trash'));
   writeFileSync(join(work, '.trash', 'pois.txt'), 'roskis');
   symlinkSync(join(dataDir, 'app.db'), join(work, 'linkki'));
-  writeFileSync(join(dataDir, 'memory', 'aleksi', 'USER.md'), 'Käyttäjä on Matti Virtanen.');
+  writeFileSync(join(dataDir, 'memory', 'owner', 'USER.md'), 'Käyttäjä on Matti Virtanen.');
   seedClaim(srv.db);
 
   const res = await start({ passphrase: 'pitkä salasana 42', unmask: true });

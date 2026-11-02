@@ -150,10 +150,10 @@ test('auth: cookie required, password login, rate limit, logout', { timeout: 30_
 
   const { res, cookie } = await login(port);
   expect(res.status).toBe(200);
-  expect(await res.json()).toEqual({ userId: 'aleksi' });
+  expect(await res.json()).toEqual({ userId: 'owner' });
   expect(res.headers.getSetCookie()[0]).toMatch(/^pa_session=.+HttpOnly; SameSite=Strict/);
   const me = await api(port, '/api/auth/me', { headers: { cookie } });
-  expect(await me.json()).toEqual({ userId: 'aleksi', passkeys: [] });
+  expect(await me.json()).toEqual({ userId: 'owner', passkeys: [] });
   expect(me.headers.get('x-frame-options')).toBe('DENY');
   const reg = await api(port, '/api/auth/passkey/register/options', {
     method: 'POST',
@@ -170,7 +170,7 @@ test('auth: cookie required, password login, rate limit, logout', { timeout: 30_
   expect(await c.next('auth.state')).toEqual({
     type: 'auth.state',
     authenticated: true,
-    userId: 'aleksi',
+    userId: 'owner',
   });
 
   // Every attempt counts: the login above plus four 401s, then 429 even for the right password.

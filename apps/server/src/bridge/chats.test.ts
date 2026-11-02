@@ -96,15 +96,15 @@ test('chat.delete removes only its own row, files, and session; all sockets hear
     c.send({ type: 'user.message', chatId: id, text: 'Hei' });
     await c.idle();
   }
-  mkdirSync(join(config.dataDir, 'files', 'aleksi'), { recursive: true });
+  mkdirSync(join(config.dataDir, 'files', 'owner'), { recursive: true });
   const addFile = (id: string, chatId: string) => {
-    const path = join('files', 'aleksi', id);
+    const path = join('files', 'owner', id);
     writeFileSync(join(config.dataDir, path), 'x');
     srv.db
       .insert(files)
       .values({
         id,
-        userId: 'aleksi',
+        userId: 'owner',
         chatId,
         name: 'a.txt',
         mime: 'text/plain',

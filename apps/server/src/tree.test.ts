@@ -294,7 +294,7 @@ test('trash: delete, list, restore (also into a removed folder), delete for good
   const oldId = `${Date.now() - 31 * 86_400_000}-old.txt`;
   renameSync(join(root, '.trash', old.id), join(root, '.trash', oldId));
   const work = workStore(srv.db, config.dataDir);
-  expect(await purgeTrash(srv.db, work, 'aleksi')).toBe(1);
+  expect(await purgeTrash(srv.db, work, 'owner')).toBe(1);
   expect((await trash()).map((e) => e.id)).toEqual([fresh.id]);
 });
 
@@ -528,7 +528,7 @@ test('trash folder: a symlink or a file in its place is refused; purge never wip
   const work = workStore(srv.db, config.dataDir);
   const later = Date.now() + 365 * 86_400_000;
   const row = (id: string) => ({
-    userId: 'aleksi',
+    userId: 'owner',
     id,
     originalPath: 'x.txt',
     deletedAt: new Date().toISOString(),
@@ -545,7 +545,7 @@ test('trash folder: a symlink or a file in its place is refused; purge never wip
   expect((await call('/api/files/tree/trash', { method: 'DELETE' })).status).toBe(409);
   const restore = await send('POST', '/api/files/tree/restore', { id: '1793000000000-x.txt' });
   expect(restore.status).toBe(409);
-  expect(await purgeTrash(srv.db, work, 'aleksi', later)).toBe(0);
+  expect(await purgeTrash(srv.db, work, 'owner', later)).toBe(0);
   expect(existsSync(join(elsewhere, '1793000000000-x.txt'))).toBe(true);
   expect(existsSync(join(root, 'a.txt'))).toBe(true);
   expect(rows()).toBe(1);
@@ -559,12 +559,12 @@ test('trash folder: a symlink or a file in its place is refused; purge never wip
   mkdirSync(join(root, '.trash'));
   if (process.getuid?.() !== 0) {
     chmodSync(join(root, '.trash'), 0);
-    await expect(purgeTrash(srv.db, work, 'aleksi', later)).rejects.toThrow();
+    await expect(purgeTrash(srv.db, work, 'owner', later)).rejects.toThrow();
     chmodSync(join(root, '.trash'), 0o755);
     expect(rows()).toBe(1);
   }
   // An empty trash: rows without entries go.
-  expect(await purgeTrash(srv.db, work, 'aleksi', later)).toBe(0);
+  expect(await purgeTrash(srv.db, work, 'owner', later)).toBe(0);
   expect(rows()).toBe(0);
 });
 

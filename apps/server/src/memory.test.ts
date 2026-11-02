@@ -32,7 +32,7 @@ const sidecar = async (dictionary: Record<string, string> = {}) => {
   cleanups.push(sc.close);
   return { PSEUDO_URL: sc.url };
 };
-const memoryDir = (dataDir: string) => join(dataDir, 'memory', 'aleksi');
+const memoryDir = (dataDir: string) => join(dataDir, 'memory', 'owner');
 const add = (t: string, target: 'user' | 'memory' = 'user') => ({
   toolCalls: [{ name: 'memory', args: { action: 'add', target, text: t } }],
 });
@@ -90,23 +90,23 @@ test.skipIf(!modelOk)(
     const old = iso(8);
     srv.db
       .insert(topics)
-      .values({ id: 't-home', userId: 'aleksi', name: 'Koti', createdAt: old })
+      .values({ id: 't-home', userId: 'owner', name: 'Koti', createdAt: old })
       .run();
     srv.db
       .insert(chats)
       .values({
         id: 'old-chat',
-        userId: 'aleksi',
+        userId: 'owner',
         topicId: 't-home',
         title: 'Sähkön kilpailutus',
         titleMasked: 'Sähkön kilpailutus',
-        sessionPath: 'sessions/aleksi/',
+        sessionPath: 'sessions/owner/',
         createdAt: old,
         updatedAt: old,
       })
       .run();
     // The index holds masked text.
-    await indexChat(srv.db, 'aleksi', 'old-chat', [
+    await indexChat(srv.db, 'owner', 'old-chat', [
       { id: 'm1', text: 'Pekka Laaksonen: Sähkösopimus päättyy 30.11.' },
     ]);
     const ask = async (text: string) => {
@@ -294,13 +294,13 @@ function store() {
   const { db, sqlite } = openDb(join(dir, 'app.db'));
   const now = new Date().toISOString();
   db.insert(chats)
-    .values({ id: 'c1', userId: 'aleksi', sessionPath: 's/', createdAt: now, updatedAt: now })
+    .values({ id: 'c1', userId: 'owner', sessionPath: 's/', createdAt: now, updatedAt: now })
     .run();
   const warnings: string[] = [];
   const m = memoryStore({
     db,
     dataDir: dir,
-    userId: 'aleksi',
+    userId: 'owner',
     warn: (msg) => void warnings.push(msg),
     sendAll: () => {},
   });

@@ -109,7 +109,7 @@ services:
       OPENROUTER_API_BASE: ${OPENROUTER_API_BASE:-https://openrouter.ai/api/v1}
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
       OR_SITE_URL: ${OR_SITE_URL:-https://assistant.invalid}
-      OR_APP_NAME: ${OR_APP_NAME:-assistant-2}
+      OR_APP_NAME: ${OR_APP_NAME:-nolla-assistant}
       LITELLM_LOCAL_MODEL_COST_MAP: "True"
     depends_on:
       presidio-analyzer: { condition: service_healthy }

@@ -15,7 +15,7 @@ afterEach(runCleanups);
 
 const store = () => {
   const { db, sqlite } = openDb(join(tempDir('pa-claims-'), 'app.db'));
-  return { db, sqlite, store: claimStore({ db, userId: 'aleksi', warn: () => {} }) };
+  return { db, sqlite, store: claimStore({ db, userId: 'owner', warn: () => {} }) };
 };
 
 test('import turns MEMORY.md lines into active claims, once', { timeout: 60_000 }, async () => {
@@ -58,12 +58,12 @@ async function extraction(
     sqlite.close();
   });
   const warnings: string[] = [];
-  const pseudo = new PseudoClient(sc.url, 'aleksi');
+  const pseudo = new PseudoClient(sc.url, 'owner');
   wrap(pseudo);
   const profile = { changes: 0 };
   const s = claimStore({
     db,
-    userId: 'aleksi',
+    userId: 'owner',
     warn: (msg) => void warnings.push(msg),
     pseudo,
     ask: taskSmall(llm.url, 'k'),
@@ -77,7 +77,7 @@ async function extraction(
     db.insert(chats)
       .values({
         id,
-        userId: 'aleksi',
+        userId: 'owner',
         sessionPath: `sessions/${id}.jsonl`,
         tainted: o.tainted ?? false,
         fromAutomation: o.fromAutomation ?? false,
@@ -159,7 +159,7 @@ test('extraction: an idle chat is extracted once, masked; quotes are checked; a 
   ]);
   expect(rows[1]?.subjectEntityId).toBe(1);
   expect(x.db.select().from(claimEntities).all()).toEqual([
-    { claimId: rows[1]?.id, entityId: 1, userId: 'aleksi' },
+    { claimId: rows[1]?.id, entityId: 1, userId: 'owner' },
   ]);
   const ev = x.db.select().from(evidence).orderBy(evidence.id).all();
   expect(ev.map((e) => [e.messageId, e.quote, e.stance])).toEqual([
@@ -291,9 +291,9 @@ test.skipIf(!modelOk)(
     cleanups.push(sc.close);
     const s = claimStore({
       db: x.db,
-      userId: 'aleksi',
+      userId: 'owner',
       warn: () => {},
-      pseudo: new PseudoClient(sc.url, 'aleksi'),
+      pseudo: new PseudoClient(sc.url, 'owner'),
     });
     const active = (text: string, entityIds: number[] = [], quote?: string) => ({
       claim: { kind: 'relationship' as const, text, confidence: 0.9, status: 'active' as const },
@@ -335,7 +335,7 @@ test.skipIf(!modelOk)(
   },
   async () => {
     const { llm, srv, c, chat } = await bootPseudo(DICT, [{ text: 'Selvä.' }]);
-    const s = claimStore({ db: srv.db, userId: 'aleksi', warn: () => {} });
+    const s = claimStore({ db: srv.db, userId: 'owner', warn: () => {} });
     await s.add([
       {
         claim: {
@@ -531,7 +531,7 @@ test('repoint: a vault merge moves links and subjects', async () => {
   ]);
   s.repoint([3], 5);
   expect(db.select().from(claimEntities).all()).toEqual([
-    { claimId: id, entityId: 5, userId: 'aleksi' },
+    { claimId: id, entityId: 5, userId: 'owner' },
   ]);
   expect(db.select().from(claims).get()?.subjectEntityId).toBe(5);
 });

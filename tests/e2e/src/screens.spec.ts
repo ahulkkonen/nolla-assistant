@@ -1290,7 +1290,7 @@ for (const scheme of ['light', 'dark'] as const) {
       });
 
       test('chat', async ({ app, page }) => {
-        writeFileSync(join(app.dataDir, 'work/aleksi/note.txt'), 'Muistiinpano.\n');
+        writeFileSync(join(app.dataDir, 'work/owner/note.txt'), 'Muistiinpano.\n');
         app.llm.push({ toolCalls: [{ name: 'read', args: { path: 'note.txt' } }] });
         app.llm.push({ text: 'Luin tiedoston.' });
         await app.login(page);
@@ -1937,7 +1937,7 @@ for (const scheme of ['light', 'dark'] as const) {
         });
 
         test('tool-running', async ({ app, page }) => {
-          writeFileSync(join(app.dataDir, 'work/aleksi/note.txt'), 'Muistiinpano.\n');
+          writeFileSync(join(app.dataDir, 'work/owner/note.txt'), 'Muistiinpano.\n');
           app.llm.push({ toolCalls: [{ name: 'read', args: { path: 'note.txt' } }] });
           app.llm.push({ text: 'Luin tiedoston.' });
           const hold = await holdAfter(page, 'tool.start');
@@ -2076,7 +2076,7 @@ for (const scheme of ['light', 'dark'] as const) {
 
       test('jump-pill', async ({ app, page }) => {
         test.skip(vp.width === 1440, 'The pill is shot at 390 and 1024.');
-        writeFileSync(join(app.dataDir, 'work/aleksi/note.txt'), 'Muistiinpano.\n');
+        writeFileSync(join(app.dataDir, 'work/owner/note.txt'), 'Muistiinpano.\n');
         app.llm.push({ text: LONG });
         // Matched turns: the title job cannot take them.
         const match = 'Lue note.txt';

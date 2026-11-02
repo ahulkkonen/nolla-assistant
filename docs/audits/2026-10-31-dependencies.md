@@ -129,7 +129,7 @@ Notes that need a decision but no removal:
 
 | Check | Result |
 |---|---|
-| `pnpm install --frozen-lockfile --offline --ignore-scripts` | Passes (`resolved 1071, reused 1071, downloaded 0`, exit 0). Run in a scratchpad copy of the manifests and lock against the same store, so the repository was not changed. |
+| `pnpm install --frozen-lockfile --offline --ignore-scripts` | Passes (`resolved 1071, reused 1071, downloaded 0`, exit 0). Run in a temporary copy of the manifests and lock against the same store, so the repository was not changed. |
 | `pnpm store status` (installed files against the content-addressable store) | "Packages in the store are untouched", exit 0. |
 | `integrity` present for every lock package | Yes, 1260 of 1260 (`sha512`). All 1260 equal the registry value. |
 | `git+`, `github:`, `file:`, `http:`, `tarball:` or `npm:` alias sources | None. Only `link:` entries for the workspace packages. |

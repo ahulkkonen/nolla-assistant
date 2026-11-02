@@ -37,7 +37,7 @@ export const BUNDLED_AUTOMATIONS = fileURLToPath(new URL('../../../automations',
 export function loadConfig(env: Env = process.env) {
   const port = Number(env.PORT ?? 3000);
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('PORT must be 1..65535');
-  const userId = env.USER_ID ?? 'aleksi';
+  const userId = env.USER_ID ?? 'owner';
   if (!/^[A-Za-z0-9_-]{1,64}$/.test(userId))
     throw new Error('USER_ID must match [A-Za-z0-9_-]{1,64}');
   const origin = new URL(required(env, 'AUTH_ORIGIN'));
