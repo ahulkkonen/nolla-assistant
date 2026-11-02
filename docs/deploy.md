@@ -58,7 +58,7 @@ This procedure deploys the stack in `infra/compose.yaml` to Coolify on the Hetzn
    | `LITELLM_URL` | `http://litellm:4000`, no `/v1`: Pi appends `/chat/completions` and LiteLLM serves it (compose default) |
    | `LITELLM_MASTER_KEY` | at least 32 random characters, for example `openssl rand -base64 48`. `pa-server` does not start with a shorter key. |
    | `TRUST_PROXY` | `1` |
-   | `USER_ID` | your short user id, letters and digits only |
+   | `USER_ID` | a short internal id, letters and digits only. Keep the default `owner`. Do not use your name: the model sees the id in file paths such as `/data/work/<USER_ID>`, and masking does not cover paths. A later change needs a rename of the data (the per-user directories, every table with a user id, the vault). |
 
    These optional variables control the two public, key-free lookups of `pa-server`. Neither call carries user data.
 
