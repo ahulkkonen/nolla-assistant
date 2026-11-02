@@ -3,8 +3,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { env, type FeatureExtractionPipeline, pipeline } from '@huggingface/transformers';
 
-export const MODEL = 'Xenova/multilingual-e5-small';
-export const DIMS = 384;
+const MODEL = 'Xenova/multilingual-e5-small';
+const DIMS = 384;
 
 let extractor: Promise<FeatureExtractionPipeline> | undefined;
 

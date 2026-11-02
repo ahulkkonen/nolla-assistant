@@ -11,7 +11,7 @@ import { EmptyState, ListSkeleton } from './Page.tsx';
 import { UNTITLED } from './Sidebar.tsx';
 
 /** Claim kinds in Finnish (the MEMORY.md section names of phase-17 decision 28, singular). */
-export const KIND_LABEL: Record<ClaimKind, string> = {
+const KIND_LABEL: Record<ClaimKind, string> = {
   preference: 'Mieltymys',
   rhythm: 'Rytmi',
   goal: 'Tavoite',

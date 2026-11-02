@@ -21,7 +21,7 @@ const DEFLATE = 8;
 const VERSION = 20;
 const U32 = 0xffffffff;
 /** Below the 0xFFFF entry count that needs ZIP64. */
-export const MAX_ENTRIES = 65_000;
+const MAX_ENTRIES = 65_000;
 
 /** MS-DOS time and date of `d` (local time, 2-second steps, from 1980). */
 function dos(d: Date): [number, number] {

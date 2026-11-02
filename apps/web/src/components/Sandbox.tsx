@@ -9,9 +9,9 @@ import { cn } from '@/lib/utils';
  * (phase-19 decision 2).
  */
 export const SANDBOX_URL = '/api/sandbox';
-export const CSP_META = `<meta http-equiv="Content-Security-Policy" content="${SANDBOX_CSP}">`;
+const CSP_META = `<meta http-equiv="Content-Security-Policy" content="${SANDBOX_CSP}">`;
 /** A user's HTML file keeps its own white page in both schemes (brief 7.5). */
-export const SCHEME_META = '<meta name="color-scheme" content="light">';
+const SCHEME_META = '<meta name="color-scheme" content="light">';
 
 /**
  * An HTML document for the sandbox. Our CSP is always the first element, before anything of the

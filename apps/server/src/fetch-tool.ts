@@ -21,7 +21,7 @@ import { cutText, textOf } from './session-text.ts';
 const MAX_URL = 2048;
 const MAX_REDIRECTS = 3;
 const TIMEOUT_MS = 15_000;
-export const FETCH_MAX_BYTES = 2 * 1024 * 1024;
+const FETCH_MAX_BYTES = 2 * 1024 * 1024;
 const TEXT_MAX = 20_000;
 const TEXT_TYPES = /^(text\/[\w.+-]+|application\/json|application\/xhtml\+xml)$/;
 

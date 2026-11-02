@@ -15,7 +15,7 @@ import { RELATED_MIN, rrf, terms } from './search.ts';
  */
 
 export type Warn = (msg: string, data?: object) => void;
-export type NewClaim = {
+type NewClaim = {
   kind: ClaimKind;
   text: string;
   confidence: number;
@@ -46,7 +46,7 @@ export const branchPoint = (messages: ChatMsg[], path: { id: string }[]) => {
 };
 
 /** Phase-17 decision 11: a chat with no new turn for this long is at its end. */
-export const IDLE_MS = 20 * 60_000;
+const IDLE_MS = 20 * 60_000;
 const SWEEP_MAX = 10;
 /** A failed chat waits this long before the sweep tries it again. */
 const RETRY_MS = 30 * 60_000;
@@ -61,9 +61,9 @@ const SAME_DISTANCE = 0.05;
 const AUTO_KINDS = new Set<ClaimKind>(['preference', 'rhythm']);
 /** Decision 26: per-turn top k, the block's line budget (~300 tokens), candidates per list. */
 const TOP_K = 6;
-export const BLOCK_CHARS = 1000;
+const BLOCK_CHARS = 1000;
 const LIST = 20;
-export const KIND_FI: Record<ClaimKind, string> = {
+const KIND_FI: Record<ClaimKind, string> = {
   preference: 'mieltymys',
   rhythm: 'rytmi',
   goal: 'tavoite',
@@ -74,7 +74,7 @@ export const KIND_FI: Record<ClaimKind, string> = {
 };
 type ClaimRow = typeof claims.$inferSelect;
 /** Half weight after a year without confirmation, never below 0.5. */
-export const recency = (c: Pick<ClaimRow, 'lastConfirmedAt' | 'recordedAt'>, now = Date.now()) =>
+const recency = (c: Pick<ClaimRow, 'lastConfirmedAt' | 'recordedAt'>, now = Date.now()) =>
   Math.max(
     0.5,
     0.5 ** ((now - Date.parse(c.lastConfirmedAt ?? c.recordedAt)) / (365 * 86_400_000)),
@@ -96,10 +96,10 @@ const CHECK_DAYS = 30;
 const CHIP_DAYS = 7;
 const DAY_MS = 86_400_000;
 /** One block line: `- (mieltymys, 0.9, 2026-09) text`. */
-export const claimLine = (c: ClaimRow) =>
+const claimLine = (c: ClaimRow) =>
   `- (${KIND_FI[c.kind]}, ${Math.round(c.confidence * 10) / 10}, ${month(c)}) ${c.text}`;
 
-export const EXTRACT_PROMPT = `Olet muistin poimija. Saat listan käyttäjästä jo tallennetuista havainnoista (id) ja keskustelun, jonka viestit on numeroitu (m1, m2, …). Nimet ja tunnisteet ovat peitenimiä: käytä niitä täsmälleen sellaisinaan. [sinä] tarkoittaa käyttäjää.
+const EXTRACT_PROMPT = `Olet muistin poimija. Saat listan käyttäjästä jo tallennetuista havainnoista (id) ja keskustelun, jonka viestit on numeroitu (m1, m2, …). Nimet ja tunnisteet ovat peitenimiä: käytä niitä täsmälleen sellaisinaan. [sinä] tarkoittaa käyttäjää.
 
 Poimi keskustelusta pysyviä havaintoja käyttäjästä. Vastaa pelkällä JSON-objektilla, ilman muuta tekstiä:
 {"claims": [{"kind": string, "text": string, "confidence": number, "valid_from": string | null, "evidence": [{"message": string, "quote": string}]}], "confirms": [{"claim_id": number, "evidence": {"message": string, "quote": string}}], "supersedes": [{"claim_id": number, "reason": string, "valid_to": string | null, "new_claim": number, "evidence": {"message": string, "quote": string}}]}
@@ -139,7 +139,7 @@ const SupersedeItem = z.object({
  * The reply envelope: only a reply that is not a JSON object of arrays fails here (and gets the
  * repair retry). Items are checked one by one in `items`, so one bad item drops only itself.
  */
-export const Extraction = z.object({
+const Extraction = z.object({
   claims: z.array(z.unknown()).default([]),
   confirms: z.array(z.unknown()).default([]),
   supersedes: z.array(z.unknown()).default([]),
@@ -169,7 +169,7 @@ const line = (label: string, m: ChatMsg) =>
 const pathIs = (p: JsonPath | undefined, ...head: (string | number)[]) =>
   !!p && head.every((h, i) => p[i] === h);
 
-export const vecOf = (v: Float32Array) => Buffer.from(v.buffer, v.byteOffset, v.byteLength);
+const vecOf = (v: Float32Array) => Buffer.from(v.buffer, v.byteOffset, v.byteLength);
 
 /** Passage vectors, or nulls when the model cannot load (the claim then has no vector row). */
 async function vectors(texts: string[], warn: Warn, mode: 'query' | 'passage' = 'passage') {

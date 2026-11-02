@@ -1,0 +1,9 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "ignoreBinaries": ["mkfifo"],
+  "workspaces": {
+    ".": { "entry": ["scripts/*.mjs"] },
+    "apps/web": { "entry": ["public/push-sw.js"] },
+    "tests/e2e": { "entry": ["src/demo.ts"] }
+  }
+}

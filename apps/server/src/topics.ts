@@ -31,7 +31,7 @@ const cosine = (v: Float32Array, o: Float32Array) =>
 export const nearDuplicate = (v: Float32Array, others: Float32Array[]) =>
   others.some((o) => cosine(v, o) >= PROPOSAL_DUPLICATE_MIN);
 
-export const SYSTEM_PROMPT = `Olet keskustelujen luokittelija. Saat käyttäjän aihelistan ja keskustelun lopun. Vastaa pelkällä JSON-objektilla, ilman muuta tekstiä:
+const SYSTEM_PROMPT = `Olet keskustelujen luokittelija. Saat käyttäjän aihelistan ja keskustelun lopun. Vastaa pelkällä JSON-objektilla, ilman muuta tekstiä:
 {"title": string, "topics": [string], "proposed_topic": {"name": string, "why": string} | null, "summary": string}
 
 Säännöt:

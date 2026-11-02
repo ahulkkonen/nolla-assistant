@@ -25,7 +25,7 @@ export type FakeEvent = {
 export const AUTH_URL =
   'https://accounts.google.com/o/oauth2/auth?response_type=code&client_id=x&state=abc123&code_challenge_method=S256';
 
-export const BUDGET_MEETING: FakeEvent = {
+const BUDGET_MEETING: FakeEvent = {
   summary: 'Budjettipalaveri',
   start: '2026-10-27T10:00:00+02:00',
   end: '2026-10-27T11:00:00+02:00',

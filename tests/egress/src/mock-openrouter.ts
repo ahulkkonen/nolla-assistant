@@ -2,7 +2,7 @@ import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 
 /** One upstream request as LiteLLM sent it. `body` is parsed JSON, or the raw text for multipart. */
-export type UpstreamRequest = {
+type UpstreamRequest = {
   path: string;
   headers: Record<string, string | string[] | undefined>;
   body: any;

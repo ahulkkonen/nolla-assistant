@@ -46,6 +46,9 @@ It is a library (`startFakeLlm`), not a command.
 Import it in a script or test to work offline, and point `LITELLM_URL` at the address it returns.
 
 Other root commands: `pnpm typecheck`, `pnpm lint`, `pnpm lint:fix`, `pnpm build`.
+`pnpm knip` lists unused files, exports and dependencies (`knip.json` names the entry points that
+no import reaches: the scripts, the demo, the service worker). `pnpm install` sets `core.hooksPath`
+to `.githooks`; the pre-commit hook runs Biome on the staged files.
 
 ## Test
 

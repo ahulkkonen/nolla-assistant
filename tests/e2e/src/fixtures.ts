@@ -16,7 +16,7 @@ import { type Browser, test as base, expect, type Page } from '@playwright/test'
 import { startFakeWorkspace } from '../../mcp/fixtures/fake-workspace-server.ts';
 import { WEB } from './global-setup.ts';
 
-export const PASSWORD = 'salasana';
+const PASSWORD = 'salasana';
 
 const ecdh = createECDH('prime256v1');
 ecdh.generateKeys();
@@ -101,7 +101,7 @@ export const png = (rgb: [number, number, number] = [128, 128, 128], w = 64, h =
 };
 
 /** Synthetic work-dir files for Tiedostot (`workFiles: true`): no real names or data. */
-export const WORK_FILES: Record<string, string | Buffer> = {
+const WORK_FILES: Record<string, string | Buffer> = {
   'Raportit/Raportti 2.md':
     '# Raportti 2\n\nKuukauden luvut kasvoivat hieman.\n\n- Myynti: 120\n- Kulut: 80\n',
   'Raportit/Raportti 10.md': '# Raportti 10\n\nVuoden yhteenveto.\n',
@@ -166,43 +166,6 @@ export const CHART_REPLY = `Tässä kulutus kuukausittain:\n\n${block('vega-lite
   },
   config: { font: 'Comic Sans MS' },
 })}\n\nTammikuu oli vuoden kulutetuin kuukausi.`;
-const PRICES = [
-  [5210, 3890],
-  [5185, 3905],
-  [5160, 3920],
-  [5190, 3940],
-  [5230, 3960],
-  [5260, 3985],
-];
-/** Phase 19: two series with dates, colour roles and direct end labels (R3 padding right 44). */
-export const LINE_REPLY = `Hinnat kehittyivät näin:\n\n${block('vega-lite', {
-  title: { text: 'Asuntojen neliöhinnat 2026', subtitle: 'Vanhat kerrostaloasunnot, €/m²' },
-  description: 'Viivakaavio kahden kaupungin asuntojen neliöhinnoista tammi–kesäkuussa 2026.',
-  data: {
-    values: PRICES.flatMap(([a, b], i) => [
-      { kk: `2026-0${i + 1}-01`, kaupunki: 'Helsinki', hinta: a },
-      { kk: `2026-0${i + 1}-01`, kaupunki: 'Tampere', hinta: b },
-    ]),
-  },
-  encoding: {
-    x: { field: 'kk', type: 'temporal', title: null, axis: { format: '%b', tickCount: 6 } },
-    y: { field: 'hinta', type: 'quantitative', title: 'Hinta (€/m²)', scale: { zero: false } },
-    color: {
-      field: 'kaupunki',
-      type: 'nominal',
-      scale: { range: ['@accent', '@c2'] },
-      legend: null,
-    },
-  },
-  layer: [
-    { mark: { type: 'line', color: '#ff0000' } },
-    {
-      transform: [{ filter: 'month(datum.kk) == 5' }],
-      mark: { type: 'text', align: 'left', dx: 6 },
-      encoding: { text: { field: 'kaupunki' } },
-    },
-  ],
-})}\n\nHelsingin hinnat nousivat kesäkuuhun mennessä noin prosentin.`;
 const SPOT = [
   [9.1, 6.2, 11.4],
   [8.4, 5.9, 10.8],
@@ -392,7 +355,7 @@ export type App = {
 };
 
 /** One automation for `automation: true` (never fires by itself: 1 January at 03:00). */
-export const AUTOMATION = `id: aamu
+const AUTOMATION = `id: aamu
 cron: '0 3 1 1 *'
 agentId: assistant
 prompt: Anna lyhyt aamukatsaus.

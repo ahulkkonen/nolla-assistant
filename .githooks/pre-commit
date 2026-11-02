@@ -1,0 +1,4 @@
+#!/bin/sh
+# Biome on the staged files only. `pnpm install` points core.hooksPath here (the `prepare`
+# script). Typecheck, knip and the suites stay in CI: too slow for every commit.
+exec pnpm exec biome check --staged --no-errors-on-unmatched

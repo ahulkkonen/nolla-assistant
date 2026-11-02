@@ -20,7 +20,7 @@ import { exportEncrypt, type ZipEntry, ZipTooLarge, zip } from './zip.ts';
 // "Vie kaikki tiedot" (docs/decisions/phase-15-admin.md, decisions 13 to 18).
 
 /** Input bytes per export (decision 18): below the ZIP64 limits, bounded disk use. */
-export const EXPORT_MAX_BYTES = 2 * 1024 ** 3;
+const EXPORT_MAX_BYTES = 2 * 1024 ** 3;
 const TTL_MS = 60 * 60_000;
 const TICK_MS = 250;
 /** What a masked export leaves out: these parts hold real values (decision 15). */
@@ -85,8 +85,6 @@ async function openInside(abs: string, root: string, walked?: { ino: number; dev
 
 const view = ({ userId: _, dir: __, path: ___, abort, timer, downloading, ...j }: Job): ExportJob =>
   j;
-
-export type ExportJobs = ReturnType<typeof exportJobs>;
 
 export function exportJobs(deps: Deps) {
   const { db, pseudo, memory, work, sendAll, warn } = deps;

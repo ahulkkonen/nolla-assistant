@@ -175,7 +175,7 @@ export function openChat(chatId: string, messageId?: string | null) {
  * the agent's default); resolves with the id from the next `chat.created`. Rejects on the next
  * error without a chat (a refused create never names one) or when the socket closes.
  */
-export function createChat(): Promise<string> {
+function createChat(): Promise<string> {
   return new Promise((resolve, reject) => {
     createWaiters.push({ resolve, reject });
     const st = useStore.getState();

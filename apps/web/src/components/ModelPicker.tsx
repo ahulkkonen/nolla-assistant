@@ -81,13 +81,7 @@ const COL_PRICE = 'w-28 shrink-0 text-right tabular-nums';
 const ALIAS = '__alias__';
 
 /** Phase-20 decision 15: a chip that works during a reply; the change applies to the next one. */
-export const NextTurnTip = ({
-  running,
-  children,
-}: {
-  running: boolean;
-  children: ReactElement;
-}) => (
+const NextTurnTip = ({ running, children }: { running: boolean; children: ReactElement }) => (
   <Tip label="Muutos koskee seuraavaa vastausta" {...(running ? {} : { open: false })}>
     {children}
   </Tip>
@@ -98,7 +92,7 @@ export const NextTurnTip = ({
  * `chat.create`. The Tila chip (≥ 768) and the phone sheet share it; like the model, a toggle
  * applies to the next reply. `names`: the active modes in the server's order.
  */
-export function useModes(chatId: string | null) {
+function useModes(chatId: string | null) {
   const all = useStore((s) => s.modes);
   const stored = useStore((s) => effectiveModes(s, chatId));
   // The list of the last toggle until `chat.updated` brings it: a quick second toggle builds on

@@ -183,7 +183,7 @@ function mergedDoc(existing: string | undefined, fields: Record<string, unknown>
 }
 
 /** An id from `name` that `taken` does not hold: ASCII words joined by `-`, then `-2`, `-3` … */
-export function freeId(name: unknown, taken: (id: string) => boolean, fallback: string, max = 56) {
+function freeId(name: unknown, taken: (id: string) => boolean, fallback: string, max = 56) {
   const base = slug(typeof name === 'string' ? name : '', max) || fallback;
   let id = base;
   for (let n = 2; taken(id); n++) id = `${base}-${n}`;

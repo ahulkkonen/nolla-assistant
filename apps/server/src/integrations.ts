@@ -8,8 +8,8 @@ import type { McpServer } from './mcp.ts';
 const AUTH_URL = /Authorization URL: (\S+)/;
 const MAX_PARAM = 2048;
 const CACHE_MS = 10_000;
-export const LANDING = '/?integrations=google';
-export const FAILED = '/?integrations=failed';
+const LANDING = '/?integrations=google';
+const FAILED = '/?integrations=failed';
 
 type Check = { connected: true } | { connected: false; authUrl: string };
 

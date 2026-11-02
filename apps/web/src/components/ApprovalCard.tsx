@@ -56,7 +56,7 @@ export const CLAMP = 16;
  * card. Over 16 rows (16 lines, or fewer that wrap past 320 px) it shows 16, the last four
  * fading out, and "Näytä lisää".
  */
-export function Lines({
+function Lines({
   label,
   lines,
   line,
@@ -293,7 +293,7 @@ const clock = (iso: string) =>
   new Date(iso).toLocaleTimeString('fi-FI', { hour: '2-digit', minute: '2-digit' });
 
 /** The line that external content entered the turn or chat: `ShieldAlert` and meta in --warning. */
-export function TaintLine({
+function TaintLine({
   className,
   children,
 }: {

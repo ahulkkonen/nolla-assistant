@@ -16,10 +16,13 @@
     "test:egress": "pnpm --filter @nolla/egress-tests test",
     "test:sandbox": "pnpm --filter @nolla/sandbox-tests test",
     "test:webkit": "pnpm --filter @nolla/e2e exec playwright test --project webkit",
-    "build": "pnpm -r --if-present build"
+    "build": "pnpm -r --if-present build",
+    "prepare": "git config core.hooksPath .githooks",
+    "knip": "knip"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",
+    "knip": "6.43.0",
     "typescript": "5.9.3"
   }
 }

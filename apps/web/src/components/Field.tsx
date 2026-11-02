@@ -177,7 +177,7 @@ export function Field({
 }
 
 /** A check box with its label, padded to a 44 px hit area on phones (brief 7.5). */
-export function Check({
+function Check({
   label,
   checked,
   onChange,

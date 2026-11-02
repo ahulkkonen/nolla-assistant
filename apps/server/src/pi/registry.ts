@@ -73,7 +73,7 @@ export const childTools = (tools: string[]) =>
   );
 
 /** Phase 25 decision 9: the harness tools of one chat session and their card views. */
-export type HarnessFactory = (o: {
+type HarnessFactory = (o: {
   chatId: string;
   agentId: string;
   /** Call id to the argument as the model wrote it (masked), from `maskedArgs`. */
@@ -86,7 +86,7 @@ export type HarnessFactory = (o: {
  * Phase 26: Pi gives `before_provider_request` and `after_provider_response` to extensions only;
  * the registry passes them to the chat's listener as this event, in Pi's order.
  */
-export type ProviderPhase = { type: 'provider_phase'; phase: 'sent' | 'headers'; at: number };
+type ProviderPhase = { type: 'provider_phase'; phase: 'sent' | 'headers'; at: number };
 export type ChatEvent = AgentSessionEvent | ProviderPhase;
 export type ChatListener = (e: ChatEvent) => void;
 

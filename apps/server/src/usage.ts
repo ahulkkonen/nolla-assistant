@@ -19,7 +19,7 @@ export type PaMeta = { costUsd?: number; thinkingMs?: number; queueMs?: number; 
 /** Phase 26: the model call is sent, or its response headers came; `at` is epoch ms. */
 export type OnPhase = (phase: 'sent' | 'headers', at: number) => void;
 /** `search`: one `web_search` call to `zdr/search` (phase-14 decision 11). */
-export type UsageKind = 'chat' | 'task' | 'subagent' | 'search';
+type UsageKind = 'chat' | 'task' | 'subagent' | 'search';
 export type UsageAt = { kind: UsageKind; chatId: string | null; agentId?: string | null };
 type Warn = (msg: string, data?: object) => void;
 /** Writes one call. `warn` reports a cost that could not be used. */
@@ -299,7 +299,7 @@ const nextMonth = (month: string) => {
 };
 
 /** The catalog name, the alias name of `infra/models.json`, or the id. */
-export function modelName(model: string, catalog: Pick<Catalog, 'get'>) {
+function modelName(model: string, catalog: Pick<Catalog, 'get'>) {
   return catalog.get(model.replace(/^(zdr|open)\//, ''))?.name ?? alias(model)?.name ?? model;
 }
 

@@ -24,7 +24,7 @@ import { search } from './search.ts';
  * changed) or `GENERATED` (MEMORY.md is generated from claims, phase 17).
  */
 export class MemoryError extends Error {}
-export const CONFLICT = 'conflict';
+const CONFLICT = 'conflict';
 export const GENERATED = 'generated';
 const MAX_PENDING = 5;
 const TOO_MANY = 'liikaa odottavia kirjoituksia';

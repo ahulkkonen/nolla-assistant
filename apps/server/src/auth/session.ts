@@ -27,7 +27,7 @@ export const sessionCookie = (secure: boolean) =>
   }) as const;
 
 /** The session id: sha256 hex of the cookie token. */
-export const hash = (token: string) => createHash('sha256').update(token).digest('hex');
+const hash = (token: string) => createHash('sha256').update(token).digest('hex');
 
 /**
  * "Safari · iPhone" from a User-Agent header (phase-15 decision 11); null when neither part is

@@ -47,6 +47,7 @@ jobs:
 
       - run: pnpm --workspace-concurrency=1 -r typecheck
       - run: pnpm lint
+      - run: pnpm knip
 
       - run: pnpm --filter @nolla/protocol --filter @nolla/db --filter @nolla/server --filter @nolla/web test
       - run: pnpm -r --if-present --filter './packages/pi-ext-*' test

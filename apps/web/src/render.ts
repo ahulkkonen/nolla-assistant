@@ -136,7 +136,7 @@ const mix = (a: string, b: string, f: number) =>
     .join('')}`;
 
 /** The cluster header strip's height: 28, 32 on phones (UI review round 4). */
-export const stripHeight = () => (phone?.matches ? 32 : 28);
+const stripHeight = () => (phone?.matches ? 32 : 28);
 
 const NS = 'http://www.w3.org/2000/svg';
 const svgEl = (tag: string, attrs: Record<string, string | number>, parent?: Element) => {

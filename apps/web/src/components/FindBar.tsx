@@ -9,7 +9,7 @@ import { IconButton } from './IconButton.tsx';
  * The hits of `q` in the message bodies under `root`, each inside one text node (phase-13
  * decision 19). Open thinking text counts (`data-find`); collapsed rows are not in the DOM.
  */
-export function findRanges(root: HTMLElement, q: string): Range[] {
+function findRanges(root: HTMLElement, q: string): Range[] {
   const out: Range[] = [];
   if (!q) return out;
   for (const body of root.querySelectorAll(

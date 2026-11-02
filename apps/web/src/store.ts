@@ -52,17 +52,17 @@ type RelatedState = Of<'chat.related'>;
  * "hylätty" until the next message in that chat (brief 7.5).
  */
 export type Approval = Of<'approval.request'> & { expired?: true; denied?: true };
-export type Agent = Of<'agents.state'>['agents'][number];
+type Agent = Of<'agents.state'>['agents'][number];
 export type SubagentChild = Of<'subagent.state'>['children'][number];
 export type Automation = Of<'automations.state'>['automations'][number];
 export type MemoryState = Omit<Of<'memory.state'>, 'type'>;
 /** The last `claims.state` (phase 17): proposed, active, superseded and stale claims. */
-export type ClaimsState = Omit<Of<'claims.state'>, 'type'>;
+type ClaimsState = Omit<Of<'claims.state'>, 'type'>;
 export type ClaimChip = Of<'claims.activated'>['claims'][number];
 /** The last `models.state` (phase-10): Auto's model, favourites and the catalog. */
-export type ModelsState = Omit<Of<'models.state'>, 'type'>;
+type ModelsState = Omit<Of<'models.state'>, 'type'>;
 /** A new chat's model until `chat.create` (phase-10). */
-export const DEFAULT_MODEL: ModelChoice = { modelId: 'auto', reasoning: 'auto' };
+const DEFAULT_MODEL: ModelChoice = { modelId: 'auto', reasoning: 'auto' };
 /** `lines`: "+ added" / "- removed" lines of the agent's write. */
 export type MemoryChip = { kind: 'applied' | 'pending'; lines: string[] };
 
@@ -74,7 +74,7 @@ export function pendingLines(p: MemoryState['pending'][number]): string[] {
 }
 
 /** Lines added and removed between two memory states (both files, then new pending writes). */
-export function memoryChanges(prev: MemoryState | null, next: MemoryState): string[] {
+function memoryChanges(prev: MemoryState | null, next: MemoryState): string[] {
   if (!prev) return [];
   const out: string[] = [];
   for (const f of ['user', 'memory'] as const) {
@@ -390,7 +390,7 @@ export const firstUserLine = (msgs?: UiMessage[]) =>
     ?.text.trim()
     .split('\n')[0];
 
-export const sortChats = (chats: ChatSummary[]) =>
+const sortChats = (chats: ChatSummary[]) =>
   [...chats].sort(
     (a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt.localeCompare(a.updatedAt),
   );

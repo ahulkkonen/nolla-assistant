@@ -250,7 +250,7 @@ function findArtifact(session: AgentSession, artifactId: string) {
 }
 
 /** An upload passed the quota while it streamed. */
-export class QuotaExceeded extends Error {}
+class QuotaExceeded extends Error {}
 
 export type WorkStore = ReturnType<typeof workStore>;
 

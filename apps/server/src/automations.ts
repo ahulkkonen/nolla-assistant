@@ -13,7 +13,7 @@ import type { SessionRegistry } from './pi/registry.ts';
 import { indexChat } from './search.ts';
 import { transcript } from './session-text.ts';
 
-export const TOPIC_NAME = 'Automaatiot';
+const TOPIC_NAME = 'Automaatiot';
 
 const validZone = (tz: string) => {
   try {

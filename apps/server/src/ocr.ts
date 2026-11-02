@@ -10,7 +10,7 @@ import { promisify } from 'node:util';
  */
 const run = promisify(execFile);
 const MIN_CHARS_PER_PAGE = 50;
-export const OCR_MAX_PAGES = 30;
+const OCR_MAX_PAGES = 30;
 export const OCR_BUDGET_MS = 90_000;
 const MAX_BUFFER = 16 * 1024 * 1024;
 

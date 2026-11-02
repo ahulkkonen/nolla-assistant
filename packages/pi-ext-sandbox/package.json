@@ -20,7 +20,6 @@
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "1.4.0",
     "@nolla/contract-tests": "workspace:*",
-    "@nolla/fake-llm": "workspace:*",
     "@types/node": "26.6.5",
     "typescript": "5.9.3",
     "vitest": "4.1.12"

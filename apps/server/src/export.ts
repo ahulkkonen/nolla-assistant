@@ -26,7 +26,7 @@ type Deps = Pick<BridgeDeps, 'db' | 'registry' | 'pseudo' | 'agents' | 'fx'>;
 
 /** More messages than this answer 413: the file is built in memory, one `/unmask` per message. */
 export const MAX_EXPORT_MESSAGES = 2000;
-export class ExportTooLarge extends Error {}
+class ExportTooLarge extends Error {}
 
 const TZ = 'Europe/Helsinki';
 const day = new Intl.DateTimeFormat('fi-FI', {

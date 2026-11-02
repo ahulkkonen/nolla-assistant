@@ -37,7 +37,7 @@ export const AUTOMATIONS_TITLE = 'Automaatiot';
 
 const rtf = new Intl.RelativeTimeFormat('fi', { numeric: 'auto' });
 /** "5 minuuttia sitten", "eilen"; "ei vielä ajettu" for never. */
-export function ago(iso: string | null, now = Date.now()) {
+function ago(iso: string | null, now = Date.now()) {
   if (!iso) return 'ei vielä ajettu';
   const s = (Date.parse(iso) - now) / 1000;
   for (const [unit, size] of [

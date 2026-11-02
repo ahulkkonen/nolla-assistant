@@ -41,8 +41,7 @@ const NO_HITS = 'Ei osumia.';
 const READ_FAILED = 'Keskustelua ei voitu lukea nyt.';
 export const AGENT_FIXED = 'Agenttia ei voi vaihtaa työkalulla.';
 export const PSEUDO_DOWN = 'Tietosuojapalvelu ei vastaa; profiilia ei voi muuttaa nyt.';
-export const badField = (path: string) =>
-  path ? `Muutos ei kelpaa: ${path}` : 'Muutos ei kelpaa.';
+const badField = (path: string) => (path ? `Muutos ei kelpaa: ${path}` : 'Muutos ei kelpaa.');
 
 const DIFF_MAX = 200_000;
 /** `chat_read` text (decision 17). */
@@ -75,7 +74,7 @@ const sha = (path: string) =>
 const asWritten = (s: string) => (s.endsWith('\n') ? s : `${s}\n`);
 
 /** The unified diff without its header lines, 3 lines of context, at most 200 KB. */
-export function unified(file: string, before: string, after: string) {
+function unified(file: string, before: string, after: string) {
   const patch = createTwoFilesPatch(file, file, before, after, '', '', { context: 3 });
   const at = patch.indexOf('\n@@');
   const body = at < 0 ? '' : patch.slice(at + 1);
