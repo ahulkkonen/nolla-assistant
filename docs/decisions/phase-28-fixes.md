@@ -19,13 +19,13 @@ Date: 2026-10-31. Follows phase 27. The user chose these in a written discussion
    renderer changes with it: a sentence with N at most 6 gets a dotted underline in the muted colour
    and its number is visible; a sentence with N of 7 or more is plain. The colour shading goes. The
    legend and "Näytä luvut" stay for the plain sentences.
-4. **Pseudonymization marks off by default.** The blue marks on restored real values get a setting
-   "Näytä pseudonymoinnit" in Settings, stored per browser (`localStorage`), default off. The
+4. **Pseudonymization marks off by default.** The lilac marks (`--mask`) on restored real values get a
+   setting "Merkitse suojatut nimet" in Settings, stored per browser (`localStorage`), default off. The
    hover title stays on the restored value when marks are off, so the user can still check one.
 
 ## Status
 
-Done 2026-10-31 on branch `p28`.
+Done 2026-10-31.
 
 1. `extract` in `apps/server/src/claims.ts` calls the hook once after its windows when at least one
    claim activated. This covers the sweep. The tool writes, the review, the update and the import

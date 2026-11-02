@@ -6,13 +6,19 @@ Oct 25, 2026 · @Aleksi
 
 The plan text below is unchanged. The built system differs from it in these points:
 
-- No Litestream. The backup service copies `app.db` and `vault.db` hourly and snapshots them with restic, and snapshots all of `/data` nightly (§2 item 9, §4; `docs/decisions/phase-30-audits.md`, batch A item 8).
+- No Litestream. The backup service copies `app.db` and `vault.db` hourly and snapshots them with restic, and snapshots all of `/data` nightly (§2 item 9, §4; `docs/decisions/phase-30-audits.md`, item A8).
 - The Google tokens are plain JSON (mode 600) on the volume `mcp-workspace-data`. Only the restic snapshots encrypt them (§10 says "encrypted at rest"; `infra/compose.yaml:165`, `docs/deploy.md:205`).
 - No iptables rule limits the egress of `pa-server`. `fetch_url` reaches any public host. The networks `pseudo` and `presidio` are `internal: true` (§4; `docs/decisions/phase-25-harness-tools.md`, "Risks and ceilings"; `phase-30-audits.md`, batch A item 6).
 - The threat-model note of §14 is `docs/threat-model.md`, not a file in `docs/decisions/`.
 - `chats.tainted` is set by any tool except `memory` and a `read` inside the work dir outside `files/` (`cleanTool` in `packages/pi-ext-memory/src/index.ts`). So `bash`, `write` and `recall` taint the chat too, not only outside content (`phase-30-audits.md`, decision 14, corrected on 2026-10-31).
 - The web app does not use assistant-ui (§3 layout, §11 "Stack"; `docs/decisions/phase-2.md`, decision 1). It uses shadcn/ui (`docs/decisions/phase-9-ui.md`).
 - There is no `pi-ext-notify`. Web Push lives in `apps/server/src/push.ts` (§3 layout and turn step 6; `docs/decisions/phase-7.md`, decision 2).
+- There is no `mcp-files` service. `mcp-workspace` is the only MCP service (§3 table; `infra/compose.yaml`).
+- `pseudo-svc` uses spaCy 3.8 and `fi_core_news_lg` 3.8.0, not 3.7 (§6; `services/pseudo-svc/requirements.lock`, `infra/Dockerfile.pseudo`).
+- The thread is not virtualized (§11 item 10; `apps/web/src/components/Thread.tsx`).
+- The artifact panel does not use Monaco (§11 "Screens"; `apps/web/package.json`).
+- The build has 35 phases, not 8. Phase 18 is deferred and phase 29 is reserved (§13; `docs/development.md`, "Status").
+- The Playwright `screens` project writes the screenshot baselines but does not diff them. It runs the strict axe checks (§14 item 4; `tests/e2e/playwright.config.ts`).
 
 ## 1. Purpose and operating model
 
@@ -47,7 +53,7 @@ These are invariants. A PR that violates one is rejected regardless of what it a
 
 Eight containers on one Coolify Compose stack. `pa-server` is the only public service; everything else lives on the internal Docker network.
 
-&#91;embedded content: runtime architecture · 8 services on one Compose stack\]
+Diagram: see the architecture section of [`overview.md`](overview.md#architecture).
 
 The PWA never talks to Pi directly, Pi never talks to OpenRouter directly, and only `pseudo-svc` and the bridge ever hold real values alongside their surrogates.
 
@@ -360,8 +366,6 @@ Voice is input only: hold the mic, release, the transcript lands in the composer
 ## 13. Phases and done criteria
 
 Eight phases in strict order; each gate is a test or drill Fable runs, not a judgement call. Phases 1–3 are the foundation and must be complete before any real calendar or mail data is connected.
-
-&#91;embedded content: build roadmap · 8 phases, 8 gates\]
 
 Phase 3 is the only phase that blocks on a measured threshold; every other gate is a pass/fail test.
 

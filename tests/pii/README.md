@@ -1,7 +1,7 @@
 # Finnish PII test corpus
 
 This directory holds the test set for `services/pseudo-svc` (plan §6, "Expected ceiling", and plan §14, gate 3).
-All names are synthetic combinations of common Finnish first names and surnames. All codes are generated.
+All names are synthetic combinations of common Finnish first names and surnames. All codes are generated. Email addresses use reserved `.example` domains for organisations. Webmail addresses keep real providers, because the surrogate rule depends on the provider, so a name-based address can coincide with a real mailbox by chance.
 
 ## Files
 
@@ -12,7 +12,7 @@ All names are synthetic combinations of common Finnish first names and surnames.
 | `validate.py` | Checks the corpus and prints the counts per kind and per tag. |
 | `vault-seed.json` | The 15 people that the harness registers in the vault before a run. |
 | `harness.py` | Sends each text to `POST /mask` and computes recall and precision. Writes `last-run.json`. |
-| `last-run.json` | The result of the last full run (2026-11-01, all 562 lines). The root `README.md` links to it. |
+| `last-run.json` | The result of the last full run (2026-11-02, all 562 lines). The root `README.md` links to it. |
 
 Commands:
 

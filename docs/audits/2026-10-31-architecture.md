@@ -1,5 +1,9 @@
 # Architecture and code-quality audit: assistant-2
 
+Status: snapshot of 2026-10-31. Later work fixed or accepted the findings, see
+[phase 30](../decisions/phase-30-audits.md) and [phase 35](../decisions/phase-35-security-fixes.md).
+The cited paths and line numbers are as of the audit date.
+
 Branch `main` at `6ec0950`, audited 2026-10-31. Read only. Nothing in the repository was changed.
 
 ## Method
@@ -7,9 +11,9 @@ Branch `main` at `6ec0950`, audited 2026-10-31. Read only. Nothing in the reposi
 - Read `AGENTS.md`, `docs/plan.md` sections 3, 5 and 14, `docs/decisions/README.md`, then the code. Every finding below was checked against the file and line it cites.
 - `pnpm --workspace-concurrency=1 -r typecheck`: exit 0.
 - Unit suites, all green: protocol 56, db 3, web 173, pi-ext-pseudo 18, pi-ext-memory 12, pi-ext-sandbox 5, pi-ext-subagents 14, fake-llm 7, server 248 (1 skipped: OCR, no `tesseract` on this machine). The server suite takes 40 s.
-- `knip@5.62.0` (installed in the scratchpad with TypeScript 5.9.3). Its false positives were checked and are listed as such.
+- `knip@5.62.0` (installed outside the repository, with TypeScript 5.9.3). Its false positives were checked and are listed as such.
 - `biome lint --only=<rule>` for a few correctness and suspicious rules (read only, no `--write`).
-- `EXPLAIN QUERY PLAN` on a scratch database built by `openDb` (`packages/db/src/index.ts`) in the scratchpad.
+- `EXPLAIN QUERY PLAN` on a scratch database built by `openDb` (`packages/db/src/index.ts`) outside the repository.
 - Docker was not started. The Serena language server did not start ("No language servers available"), so text searches used `awk`/`sed` over `git ls-files`.
 
 Severity: **blocking** = fix before the first public push. **should-fix** = a senior reviewer will notice; fix soon. **nice-to-have** = polish.

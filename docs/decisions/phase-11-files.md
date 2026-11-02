@@ -3,7 +3,7 @@
 ## Goal
 
 The user can reach every file that the agent writes and every file that the user uploaded. The
-decisions in `phase-11-15-plan.md` section "Phase 11" are fixed. This record adds the decisions
+decisions in `phase-11-15-plan.md` (superseded, see its header), section "Phase 11" are fixed. This record adds the decisions
 that the plan left open, the data model, the routes, the UI brief, the task cards and the gate.
 
 Constraints:

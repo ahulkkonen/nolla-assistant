@@ -1,7 +1,7 @@
 # Decision records
 
-One file per locked or verified decision. File name: `NNNN-short-title.md`.
-Each record has these sections: Context, Decision, Consequences, Verified on (date and how).
+A numbered record (`NNNN-short-title.md`) holds one locked or verified decision, with the sections Context, Decision, Consequences and Verified on (date and how).
+A phase record (`phase-N.md` for phases 1 to 8, `phase-N-<slug>.md` after that) lists the decisions, gates, status and review findings of one phase.
 The build plan is `docs/plan.md`. Section numbers in records refer to it.
 
 ## Index
@@ -16,12 +16,12 @@ The build plan is `docs/plan.md`. Section numbers in records refer to it.
 - `phase-9-ui.md`: production UI on shadcn/ui, design brief, review protocol and status.
 - `0006-ui-reference.md`: deep research on Claude Web and ChatGPT UI (October 2026).
 - `phase-10-models.md`: model picker, thinking level, per-chat ZDR override; OpenRouter research.
-- `phase-11-15-plan.md`: decisions for files, pseudo hardening, thread depth, web search, admin (2026-10-26).
+- `phase-11-15-plan.md`: the starting decisions for phases 11 to 15 (superseded by the phase records).
 - `phase-11-files.md`: the Files screen: routes, path guard, trash, origins, quota, attach and save artifact.
 - `phase-12-pseudo.md`: rare surrogate pairs, the surrogate collision check, email and street address surrogates, lone lower-case surnames, corpus gate.
 - `phase-13-thread.md`: fork into a new chat, thinking row, usage and cost in EUR, timestamps, find bar.
 - `phase-14-search.md`: the `web_search` tool through the `zdr/search` alias (OpenRouter web plugin, Exa), the entity approval card, guard rules, search rows and usage.
-- `phase-15-admin.md`: agent and automation editors, signed-in devices, the encrypted full export (OpenSSL `enc` AES-256 over a stdlib zip), usage per agent and search count.
+- `phase-15-admin.md`: agent and automation editors, signed-in devices, the encrypted full export (OpenSSL `enc` AES-256 over a stdlib zip; AES-256-GCM since phase 35), usage per agent and search count.
 - `phase-16-polish.md`: one deep agent (Tutkija merged into Avustaja), the CSP report endpoint, prompt cache counts, local OCR for scanned PDFs.
 - `phase-17-memory.md`: memory 2: claims and evidence in SQLite, one masked extraction call per chat, per-turn claims block after the cached prefix, MEMORY.md from claims, review tab, Finnish memory eval.
 - `0007-memory-and-search-research.md`, `0008-viz-research.md`: deep research on memory and search, and on charts and diagrams.

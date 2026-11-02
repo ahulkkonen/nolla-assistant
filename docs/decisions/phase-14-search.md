@@ -1,6 +1,6 @@
 # Phase 14: Web search
 
-The fixed decisions are in `phase-11-15-plan.md`, section "Phase 14". This record adds the research,
+The fixed decisions are in `phase-11-15-plan.md` (superseded, see its header), section "Phase 14". This record adds the research,
 the decisions that the plan left open, the data model, the egress rules, the UI, the task cards, the
 gate and the risks. The records of phase 10 (`phase-10-models.md`) and 0004 stay valid.
 
@@ -247,7 +247,7 @@ Source: `0001-pi-1.3.0-contract.md`.
 
    `maxResults` cuts the list. The plugin always fetches 5, so a smaller value does not lower the
    price.
-6. **Every agent has it by default.** Both shipped profiles list `web_search` in `tools.allow` and in
+6. **Every agent has it by default.** Both shipped profiles (Tutkija removed in phase 16) list `web_search` in `tools.allow` and in
    `approval.never`. A profile removes the tool by removing it from `tools.allow`. The phase-15
    agents editor preselects it for a new agent. The registry loads the tool only when the profile
    allows it. Subagent children never get it, because the entity guard runs in the parent.
@@ -310,8 +310,8 @@ Source: `0001-pi-1.3.0-contract.md`.
     restores the masked `details` for display with one sidecar call (the parts never hold a newline).
     A masked export keeps masked values. A blocked call (deny, timeout, automation) has status
     `denied` and no `search`. A failed call has status `error`.
-14. **Prompt paragraph.** Both `agents/prompts/assistant.md` and `agents/prompts/research.md` get
-    this paragraph:
+14. **Prompt paragraph.** Both `agents/prompts/assistant.md` and `agents/prompts/research.md`
+    (Tutkija removed in phase 16) get this paragraph:
 
     > Verkkohaku (`web_search`): hae vain tietoa, joka muuttuu ajan myötä (uutiset, hinnat,
     > aukioloajat, versiot, säädökset), tai kun käyttäjä pyytää tarkistamaan jotain. Älä koskaan
@@ -435,7 +435,7 @@ When `tool === 'web_search'`, the card shows:
 | --- | --- | --- | --- | --- |
 | 1 | Alias, guard rules, mock annotations, probes | Opus (done) | `infra/litellm.yaml`, `infra/litellm/zdr_guard.py`, `tests/egress/src/egress.test.ts`, `tests/egress/src/mock-openrouter.ts` | `pnpm test:egress` passes 24 probes, 5 of them new |
 | 2 | Server tool, entity guard, rows, usage, protocol | Opus (done) | new `apps/server/src/search-tool.ts` and `search-tool.test.ts`, `apps/server/src/approval.ts` (`confirm`), `apps/server/src/pi/registry.ts`, `apps/server/src/bridge.ts`, `apps/server/src/main.ts`, `apps/server/src/usage.ts`, `apps/server/package.json`, `packages/db/src/schema.ts`, `packages/protocol/src/index.ts` and its test, `tests/fake-llm/src/index.ts` and its test | The server tests in "Gate" pass; all earlier server tests pass |
-| 3 | Profiles and prompts | Opus (done) | `agents/assistant.yaml`, `agents/research.yaml`, `agents/prompts/assistant.md`, `agents/prompts/research.md` | Decision 14 text in both prompts; `web_search` in `tools.allow` and `approval.never` |
+| 3 | Profiles and prompts | Opus (done) | `agents/assistant.yaml`, `agents/research.yaml` (Tutkija removed in phase 16), `agents/prompts/assistant.md`, `agents/prompts/research.md` | Decision 14 text in both prompts; `web_search` in `tools.allow` and `approval.never` |
 | 4 | Search row, approval card variant | UI implementer, after 2 | `apps/web/src/components/ToolRow.tsx`, `apps/web/src/components/ApprovalCard.tsx`, `apps/web/src/store.ts`, `apps/web/src/ws.ts`, `tests/e2e/src/fixtures.ts`, `tests/e2e/src/flows.spec.ts`, `tests/e2e/src/screens.spec.ts` | The e2e flow and the screenshots in "Gate" pass; UI review at 390, 1024 and 1440 px in light and dark; axe reports no violation |
 | 5 | Docs | Opus (done) | `docs/decisions/README.md` (index), `docs/deploy.md` (keep account plugin defaults off) | The index lists this record; deploy step 3 has the plugin step |
 

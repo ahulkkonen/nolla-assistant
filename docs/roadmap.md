@@ -14,5 +14,5 @@ in order; the first one that gets a user is next. The residual risks that these 
 | Links from masked text | A Markdown link in a reply is restored before it renders, so a click sends the restored URL. Render links from the masked text, or show the full URL before navigation. | Half a day. |
 | `pseudo-svc` request token | The sidecar has no authentication; the `pseudo` network is the fence. A per-request token and a narrower API. | Half a day. |
 | Vault copy without the key in the backup container | The backup container holds the vault key. A copy that `pseudo-svc` writes itself. | Half a day. |
-| Work-dir quota | The agent can fill the disk through `bash`; the Files screen has a quota, the work dir has none. | Hours. |
+| Work-dir quota | The agent can fill the disk through `bash`, because `bash` writes skip the 10 GB quota check. | Hours. |
 | Text-to-speech, multi-user | Deferred in the plan. | Open. |

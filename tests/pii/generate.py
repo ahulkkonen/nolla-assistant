@@ -461,9 +461,9 @@ email,multi-entity :: Yhteystiedot: {{Henna Leppänen|P}}, {{henna.leppanen@kiin
 email,swedish-finnish :: {{Leena Öhman|P}} <{{leena.ohman@elisanet.fi|E}}> lisäsi sinut ryhmään.
 email :: Muuta sähköpostiksi {{Kirsi.Lahtinen@Tilitoimistolahtinen.fi|E}}, vanha ei ole käytössä.
 email :: Laskut voi ohjata osoitteeseen {{antti.niemi+laskut@gmail.com|E}}.
-email,code-snippet :: {"nimi": "{{Ville Heikkinen|P}}", "email": "{{ville.heikkinen@yritys.fi|E}}"}
-email :: Opiskelijan osoite on {{matias.korhonen@tuni.fi|E}}, lähetä tiedote sinne.
-email :: Kaupungin yhteyshenkilö: {{sari.laaksonen@hel.fi|E}}.
+email,code-snippet :: {"nimi": "{{Ville Heikkinen|P}}", "email": "{{ville.heikkinen@yritys.example|E}}"}
+email :: Opiskelijan osoite on {{matias.korhonen@yliopisto.example|E}}, lähetä tiedote sinne.
+email :: Kaupungin yhteyshenkilö: {{sari.laaksonen@kaupunki.example|E}}.
 email :: Lähetä vahvistus osoitteeseen {{JUHA.SEPPALA@KOLUMBUS.FI|E}}, hän kirjoittaa aina isoilla.
 email,email-inflected :: Etsin viestiä {{marjut.heino@suomi24.fi|E}}:stä, se tuli viime viikolla.
 email :: Lähetä kuittikopio {{jukka.salminen@pp.inet.fi|E}}.
@@ -539,11 +539,11 @@ multi-entity,shopping-list,swedish-finnish :: Kauppalista:\n- leipää\n- juusto
 multi-entity,email-body,iban-spaced :: Hei {{Antti Lehtonen|P}},\nvuokra maksetaan tilille {{FI35 1590 3000 0097 36|I}}. Kuitti osoitteeseen {{antti.lehtonen@gmail.com|E}}.
 multi-entity :: Hakija: {{Kimmo Lahtinen|P}}, henkilötunnus {{120584-9470|H}}, osoite {{Pihlajatie 18 as. 4|A}}.
 multi-entity,lowercase,phone-typed :: {{sari virtanen|P|Sari Virtanen||nominatiivi, pienet kirjaimet}} {{sari.virtanen@outlook.com|E}} {{rantatie 22 a 3|A|Rantatie 22 a 3}} {{0442710938|T}}
-multi-entity,swedish-finnish,email :: Yhteyshenkilöt: {{Fredrik Wikström|P}} ({{fredrik.wikstrom@varvet.fi|E}}) ja {{Annika Blomqvist|P}} ({{040 815 2299|T}}).
+multi-entity,swedish-finnish,email :: Yhteyshenkilöt: {{Fredrik Wikström|P}} ({{fredrik.wikstrom@varvet.example|E}}) ja {{Annika Blomqvist|P}} ({{040 815 2299|T}}).
 multi-entity,calendar,nickname :: Saunailta pe klo 18\nPaikka: {{Sepänpiha 3 A 5|A}}\nTulossa: {{Markku Rantanen|P}} ja {{Pentti Hirvonen|P}} vaimoineen. {{Make|P|Make|Markku Rantanen|lempinimi; viittaa samassa viestissä Markku Rantaseen}} tuo makkarat.
 multi-entity,english-mixed,swedish-finnish :: Meeting with {{Stefan Lundqvist|P}} at {{Fredrikinkatu 48 C 12|A}}, contact {{stefan.lundqvist@gmail.com|E}} or {{+358 40 553 1876|T}}.
-multi-entity,email-body,iban :: Hei,\nuuden työntekijän tiedot: {{Mira Lehtola|P}}, {{mira.lehtola@tilitoimistolahtinen.fi|E}}, aloitus 1.12.\nPalkkatili {{FI2547081234567811|I}}.
-multi-entity,code-snippet,swedish-finnish :: users = [{"name": "{{Elin Strandberg|P}}", "email": "{{elin.strandberg@gmail.com|E}}"}, {"name": "{{Oskar Lindgren|P}}", "email": "{{oskar.lindgren@yritys.fi|E}}"}]
+multi-entity,email-body,iban :: Hei,\nuuden työntekijän tiedot: {{Mira Lehtola|P}}, {{mira.lehtola@tilitoimisto.example|E}}, aloitus 1.12.\nPalkkatili {{FI2547081234567811|I}}.
+multi-entity,code-snippet,swedish-finnish :: users = [{"name": "{{Elin Strandberg|P}}", "email": "{{elin.strandberg@gmail.com|E}}"}, {"name": "{{Oskar Lindgren|P}}", "email": "{{oskar.lindgren@yritys.example|E}}"}]
 multi-entity,first-name-only,ablative :: {{Kaisa Partanen|P}} ja {{Mervi Koskinen|P}} järjestävät myyjäiset. {{Kaisalta|P|Kaisa|Kaisa Partanen|ablatiivi; viittaa edellisen lauseen Kaisa Partaseen}} saa arvat ja {{Merviltä|P|Mervi|Mervi Koskinen|ablatiivi; viittaa edellisen lauseen Mervi Koskiseen}} pullat.
 multi-entity,address-inflected,street-suffix-kuja,street-suffix-katu :: Muutin {{Koivukujalta 7|A|Koivukuja 7||ablatiivi}} {{Kalevankadulle 31|A|Kalevankatu 31||allatiivi}}, uusi numeroni on {{045 990 2283|T}}.
 multi-entity,dialogue,lowercase,phone-typed :: minä: missä {{janne|P|Janne||etunimi, pienet kirjaimet}} on\n{{riitta|P|Riitta||etunimi, pienet kirjaimet}}: se meni {{laaksosille|P|Laaksonen||monikon allatiivi, pienet kirjaimet}} saunaan

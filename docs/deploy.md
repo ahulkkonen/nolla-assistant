@@ -1,7 +1,6 @@
 # Deploy runbook
 
-This procedure deploys `pa-server` to Coolify on the Hetzner VPS. Do the steps in order.
-Phase 2 ships only `pa-server`. Later phases add services to `infra/compose.yaml`.
+This procedure deploys the stack in `infra/compose.yaml` to Coolify on the Hetzner VPS. Do the steps in order.
 
 ## 1. Prepare secrets
 
@@ -89,8 +88,6 @@ Phase 2 ships only `pa-server`. Later phases add services to `infra/compose.yaml
 ## Backups
 
 The `backup` service uses restic only. Every hour it snapshots `app.db` (tag `app`) and `vault.db` (tag `vault`). Every night at 03:00 Europe/Helsinki it snapshots all of `/data` (tag `full`). The nightly snapshot includes the work dirs (`/data/work/<user>`, the Työkansio root of the Files screen) but not their `.trash` folders. Restic encrypts every snapshot with `RESTIC_PASSWORD`, so the bucket holds no plain data. The service never copies a live database file. `infra/backup/db-copy.sh` first writes a consistent copy of each database to `/data/.backup` (SQLite online backup for `app.db`, `sqlcipher_export` for `vault.db`), and restic backs up the copy. For the vault copy, the service gets `PSEUDO_VAULT_KEY`. At most one hour of changes to the databases can be lost. A lost vault mapping cannot be rebuilt: surrogates are seeded with a random secret that exists only inside the vault. The service mounts `/data` read-write because `scripts/restore.sh` runs in it.
-
-Until phase 30, Litestream replicated `app.db` to the bucket as plain SQLite pages. Litestream 0.5 has no replica encryption. After you deploy this version, run `docker compose exec backup /backup-now.sh` once. A restore needs a snapshot that holds the `/data/.backup` copies. Then delete the `litestream/` prefix in the bucket and the `/data/.app.db-litestream` directory.
 
 ### Set up
 
@@ -183,8 +180,8 @@ The `mcp-workspace` service gives the agents Google Calendar (read and write), G
 ### Connect your Google account
 
 1. Log in to the app.
-2. Send `POST /api/integrations/google/connect` from the app (Settings, when the web UI has the button). The response holds `authUrl`.
-3. Open `authUrl` and accept the consent screen. Google redirects to `/api/oauth/google/callback`. `pa-server` forwards the request to `mcp-workspace`, then redirects you to `/?integrations=google`.
+2. Open **Asetukset**. In the section **Integraatiot**, select **Yhdistä** in the Google Workspace row. The app sends `POST /api/integrations/google/connect` and opens the `authUrl` from the response.
+3. Accept the consent screen. Google redirects to `/api/oauth/google/callback`. `pa-server` forwards the request to `mcp-workspace`, then redirects you to `/?integrations=google`.
 4. `GET /api/integrations/status` returns `{"google":{"connected":true,...}}`. Open sockets receive `integrations.state`.
 
 The consent link expires after 10 minutes and works one time. If the link fails, request a new one.
@@ -221,8 +218,8 @@ LiteLLM egress. Only the OpenRouter keys are real; nothing leaves the machine ex
 
 1. Copy `.env.example` to `.env`. Fill in `OPENROUTER_API_KEY`, `LITELLM_MASTER_KEY`,
    `PSEUDO_VAULT_KEY`, `BROKER_TOKEN`, `COOKIE_SECRET` and `AUTH_PASSWORD_HASH`
-   (`node scripts/hash-password.mjs`). Write each `$` of the hash as `$$`, because compose
-   interpolates `$name` in `.env`. Keep `AUTH_ORIGIN=http://localhost:3000`.
+   (`node scripts/hash-password.mjs`). For the `$` signs in the hash, see
+   [Develop](development.md#develop). Keep `AUTH_ORIGIN=http://localhost:3000`.
    `OPENROUTER_OPEN_API_KEY` is optional (section 1, step 3). When it is empty, LiteLLM refuses
    every `open/` model with HTTP 400.
 2. Google Workspace is optional. Without a client, set `GOOGLE_OAUTH_CLIENT_ID=unused`,
@@ -263,4 +260,5 @@ delete the data volume too.
 
 - At each start, the server updates the files in `DATA_DIR/agents` and `DATA_DIR/automations` that you did not edit to the versions in the image. It does not change a file that you edited. It logs one warning line for each such file: "agent file edited by user, not updated". Merge the change in Settings › Agentit if you want it.
 - Phase 16 (one agent): after this upgrade, open Settings › Agentit and delete "Tutkija". The delete moves the chats of Tutkija to Avustaja. Avustaja gets the tools of Tutkija only if you did not edit `assistant.yaml`. If you edited it, the log names the file. Then add `bash` and turn on "Aliagentit" in the form.
-- An install from before phase 16 has no `.seeded.json`. On the first start of phase 16, the server treats every existing file that differs from the image as edited and does not change it. So such an install must make the Avustaja change by hand, as in the item above.
+- An install from before phase 16 has no `.seeded.json`. On the first start of phase 16, the server treats every existing file that differs from the image as edited and does not change it. So such an install must make the Avustaja change by hand, as in the item above. 
+- Before phase 30, Litestream replicated `app.db` to the bucket as plain SQLite pages. Litestream 0.5 has no replica encryption. After you deploy this version, run `docker compose exec backup /backup-now.sh` once. A restore needs a snapshot that holds the `/data/.backup` copies. Then delete the `litestream/` prefix in the bucket and the `/data/.app.db-litestream` directory.

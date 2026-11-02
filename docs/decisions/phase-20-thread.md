@@ -142,9 +142,6 @@ stays 277 px and 2 of 2 edges that enter from above cross the title. The label i
 inside `g.clusters`, which paints before `g.edgePaths` (root children: `clusters, edgePaths,
 edgeLabels, nodes`). No option fixes the overlap.
 
-Tooling: the Serena project has `language_servers: []` (`.serena/project.yml`), so its symbol tools
-returned nothing. The research used direct file reads.
-
 ## Decisions
 
 ### Artifacts and the thread
@@ -370,9 +367,7 @@ phase-19 rules, decisions 3, 8, 17 and 23–26):
    flows).
 2. `pnpm --filter @pa/e2e exec playwright test --project screens` passes with strict axe.
 3. The tests named in the task cards pass.
-4. Docker image. On 2026-10-27 the disk of the local Docker VM (47 GB) filled with images and build
-   cache, and the server crashed with `SQLITE_IOERR_SHMSIZE`. Before every image build, run
-   `docker system df`. If the free space of the Docker disk is under 10 GB, run `docker builder
+4. Docker image. Before every image build, run `docker system df`. If the free space of the Docker disk is under 10 GB, run `docker builder
    prune -f` and `docker image prune -f` first. Then run `docker build -f infra/Dockerfile.server
    -t pa-server:phase20 .` and the compose smoke (`/healthz` answers).
 5. P1 is done and U1 passes.
@@ -415,15 +410,14 @@ Findings during implementation that change the record:
 - The `error` message carries the `modelId` the session ran on and `chat.state` carries `running`,
   so a ZDR refusal during a model change names the right model and a queued message survives a
   reconnect.
-- Fastify refuses `addHook` after `listen`: a late debugging hook in `main.ts` crash-looped the
-  server once during this phase. The server's memory limit is 1 GiB since `c7a9d4e` (the Docker
+- The server's memory limit is 1 GiB since `c7a9d4e` (the Docker
   OOM kill at 400 MiB was silent: exit 0, no signal).
 
 Gate run on `aa374c2`: `pnpm typecheck` and `pnpm lint` pass; `pnpm test` passes every unit suite
 (server 192 and 1 skipped, web 102, protocol 45, contract 23, pseudo 18, memory 12, sandbox 5,
 subagents 14, mcp 14, fake-llm 6, masked-only 2, db 2) and e2e 545 of 545 (4 skipped); the
 `screens` project passes with strict axe (484); `pnpm test:egress` passes; the server image builds
-(`pa-server:p20`, 22 GB free on the Docker disk after a prune). The code review found 0 blocking
+(`pa-server:p20`). The code review found 0 blocking
 and 5 should-fix findings, all fixed in `868eb9f`. The pixel pass measured every P1 check. The
 blind UI review passed on the fifth round (every cell 4 or 5, no blocking or should-fix finding).
 WebKit was not measured.

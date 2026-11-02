@@ -18,31 +18,28 @@ Source data:
 
 Definitions:
 
-- **Active time.** Sort all record timestamps. Start a new block where two consecutive records are
-  more than N minutes apart. The active time is the sum of (last - first) over all blocks. N = 30 is
-  the main figure. N = 15 and N = 60 are comparisons. A block of one record counts as 0 h. A long tool
-  call with no records for more than N minutes is not counted. The figure is a lower-bound estimate,
-  not a punch clock.
-- **Agents in the active time.** Background subagents and task notifications write records to the
-  main transcript. The active time therefore includes time when only agents worked.
-- **Human message.** A `user` record with `origin.kind == "human"`. This covers typed messages and
+- Active time comes from the sorted record timestamps. A new block starts where two consecutive
+  records are more than N minutes apart. The active time is the sum of (last - first) over all
+  blocks. N = 30 is the main figure. N = 15 and N = 60 are comparisons. A block of one record counts
+  as 0 h. A long tool call with no records for more than N minutes is not counted. The figure is a
+  lower-bound estimate of the hours worked.
+- The active time includes agents. Background subagents and task notifications write records to the
+  main transcript. So the active time includes time when only agents worked.
+- A human message is a `user` record with `origin.kind == "human"`. This covers typed messages and
   messages queued while the agent was busy. The count excludes tool results, subagent hand-backs
   (263), task notifications (133), context-compaction summaries (7) and one interrupt marker.
-- **Human presence (lower bound).** The number of distinct 15-minute blocks that contain a human
+- Human presence (lower bound) is the number of distinct 15-minute blocks that contain a human
   message, times 0.25 h. It misses reading, phone testing and thinking time between messages.
-- **Unattended time.** The time between consecutive records (gap of 30 minutes or less) where the
+- Unattended time is the time between consecutive records (gap of 30 minutes or less) where the
   last human message is more than X minutes old. X is 5, 10 or 20.
-- **Subagent time.** The same 30-minute rule, applied to each file. The first-to-last span is also
-  shown. 13 runs sat idle for hours, because they waited for a follow-up message or a sleeping
-  computer. The span therefore overstates the work. The "union" merges the overlapping active
+- Subagent time uses the same 30-minute rule, applied to each file. The tables also show the
+  first-to-last span. 13 runs sat idle for hours, because they waited for a follow-up message or a
+  sleeping computer. So the span overstates the work. The "union" merges the overlapping active
   intervals of all subagents. It gives the wall-clock time with agents busy.
-- **Model split.** The `message.model` field of the assistant records in each subagent file. The
-  `model` field in the meta file is empty when the agent inherited the default.
-- **Term counts.** A user message is a human message. A skill call is a `Skill` tool call. An agent
-  call is the `subagent_type` of an `Agent` tool call. A tool column is the name of a tool call.
-  Text terms match as case-insensitive substrings.
-- **Commits.** The result of `git log --format=%H | wc -l` when the script ran. The history was
-  rewritten once, in the publication phase, so the count is the count after the rewrite.
+- The model split reads the `message.model` field of the assistant records in each subagent file.
+  The `model` field in the meta file is empty when the agent inherited the default.
+- The commit count is the result of `git log --format=%H | wc -l` when the script ran. The history
+  was rewritten once, in the publication phase. So the count is the count after the rewrite.
 
 ## Active time
 
@@ -119,20 +116,7 @@ and documentation. The subagents made the code changes.
 
 ## Term counts
 
-| Term | Human messages | Skill calls | Agent calls | Tool calls (main / subagents) |
-|---|---|---|---|---|
-| `/create_plan`, `/implement_plan`, `/research_codebase`, `/validate_plan`, `/iterate_plan` | 0 | 0 | 0 | 0 |
-| cavecrew-reviewer | 0 | 0 | 44 | 0 |
-| codebase-locator, codebase-analyzer | 0 | 0 | 0 | 0 |
-| web-search-researcher | 0 | 0 | 1 | 0 |
-| WebSearch | 0 | 0 | 0 | 2 / 34 |
-| WebFetch | 0 | 0 | 0 | 2 / 46 |
-| "deep research" | 6 | 0 | 0 | 0 |
-| ultrareview, code-review | 0 | 0 | 0 | 0 |
-| asd-ste100 | 0 | 0 in the main thread | 0 | 11 Skill calls in subagents |
-
-The session did not run the slash-command plan workflow. The plan existed before the session. Each
-phase then got its own architect subagent, which wrote a decision record.
+This build did not use the slash-command plan workflow.
 
 ## Commits
 

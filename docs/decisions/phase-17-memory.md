@@ -504,6 +504,7 @@ Rules:
 41. **Logs** carry ids, counts and kinds. Never claim text, quote or query.
 42. **Backups.** `app.db` is in Litestream and restic (phase-4 decision 5). So the claims are in
     the backups. The restore drill checks one claim row.
+    Superseded by [phase-30-audits.md](phase-30-audits.md), batch A item A8: hourly restic copies.
 43. **Export.** The open export adds `muisti/havainnot.json` (every claim with its evidence and
     entity ids). The masked export omits it, because it matches the `muisti/` prefix in `OMITTED`
     (E21).
@@ -563,7 +564,7 @@ Rules:
 
 ## Status (2026-10-26)
 
-Server and eval cards are done. W1 (web) is open.
+Server and eval cards are done. W1 (web) is done (see "W1" below).
 
 | Card | Commit | Notes |
 | --- | --- | --- |
@@ -584,7 +585,8 @@ Gate results:
 - e2e `-g "muisti|memory|Muisti"`: 24 passed, 12 skipped. The skipped tests are the three
   consolidation screens at four viewports (decision 29 retired the proposal; W1 replaces them).
   The agent-write flows now write to USER.md, because target `memory` writes claims.
-- Restore drill: not run in this phase (no MinIO session). Gate item 4 is open.
+- Restore drill: not run in this phase (no MinIO session). Gate item 4 closed in phase 30: the
+  restore drill passed ([phase-30-audits.md](phase-30-audits.md), item A8).
 
 Eval (100 questions, real `pseudo-svc` in a throwaway container with a fresh vault, local e5).
 The runner plays the timeline: each chat is indexed and mined on its day, and each question sees

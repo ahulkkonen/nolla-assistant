@@ -1,6 +1,6 @@
 # Phase 12: Pseudonymization hardening
 
-The fixed decisions are in `phase-11-15-plan.md`, section "Phase 12". This record adds the decisions
+The fixed decisions are in `phase-11-15-plan.md` (superseded, see its header), section "Phase 12". This record adds the decisions
 that the plan left open, the data model, the task cards, the gate and the risks. The sidecar contract
 in `phase-3.md` stays valid. This record lists only the additions to it.
 
@@ -147,8 +147,8 @@ lines and the harness enforces the plan's thresholds.
     (spaces do not count). A partly masked value is a miss, so the particle-surname class of leak
     cannot hide again. For `POSTCODE_CITY` only the five digits count, because the city stays by
     design.
-19. **Mixed-case names and the upgrade of a lone first name.** A live chat leaked a surname: in
-    `nimeni on Pekka pouta` only `Pekka` was masked. The model then wrote `Pekka Pouta` to memory, and
+19. **Mixed-case names and the upgrade of a lone first name.** A chat leaked a surname: in
+    `nimeni on Jari pouta` only `Jari` was masked. The model then wrote `Jari Pouta` to memory, and
     the next mask of the memory file made a second entity for the same person.
     - Plain text (user input, titles, memory) now has a third pair shape: a capitalised first name with
       at least 50 holders, one space, and a lower-case word. The pair is one person when the word is a
@@ -254,11 +254,11 @@ Nimisuojaa" while the chat is held. The vault screen maps the upper-case kinds t
 | 3 | Collision check, pending reason, accept, reject and expire in the sidecar | Opus | done |
 | 4 | Extension input hold, fake sidecar `collide` | Opus | done |
 | 5 | Server holds (`chat.held`, `chat.released`), vault handling, protocol | Opus | done |
-| 6 | Vault screen: collision row, kind labels | Opus | done (UI review open) |
+| 6 | Vault screen: collision row, kind labels | Opus | done |
 | 7 | EMAIL and STREET_ADDRESS surrogates and forms, POSTCODE_CITY kept | Opus | done |
 | 8 | Lone lower-case surname rule, plural locatives | Opus | done |
 | 9 | Corpus c313–c516, harness gate with full-cover scoring | Opus | done |
-| 10 | Web: toast, composer text back, error text `held` | Opus | done (UI review open) |
+| 10 | Web: toast, composer text back, error text `held` | Opus | done |
 
 ## Gate
 

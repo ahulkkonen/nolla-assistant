@@ -1,6 +1,6 @@
 # Phase 15: Admin
 
-The fixed decisions are in `phase-11-15-plan.md`, section "Phase 15". This record adds the research,
+The fixed decisions are in `phase-11-15-plan.md` (superseded, see its header), section "Phase 15". This record adds the research,
 the decisions that the plan left open, the data model, the routes, the UI, the task cards, the gate
 and the risks. The records of phase 5 (profiles and automations), phase 8 (memory files), phase 11
 (work dir), phase 13 (usage rows) and phase 14 (`kind: 'search'`) stay valid.
@@ -12,6 +12,7 @@ Two plan items change after the research:
   from PBKDF2-HMAC-SHA256). It needs no new dependency, and the stock `openssl` of macOS and Linux
   decrypts it with one command (decision 13). Zip AES needs a new package and a tool that macOS does
   not ship. `age` does not use AES.
+  Superseded by [phase-35-security-fixes.md](phase-35-security-fixes.md), decision 4.
 - Plan item 1 says the agent editor writes `agents/<id>.yaml` "git-tracked". In production the image
   is read-only, so the editable profiles live in `DATA_DIR/agents` and `DATA_DIR/automations`, and
   the server commits each change to a git repository in that folder (decision 4).
@@ -285,6 +286,7 @@ Source: `node_modules/node-cron` 4.6.0 (`dist/node-cron.d.ts`) and a local run.
     cipher into the file, so no unencrypted copy is written to disk. The zip writer
     (`apps/server/src/zip.ts`) is about 100 lines on `node:zlib`: deflate, data descriptors, UTF-8
     names, no ZIP64.
+    Superseded by [phase-35-security-fixes.md](phase-35-security-fixes.md), decision 4.
 14. **Contents.** The archive has these entries:
     - `keskustelut/<name>-<id8>.md` and `.json` for every chat, archived ones too, from
       `chatExport` and `toMarkdown`. `<name>` is the chat export's file name without its extension,
@@ -610,4 +612,4 @@ race, one sign-out path). The scored UI review passed after one fix round with e
 
 Decrypt a full export with:
 
-    openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -md sha256 -in <file>.zip.enc -out <file>.zip
+    node scripts/decrypt-export.mjs <file>

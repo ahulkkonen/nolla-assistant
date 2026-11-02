@@ -108,7 +108,7 @@ https://tesseract-ocr.github.io/tessdoc/Command-Line-Usage.html, `pdftoppm -h` (
 
 ### Image updates of the editable files
 
-21. **Seed manifest.** At seeding, the server writes `DATA_DIR/agents/.seeded.json` (and the same
+6. **Seed manifest.** At seeding, the server writes `DATA_DIR/agents/.seeded.json` (and the same
     file in `DATA_DIR/automations`). It holds the sha256 of each copied image file, by relative path.
     At each start, for each file in the image:
     - The copy has the image's hash: the server records that hash.
@@ -127,71 +127,71 @@ https://tesseract-ocr.github.io/tessdoc/Command-Line-Usage.html, `pdftoppm -h` (
 
 ### CSP reports
 
-6. **Policy.** The HTML policy gets `report-uri /api/csp-report` and `report-to csp`. Each HTML
+7. **Policy.** The HTML policy gets `report-uri /api/csp-report` and `report-to csp`. Each HTML
    response also gets `Reporting-Endpoints: csp="/api/csp-report"`. The sandbox policy of
    `/api/files/:id` and the artifact frame get no reporting directive: a sandboxed document has an
    opaque origin and cannot post.
-7. **Route.** `POST /api/csp-report` needs no session. It accepts `application/csp-report` and
+8. **Route.** `POST /api/csp-report` needs no session. It accepts `application/csp-report` and
    `application/reports+json`. Fastify's default parsers also accept `application/json` and
    `text/plain`; such a body holds no report and gives no log line. Another type answers 415. The
    body limit is 16 KB (413 above it).
-8. **Rate limit.** The route uses `limiter(app, 30)` with one global key: at most 30 reports per
+9. **Rate limit.** The route uses `limiter(app, 30)` with one global key: at most 30 reports per
    minute, then 429 with `{ error: 'rate_limited' }`. A global key keeps the log bounded when many
    addresses send.
-9. **Log.** One warn line per violation, at most 10 per request: `csp violation` with `directive`
+10. **Log.** One warn line per violation, at most 10 per request: `csp violation` with `directive`
    (the effective or violated directive), `blocked` (the origin of the blocked URL, or its scheme,
    or a keyword such as `inline` or `eval`) and `path` (the path of the document URL, without query
    or fragment). The body, the sample and the query string are never logged. The answer is 204.
 
 ### Cache visibility
 
-10. **Raw counts, not a rate.** The server sends the raw token counts. The client computes the hit
+11. **Raw counts, not a rate.** The server sends the raw token counts. The client computes the hit
     rate as `cacheRead / (input + cacheRead + cacheWrite)`, and shows nothing when the divisor is 0.
-11. **Per reply.** `Message.usage` (a `CallUsage`) already has the counts. No change.
-12. **Per chat.** `ChatUsage` gets the optional fields `input`, `output`, `cacheRead` and
+12. **Per reply.** `Message.usage` (a `CallUsage`) already has the counts. No change.
+13. **Per chat.** `ChatUsage` gets the optional fields `input`, `output`, `cacheRead` and
     `cacheWrite`. The `chats` row gets four running-total columns. Migration 0008 adds them and
     fills them from the chat's `usage` rows. `usageRecorder` adds to them in the same transaction as
     `costUsd` and `tokens`. The chat export JSON (`chat.usage`) carries them too. The export keeps
     `version: 1`: the four fields are optional in `ChatExport`, so older exports stay valid, and a
     consumer must treat them as optional.
-13. **Per month.** Each `usage.state` row (per model) gets the optional fields `input`, `output`,
+14. **Per month.** Each `usage.state` row (per model) gets the optional fields `input`, `output`,
     `cacheRead` and `cacheWrite`, the sums of the month.
 
 ### OCR
 
-14. **When.** A PDF whose extracted text has fewer than 50 non-space characters per page on average
+15. **When.** A PDF whose extracted text has fewer than 50 non-space characters per page on average
     is OCR'd. A PDF whose extraction failed is not.
-15. **How.** Per page, `pdftoppm -r 200 -scale-to 2000 -png -singlefile -f N -l N` writes one PNG
+16. **How.** Per page, `pdftoppm -r 200 -scale-to 2000 -png -singlefile -f N -l N` writes one PNG
     to a temp dir under `DATA_DIR/files/.ocr-*`, and `tesseract <png> - -l fin+swe+eng --psm 3`
     reads it. `-scale-to 2000` caps the long side at 2,000 pixels, so a huge MediaBox cannot
     allocate gigabytes. The PNG is deleted after its page, and the temp dir after the file. Pages
     are joined with the line `--- sivu N ---`. Both binaries run with `execFile` (no shell), a 16 MB
     `maxBuffer`, and a timeout of the time left until the deadline (at least 1 ms). The child
     environment has only `PATH`, `HOME` and `OMP_THREAD_LIMIT=1`.
-16. **Caps.** At most 30 pages per file. One 90-second deadline is shared by all files of one
+17. **Caps.** At most 30 pages per file. One 90-second deadline is shared by all files of one
     message; it starts when the first OCR of the message starts. Past a cap, the text ends with the
     note `(OCR katkaistu: N/M sivua)`. A file that waits until after the deadline gets only the note.
     The text is cut at 60,000 characters like other documents.
-17. **Label.** The block header is `[Liite: <name> (OCR)]`. `splitBlocks` reads the name without the
+18. **Label.** The block header is `[Liite: <name> (OCR)]`. `splitBlocks` reads the name without the
     suffix, so the document name in `chat.state` stays exact. `cleanName` removes a trailing
     ` (OCR)` from an upload's name, so a user file cannot imitate the suffix.
-18. **Fallback.** When `pdftoppm` or `tesseract` is missing (ENOENT), the server keeps the
+19. **Fallback.** When `pdftoppm` or `tesseract` is missing (ENOENT), the server keeps the
     extracted text as today and logs one warn line `ocr unavailable` once per process. When a run
     fails on page N, the server keeps pages 1 to N-1 with the note and logs `ocr failed` with the
     error code and the page number. Output above `maxBuffer` logs `ocr output too large` and also
     keeps the earlier pages. A run that the deadline stops keeps the earlier pages without a log
     line. A failure on page 1 keeps the extracted text. The OCR text is never logged.
-19. **Image.** `infra/Dockerfile.server` installs `tesseract-ocr`, `tesseract-ocr-fin`,
+20. **Image.** `infra/Dockerfile.server` installs `tesseract-ocr`, `tesseract-ocr-fin`,
     `tesseract-ocr-swe`, `tesseract-ocr-eng` and `poppler-utils` in a shared `os` stage. A
     `server-test` stage (built only on request) adds the dev dependencies and the sources, so the
     OCR test runs on the same packages as production.
 
-22. **One OCR at a time.** A process-wide queue runs at most one OCR pipeline at a time. A waiting
+21. **One OCR at a time.** A process-wide queue runs at most one OCR pipeline at a time. A waiting
     file counts its wait against the deadline of its own message.
 
 ### Chat cost in the header
 
-20. **No server change.** `ChatSummary.usage` of the open chat (`chat.state.chat.usage`, updated by
+22. **No server change.** `ChatSummary.usage` of the open chat (`chat.state.chat.usage`, updated by
     `chat.updated`) already carries `costUsd` and `tokens`, and now the four token counts.
 
 ## Data model
@@ -199,7 +199,7 @@ https://tesseract-ocr.github.io/tessdoc/Command-Line-Usage.html, `pdftoppm -h` (
 ### Protocol (`packages/protocol/src/index.ts`)
 
 ```ts
-/** A chat's running totals (phase-13 decision 13; the token split is phase-16 decision 12). */
+/** A chat's running totals (phase-13 decision 13; the token split is phase-16 decision 13). */
 export const ChatUsage = z.object({
   costUsd: z.number().min(0),
   tokens: z.int().min(0),
@@ -296,13 +296,9 @@ Server task cards 1 to 4 are done. Commits: `6e1e64f` (record), `755e49b` (one a
 pass; server 168 tests pass and 1 is skipped locally (the OCR test, no `tesseract` on the Mac);
 protocol 40 and db 1 pass; the OCR test passes in the `server-test` image; the compose smoke has
 every service healthy. The e2e tests of the agent picker, the agent editor and the subagent row
-pass. Task cards 5 and 6 (web) are open.
+pass. Task cards 5 and 6 (web) were done later: `44a4f68` (header cost) and `3967cec` (cache
+hit rate).
 
 ## Gate (2026-10-27)
 
-Run on a clean worktree of `3e20730`: `pnpm typecheck` and `pnpm lint` pass; `pnpm test` passes every
-unit suite (server 189, web 80, protocol 42, contract 23, pseudo extension 18, subagents 14, memory 12,
-sandbox extension 5, masked-only 2, mcp 14, fake-llm 6, db 2) and e2e 516 of 516; `pnpm test:egress` 25.
-The server and sidecar images build; the local Docker stack runs them. The blind scored UI review passed
-on the sixth pass (every cell 4 or 5, no blocking finding). Open: the real extraction run, QA accuracy
-and claim precision of phase 17 need a fresh OpenRouter key (the key in `.env` expired on 2026-10-26).
+The joint gate run of phases 16, 17 and 19 is in [phase-17-memory.md](phase-17-memory.md#gate-2026-10-27).

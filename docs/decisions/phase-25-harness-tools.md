@@ -296,7 +296,8 @@ layout (two columns under 768); a 200-line diff does not widen the card past the
 
 ## UI review 5
 
-Blind review of `approval-*`, `edit-box` and `version-switcher` (2026-10-29, branch `p24-fix`).
+Blind review of `approval-*`, `edit-box` and `version-switcher` (2026-10-29). The `edit-box` and
+`version-switcher` items are in [phase-24-edit-in-place.md](phase-24-edit-in-place.md#ui-review-from-phase-25).
 Measured in `screens.spec.ts` at 390, 1024 and 1440, light and dark.
 
 - Diff and YAML lines wrap (`white-space: pre-wrap`, `overflow-wrap: anywhere`); the block never
@@ -310,20 +311,14 @@ Measured in `screens.spec.ts` at 390, 1024 and 1440, light and dark.
   and 8 px below.
 - Tool rows stack 4 px apart also across the messages of one turn (a tool-only message, then one
   that starts with its tool rows).
-- Edit box: the hint has `text-wrap: pretty`; the textarea does not resize by hand and grows with
-  its text up to 320 px.
 - `approval-chat`: the pointer leaves the sidebar before the shot.
 
-Amendments:
-
-1. Decisions 25 and the P1 checks: diff and YAML lines wrap with a hanging gutter. This replaces
-   the block that scrolled sideways; a long line still never widens the card.
-2. Phase-24 P1 check: with the always-visible switcher row, 24 px stay from the row's bottom to
-   the next turn's top (see `phase-24-edit-in-place.md`).
+Amendment to decision 25 and the P1 checks: diff and YAML lines wrap with a hanging gutter. This
+replaces the block that scrolled sideways; a long line still never widens the card.
 
 ## Status
 
-Security review fixes (2026-10-29, branch `p25-fix`):
+Security review fixes (2026-10-29):
 
 - `htmlText` cuts its input to 2 MB and strips tags with a linear scanner; the entity regex has
   bounded quantifiers. A 2 MB page of `<` or of unterminated `<script ` takes under 200 ms.
@@ -335,7 +330,7 @@ Security review fixes (2026-10-29, branch `p25-fix`):
 - `profile_edit` probes its content with the sidecar (decision 10).
 - `chat_read` answers fixed text when a read fails, and applies the 20,000-character cap after the
   restore. A call that ends without `execute` (denied, expired, failed) drops its stale-check stamp.
-- Web review fixes (2026-10-29, branch `p24-fix`): the fetch card bolds only `URL.host` and shows
+- Web review fixes (2026-10-29): the fetch card bolds only `URL.host` and shows
   userinfo muted (`https://www.hs.fi@evil.com` names `evil.com`); text that does not parse stays
   plain. A mode card takes its name from the frontmatter or the file id, never from a `name:` in
   the body. The row words follow the answer (decision 25).

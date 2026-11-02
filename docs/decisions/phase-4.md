@@ -29,6 +29,7 @@ Gate command: `pnpm typecheck && pnpm lint && pnpm test && scripts/restore-drill
    `keep-daily 14, keep-weekly 8, keep-monthly 6`. `scripts/restore.sh` restores both from the bucket
    onto an empty `/data`. The local drill uses a MinIO container (or a local restic repo when MinIO
    is unavailable) and proves a chat created before the drill opens after it.
+   Superseded by [phase-30-audits.md](phase-30-audits.md), item A8.
 6. **Topic taxonomy**: user-owned topics in `topics`; proposals in `topicProposals`; inbox actions
    accept / rename / merge. "Automations" topic is created on demand in phase 5.
 

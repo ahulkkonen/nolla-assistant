@@ -44,7 +44,7 @@ Source: `presidio_analyzer-2.2.364-py3-none-any.whl`, file `presidio_analyzer/pr
 
 - Class: `FiPersonalIdentityCodeRecognizer(PatternRecognizer)`, entity `FI_PERSONAL_IDENTITY_CODE`, default language `fi`, context words `hetu`, `henkilötunnus`, `personbeteckningen`, `personal identity code`.
 - Pattern (score 0.5): `\b(\d{6})([-+ABCDEFYXWVU])(\d{3})([0123456789ABCDEFHJKLMNPRSTUVWXY])\b`. A second pattern without `\b` scores 0.1.
-- The 2023 separators are accepted. `validate_result` maps `+` to 1800, `- Y X W V U` to 1900, and `A B C D E F` to 2000. It checks the full date with the century, so 29 February 1800 fails. Note: the task brief swapped the groups. `Y X W V U` belong to the 1900s and `B C D E F` to the 2000s (decree 128/2010 §2, quoted in question 6).
+- The 2023 separators are accepted. `validate_result` maps `+` to 1800, `- Y X W V U` to 1900, and `A B C D E F` to 2000. It checks the full date with the century, so 29 February 1800 fails. Note: `Y X W V U` belong to the 1900s and `B C D E F` to the 2000s (decree 128/2010 §2, quoted in question 6).
 - The mod-31 check is implemented: `valid_control_characters[int(date_part + individual_number) % 31] == control_character`.
 - Gaps: (a) it does not reject individual numbers `000` and `001`; (b) the patterns run with `re.IGNORECASE`, but the century lookup is case-sensitive, so a lowercase separator falls back to 2000; (c) the class is **not** listed in `conf/default_recognizers.yaml`, so it must be added explicitly (`registry.add_recognizer(FiPersonalIdentityCodeRecognizer())`).
 - Other Presidio defaults: the IBAN recognizer has an `FI` pattern (`(FI)` + check digits + 14 digits). `PhoneRecognizer.DEFAULT_SUPPORTED_REGIONS` is `("US","GB","DE","FR","IL","IN","CA","BR")` and does not include `FI`, so pass `supported_regions=("FI",)`.
@@ -96,6 +96,7 @@ Surname coverage (measured): `lexemes.tsv` has 571,946 lexemes, of which 351,090
 Missing surnames are mostly multi-word noble names (`von Hertzen`, `af Hällström`). Missing first names are mostly recent foreign names (`Lilibet`, `Liudmyla`).
 
 Generation of unknown names: `omorfi.generate.hfst` maps an omor analysis string (for example `[WORD_ID=Virtanen][UPOS=PROPN][NUM=SG][CASE=ALL]`) to surface forms. It only generates lemmas in the lexicon. The guesser (`guesser.py`) only analyses, it does not generate. So Omorfi does not generate case forms for an arbitrary unknown surname. UNVERIFIED: the exact tag string and the output of the compiled 0.9.12 generator. The source lexicon was measured, but no transducer was run, because downloaded code is not executed in this spike. Confirm in phase 3 with one test: generate the 15 singular cases of `Pulkkinen` and one name missing from the lexicon.
+Resolved: phase 12 shipped with Omorfi. `services/pseudo-svc/scripts/precompute_forms.py` generates the case forms at image build ([phase 12](phase-12-pseudo.md)).
 
 Voikko alone: `Voikko.analyze(word)` returns `BASEFORM`, `CLASS` (`etunimi`, `sukunimi`, `paikannimi`, …), `SIJAMUOTO`, `NUMBER` and `STRUCTURE`. That covers analysis and lemma lookup (`Virtaselle` → `Virtanen`). Voikko has no generation API.
 
@@ -136,7 +137,7 @@ Sources: `https://dvv.fi/en/personal-identity-code`, decree 128/2010 §2 at `htt
 Source: Finance Finland, `https://www.finanssiala.fi/wp-content/uploads/2026/04/finnish-monetary-institution-codes-16032026.pdf` (list dated 16.3.2026), index page `https://www.finanssiala.fi/en/topics/finnish-monetary-financial-institution-identifiers-and-bics/`.
 
 - Format `FIkk` + 14-digit BBAN, 18 characters total, ISO 13616 mod-97 check (`kk`).
-- Institution code length depends on the first digit: codes that start with `3` have 2 digits; `4`, `71`, `79` have 3 digits; `72`–`78` have 4 digits (since 2024); other codes have 1 digit. So the "first 3 digits" rule in the brief is wrong for most banks.
+- Institution code length depends on the first digit: codes that start with `3` have 2 digits; `4`, `71`, `79` have 3 digits; `72`–`78` have 4 digits (since 2024); other codes have 1 digit. So a fixed "first 3 digits" rule is wrong for most banks.
 - Assigned (16.3.2026): `1`, `2` Nordea; `5` OP; `6` Ålandsbanken; `8`, `34` Danske; `33` SEB; `36`, `39` S-Bank; `37` DNB; `400–464`, `483–496` (part), `715` Savings banks; `405`, `497` Aktia; `470–479` POP; `713`, `714`, `717`, `718`, `719`, `792`–`797`, `799`.
 - Unassigned in this list: leading `9` and leading `0` (no 1-digit code `9` or `0` exists). Recommendation: generate surrogate BBANs that start with `9`, with a valid domestic check digit and a valid mod-97. They pass format checks and do not route to a real bank. Re-check the list when it changes (the PDF says "updated whenever there are changes"). UNVERIFIED: that Finance Finland reserves `9` permanently; no reserved range is published. Confirm by asking Finance Finland if surrogates ever leave the system.
 
@@ -214,11 +215,11 @@ Embeddings (phases 4 and 8): `multilingual-e5-small`, int8 ONNX, run in Node wit
 ## Consequences
 
 - `pseudo-svc` contains GPL code (Omorfi GPL-3, voikko-fi GPL-2+). It stays a separate container behind HTTP. Its image must ship with source if it is ever distributed.
-- spaCy model is 3.8.0, not the 3.7 named in plan section 6. Update the plan.
+- spaCy model is 3.8.0, not the 3.7 named in plan section 6. Update the plan. Resolved, see the "As built" list in [plan.md](../plan.md).
 - The plan's IBAN wording "first 3 digits" is replaced by the variable-length code rule in question 7.
 - Presidio's phone recognizer needs `supported_regions=("FI",)`; its hetu recognizer must be added explicitly.
 - Posti PCF is deferred until address recall is measured.
-- fastapi lags `latest` by 19 minor versions on purpose; bump after 2026-10-30 as its own task.
+- fastapi lags `latest` by 19 minor versions on purpose; bump after 2026-10-30 as its own task. Open: the pin is still 0.143.3.
 - The image grows by about 220 MB (spaCy model) + 150 MB (Omorfi models unpacked) + 118 MB (embedding model, Node side).
 
 ## Verified on

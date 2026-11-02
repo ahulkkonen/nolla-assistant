@@ -8,7 +8,7 @@ Date: 2026-10-31. Follows phase 31 (`phase-31-publication.md`).
    sentences, the masking pair, the streaming GIF, bullets with proof links, the diagram, the run
    commands. `docs/overview.md` is the long form with each claim and its proof, the tour and the
    test table. The operator content moved to `docs/development.md`.
-2. **Media under `docs/media/`.** Twelve files, about 560 KB, cropped to the feature at native
+2. **Media under `docs/media/`.** Twelve files at first (21 now), about 560 KB, cropped to the feature at native
    pixels, never upscaled. Synthetic names only; no identity code in any shot. The GIF comes from a
    screenshot loop and ffmpeg (palette, 12 fps), with a browser-side route that paces the fake
    model's deltas.
@@ -21,7 +21,6 @@ Date: 2026-10-31. Follows phase 31 (`phase-31-publication.md`).
    data retention. The user chose it on 2026-10-31 from proposals by a Finnish-native designer agent,
    Gemini 4 Argon and Grok 4.7 (through the stack's own LiteLLM). The H1 is "Nolla Assistant"; the in-app
    agent keeps the name Avustaja. The CI badge points at `ahulkkonen/nolla-assistant`.
-   the CI badge line follows the name.
 
 6. **Hero example and social preview (2026-11-01).** The hero pair shows a calendar event through
    the MCP approval gate (`masking-action.png`, `masking-action-model.png`): the reminder example of
@@ -30,13 +29,15 @@ Date: 2026-10-31. Follows phase 31 (`phase-31-publication.md`).
    the card and the calendar get the real names while no model request does. Tool rows and approval
    cards show an MCP tool without its `mcp__<server>__` prefix (`toolLabel` in `apps/web/src/thread.ts`).
    The social preview is variant C of three (Bricolage Grotesque wordmark, the three zeros, the tool
-   row and reply at 1.7x); the HTML lives only in the session scratchpad. The tagline says "personal
+   row and reply at 1.7x). The tagline says "personal
    data", not "real names", because names are one of eight masked kinds; the recall numbers that
    qualify the word "zero" are in `docs/threat-model.md` section 5.
 
 ## Status
 
-Done 2026-10-31. Follow-ups the threat model lists: a URL inside an attached file
+Done 2026-10-31. The README was rewritten later: banner first, no H1, plain English.
+
+Follow-ups the threat model lists: a URL inside an attached file
 counts as written by the user, so `fetch_url` skips the card (`bridge/turns.ts` joins attachment
 text to the message); no `Origin` check on non-GET routes; the broker listens on all interfaces; no
 size limit on the work dir; sessions have no absolute expiry; the full export has no MAC.

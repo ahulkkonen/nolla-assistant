@@ -2,97 +2,111 @@
 
 This is the long form of the README. [`README.md`](../README.md) is the short form.
 
-**A self-hosted personal assistant with Finnish PII pseudonymization and zero-data-retention model
-egress.**
+A self-hosted personal assistant. It replaces Finnish personal data (PII) with fake values. It sends
+model calls through the one path out for model calls, to endpoints with zero data retention (ZDR).
 
 Aleksi Hulkkonen · built with Claude Code in about 62 active hours
 
 ![Your message names Matti Virtanen and Liisa Korhonen; the approved calendar tool ran; the reply shows the real names, with a tooltip: the model saw Anna Mäkinen](media/masking-action.png)
 
-*On your screen: your message, the calendar tool that ran and the reply show the real names. A mark tells you what the model saw. The calendar got the real names too; no model request did.*
+*On your screen, your message, the calendar tool that ran and the reply show the real names. A mark
+tells you what the model saw. The calendar got the real names too. No model request did.*
 
 ![The same reply as the model wrote it, with the surrogates Pekka Laaksonen and Anna Mäkinen](media/masking-action-model.png)
 
-*The reply as the model wrote it: realistic surrogates in place of the names. A switch in the app
-shows this view.*
+*The reply as the model wrote it, with realistic surrogates in place of the names. A switch in the
+app shows this view.*
 
-A personal assistant for one person, on one small server. You talk to it in Finnish from a phone or
-a desktop browser; it searches the web, works with your files, draws charts and diagrams, remembers
-what you approve, and runs scheduled tasks. Before any model sees a message, the names, ID numbers,
-addresses and emails in it become realistic surrogates. All model traffic leaves through one proxy,
-to OpenRouter endpoints with zero data retention (ZDR). It is built on
+This is a personal assistant for one person, on one small server. You talk to it in Finnish from a
+phone or a desktop browser. It searches the web, works with your files, draws charts and diagrams,
+remembers what you approve, and runs scheduled tasks. Before any model sees a message, the names,
+ID numbers, addresses and emails in it become realistic fake values. This is pseudonymization, and
+the fake values are called surrogates. All model traffic leaves through one proxy, to OpenRouter
+endpoints with ZDR. It is built on
 [Pi](https://www.npmjs.com/package/@earendil-works/pi-coding-agent), the agent runtime
-(`@earendil-works/pi-coding-agent` 1.4.0). It exists because nothing off the shelf combined frontier
-models, Finnish pseudonymization and data that stays on a box you own.
+(`@earendil-works/pi-coding-agent` 1.4.0). It exists because nothing off the shelf combined leading
+models, Finnish pseudonymization and data that stays on a server you own.
 
 ## What makes it different
 
-**Real values never reach a model.** [`packages/pi-ext-pseudo`](../packages/pi-ext-pseudo/src/index.ts)
-masks each message at Pi's `input` hook, unmasks tool arguments only when the tool runs, masks every
-tool result, and scans the whole context before each model call. If
-[`pseudo-svc`](../services/pseudo-svc) is down, the turn stops; it never falls back to clear text.
-Titles, topics, memory extraction and subagents read the same masked text.
-[`tests/masked-only`](../tests/masked-only/src/masked-only.test.ts) runs a 10-turn tool conversation
-and a restart, then searches every session file, every model request and the server log for each
-real value.
+### Real values never reach a model
 
-`pseudo-svc` (FastAPI, Presidio, spaCy, Voikko, Omorfi) gives each person a surrogate that inflects
-like a Finnish name, so `Virtaselle` can go out as `Laaksoselle` and the model writes natural
-Finnish. It keeps the pairs in its vault, an SQLCipher database. The server restores the stream
-with a short hold-back, so a surrogate split across two chunks never shows half-restored
-([`restore.ts`](../apps/server/src/restore.ts)).
+[`packages/pi-ext-pseudo`](../packages/pi-ext-pseudo/src/index.ts) masks each message at Pi's
+`input` hook. It unmasks tool arguments only when the tool runs, masks every tool result, and scans
+the whole context before each model call. If [`pseudo-svc`](../services/pseudo-svc) is down, the
+turn stops. It never falls back to clear text. Titles, topics, memory extraction and subagents read
+the same masked text. [`tests/masked-only`](../tests/masked-only/src/masked-only.test.ts) runs a
+10-turn tool conversation and a restart. Then it searches every session file, every model request
+and the server log for each real value.
 
-**One egress URL, zero data retention.** Pi knows two providers, and both point at LiteLLM. Only
-LiteLLM holds the OpenRouter keys. [`zdr_guard.py`](../infra/litellm/zdr_guard.py) allows only listed
-aliases and the `zdr/*` and `open/*` routes, each pinned to its provider block, and refuses unknown
-request keys, `extra_body` and plugins. Every `zdr/` request carries `provider.zdr`, on a key that
-sits under an OpenRouter ZDR guardrail. [`tests/egress`](../tests/egress/src/egress.test.ts) runs
-LiteLLM and Presidio against a mock OpenRouter. A chat can leave ZDR after a refusal; it then uses a
-separate key and stays pseudonymized ([phase 10](decisions/phase-10-models.md)).
+`pseudo-svc` (FastAPI, Presidio, spaCy, Voikko, Omorfi) gives each person a surrogate whose word
+endings change like a Finnish name's. So `Virtaselle` can go out as `Laaksoselle`, and the model
+writes natural Finnish. The service keeps the pairs in its vault, an SQLCipher database. The server
+restores the stream with a short delay. A surrogate that splits across two chunks never shows half
+restored ([`restore.ts`](../apps/server/src/restore.ts)).
 
-**Harness tools: the assistant edits its own setup, with a diff.** The harness tools work on the
-assistant itself, outside the current chat: `profile_edit` changes its prompt, `automation_edit`
-writes a cron automation, and `chat_read` reads another chat. Each one shows a diff or a YAML card
-first ([`harness.ts`](../apps/server/src/harness.ts)), and each saved change is a git commit on the
-data volume. `profile_edit` cannot change tools, approvals or the model
+### One path out, zero data retention
+
+Pi knows two providers, and both point at LiteLLM. Only LiteLLM holds the OpenRouter keys.
+[`zdr_guard.py`](../infra/litellm/zdr_guard.py) allows only listed aliases and the `zdr/*` and
+`open/*` routes, each pinned to its provider block. It refuses unknown request keys, `extra_body`
+and plugins. Every `zdr/` request carries `provider.zdr`, on a key that sits under an OpenRouter
+ZDR guardrail. [`tests/egress`](../tests/egress/src/egress.test.ts) runs LiteLLM and Presidio
+against a mock OpenRouter. A chat can leave ZDR after a refusal. It then uses a separate key and
+stays pseudonymized ([phase 10](decisions/phase-10-models.md)).
+
+### Harness tools: the assistant edits its own setup, with a diff
+
+The harness tools work on the assistant itself, outside the current chat. `profile_edit` changes
+its prompt, `automation_edit` writes a cron automation, and `chat_read` reads another chat. Each one
+shows a diff or a YAML card first ([`harness.ts`](../apps/server/src/harness.ts)). Each saved change
+is a git commit on the data volume. `profile_edit` cannot change tools, approvals or the model
 ([phase 25](decisions/phase-25-harness-tools.md)).
 
-**Approval cards that code enforces.** `write`, `edit`, `bash` and the harness tools stop in a Pi
-`tool_call` hook until you answer a card built from the call's real arguments
-([`approval.ts`](../apps/server/src/approval.ts)). The harness tools always ask, even when auto-approve
-is on for the chat. A scheduled run has no one to ask, so it denies every gated tool that its
-automation does not list. A message whose tool calls repeat or lack an id is refused
+### Approval cards that code enforces
+
+`write`, `edit`, `bash` and the harness tools stop in a Pi `tool_call` hook. They wait until you
+answer a card built from the call's real arguments
+([`approval.ts`](../apps/server/src/approval.ts)). The harness tools always ask, even when
+auto-approve is on for the chat. A scheduled run has no one to ask. It denies every gated tool that
+its automation does not list. A message whose tool calls repeat or lack an id is refused
 ([`search-tool.ts`](../apps/server/src/search-tool.ts)). A harness card in a turn that read outside
 content says so.
 
-**`fetch_url` with an SSRF guard.** It sends one GET with no body, cookie or key, to ports 80 and 443 only,
-through a DNS-pinned lookup that refuses private addresses
-([`net.ts`](../services/sandbox-broker/src/net.ts)). Each redirect is checked again, the body is capped
-at 2 MB, and a URL that you did not write waits for a card
+### `fetch_url` with an SSRF guard
+
+The tool sends one GET with no body, cookie or key, to ports 80 and 443 only. The DNS lookup is
+pinned and refuses private addresses ([`net.ts`](../services/sandbox-broker/src/net.ts)). The guard
+checks each redirect again and caps the body at 2 MB. A URL that you did not write waits for a card
 ([`fetch-tool.ts`](../apps/server/src/fetch-tool.ts)).
 
-**Sandboxed commands.** The agent's `bash` tool runs every command in a new, throwaway container.
-Only `sandbox-broker` holds the Docker socket. Each container runs as uid 10001, with a read-only
-root, `CapDrop: ALL`, `no-new-privileges`, pid, memory and CPU limits, a seccomp profile that denies
-symlinks, and no network by default ([`index.ts`](../services/sandbox-broker/src/index.ts)). A skill can
-ask for a list of hosts, which it reaches only through the broker's proxy, or for the open internet
-([`skills/README.md`](../skills/README.md)). Skills come only from this repository; none is vendored
-yet. [`tests/sandbox`](../tests/sandbox/src/sandbox.test.ts) drives the broker against real containers.
+### Sandboxed commands
 
-**Local-first data with consistent backups.** SQLite in WAL mode, Pi's JSONL sessions and Markdown
-memory live under one `/data` volume. Search is hybrid and stays in SQLite: FTS5 trigram, sqlite-vec
-and reciprocal rank fusion over local multilingual-e5 embeddings
-([`search.ts`](../apps/server/src/search.ts)). Every hour the backup service takes consistent copies of
-`app.db` and of the vault, and every night restic snapshots all of `/data`.
-[`restore.sh`](../scripts/restore.sh) refuses a database that fails `PRAGMA integrity_check`, and
-[`restore-drill.sh`](../scripts/restore-drill.sh) exercises the restore.
+The agent's `bash` tool runs every command in a new, throwaway container. Only `sandbox-broker`
+holds the Docker socket. Each container runs as uid 10001. It has a read-only root, `CapDrop: ALL`,
+`no-new-privileges`, pid, memory and CPU limits, a seccomp profile that denies symlinks, and no
+network by default ([`index.ts`](../services/sandbox-broker/src/index.ts)). A skill can ask for a
+list of hosts, which it reaches only through the broker's proxy, or for the open internet
+([`skills/README.md`](../skills/README.md)). Skills come only from this repository. None is vendored
+yet. [`tests/sandbox`](../tests/sandbox/src/sandbox.test.ts) drives the broker against real
+containers.
+
+### Local-first data with consistent backups
+
+SQLite in WAL mode, Pi's JSONL sessions and Markdown memory live under one `/data` volume. Search is
+hybrid and stays in SQLite: FTS5 trigram, sqlite-vec and reciprocal rank fusion over local
+multilingual-e5 embeddings ([`search.ts`](../apps/server/src/search.ts)). Every hour the backup
+service takes consistent copies of `app.db` and of the vault. Every night restic snapshots all of
+`/data`. [`restore.sh`](../scripts/restore.sh) refuses a database that fails
+`PRAGMA integrity_check`. [`restore-drill.sh`](../scripts/restore-drill.sh) runs a test of the
+restore.
 
 ## Architecture
 
-Eight long-running services on one Docker Compose stack, plus a one-shot init container that sets
-the permissions of the Google token volume. The stack is built for one Coolify host, a 4 vCPU, 8 GB
-VPS. Only `pa-server` is exposed. It runs Pi in-process through the SDK, one session per open chat,
-and talks to the browser in a zod-typed WebSocket protocol
+The Docker Compose stack has eight long-running services. It also has a one-shot init container
+that sets the permissions of the Google token volume. The stack is built for one Coolify host, a
+4 vCPU, 8 GB VPS. Only `pa-server` is exposed. It runs Pi in-process through the SDK, one session
+per open chat. It talks to the browser in a zod-typed WebSocket protocol
 ([`packages/protocol`](../packages/protocol/src/index.ts)). Raw Pi events never reach the browser.
 
 ```mermaid
@@ -134,19 +148,19 @@ One turn, end to end:
 1. The PWA sends `user.message` over the WebSocket.
 2. `pi-ext-pseudo` masks it at Pi's `input` hook, and the vault records the surrogates.
 3. Pi calls the model through LiteLLM with masked history and masked memory.
-4. A tool call is unmasked only when it runs; its result is masked before Pi reads it.
+4. A tool call is unmasked only when it runs. Its result is masked before Pi reads it.
 5. The bridge restores the stream for display and sends typed frames to the browser.
 
-Other outbound calls carry no model traffic: `fetch_url` GETs, the public model catalog, the ECB
-exchange rate, Web Push, Google APIs from `mcp-workspace`, and the encrypted backups. The repository
-layout is in [`AGENTS.md`](../AGENTS.md#layout).
+Other outbound calls carry no model traffic. They are `fetch_url` GETs, the public model catalog,
+the ECB exchange rate, Web Push, Google APIs from `mcp-workspace`, and the encrypted backups. The
+repository layout is in [`AGENTS.md`](../AGENTS.md#layout).
 
 ## A tour
 
 The interface follows a written design brief ([`phase-9-ui.md`](decisions/phase-9-ui.md),
-section 7): a cream canvas, serif replies in one centered column, ink for the one primary action,
-and controls that stay quiet until you need them. The UI is in Finnish. The names and data in these
-shots are synthetic.
+section 7). It has a cream canvas, serif replies in one centered column, ink for the one primary
+action, and controls that stay quiet until you need them. The UI is in Finnish. The names and data
+in these shots are synthetic.
 
 ![The same chat with a line chart of electricity prices at three widths: a 390 px phone, a 1024 px window with the sidebar, and a 1440 px desktop](media/sizes.png)
 
@@ -158,8 +172,8 @@ shots are synthetic.
 
 ![A reply streams in: the waiting line shows queued, thinking and writing times, then the reply appears with a caret on its last character](media/streaming.gif)
 
-A reply streams in. The waiting line counts the queue, the thinking and the writing, and the caret
-stays on the last character.
+A reply streams in. The waiting line counts the queue, the thinking and the writing. The caret stays
+on the last character.
 
 ![Four details of a chat at 1440 px: a reply with an inline line chart, an open thinking row, an expanded read tool row with its input and result, and a write approval card with reject and approve buttons](media/thread.png)
 
@@ -212,63 +226,56 @@ confirm it.*
 
 ## How it was built
 
-One person and one Claude Code session, in over 430 commits. [`workflow.md`](workflow.md) is the
+One person and one Claude Code session made over 430 commits. [`workflow.md`](workflow.md) is the
 full workflow: the roles and their models, the review and UI loops, the gates, how the person
-worked, what to change, and how the figures below were measured.
+worked and what to change.
 
-| Measure | Figure |
-|---|---|
-| Active time (a gap over 30 min ends a block) | 61.8 h. With a 15 or 60 min gap: 43.9 h or 72.3 h |
-| Claude Code session counter | 76.2 h session time, 37.3 h API time |
-| Human messages and presence | 84 messages (9 with a screenshot), at least 13.3 h present |
-| Active time with no new instruction for 10 min | 79 % |
-| Subagent runs | 177: Opus 5.5 116 (90.2 h), Sonnet 5.5 59 (2.9 h), Haiku 5.5 2. Up to 8 at once |
-| Reviewer passes | 44 diff reviews (43 on Sonnet), up to five blind screenshot rounds per slice, more across slices |
-| Output | Over 430 commits, 43 decision records, about 62,500 lines of TypeScript and 5,300 of Python |
+[`build-stats.md`](build-stats.md) has the build figures and how they were measured.
 
-- **A plan before code.** [`docs/plan.md`](plan.md) fixed the invariants, the architecture,
+- A plan came before code. [`docs/plan.md`](plan.md) fixed the invariants, the architecture,
   the protocol, the PII and memory designs, the UI spec, and the phases with their gates before the
   first commit.
-- **One conductor, many agents.** The conductor (Fable 5.1) held the plan and never called Edit. An
-  Opus architect opened each phase with a decision record and task cards. Builders took one card or
-  package each, Opus for the hard cards and Sonnet for the mechanical ones, up to eight at once.
-- **Review before every commit.** A reviewer checked each diff against its card, the invariants and
-  security. A fix agent closed every blocking and should-fix finding before the commit, and the
-  commits keep their `Co-Authored-By: Claude` trailers.
-- **A blind, scored screenshot review** of every UI change, at three widths in light and dark.
-- **Two deep research passes in Claude Web**, run by the person and pasted into
+- The main session (Fable 5.1) held the plan and never called Edit. An Opus architect opened each
+  phase with a decision record and task cards. Builders took one card or package each, up to eight
+  at once. Opus built the hard cards and Sonnet the mechanical ones.
+- A reviewer checked each diff against its card, the invariants and security before every commit.
+  A fix agent closed every blocking and should-fix finding before the commit. The commits keep
+  their `Co-Authored-By: Claude` trailers.
+- A reviewer who had not seen the code scored every UI change on screenshots (a blind review), at
+  three widths in light and dark.
+- The person ran two deep research passes in Claude Web and pasted the results into
   [0006](decisions/0006-ui-reference.md), [0007](decisions/0007-memory-and-search-research.md) and
-  [0008](decisions/0008-viz-research.md): the UI benchmark against Claude Web and ChatGPT, memory,
-  search and charts.
-- **33 phases done, numbered to 35** (phase 18 deferred, 29 reserved), with 43 decision records in
-  [`docs/decisions/`](decisions/README.md): one per finished phase, plus ten for cross-cutting
-  decisions such as the Pi contract and the Finnish PII stack. Each newer record lists the review
-  findings that were left as they are, on purpose.
-- **Three audits before publication**: [security](audits/2026-10-31-security.md) (2 blocking,
+  [0008](decisions/0008-viz-research.md). They cover the UI benchmark against Claude Web and
+  ChatGPT, memory, search and charts.
+- 33 phases are done, numbered to 35 (phase 18 deferred, 29 reserved). There are 42 decision
+  records in [`docs/decisions/`](decisions/README.md): one per finished phase, plus nine for
+  cross-cutting decisions such as the Pi contract and the Finnish PII stack. Each newer record
+  lists the review findings that were left as they are, on purpose.
+- Three audits ran before publication: [security](audits/2026-10-31-security.md) (2 blocking,
   6 should-fix, 14 nice-to-have), [architecture](audits/2026-10-31-architecture.md) (1 blocking,
-  14 should-fix, 29 nice-to-have) and [supply chain](audits/2026-10-31-dependencies.md) (1,260
-  npm lock entries and 64 Python packages against advisory, malware and IOC lists: no malicious
-  package, nothing to remove). Phase 30 fixed the blocking and the security findings and most
-  architecture findings; [its record](decisions/phase-30-audits.md) lists each fix and what
-  stays.
+  14 should-fix, 29 nice-to-have) and [supply chain](audits/2026-10-31-dependencies.md). The
+  supply chain audit checked 1,260 npm lock entries and 64 Python packages against advisory,
+  malware and indicator-of-compromise lists. It found no malicious package and nothing to remove.
+  Phase 30 fixed the blocking and the security findings and most architecture findings.
+  [Its record](decisions/phase-30-audits.md) lists each fix and what stays.
 
-No CI test needs a model key. Only the memory eval does: it asks a real model through LiteLLM and
-runs locally. [`tests/fake-llm`](../tests/fake-llm/src/index.ts) is an in-process OpenAI-compatible server
-with scripted turns, and fakes stand in for `pseudo-svc` and the sandbox broker.
+No CI test needs a model key. Only the memory eval does. It asks a real model through LiteLLM and
+runs locally. [`tests/fake-llm`](../tests/fake-llm/src/index.ts) is an in-process OpenAI-compatible
+server with scripted turns. Fakes stand in for `pseudo-svc` and the sandbox broker.
 
 | Suite | What it checks | Size or result |
 |---|---|---|
 | Vitest | the real server driven over its socket, the web app, the protocol, the database, the Pi extensions, MCP and the fake LLM | 582 tests: server 268, web 182, protocol 58, Pi extensions 49, mcp 14, fake-llm 7, db 4; one server test (OCR) skips without `tesseract` |
 | [`tests/contract`](../tests/contract/src/hooks.test.ts) | the hook payloads and session behaviour of the pinned Pi version | 28 tests |
 | [`tests/masked-only`](../tests/masked-only/src/masked-only.test.ts) | no real value in sessions, model requests or the server log | a 10-turn tool conversation and a restart |
-| Playwright `chromium` ([flows](../tests/e2e/src/flows.spec.ts), [screens](../tests/e2e/src/screens.spec.ts)) | user flows, and every screen at 390, 1024 and 1440 px, light and dark, with strict axe checks | 89 flows and 582 screen tests: 671 in all, 10 skip by design |
+| Playwright ([flows](../tests/e2e/src/flows.spec.ts), [screens](../tests/e2e/src/screens.spec.ts)) | user flows, and every screen at 390, 1024 and 1440 px, light and dark, with strict axe checks | chromium flows (89) plus the screens project (582): 671 in all, 10 skip by design |
 | [`tests/pii`](../tests/pii/README.md) | recall and precision gates on 562 labelled Finnish texts ([last run](../tests/pii/last-run.json)) | ID numbers, IBANs, phones, emails, postcodes, addresses: 100 % recall. Names: 0.995 recall (1.0 for names the vault knows, 0.993 for first-sight names), 0.991 precision. Plates: 0.714 recall, no gate |
 | [`tests/memory-eval`](../tests/memory-eval/src/run.ts) | 100 questions over 30 synthetic Finnish chats, with a real `pseudo-svc` and model ([result](../tests/memory-eval/results/2026-10-27-real.json)) | gold evidence reaches the model: 0.988; answer accuracy 0.72 to 0.82 over six runs |
 | [`tests/egress`](../tests/egress/src/egress.test.ts), [`tests/sandbox`](../tests/sandbox/src/sandbox.test.ts) | LiteLLM and Presidio against a mock OpenRouter; the broker with real containers (Docker) | 25 and 19 tests |
 
-CI ([`ci.yml`](../.github/workflows/ci.yml)) runs typecheck, lint, the unit suites, the contract tests,
-`tests/masked-only` and the Playwright run on every push to `main` and on every pull request. The
-Docker suites, the PII harness, the memory eval and the restore drill run locally.
+CI ([`ci.yml`](../.github/workflows/ci.yml)) runs typecheck, lint, the unit suites, the contract
+tests, `tests/masked-only` and the Playwright run. It runs on every push to `main` and on every pull
+request. The Docker suites, the PII harness, the memory eval and the restore drill run locally.
 
 ## Run it
 
@@ -280,8 +287,7 @@ node tests/e2e/src/demo.ts        # http://localhost:3000, password: salasana
 ```
 
 Develop against real services: copy `.env.example` to `.env`, fill in the values, then run the
-commands below. `AUTH_PASSWORD_HASH` in `.env` has `$$` for compose; the shell needs a single `$`,
-so set that one by hand ([Develop](development.md#develop)).
+commands below. For `AUTH_PASSWORD_HASH`, see [Develop](development.md#develop).
 
 ```sh
 pnpm install
@@ -290,19 +296,26 @@ pnpm --filter @pa/web dev
 ```
 
 [`docs/deploy.md`](deploy.md) is the runbook for the VPS and for a full local run with Docker.
-[`docs/development.md`](development.md) has the prerequisites, the test commands, the
-dependency policy and the status of each phase. Contributors and coding agents start with
+[`docs/development.md`](development.md) has the prerequisites, the test commands, the dependency
+policy and the status of each phase. Contributors and coding agents start with
 [`AGENTS.md`](../AGENTS.md).
 
 ## Status and limits
 
-It runs for one user, in Finnish first. Every row has a `user_id`, so more users are a schema
-no-op, but nothing else is built for them. Deferred: a direct search backend (web search goes
+It runs for one user, in Finnish first. Every row has a `user_id`, so adding users needs no schema
+change. Nothing else is built for more users. Deferred: a direct search backend (web search goes
 through OpenRouter's Exa plugin today), text-to-speech, and multi-user.
 
-Known limits, from the records: detection is not perfect, and nicknames outside the table or rare
-inflections can slip through; the vault screen says so. Images and voice audio reach the model
+Known limits, from the records: detection is not perfect. Nicknames outside the table and rare word
+endings can slip through, and the vault screen says so. Images and voice audio reach the model
 unmasked, through ZDR endpoints. A web search query reaches Exa unmasked when it names no vault
-entity. The [threat model](threat-model.md) states what the system protects, against whom, and the risks that stay.
+entity. The [threat model](threat-model.md) states what the system protects, against whom, and the
+risks that stay.
 
-MIT license, see [`LICENSE`](../LICENSE).
+## License
+
+The code is MIT, see [`LICENSE`](../LICENSE). Three parts come from elsewhere. The Finnish name lists
+from DVV are CC BY 4.0, with the license next to the files
+([`data/dvv`](../services/pseudo-svc/data/dvv)). The `pseudo-svc` image pulls Omorfi (GPL-3) and
+voikko-fi (GPL-2 or later) at build time. Both stay inside that container, behind HTTP
+([0003, section 3](decisions/0003-finnish-pii-stack.md)).

@@ -1,8 +1,8 @@
 # 0007: Memory architecture and web search backend (deep research)
 
 Deep research run by the user on Claude Web on 2026-10-26 from the prompt Fable wrote. Pasted
-verbatim below. Decisions that follow from it are recorded in the phase records (phase 17 memory,
-phase 18 search).
+verbatim below. Decisions that follow from it are recorded in the phase records (phase 17; the search part was
+deferred, see [docs/roadmap.md](../roadmap.md)).
 
 ---
 

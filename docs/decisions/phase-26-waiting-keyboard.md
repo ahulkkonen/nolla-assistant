@@ -78,3 +78,10 @@ record changes them.
 - Without scroll anchoring, a block that grows above the reader moves the text in Chromium too.
 - Not in this phase: the audit's item 3 (safe-area check on a device) and the iOS set.
 - WebKit: only the new 390 screens are shot.
+
+## Status
+
+- Merged: yes (`262f5ae`, 2026-10-29).
+- Gate: `docs/development.md` lists the phase as done. The gate run is not recorded.
+- Review: phase-23 UI review 2 (fixes in `99162d5`) and the phase-23 and 26 code review (fixes in
+  `685ef50`). Scores not recorded.

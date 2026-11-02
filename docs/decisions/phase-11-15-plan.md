@@ -1,5 +1,7 @@
 # Phases 11 to 15: files, pseudo hardening, thread depth, web search, admin
 
+> Status: superseded. The decisions below were the starting point for phases 11 to 15. The phase records (`phase-11-files.md` to `phase-15-admin.md`) build on them and change some of them; where they differ, the phase record decides. The process paragraph is in [workflow.md](../workflow.md).
+
 Agreed with the user on 2026-10-26 in five question rounds. Each phase gets its own decision
 record (`phase-N-*.md`) with research findings, data model, task cards and a gate, written by
 the phase architect before code. This file fixes the decisions that the records build on.

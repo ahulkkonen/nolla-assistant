@@ -229,8 +229,8 @@ audit found no secret in the tracked files or in the history.
   detector; the owner adds the nickname before first use.
 - **Transitive advisories.** `body-parser` 2.3.0 through the MCP SDK (1 high); the SDK's express
   server never runs. `cryptography` 48.0.1 in `pseudo-svc` (2 high, PKCS#7 and X.509 paths the
-  service does not use), held by the `presidio-anonymizer` 2.2.364 pin; presidio 2.2.365 accepts
-  50.x and is old enough from 2026-11-02. `undici` inside Pi was moved to 8.12.3 on 2026-11-01 with a
+  service does not use), held by the `presidio-anonymizer` 2.2.364 pin. Open: presidio 2.2.365, then
+  cryptography 50.x. `undici` inside Pi was moved to 8.12.3 on 2026-11-01 with a
   scoped override in `pnpm-workspace.yaml`. Closes the rest: the presidio bump, then the next Pi bump.
 - **Other open items** from the security audit, nice-to-have list, still in the code:
   - The broker API and proxy listen on `0.0.0.0`. The broker must listen on the container's

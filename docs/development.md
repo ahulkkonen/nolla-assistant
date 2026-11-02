@@ -6,29 +6,7 @@ Agents and contributors: read `AGENTS.md` first. It holds the rules and the docu
 
 ## Repository layout
 
-```
-apps/
-  web/              React + Vite PWA
-  server/           Pi host, auth, WebSocket bridge, push, API
-packages/
-  protocol/         zod schemas for client-server messages
-  db/               SQLite schema and migrations
-  pi-ext-pseudo/    masks at ingest, unmasks at tool calls, leak scan
-  pi-ext-memory/    USER.md and MEMORY.md injection, memory tools
-  pi-ext-topics/    reports agent_settled; the title and topic jobs live in the server
-  pi-ext-subagents/ child Pi processes
-  pi-ext-sandbox/   bash tool that runs in sibling containers
-services/
-  pseudo-svc/       Python FastAPI: /mask /unmask /scan and the vault
-  sandbox-broker/   Node service that runs skill commands in containers
-skills/             vendored skills (none yet; see skills/README.md)
-agents/             agent profiles (YAML) and prompts
-automations/        cron automations
-infra/              compose.yaml, Dockerfiles, LiteLLM, backup, MCP config
-scripts/            password hash, export decrypt, restore, restore drill, model download, skill-runner image
-tests/              contract, e2e, egress, fake-llm, masked-only, mcp, memory-eval, pii, sandbox
-docs/               plan.md, deploy.md, decisions/
-```
+The layout is in [`AGENTS.md`](../AGENTS.md#layout).
 
 ## Prerequisites
 

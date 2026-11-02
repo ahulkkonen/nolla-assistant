@@ -7,7 +7,7 @@ experience.**
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 ![node](https://img.shields.io/badge/node-22-339933)
 
-Aleksi Hulkkonen · built with Claude Code in about 62 active hours
+Aleksi Hulkkonen with Claude Code · about 62 active hours
 
 *Nolla* is Finnish for zero. It replaces names, ID numbers, addresses and emails with realistic fake
 ones before any model sees a message. You see the real values on your screen. One proxy routes every
@@ -181,7 +181,7 @@ The numbers come from the session transcript ([method](docs/build-stats.md)):
 | Human messages | 84, at least 13.3 h present |
 | Subagent runs | 177: Opus 116 (90.2 h), Sonnet 59, Haiku 2 |
 | Reviewer passes | 44 diff reviews, up to five blind screenshot rounds per slice |
-| Output | Over 430 commits, 43 decision records, about 62,500 lines of TypeScript and 5,300 of Python |
+| Output | Over 430 commits, 42 decision records, about 62,500 lines of TypeScript and 5,300 of Python |
 
 ## Status and limits
 

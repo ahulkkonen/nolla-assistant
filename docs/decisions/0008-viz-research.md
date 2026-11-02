@@ -162,8 +162,6 @@ Read the CSS variables with `getComputedStyle` in the parent page. Freeze them i
 
 - Minified + gzip sizes for vega, vega-lite, vega-embed, Plot, D3, Mermaid, Graphviz WASM and Typst.
 - The vega-embed 7.3.0 publish date (known only from a dependabot PR) and its licence.
-- Observable Plot's licence is now resolved: ISC, per observablehq/plot CONTRIBUTING.md ("Observable Plot is open source and released under the ISC license").
-- Mermaid's licence is now resolved: MIT, per the mermaid-js/mermaid LICENSE file ("The MIT License (MIT) Copyright (c) 2014 - 2022 Knut Sveidqvist").
 - Vega `toSVG`/`toImageURL` API names. Vega-Lite ARIA and keyboard behaviour.
 - Number locale support in Chart.js, ECharts, Plotly, Mermaid and Plot.
 - The ECharts and Plotly accessibility features.
@@ -173,6 +171,8 @@ Read the CSS variables with `getComputedStyle` in the parent page. Freeze them i
 - AntV GPT-Vis status in 2026.
 - Spec character counts are our own estimates.
 - ChatGPT Canvas removal relies on a secondary source quoting OpenAI release notes.
+
+Resolved: Observable Plot's licence is ISC, per observablehq/plot CONTRIBUTING.md ("Observable Plot is open source and released under the ISC license"). Mermaid's licence is MIT, per the mermaid-js/mermaid LICENSE file ("The MIT License (MIT) Copyright (c) 2014 - 2022 Knut Sveidqvist").
 
 ## Sources (all read 2026-10-26)
 
@@ -246,7 +246,7 @@ Method: own tests in headless Chromium, network blocked, our fonts and warm ligh
 - R6 Validate against the v6 schema. Reject `data.url`. Allow `params` with `expr`, and `containerSize()`. On error, one silent repair turn; then fall back to a table.
 - R7 (proposed, untested) Colour roles. The model writes `@fg @muted @faint @accent @accent-soft @c2 @band`. The renderer replaces them with the current theme's hex values before embedding. Dark mode then becomes a re-render.
 
-### Theme config, light (tested values; dark values to be added)
+### Theme config, light (tested values)
 The hex values below are the user's test values. The implementation reads the project tokens
 (`apps/web/src/tokens.css`) instead; the structure is what matters.
 ```json

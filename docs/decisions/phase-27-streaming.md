@@ -113,3 +113,10 @@ screens `streaming`, `waiting-queue` and `waiting-thinking` at 390 (the 2 px lin
 - A caret in a table cell makes that column about 10 px wider while the cell is the last one.
 - In a background tab the deltas wait for the next frame; any other frame applies them.
 - Not in this phase: the word fade (audit change 9) and `text-wrap` while live (change 8).
+
+## Status
+
+- Merged: yes (`4356103`, 2026-10-29).
+- Gate: `docs/development.md` lists the phase as done. The gate run is not recorded.
+- Review: the phase-27 and UI-fix review (section "Review fixes", fixes in `434f1cc`). Scores not
+  recorded.

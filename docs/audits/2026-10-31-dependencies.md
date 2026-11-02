@@ -1,8 +1,12 @@
 # Supply-chain audit of dependencies: assistant-2 (`main`, commit e009029)
 
+Status: snapshot of 2026-10-31. Later work fixed or accepted the findings, see
+[phase 30](../decisions/phase-30-audits.md) and [phase 35](../decisions/phase-35-security-fixes.md).
+The cited paths and line numbers are as of the audit date.
+
 **Verdict: clean. No package to remove now.** No installed package is malicious, compromised, typosquatted or a known campaign version. The follow-up actions below are hardening and advisory upgrades. None of them is a removal.
 
-Date of the audit: 2026-10-31. Scripts and raw data: `(scripts not kept)`.
+Date of the audit: 2026-10-31.
 
 ## Counts of packages checked
 
@@ -120,7 +124,6 @@ Scanner: `scan.py` over 1082 installed package folders (34316 `.js/.cjs/.mjs/.ts
 Notes that need a decision but no removal:
 
 - **Pi install telemetry.** `@earendil-works/pi-coding-agent@1.4.0`, `dist/modes/interactive/interactive-mode.js`: on a fresh install or a version change, the interactive TUI mode sends `GET https://pi.dev/api/report-install?version=<version>` with a Pi user agent. It sends no other data. It is skipped when `PI_OFFLINE` is set or the install-telemetry setting is off. The server uses the SDK, not the interactive mode, so the call should not run in production. Action: set `PI_OFFLINE=1` in the server and container env as a guard for invariant 2 ("one egress URL").
-- **Orphan packages in `node_modules`.** `@earendil-works/pi-*@1.3.0` (7 packages) are still in `node_modules/.pnpm` but not in the lock (left over from the 1.3.0 to 1.4.0 bump; `prunedAt` is 2026-10-25). They are not linked from any workspace package. Action: run `pnpm install` (or `pnpm store prune`) to remove them; no security impact found.
 
 ## 5. Integrity
 
@@ -163,5 +166,4 @@ Container images (`infra/`):
 1. Pin `node:22.23.2-bookworm-slim` by digest and pin or drop `npm install -g corepack` in `infra/Dockerfile.server` and `infra/Dockerfile.broker`.
 2. Set `PI_OFFLINE=1` for the server (local dev and container) so Pi's install ping can never leave the box.
 3. Upgrade `undici` past 8.12.2 inside the Pi tree (next Pi release or an override), and `cryptography` to 50.x in `requirements.lock`, when the fixed releases are at least 7 days old.
-4. Run `pnpm install` to drop the orphan `@earendil-works/pi-*@1.3.0` folders.
-5. Use a full UTC timestamp for `uv pip compile --exclude-newer`.
+4. Use a full UTC timestamp for `uv pip compile --exclude-newer`.

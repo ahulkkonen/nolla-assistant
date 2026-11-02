@@ -13,9 +13,7 @@ pages of diagram styles and a written discussion.
    letter-spacing 0.06em). The decision node is a neutral node with a dashed hairline. The role
    colours are tuned in OKLCH so tint, hairline and text share lightness and chroma across roles,
    in both themes. The post-render pass in `render.ts` (`finishDiagram`) grows: it wraps labels,
-   sizes the emoji, snaps nodes to the pixel grid, aligns rows and redraws edges. Reference demo:
-   the designer's variant B in the session scratchpad (`diagram-styles-demo-3.html`); its DOM pass
-   is the starting point.
+   sizes the emoji, snaps nodes to the pixel grid, aligns rows and redraws edges.
 2. **Export typography.** `framedSvg` wraps the title and the caption into `tspan` lines measured
    with the loaded fonts (canvas `measureText`). The sheet is at least 560 px wide, margin 24 px.
    Title Inter 600 17/24 letter-spacing -0.012em; caption 13/18 muted, at most 68ch. The export

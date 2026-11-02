@@ -14,7 +14,7 @@ discussion before the repository goes public.
    - the committed embedding model under `tests/masked-only/models/` left every commit (112 MB
      blob; GitHub refuses blobs over 100 MB);
    - the screenshot baselines `tests/e2e/screenshots*` left every commit and came back in one
-     commit on top (their churn was 287 MB of the 238 MB pack);
+     commit on top (their churn: 287 MB uncompressed; pack 238 MB);
    - the `Claude-Session:` trailer left every commit message (private session links);
    - the author email of 59 commits became the GitHub noreply address.
    Result: 383 commits became 375, the pack went from 238 MB to 35 MB, the tree of `HEAD` is

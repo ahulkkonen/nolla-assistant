@@ -1,6 +1,6 @@
 # Phase 13: Thread depth
 
-The fixed decisions are in `phase-11-15-plan.md`, section "Phase 13". This record adds the decisions
+The fixed decisions are in `phase-11-15-plan.md` (superseded, see its header), section "Phase 13". This record adds the decisions
 that the plan left open, the data model, the egress rule, the UI, the task cards, the gate and the
 risks. The record of phase 10 (`phase-10-models.md`) stays valid. The `user.retry` path in
 `apps/server/src/bridge.ts` does not change.
@@ -365,7 +365,7 @@ Changes to existing schemas. All new fields are optional, so older fixtures stay
 - `ChatExport` keeps `version: 1`. `chat` gets `usage: ChatUsage.optional()`, the root gets
   `fx: FxRate.nullable().optional()`, and each message gets `usage: CallUsage.optional()`.
 - Phase 16 adds the optional `input`, `output`, `cacheRead` and `cacheWrite` to `ChatUsage`, still in
-  `version: 1` (`phase-16-polish.md`, decision 12).
+  `version: 1` (`phase-16-polish.md`, decision 13).
 
 New client messages:
 
@@ -623,7 +623,7 @@ thinking group in the model menu (phase 10).
 | 1 | Sidecar scope copy | Opus | `services/pseudo-svc/app/vault.py`, `main.py`, `api_models.py`, `tests/test_api.py`, `tests/test_vault.py`. `packages/pi-ext-pseudo/src/client.ts` (`forkSession`), `fake-sidecar.ts` | pytest: after `/session/fork`, `/scan` in the new session keeps a copied person surrogate. Without the copy, it masks the surrogate again. Spans after `until` are not copied. The seen count and the last-seen time do not change. The fake sidecar copies its seen set |
 | 2 | Protocol, database, formatters | Opus | `packages/protocol/src/index.ts`, a new `packages/protocol/src/format.ts` and its test, `packages/db/src/schema.ts`, `packages/db/drizzle/0006_*.sql` | The schemas of "Data model" parse. Formatter tests cover every rule of decision 17 |
 | 3 | Usage capture, FX rate, other calls | Opus, after 2 | New: `apps/server/src/usage.ts` (extension, row writer, month query) and `apps/server/src/fx.ts`, each with a test. Changed: `apps/server/src/pi/registry.ts` (extension wiring), `topics.ts`, `memory.ts`, `config.ts` (`ECB_RATES`) and `main.ts`. Also `packages/pi-ext-subagents/src/index.ts` and `tests/fake-llm/src/index.ts` (cost in the usage chunk, reasoning deltas) | Tests: a streamed cost becomes `pa.costUsd` and one `usage` row, and the chat totals grow by the same amount. Without a cost, the row is an estimate. Thinking times give `pa.thinkingMs`. A title job writes a `task` row. A child's reply writes a `subagent` row. The FX parser takes the probe CSV and refuses a bad one. `ECB_RATES=off` makes no request. A failed request keeps the cache |
-| 4 | Bridge and export | Opus, after 1 to 3 and after the go-ahead for `bridge.ts` | `apps/server/src/bridge.ts` (`toMessage` usage and thinking, `message.thinking`, `thinking.get`, `chat.fork`, `usage.get`, `fx.state` at attach, `forkedFrom` in `chat.state`, the file window helper, `summary` usage), `apps/server/src/export.ts`, server tests, `tests/masked-only/src/masked-only.test.ts` | Tests: a fork copies the path up to the fork point and leaves the source file byte-equal. The new chat has the link, policy `zdr` and zero totals. Its first request carries the copied masked messages and the edited text, masked once. Copied replies show no cost. `thinking.get` restores the text. A seeded real value in a thinking block is masked in the next request. The masked-only suite passes with a fork and a thinking reply |
+| 4 | Bridge and export | Opus, after 1 to 3 | `apps/server/src/bridge.ts` (`toMessage` usage and thinking, `message.thinking`, `thinking.get`, `chat.fork`, `usage.get`, `fx.state` at attach, `forkedFrom` in `chat.state`, the file window helper, `summary` usage), `apps/server/src/export.ts`, server tests, `tests/masked-only/src/masked-only.test.ts` | Tests: a fork copies the path up to the fork point and leaves the source file byte-equal. The new chat has the link, policy `zdr` and zero totals. Its first request carries the copied masked messages and the edited text, masked once. Copied replies show no cost. `thinking.get` restores the text. A seeded real value in a thinking block is masked in the next request. The masked-only suite passes with a fork and a thinking reply |
 | 5 | Pi contract checks | Opus, with 3 | `tests/contract` | A real Pi session keeps the `pa` key after store and reopen. A `message_end` replacement from an extension reaches the JSONL. `provider_stream_event` carries the usage chunk. `createBranchedSession` on a second manager leaves the source file unchanged |
 | 6 | Web | UI implementer, after 4 | `apps/web/src/components/MessageView.tsx`, `Thread.tsx` (link row, find bar, turn sums), `Sidebar.tsx` (menu label), `SettingsDialog.tsx` (switch, Hallinta row), a new `UsageScreen.tsx`, `ShortcutsDialog.tsx`, `store.ts`, `ws.ts`, `tests/e2e` | The e2e flows of "Gate" pass. The UI review passes at 390, 1024 and 1440 px in light and dark. Screenshots show the thinking row (closed, open, live), the action row meta with its tooltip and the link row. Other screenshots show the find bar with hits, the chat menu label and Käyttö (rows, empty). axe reports no violation |
 | 7 | Documentation | Sonnet, after 4 | `docs/decisions/README.md` (index), `docs/plan.md` (thread section: fork, thinking, cost, find), `docs/deploy.md` (`ECB_RATES`) | The texts match decisions 2, 3, 12 and 16 and the egress table |
@@ -645,11 +645,13 @@ the user asks.
    3. The action row of the reply shows a time and a cost. The chat menu shows the chat total.
    4. Ctrl+F opens the find bar. Two hits show "1/2". Enter moves to "2/2". Esc closes the bar.
    5. Settings › Käyttö shows the fake model with its cost for the current month.
-5. A one-time live check with the real keys, recorded in a "Verified on" line under this section:
+5. A one-time live check with the real keys:
    - One `zdr/google/gemini-4-argon` reply and one `zdr/anthropic/claude-sonnet-5.5` reply store
      `pa.costUsd`. The value matches the OpenRouter activity page to four decimals.
    - Record for each of the two models whether a thinking block with text reaches the session.
    - The ECB request works from the container and writes `DATA_DIR/fx/usd-eur.json`.
+
+   Live check not recorded.
 
 ## Risks
 
@@ -698,4 +700,4 @@ guessed the server id of a sent message by position), closed by the server messa
 `message.accepted` built on a per-session prompt queue that follows Pi's preflight outcome; a
 second review of that path found two more blocking cases (overlapping and steered prompts),
 closed in `5517287` with four timing tests and a Pi contract check. The scored UI review passed
-after two rounds with every cell at 5. The gate run is recorded in the README status line.
+after two rounds with every cell at 5. The gate run itself is not recorded.

@@ -16,7 +16,7 @@ Gate command: `pnpm typecheck && pnpm lint && pnpm test && pnpm --filter @pa/e2e
    approval cards). Plain React 19 components with Tailwind 4 tokens and Radix primitives are less
    code than adapting an external runtime. Plan §11 "Stack" is amended accordingly.
 2. **Auth over HTTP, not over the WebSocket.** Cookies need HTTP responses. `auth.login` stays in
-   the protocol unused until removed in phase 7 cleanup. The WebSocket upgrade requires the cookie.
+   the protocol, unused. The WebSocket upgrade requires the cookie.
 3. **Session cookie** `pa_session`: 32 random bytes base64url, stored hashed (sha256) in table
    `authSessions` with `expiresAt`; `HttpOnly; SameSite=Strict; Secure` (Secure off when
    `AUTH_ORIGIN` is http); 30-day rolling expiry, refreshed when < 15 days remain.

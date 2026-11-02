@@ -20,8 +20,8 @@ what stays as it is.
 7. Nice-to-haves done in the same batch: passkey challenge map capped, the missing IPv6 ranges in
    `net.ts`, YAML error logs without the source line, `__Host-` cookie prefix when the origin is
    https, config checks fail closed.
-8. **Litestream removed; `app.db` hourly with restic** (decided by the user). Litestream wrote
-   `app.db` to the bucket as plain SQLite pages, and the file holds real values (claims, evidence,
+8. **Litestream removed; `app.db` hourly with restic** (item A8, decided by the user).
+   Litestream wrote `app.db` to the bucket as plain SQLite pages, and the file holds real values (claims, evidence,
    restored titles). Litestream 0.5 has no replica encryption. Restic encrypts every snapshot.
    The backup service snapshots consistent copies of `app.db` (SQLite online backup) and
    `vault.db` (`sqlcipher_export`, so the service gets `PSEUDO_VAULT_KEY`) hourly (tags `app`,
@@ -30,8 +30,8 @@ what stays as it is.
 
 ## Batch B: architecture fixes
 
-8. The `chat.create` wait in `ws.ts` ends on refusal or socket close and the composer keeps its
-   text; the client waits for the pong and shows Login on a 401 reconnect.
+8. Item B8. The `chat.create` wait in `ws.ts` ends on refusal or socket close and the composer
+   keeps its text; the client waits for the pong and shows Login on a 401 reconnect.
 9. Biome rules on (`recommended`), the findings fixed, import cycles broken.
 10. `bridge.ts` split by concern; no module imports helpers from it.
 11. Indexes for `chunks` and the `chatId` child tables in one migration; a test that the migrated
@@ -66,10 +66,10 @@ what stays as it is.
 
 Done 2026-10-31. All branches are merged to `main`.
 
-- Batch A (security, items 1 to 8): done on the branch `p30-sec`.
-- Batch B item 10 (the `bridge.ts` split): done on the branch `p30-b1`.
-- Batch B items 8, 11, 12, 13 and the dependency follow-ups: done on the branch `p30-b2`.
-- Batch B item 9 (Biome rules) and decision 14 (masked artifacts): done on the branch `p30-b3`.
+- Batch A (security, items 1 to 8): done.
+- Batch B item 10 (the `bridge.ts` split): done.
+- Batch B items 8, 11, 12, 13 and the dependency follow-ups: done.
+- Batch B item 9 (Biome rules) and decision 14 (masked artifacts): done.
 
 Batch A, per item:
 
@@ -107,7 +107,7 @@ Batch A, per item:
    or with a LiteLLM key under 32 characters, and the broker refuses to start without
    `HOST_DATA_DIR`. `compose.local.yaml` fixes the project name `pa-local` and sets
    `HOST_DATA_DIR` to `/var/lib/docker/volumes/pa-local_pa-data/_data` (default data-root).
-8. Done. Review fix: no live database file is copied. `infra/backup/db-copy.sh` writes a
+8. Done (A8). Review fix: no live database file is copied. `infra/backup/db-copy.sh` writes a
    consistent copy first (`sqlite3 .backup`, `sqlcipher_export` for the vault). `restore.sh`
    stops on a failed snapshot listing, takes each database from the newer snapshot (restic
    `latest` over both tags) and stops unless `PRAGMA integrity_check` returns `ok`. The restore
@@ -156,7 +156,7 @@ Left as they are in item 10, on purpose:
   `memory.list`, `chat.focus`, `push.subscribe` and `automations.*` itself. Each is one service
   call or one guard.
 - `AGENTS.md` (layout) still names only `bridge.ts`. This branch changed only `apps/server/src`
-  and this record. Done later on the branch `p30-b3`.
+  and this record. Done later.
 
 Batch B, item 9:
 
@@ -255,19 +255,19 @@ Left as they are in decision 14, on purpose:
 - Markdown links in a reply are restored before rendering (the weaker form in the security
   report). This decision does not change them.
 
-Batch B, per item (branch `p30-b2` holds 8, 11, 12, 13 and the dependency follow-ups):
+Batch B, per item (items 8, 11, 12, 13 and the dependency follow-ups):
 
-8. Done. A refused `chat.create` or a close before `chat.created` rejects the wait in `ws.ts`.
+8. Done (B8). A refused `chat.create` or a close before `chat.created` rejects the wait in `ws.ts`.
    `sendUserMessage` then gives the text and the files back as a `draft` with `chatId: null`
    (the new-chat composer). A refusal shows the toast of its code; a close shows "Viestin
-   lähetys epäonnistui.". The server does not echo a request id for `chat.create`, and the fix
-   must not touch `bridge.ts` while the split runs. So the next error without a `chatId` and
-   with a code that a refused create sends (`bad_message`, `not_found`, `failed`,
+   lähetys epäonnistui.". The server does not echo a request id for `chat.create`. So the next error
+   without a `chatId` and with a code that a refused create sends (`bad_message`, `not_found`, `failed`,
    `pseudo_down`; from the agent and topic lookup, the model and modes check and the session
    build) answers the oldest wait. This is the same send order that `chat.created` already
    uses. A refused create never names a chat. Kept on purpose until the follow-up: an error of
    another request with one of these codes can still end a create wait. Follow-up after the
    split: a `localId` on `chat.create`, echoed in `chat.created` and in the error.
+   Outcome: not done. `chat.create` has no `localId`, and `ws.ts` keeps the oldest-wait rule.
    Review fixes: a sign-out drops the text of a pending create, so the next user never sees it.
    A `chat.create` that is still in the queue when its wait fails is removed from the queue.
    Frames from a socket that is no longer current (lost to a missing pong) are ignored, so the
@@ -292,9 +292,9 @@ Batch B, per item (branch `p30-b2` holds 8, 11, 12, 13 and the dependency follow
     `error.code` uses it. The wire format does not change. The web keeps
     `ERROR_TEXT: Record<ErrorCode, string>` and gained Finnish texts for `memory_generated` and
     `invalid`, which had none. The server's `errorMsg` returns a `ServerMessage`, so the compiler
-    already refuses a server code outside the enum. The server text map `ERRORS` is in
-    `bridge.ts`, which this batch must not edit during the split. Follow-up for the split:
-    `ERRORS satisfies Record<ErrorCode, string>`. The web key `pseudo_collision` was never an
+    already refuses a server code outside the enum. Follow-up for the split:
+    `ERRORS satisfies Record<ErrorCode, string>`. Outcome: not done. `ERRORS` moved to
+    `socket.ts` without `satisfies`. The web key `pseudo_collision` was never an
     error code: it is the toast text of the `chat.held` frame. It is now the constant
     `COLLISION_TEXT` in `store.ts`, not an enum member. The schema is
     `ErrorCode.catch('failed')`: a cached PWA that is older than the server reads a code it does
@@ -349,8 +349,8 @@ Dependency follow-ups (`docs/audits/2026-10-31-dependencies.md`, "Recommended ac
   (`--exclude-newer 2026-10-24T00:00:00Z` as the example). The lock is not rebuilt in this batch:
   a rebuild with the stricter cut-off changes versions, and a version bump is its own change.
 - Checked with `docker compose config` and a placeholder env. The images were not built and the
-  stack did not run in this batch (no pull). Run the compose smoke before the merge.
+  stack did not run in this batch (no pull).
 - Not done, on purpose: `undici` and `cryptography`. The fixed releases are younger than 7 days.
-  Update 2026-11-01: `undici` overridden to 8.12.3 in the Pi tree. `cryptography` 50.x needs
-  presidio 2.2.365, old enough from 2026-11-02 19:03 UTC; that bump is its own change.
+  Update 2026-11-01: `undici` overridden to 8.12.3 in the Pi tree. Open: presidio-analyzer and
+  presidio-anonymizer 2.2.365, then cryptography 50.x.
 - Not in scope: `pnpm install` to drop the orphan Pi 1.3.0 folders (local `node_modules` only).

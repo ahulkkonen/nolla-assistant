@@ -1,7 +1,6 @@
 # Phase 23: Output modes, prompt placement and the router
 
-Date: 2026-10-29. Follows phase 22 (`phase-22-quick-wins.md`, open). Phase 23 starts after phase 22
-merges, because both change `packages/protocol/src/index.ts` and `apps/server/src/bridge.ts`. The
+Date: 2026-10-29. Follows phase 22 (`phase-22-quick-wins.md`). The
 records of phase 15 (editors), phase 20 (queue, panel) and phase 21 (confidence trial) stay valid,
 except where this record changes them (section "Changes to earlier records").
 
@@ -31,8 +30,7 @@ Finnish UI text. Every new control has an accessible name and keyboard access.
 
 ## Findings
 
-Lines were read on 2026-10-29 at `d3263f1` (phase 22 server part and Pi 1.4.0 merged). Serena has no language server in this project
-(`.serena/project.yml`), so the research used direct reads.
+Lines were read on 2026-10-29 at `d3263f1` (phase 22 server part and Pi 1.4.0 merged).
 
 | # | Fact | Where |
 | --- | --- | --- |
@@ -48,7 +46,7 @@ Lines were read on 2026-10-29 at `d3263f1` (phase 22 server part and Pi 1.4.0 me
 | F10 | The store has ten screens; Asetukset is a dialog (`settingsOpen`). 21 calls of `setScreen` and `setActive`, plus `openChat` and `runSearch` (`ws.ts:101-111`), change the screen or the chat. | `apps/web/src/store.ts:97-108`, `:218` |
 | F11 | Deep links: `?chat=` in `App.tsx`, `push-sw.js` and the file origin link. | `App.tsx:155-172`, `apps/web/public/push-sw.js:27`, `FilesScreen.tsx:366` |
 | F12 | The server sends `index.html` for an unknown GET with `Accept: text/html` outside `/api` and `/ws`. The service worker falls back to `index.html` except `/api`, `/ws`, `/healthz`. The asset base is `/`. | `apps/server/src/http.ts:226-235`, `apps/web/vite.config.ts:39` |
-| F13 | An edited copy in `DATA_DIR/agents` does not take a new image file. | `seed.ts:73` (phase-16 decision 21) |
+| F13 | An edited copy in `DATA_DIR/agents` does not take a new image file. | `seed.ts:73` (phase-16 decision 6) |
 
 ## Decisions
 
@@ -258,7 +256,7 @@ with `pnpm typecheck` and `pnpm lint`.
 
 | ID | Title | Owner | Model | Files | Tests to write | Acceptance | Order |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| S1 | Protocol and column | server | Opus medium | `packages/protocol/src/index.ts`, `packages/db/src/schema.ts`, migration `0012` | protocol: `ModeFile` refuses an unknown key and renderer; `AgentFile` without `modes` parses to `{ default: [] }`; db: a row with `confidence` 1 has `modes` `["confidence"]` after the migration, a row with 0 has null | `tsc` finds every `confidence` user | first |
+| S1 | Protocol and column | server | Opus medium | `packages/protocol/src/index.ts`, `packages/db/src/schema.ts`, migration `0012` | protocol: `ModeFile` refuses an unknown key and renderer; `AgentFile` without `modes` parses to `{ default: [] }`; db: a row with `confidence` 1 has `modes` `["suora", "perusteellinen", "confidence"]` after the migration, a row with 0 has null | `tsc` finds every `confidence` user | first |
 | S2 | Loader, prompt, registry, bridge | server | Opus medium | new `apps/server/src/modes.ts`, `pi/registry.ts`, `bridge.ts`, `main.ts`, `agents/modes/*.md`, `agents/assistant.yaml`, `agents/prompts/assistant.md` | `modes.test.ts`: frontmatter parse, bad file keeps the previous one, `systemPrompt` order and skip; registry: null uses the profile default, a list overrides it, a mode file edit rebuilds an idle session, a running one keeps its prompt; bridge: `chat.setModes` with an unknown id answers `bad_message`, during a run it writes the row; the fork copies `modes`; `agents.state` lists modes | Tests pass; no `CONFIDENCE_PROMPT` in `registry.ts` | after S1 |
 | S3 | Writers and mode routes | server | Opus medium | `admin.ts`, `http.ts`, `admin.test.ts` | the existing admin tests pass unchanged; mode create, update, dry run, delete; delete of a default mode answers `in_use`; unknown renderer answers `bad_message` with path `renderer`; unknown id in `modes.default` answers path `modes.default.0` | Routes call `adminWriters` only | after S1 |
 | W1 | Tila chip and sheet | web | Opus xhigh | `store.ts`, `ModelPicker.tsx` (`useModes`, `ChatSwitches`), `Composer.tsx`, `ws.ts` (`createChat` sends `pendingModes`) | `store.test.ts`: effective modes from `agents.state`; e2e: toggle Luottamus in the chip, the menu stays open, the label changes, the next reply has markers; phone sheet rows toggle the same state; a new chat sends `modes` | No `useConfidence`, no `ConfidenceToggle` | after S1 |
@@ -315,75 +313,36 @@ at 390, 1024 and 1440 px, light and dark, against brief section 7 and decisions 
 - **The `renderer` field.** Mode files keep the `renderer` field, and the mode editor shows it. The
   web does not use the field to choose a renderer: it shows confidence shading when the reply text
   holds the markers (decision 9).
+- **Production `assistant.md` (decision 11).** No hand edit is needed for a copy that the user did
+  not edit: at start, `seedDir` writes the image file over a copy that still has its manifest hash
+  (phase-16 decision 6). A copy that the user edited keeps line 3. Then delete line 3 by hand in
+  Asetukset › Agentit. Whether the production copy was edited is not recorded.
 
 ## UI review 2
 
-The second blind UI review, 2026-10-29. Measured with Playwright Chromium at 390 and 1440 px.
+The second blind UI review, 2026-10-29, at 390 and 1440 px. The findings that changed a decision:
 
-1. **Tila chip.** One label rule (decision 8). Three modes on at 1440 px give "Tila · 3" (a 92 px
-   chip); two modes at 1024 px give "Perusteellinen, Suora". The "+N" form is gone.
-2. **"Hyväksy automaattisesti".** Off: a ghost 32 px chip with the 16 px `Shield` and the label, or
-   the shield alone (32 × 32 px) when the toolbar has no room. The desktop tooltip states the state
-   ("Hyväksy automaattisesti: pois" or "päällä"), then what the switch does. On: the warning-tint
-   pill with `ShieldAlert`. Phones keep the switch in the model sheet; while it is on, the closed
-   row shows the shield in a 28 px `--warning-subtle` circle. An empty new chat has no chip,
-   because the setting belongs to a chat that exists.
+1. **Tila chip.** One label rule (decision 8). Three modes on at 1440 px give "Tila · 3". The "+N"
+   form is gone.
+2. **"Hyväksy automaattisesti".** Off: a ghost chip with `Shield`, or the shield alone when the
+   toolbar has no room. On: the warning-tint pill with `ShieldAlert`. Phones keep the switch in the
+   model sheet. An empty new chat has no chip, because the setting belongs to a chat that exists.
 3. **Waiting line.** See phase-26 decision 4.
-4. **"Näytä luvut".** See decision 9: 28 × 103 px on and off, a 44 px target.
-5. **Hidden N.** See decision 9: the anchor is 0 px wide. The N is 4.78 px (390) and 5.02 px (1440)
-   clear of the next glyph.
-6. Badges in the agents list: "Aliagentit käytössä", "Ei aliagentteja", "Virheellinen".
-7. The agents list has the 1 px top rule at 390 px, as the modes list.
-8. A no-break space joins "välimuisti" and its rate (`withRate`), also in the receipt sheet.
-9. Under 768 px the action-row meta has no cache item (the sheet shows it). No item is cut.
-10. The cost tooltip writes every label with a colon ("Syöte: 1 234").
-11. The tool names in the auto-approve helper and tooltip are mono.
-12. "Aihe-ehdotukset" is in the sidebar's nav block under "Tiedostot".
-13. The phone top bar of an empty chat has a visually hidden h1, so no visible text repeats the
-    name of the ✎ button.
-14. Phone action rows: 44 px targets 8 px apart (a 52 px pitch).
-15. See item 2.
-16. The mode editor's "Esitystapa" label is 14/500, as the field labels.
-17. New screen `error-toast-background` (390 and 1440): a model error in a chat that is not open
-    gives the toast with "Näytä tiedot".
-18. `waiting-queue`, `streaming` and `composer-queue` hold the client's clock. `streaming` and
-    `composer-queue` show the active step without the highlight.
+4. **"Näytä luvut" and the hidden N.** See decision 9.
+
+The other 14 findings were pixel fixes.
 
 ## UI review 3
 
-The third blind UI review, 2026-10-29. Measured with Playwright Chromium at 390, 1024 and 1440 px.
+The third blind UI review, 2026-10-29, at 390, 1024 and 1440 px. The findings that changed a
+decision:
 
-1. **Turn spacing on touch.** Each turn except the latest keeps the room of its action row, also
-   an older reply (40 px, 48 px under 768 px). Touch shows the row only under the latest turns. In
-   `fork-link` at 390 px, the gap from a user bubble to the next reply text is 55 px, and the gap
-   from an older reply to the next bubble is 51 px (before: 55 px and 27 px). `chat` has no older
-   reply, so its gaps do not change.
-2. **Legend at 390 px.** "Luottamus" and the scale are on line 1, "Näytä luvut" is on line 2.
-3. **Segmented control.** The kit `TabsTrigger` shows the selected item in `--card` with
-   `--shadow-sm` in light, and in `--card` in dark. The agent editor (Lomake/YAML), the mode
-   editor (Lomake/Markdown), Muisti and the artifact panel use this one component.
-4. **Row pitch.** The agents list and the modes list have 56 px rows. A mode description has one
-   line with an ellipsis. An error keeps two lines.
-5. **Agents list at 390 px.** The badge is under the meta line, so `zdr/strong` shows in full. The
-   row is 80 px high.
-6. **`waiting-queue`.** The test holds each server frame after the `sent` phase until after the
-   shot. All four shots show "jonossa 12 s".
-7. **Receipt sheet.** `SEP` (" ·" and a no-break space) joins the meta items, also in `withRate`.
-   No line ends in "·".
-8. **`message-meta`.** The 1024 px shot also hovers the cost, so the tooltip shows.
-9. **Cost tooltip.** Under the latest reply, the tooltip opens below the action row
-   (`side="bottom"`, `sideOffset` 8).
-10. **Toast.** A no-break space joins "epäonnistui" and the status, so "(400)" stays on the line of
-    its word. The close button is a 28 px ghost icon button 16 px from the right edge, inside the
-    toast (a 44 px target on phones). The error icon is `CircleAlert` 16 in `--destructive`, as in
-    the inline alert. In the 360 px toast the title now has two lines, because the close button
-    takes room inside the toast.
-11. **Drawer row.** The fork and lock marks follow the title (6 px from the text) at 14 px, muted.
-    Only ⋯ is at the row end, and the marks stay 8 px or more from it. The button's `::after`
-    keeps the full row as the target, and the focus ring goes around the row. The docked sidebar
-    does not change.
-12. **Model sheet.** The header has the 44 px "Sulje" × of the receipt sheet (`SheetCloseButton`,
-    also the kit sheet's own close button).
+1. **Turn spacing on touch.** Each turn except the latest keeps the room of its action row. Touch
+   shows the row only under the latest turns.
+2. **Segmented control.** The agent editor, the mode editor, Muisti and the artifact panel use one
+   component, the kit `TabsTrigger`.
+
+The other 10 findings were pixel fixes.
 
 Not changed, decided before:
 
@@ -392,35 +351,20 @@ Not changed, decided before:
 
 ## UI review 4
 
-The fourth blind UI review, 2026-10-29. Measured with Playwright Chromium at 390 and 1440 px.
+The fourth blind UI review, 2026-10-29, at 390 and 1440 px. The findings that changed a decision:
 
-1. **Background error.** The toast of a failed reply in a chat that is not open has a
-   description line (meta 13/18, muted): "Keskustelu ”Hei”", from the sidebar label of the chat
-   (its title, else its first user line), else "Keskustelu". The title stays 14/20 500. The
-   chat's sidebar row shows `CircleAlert` 14 px in `--destructive` (tooltip "Mallikutsu
-   epäonnistui") until the chat opens (`chat.state`) or a new turn starts. The mark is client
-   state only (`failedAway`); the server does not change.
-2. **Phone action rows.** The outer 44 px target moves out by its 14 px inset: the first glyph
-   of a reply's row starts at x 16, and the last glyph of a user turn's row ends at x 374 (390 px).
-   The pitch stays 52 px.
-3. **Agents YAML.** Under 768 px the field has 24 px lines (16 px text) and `pre-wrap`, so a long
-   line wraps and keeps its indentation. At 768 px and up it stays 13/20 with no soft wrap.
-4. **`waiting-queue`.** The screens fixture turns the `.sweep` highlight off for every shot, so
-   both schemes show the active step flat.
-5. **Receipt sheet.** The meta runs up to the edge of the × button (no gap), so the 390 px meta
-   has one line. Each item carries its "·" in a 12 px box, and the row starts 12 px left of the
-   clipped line, so a wrapped line starts with an item and no line starts or ends with "·".
-6. **Model sheet, empty chat.** The header row has the label "Malli ja ajattelu" (14/20 500)
-   next to the ×.
-7. **Auto-approve helper.** The sheet's switch helpers use `text-wrap: pretty`; "bash" is not
-   alone on the last line.
-8. **Toast.** "Tätä tiedostotyyppiä ei voi liittää. Liitä PDF tai kuva." (56 characters). No-break
-   spaces keep the advice on one line.
-9. **Counters.** One fi-FI formatter (`count` in `thread.ts`) for the memory counters
-   ("61 / 1 500", a no-break space), the message meta and Käyttö.
+1. **Background error.** The toast of a failed reply in a chat that is not open names the chat.
+   The chat's sidebar row shows `CircleAlert` until the chat opens or a new turn starts. The mark
+   is client state only (`failedAway`); the server does not change.
+2. **Counters.** One fi-FI formatter (`count` in `thread.ts`) for the memory counters, the message
+   meta and Käyttö.
+
+The other 7 findings were pixel fixes.
 
 Not changed:
 
 - The dark mono weight. It is a change to the brief's table; a later typography pass decides it.
 - Tool rows keep the type icon (phase-21 decision 5), and the phone error alert keeps its two
   buttons (UI review 1).
+
+The UI review took four rounds. The final scores are not recorded.

@@ -31,7 +31,7 @@ axe accessibility scan reports no serious or critical violation on any screen.
 7. **iOS PWA details are in scope.** `viewport-fit=cover` with safe-area insets, `100dvh`,
    `theme-color` per scheme, no layout shift while a reply streams, keyboard-aware composer,
    reduced motion honoured.
-8. **Agents screen stays read-only.** Decided in phase 7.
+8. **Agents screen stays read-only.** Decided in phase 7 (changed in phase 15).
 
 ## 2. Component map
 
@@ -191,7 +191,7 @@ Neutral base: warm gray. One accent: blue, for focus ring and links only. The pr
 | `--destructive-subtle` | #fbe7e4 | #45282a | diff removed, inline error |
 | `--mask` / `--mask-line` | #ece4fb / #7151c4 | #3e3557 / #b8a3f0 | masked-text highlight / dotted underline |
 
-No chart tokens: the app has no charts. Contrast ratios (WCAG 2.x), light | dark:
+No chart tokens: the app has no charts (changed in phase 19). Contrast ratios (WCAG 2.x), light | dark:
 
 | Pair | Ratio | Pair | Ratio |
 |---|---|---|---|
@@ -335,7 +335,7 @@ Source: safe-area, theme-color pair, status-bar style, `dvh`, overscroll, long-p
 - Errors: what happened + what to do, ≤ 2 short sentences ("Mallin kutsu epäonnistui. Yritä uudelleen."). Toasts ≤ 60 characters. Empty-state line ≤ 80 characters.
 - Sentence case; no period in buttons, labels, titles or menu items; full sentences end with a period.
 - Formats: time "klo 17.20", date "25.10.2026", decimal comma, "42 %" with a space, "…" as one character, " – " en dash. Tool names, file names and agent ids stay as code in mono; all other UI text is Finnish.
-- Keep these accessible names unchanged (e2e uses them), and never give a second element on the same screen one of them: "Uusi keskustelu", "Viesti", "Kirjaudu", "Salasana", "Asetukset", "Nimisuoja", "Aiheet", "Agentit", "Automaatiot", "Muisti", "Valikko", "Hae keskusteluja", "Hyväksy", "Hylkää", "Agentti: Avustaja", "Tutkija", "Toiminnot", "Lisää". The palette group stays "Komennot", so "Toiminnot" keeps one owner.
+- Keep these accessible names unchanged (e2e uses them), and never give a second element on the same screen one of them: "Uusi keskustelu", "Viesti", "Kirjaudu", "Salasana", "Asetukset", "Nimisuoja", "Aiheet", "Agentit", "Automaatiot", "Muisti", "Valikko", "Hae keskusteluja", "Hyväksy", "Hylkää", "Agentti: Avustaja", "Toiminnot", "Lisää". The palette group stays "Komennot", so "Toiminnot" keeps one owner.
 
 ### 7.10 Review rubric notes
 
@@ -420,6 +420,7 @@ The shell precache is 18 entries and 1376.42 KiB, under the 1.5 MB limit. The la
 3. The name of the artifact close button is "Sulje artefaktit", not "Sulje". An e2e flow uses the name, and a second "Sulje" can be on the same screen.
 4. The `[` key toggles the sidebar. An e2e flow uses it, and the shortcuts dialog lists it.
 5. Mermaid artifacts use the light theme in both schemes, because the artifact keeps its own white page.
+   Superseded by [phase-19-viz.md](phase-19-viz.md), decision 9.
 6. The axe scan ignores the `region` rule on the Radix popper wrapper only. Radix portals open menus and tooltips to `<body>`, outside every landmark.
 7. The tool row of an expired approval shows `TimerOff` in the muted colour. The brief names only the waiting `Clock`.
 8. Vault row selection uses a native checkbox. The kit has no `Checkbox`.

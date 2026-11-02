@@ -97,7 +97,7 @@ Sources: `pi-src/package/docs/mcp.md`, `@earendil-works/pi-coding-agent@1.3.0` `
 
 **`structuredContent`.** Yes, always. `convertMcpResult` sets `structuredContent` to the whole `CallToolResult` without `_meta`: `{ content: [...as sent by the server], structuredContent?: <server structured content>, isError? }` (`tools.js:210-216`). `details` is `{ server, tool, fullOutputPath? }`. Text over 20 KB reaches the model truncated in the middle, and Pi writes the full text to a temp file (`tools.js:135-155`). That temp file holds real values.
 
-**Verified with Pi's own code.** `scratchpad/spike6/scripts/client.mjs` ran `McpClient` + `StreamableHttpTransport` from `pi-mcp@1.3.0` and `convertMcpResult` from `pi-coding-agent@1.3.0` against the fake server (question 7). One `get_events` result reached the `tool_result` shape with the same event text three times: `content[0].text`, `structuredContent.content[0].text` and `structuredContent.structuredContent.result`.
+**Verified with Pi's own code.** A spike script ran `McpClient` + `StreamableHttpTransport` from `pi-mcp@1.3.0` and `convertMcpResult` from `pi-coding-agent@1.3.0` against the fake server (question 7). One `get_events` result reached the `tool_result` shape with the same event text three times: `content[0].text`, `structuredContent.content[0].text` and `structuredContent.structuredContent.result`.
 
 ### 3. OAuth redirect proxy
 
@@ -142,7 +142,7 @@ See the draft in Decision. `manage_event` is the only write. It covers create, u
 - `@modelcontextprotocol/sdk` is not in `pnpm-lock.yaml` as a package. It appears only as an optional peer of `@google/genai@2.21.0`.
 - Registry (`https://registry.npmjs.org/@modelcontextprotocol%2Fsdk`): `latest` is `1.32.2` (2026-10-23, too young). `1.32.1` was published 2026-10-05T11:47:50Z (20 days). Licence MIT. Integrity `sha512-2DdE+SJDtzLEEWzY1ZjY7Q+VcPhcV1KisD3zI4u0XZyktsjHum1mwbMI+JaulUBi2OZk+KJAi2uPXzxichPkdw==`. It brings 17 runtime dependencies (`express`, `hono`, `@hono/node-server`, `ajv`, `jose`, …).
 - A scratch install with the global `minimum-release-age=10080` resolved `@modelcontextprotocol/sdk@1.32.1` and `zod@4.1.12`.
-- The fake server (`scratchpad/spike6/fake/server.mjs`, about 70 lines) uses `McpServer` and `StreamableHTTPServerTransport`. It exposes `get_events` and `manage_event` with the same names, the same text format and the same `{ result }` structured wrap as the real server. Probed with Pi's client: `tools/list` returned both tools with `outputSchema`, `get_events` returned `content` and `structuredContent`, `manage_event` stored the arguments, and a request without the secret header returned 401.
+- The fake server (about 70 lines) uses `McpServer` and `StreamableHTTPServerTransport`. It exposes `get_events` and `manage_event` with the same names, the same text format and the same `{ result }` structured wrap as the real server. Probed with Pi's client: `tools/list` returned both tools with `outputSchema`, `get_events` returned `content` and `structuredContent`, `manage_event` stored the arguments, and a request without the secret header returned 401.
 
 ## Decision
 
@@ -152,53 +152,7 @@ See the draft in Decision. `manage_event` is the only write. It covers create, u
 - Mode: single-user, legacy streamable HTTP, no OAuth 2.1. Section 10 of the plan changes from "OAuth 2.1, single-user mode" to "single-user mode (Google OAuth 2.0 with PKCE), no MCP-level auth, isolated network".
 - `mcp-files` stays out of phase 6. Google Drive already comes from the workspace server. Add one file server only when the user names Nextcloud or Microsoft 365. Then pin a release at least 7 days old and write a new decision note.
 
-`infra/compose.yaml` addition:
-
-```yaml
-  mcp-workspace:
-    image: ghcr.io/taylorwilsdon/google_workspace_mcp:2.1.0@sha256:866733722037ce39de0b4fa6db15c88578876f00eda448799a489d463f334aa3
-    entrypoint: ["/app/.venv/bin/python", "main.py"]
-    command:
-      - --transport
-      - streamable-http
-      - --single-user
-      - --tool-tier
-      - core
-      - --permissions
-      - calendar:full
-      - drive:readonly
-      - gmail:readonly
-      - --disabled-tools
-      - get_drive_file_download_url
-      - get_drive_shareable_link
-    environment:
-      WORKSPACE_MCP_HOST: 0.0.0.0
-      WORKSPACE_MCP_PORT: "8000"
-      GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID}
-      GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET}
-      GOOGLE_OAUTH_REDIRECT_URI: https://${PWA_HOST}/api/oauth/google/callback
-      USER_GOOGLE_EMAIL: ${GOOGLE_ACCOUNT_EMAIL}
-      WORKSPACE_MCP_CREDENTIALS_DIR: /data/mcp/workspace
-      WORKSPACE_MCP_DISABLE_LOCAL_FILES: "true"
-      OAUTHLIB_INSECURE_TRANSPORT: "1"
-    read_only: true
-    tmpfs:
-      - /tmp
-      - /home/app:uid=1000,gid=1000
-    volumes:
-      - mcp-workspace:/data/mcp/workspace   # owned by uid 1000; see Consequences
-    mem_limit: 256m
-    networks: [mcp]
-    healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
-
-# pa-server: networks: [internal, mcp] plus the Coolify proxy network.
-# backup: mount mcp-workspace read-only at /data/mcp/workspace so restic includes it.
-networks:
-  mcp: {}        # not internal: the server needs egress to Google. Only pa-server and mcp-workspace join it.
-volumes:
-  mcp-workspace:
-```
+The shipped code is in [`infra/compose.yaml`](../../infra/compose.yaml) (service `mcp-workspace`, network `mcp`, volume `mcp-workspace`), [`infra/mcp.yaml`](../../infra/mcp.yaml) (tool allowlist) and [`apps/server/src/integrations.ts`](../../apps/server/src/integrations.ts) (OAuth routes). The drafts in this record differed from that code and are removed.
 
 The `mcp` network is the only access control for `/mcp`. Do not attach `sandbox-broker`, `skill-runner`, `litellm` or `pseudo-svc` to it. Do not mount `pa-data` into `mcp-workspace`.
 
@@ -206,83 +160,17 @@ New Coolify variables: `GOOGLE_ACCOUNT_EMAIL`, `PWA_HOST`. Register `https://<PW
 
 ### `infra/mcp.yaml`
 
-```yaml
-# Tool allowlist per MCP server (plan section 10, decision 0005).
-# write: true puts mcp__<server>__<tool> into approval.always of every agent that lists the server
-# in tools.mcp. approval.never cannot remove a write tool.
-servers:
-  workspace:
-    url: http://mcp-workspace:8000/mcp
-    description: Google Calendar (read and write), Google Drive (read) and Gmail (read) of the user
-    timeout: 90            # seconds; above the server's 60 s Google API timeout
-    tools:
-      list_calendars: { write: false }
-      get_events: { write: false }
-      manage_event: { write: true }          # create, update, delete, rsvp; send_updates defaults to "all"
-      search_drive_files: { write: false }
-      get_drive_file_content: { write: false }
-      search_gmail_messages: { write: false }
-      get_gmail_message_content: { write: false }
-      get_gmail_messages_content_batch: { write: false }
-```
-
 `pa-server` reads this file at startup and validates it with zod, as `agents.ts` does. For an agent with `tools.mcp: [workspace]`, the registry:
 
 1. adds `mcp__workspace__<tool>` for each listed tool to the host `tools` option,
 2. adds each `write: true` tool to `approval.always`,
-3. passes the server to `createMcpExtension` (next block).
+3. passes the server to `createMcpExtension`.
 
 ### Pi MCP config
 
-```ts
-import { createMcpExtension } from '@earendil-works/pi-coding-agent';
-
-createMcpExtension({
-  loadConfig: () => ({
-    servers: [{
-      name: 'workspace',
-      source: 'infra/mcp.yaml',
-      scope: 'extension',
-      config: {
-        type: 'http',
-        url: mcp.workspace.url,
-        description: mcp.workspace.description,   // keeps "Connected Google account: <email>" out of the system prompt
-        timeout: mcp.workspace.timeout,
-        exposure: 'hidden',
-        toolExposure: Object.fromEntries(Object.keys(mcp.workspace.tools).map((t) => [t, 'direct'])),
-      },
-    }],
-    autoEnableCodemode: false,
-    errors: [],
-  }),
-  logPath: join(dataDir, 'pi', userId, 'mcp.log'),   // server log notifications; not masked
-  openUrl: () => {},                                 // never spawn a browser on the server
-});
-```
-
-Place it in `extensionFactories` after `pathGuard`. Its position does not change the order of the pseudo and approval handlers, because they run on `tool_call` and `tool_result` for every tool. No header is set. A shared secret would not protect the single-user server (finding 2).
+Place `createMcpExtension` in `extensionFactories` after `pathGuard`. Its position does not change the order of the pseudo and approval handlers, because they run on `tool_call` and `tool_result` for every tool. No header is set. A shared secret would not protect the single-user server (finding 2).
 
 ### OAuth routes in `pa-server`
-
-```ts
-// Start: authenticated, same-site. Returns the Google URL for the browser to open.
-app.post('/api/integrations/google/connect', { preHandler: requireUser }, async (_req, reply) => {
-  const r = await workspaceClient.callTool('list_calendars', {});   // pi-mcp McpClient, direct (not via the model)
-  if (!r.isError) return { connected: true };
-  const url = /Authorization URL: (https:\/\/accounts\.google\.com\/\S+)/.exec(textOf(r))?.[1];
-  return url ? { url } : reply.code(502).send({ error: 'no authorization URL' });
-});
-
-// Callback: no requireUser (the sameSite=strict cookie is not sent here). state + PKCE protect it.
-app.get('/api/oauth/google/callback', async (req, reply) => {
-  const query = req.raw.url?.split('?')[1] ?? '';
-  const r = await fetch(`${config.mcpWorkspaceBase}/oauth2callback?${query}`, {
-    redirect: 'manual',
-    signal: AbortSignal.timeout(30_000),
-  });
-  return reply.redirect(`/settings/integrations?google=${r.ok ? 'connected' : 'failed'}`);
-});
-```
 
 - Do not forward cookies or the `Host` header. `fetch` sends `Host: mcp-workspace:8000`, which 2.1.0 accepts.
 - Do not return the MCP server's HTML. It shows the account email and is not built for the PWA CSP. The 302 lands on the SPA. The SPA then calls the API with its own cookie.
@@ -297,7 +185,7 @@ app.get('/api/oauth/google/callback', async (req, reply) => {
 
 ### Test plan for the phase-6 gate
 
-Pin `@modelcontextprotocol/sdk` `1.32.1` and `zod` `4.6.7` (already in the lockfile) as exact devDependencies of a new `tests/mcp` package. Copy the fake server from `scratchpad/spike6/fake/server.mjs` into `tests/mcp/src/fake-workspace.ts`. It already returns the real server's text format, the `{ result }` wrap and Finnish names (`Aino Häkkinen`, `aino.hakkinen@example.fi`, `Pekka Laaksonen`, `juha-pekka.nieminen@example.fi`, `Hämeenkatu 12, 33100 Tampere`). Its `GET /_created` returns the arguments of each `manage_event` call.
+Pin `@modelcontextprotocol/sdk` `1.32.1` and `zod` `4.6.7` (already in the lockfile) as exact devDependencies of a new `tests/mcp` package. Put the fake server into the `tests/mcp` package. It already returns the real server's text format, the `{ result }` wrap and Finnish names (`Aino Häkkinen`, `aino.hakkinen@example.fi`, `Pekka Laaksonen`, `juha-pekka.nieminen@example.fi`, `Hämeenkatu 12, 33100 Tampere`). Its `GET /_created` returns the arguments of each `manage_event` call.
 
 The test boots `pa-server` with the real `pseudo-svc` (as `tests/masked-only` does), `@pa/fake-llm` and the fake server, with `infra/mcp.yaml` pointing at the fake.
 
@@ -318,6 +206,7 @@ Manual drill with real credentials (once, before phase 6 closes): connect Google
 - MCP progress text (`tool_execution_update`) and `mcp.log` are not masked. They do not reach the model. Results over 20 KB leave a plaintext temp file in the pa-server `/tmp`.
 - `manage_event` sends invitations by default (`send_updates: "all"`). The approval card must show it.
 - Pin bumps: `v2.1.1` after 2026-10-27, `v2.1.2` (Host allowlist) after 2026-10-28. Each bump is its own PR with the contract suite and this test plan as the gate.
+  Still on 2.1.0. Outcome not recorded.
 - `mcp-files` stays out of phase 6. Both candidate servers release several times per week.
 
 ## Verified on

@@ -27,7 +27,7 @@ the automated test proves the pipeline with a fake transcription endpoint).
    React via a bundled `esm.sh`-free approach: the panel ships React UMD from the app's own assets and
    transpiles the JSX with `sucrase` (pin ≥ 7 days) in a worker; Mermaid rendered with `mermaid` (pin)
    lazily; code with a read-only `<pre>` and copy (Monaco is skipped: 2 MB for read-only display is
-   not justified; plan amended). Actions: copy, download, open in new tab (blob URL), close.
+   not justified). Actions: copy, download, open in new tab (blob URL), close.
 4. **Command palette**: `cmdk` 1.1.1; `Cmd/Ctrl+K`; commands: new chat, search, switch agent, open
    vault, memory, topics, settings, toggle theme; plus chats and topics by fuzzy title.
 5. **Polish list**: message edit (user) and retry (assistant) actions; thread virtualization above
@@ -54,7 +54,7 @@ Tasks 1, 2 and 3 are done. Commits: `31ccf7b` (server), `a222eb4` (web), `4f591c
 Deviations from the task cards:
 
 - Image size is 1.09 GB, not < 700 MB. The floor is about 800 MB with git, the SDKs and the
-  local embedding model in the image. Accepted; see the phase-7 decisions.
+  local embedding model in the image. Accepted.
 - `/mask` p95 stays near 150 ms on a message with 25 new people (M4 Pro). Accepted.
 - React 19 has no UMD build. The artifact runtime is bundled by Vite (`src/artifact-runtime.ts`)
   and inlined into the sandboxed `srcdoc`. Nothing loads from another origin.
@@ -64,6 +64,10 @@ Deviations from the task cards:
   device does not resolve `getUserMedia` in the macOS headless shell.
 - Edit on a user message sends a new message ("Lähetä muokattuna"). A true edit-and-fork needs
   server support and is not in scope.
+
+Later changes: phase 13 added fork into a new chat ([phase-13-thread.md](phase-13-thread.md)),
+phase 24 added edit in place ([phase-24-edit-in-place.md](phase-24-edit-in-place.md)), and phase 15
+added the agent editor, so the agents screen is no longer read-only ([phase-15-admin.md](phase-15-admin.md)).
 
 Known flake: `screens.spec.ts › subagents-row` fails about once per full run when the fake LLM
 gets one call more than scripted under load. It passes 12 of 12 runs in isolation.

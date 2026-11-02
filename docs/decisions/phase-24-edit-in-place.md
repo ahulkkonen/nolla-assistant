@@ -19,7 +19,7 @@ no entry passes the sidecar again, except the restore that `user.retry` already 
 
 Repository lines were read on 2026-10-29 at `d3263f1`. Pi facts were read in 1.3.0 (`pi/` =
 `node_modules/.pnpm/@earendil-works+pi-coding-agent@1.3.0_*/node_modules/@earendil-works/
-pi-coding-agent/dist/core`) and compared with the 1.4.0 install of the `p25-pi` worktree:
+pi-coding-agent/dist/core`) and compared with the 1.4.0 install:
 `session-manager.js` is identical, the body of `navigateTree` is identical (1.4.0 line 3261), and
 the agent loop changes only its request identity. Card S0 proves the facts in `tests/contract`.
 
@@ -219,3 +219,21 @@ turn's top (UI review 5: the turn gap is 60 px, 72 on phones; measured 24 px at 
   reply) whose nearest conversation ancestor is a user message.
 - Claims from an older version stay active until the user reviews them (decision 17).
 - A later Pi version that changes P1–P3 fails S0 first; then this record needs an update.
+
+## UI review (from phase 25)
+
+Blind review of `edit-box` and `version-switcher` (2026-10-29, phase-25 UI review 5). Measured in
+`screens.spec.ts` at 390, 1024 and 1440, light and dark.
+
+- Edit box: the hint has `text-wrap: pretty`; the textarea does not resize by hand and grows with
+  its text up to 320 px.
+
+Amendment: the P1 check of the switcher row. With the always-visible switcher row, 24 px stay
+from the row's bottom to the next turn's top.
+
+## Status
+
+- Merged: yes (`faab7a3` server, `4522afb` web, 2026-10-29).
+- Gate: `docs/development.md` lists the phase as done. The gate run is not recorded.
+- Review: P1 pixel pass and U1 blind UI review (task cards), phase-25 UI review 5, and the code
+  review fixes `ba73cc4` (server) and `f887076` (web). Scores not recorded.

@@ -314,7 +314,7 @@ def _particle_name(text: str, m) -> tuple[int, int, str] | None:
 
 
 def _lower_surname(text: str, m) -> tuple[int, int, str, float] | None:
-    """'Pekka pouta' after the first name m: (start, end, lemma, score) of the lower-case word after one space when
+    """'Jari pouta' after the first name m: (start, end, lemma, score) of the lower-case word after one space when
     it is a DVV surname with at least MIN_SURNAME_COUNT holders, or an inflected form of one, and no place (with
     one exception, below). The score is 0.9, or 0.75 when the word is also an ordinary word. Without Voikko or
     Omorfi nothing tells an ordinary word, so every pair scores 0.75: such a pair never upgrades an existing
@@ -384,7 +384,7 @@ def detect(text: str, ctx=None) -> list[Candidate]:
             i += 2
             continue
         mixed = _lower_surname(text, m) if first and ctx is not None and ctx.lower else None
-        if mixed:  # Pekka pouta: a capitalised first name and a lower-case surname (phase-12 decision 19)
+        if mixed:  # Jari pouta: a capitalised first name and a lower-case surname (phase-12 decision 19)
             start, end, lemma, score = mixed
             parts = [dict(start=m.start(), end=m.end(), part="first", lemma=first),
                      dict(start=start, end=end, part="last", lemma=lemma)]

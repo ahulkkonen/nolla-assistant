@@ -1,5 +1,8 @@
 # Claude Web and ChatGPT: UI design reference for a Finnish single-user assistant PWA (October 2026)
 
+> This is a research report from the planning stage.
+> Where it differs from the brief in [phase-9-ui.md](phase-9-ui.md) section 7, the brief decides.
+
 Base the thread, color and typography systems on Claude Web, and the composer, keyboard model and inline content blocks on ChatGPT. Most pixel values for both apps are not public, though. Only Claude's shipped color, font and weight tokens and a few ChatGPT width, size and theme tokens come from real CSS. Spacing, motion and iPhone keyboard behavior must be measured on devices before the reviewer treats them as targets.
 
 ## TL;DR

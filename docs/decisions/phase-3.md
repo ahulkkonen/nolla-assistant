@@ -7,7 +7,7 @@ corpus; masked-only invariant test (plan §14 gate 3) passes.
 Gate command: `pnpm typecheck && pnpm lint && pnpm test && (cd services/pseudo-svc && pytest)`
 
 Research notes: `0003-finnish-pii-stack.md` (detection stack, pins), `0004-litellm-openrouter-zdr.md`
-(egress). Decisions that depend on them are filled in when they land.
+(egress).
 
 ## Sidecar API contract (`pseudo-svc`, internal network, no auth beyond the network)
 
@@ -102,16 +102,16 @@ incident the extension sent each message as a JSON string, the sidecar replaced 
 `"total":0.0107338` with a phone surrogate, and the broken JSON disabled the scan for the rest of the
 chat. Messages now go as JSON, and the phone detector skips the tail of a decimal number.
 
-## Task cards (filled as research lands)
+## Task cards
 
 | # | Task | Owner | Status |
 |---|---|---|---|
-| 1 | `packages/pi-ext-pseudo` + bridge restoration, tested against a fake sidecar | Opus | dispatched |
-| 2 | `tests/pii` corpus: 300 Finnish sentences with labelled spans, synthetic names | Opus | dispatched |
-| 3 | `services/pseudo-svc`: detectors, vault, surrogates, inflection, API | Opus (after 0003) | |
+| 1 | `packages/pi-ext-pseudo` + bridge restoration, tested against a fake sidecar | Opus | done |
+| 2 | `tests/pii` corpus: 300 Finnish sentences with labelled spans, synthetic names | Opus | done |
+| 3 | `services/pseudo-svc`: detectors, vault, surrogates, inflection, API | Opus (after 0003) | done |
 | 4 | `infra/litellm.yaml`, Presidio backstop, ZDR tests, compose services | Opus (after 0004) | done |
-| 5 | Vault UI + highlights + "show what the model saw" | Opus, UI review | |
-| 6 | Masked-only invariant test (plan §14 gate 3) | Sonnet | |
+| 5 | Vault UI + highlights + "show what the model saw" | Opus, UI review | done |
+| 6 | Masked-only invariant test (plan §14 gate 3) | Sonnet | done |
 
 ## Phase-3 egress decisions
 
@@ -151,6 +151,8 @@ a live call.
 | Key | OpenRouter guardrail assigned to the LiteLLM key | `enforce_zdr_anthropic/openai/google/xai/other: true` plus a model allowlist of the five upstream ids. Manual, once. |
 | Request | LiteLLM `infra/litellm.yaml` + `zdr_guard.ZdrGuard` | Every alias sends `provider.zdr: true`, `data_collection: deny`. The guard refuses (400) any model without the `zdr/` prefix, any alias not ZDR-pinned in the config, and any client `extra_body`/`provider`/`models`/`route`/`transforms` (a client `extra_body` would replace the configured one). Runs on chat, embeddings and transcription. For STT, OpenRouter does not document reading `provider[...]` multipart fields, so STT relies on the first two levels. |
 
+Superseded by [phase-10-models.md](phase-10-models.md), decisions 1 to 4.
+
 **Presidio backstop:** one `pre_call` guardrail, BLOCK only for `FI_PERSONAL_IDENTITY_CODE`,
 `IBAN_CODE`, `CREDIT_CARD`; nothing else is analyzed (PERSON off); fails closed when the analyzer
 is down. The analyzer loads `FiPersonalIdentityCodeRecognizer` for `en` from the mounted registry,
@@ -180,9 +182,12 @@ Open items carried forward:
 - `/mask` latency is 21 ms median for known people but 200–400 ms when a message brings 10+ new
   people (Omorfi generation in pure-Python `pyhfst`). Measured on an M4 Pro, not the CX33. Fix
   candidates: precompute the surrogate pool's forms at image build, or the `hfst` C bindings.
+  Done in phase 7 (pool precompute; p95 near 150 ms, accepted) and phase 12 (precomputed pool forms).
 - Remove `PSEUDO_VAULT_KEY` from `pa-server`'s environment in `infra/compose.yaml` (least privilege;
-  only `pseudo-svc` needs it).
+  only `pseudo-svc` needs it). Done in phase 3. Since phase 30 `backup` also holds the key.
 - Nickname table was written after seeing corpus misses; the numbers without it are the honest ones.
+  Kept as a note. Phase 33 added nicknames through the vault.
 - Lone place-like surnames (`Saari`, `Niemi`) remain possible false positives; they land in the vault
-  and can be marked never-detect.
-- Phase-4 and 8 follow-ups: titles and memory injection pass through `/mask`.
+  and can be marked never-detect. Outcome not recorded.
+- Phase-4 and 8 follow-ups: titles and memory injection pass through `/mask`. Done: titles in
+  phase 4 (decision 1), memory injection in phase 8 (decision 1).

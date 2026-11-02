@@ -239,149 +239,17 @@ The phase-3 test is the same probe set run against the real compose stack with a
    - `ghcr.io/berriai/litellm:v1.105.1@sha256:b7b9e2c306343721802253d0dd9436b9634a2eb4e14da7c7cf06c5c7b7530802`
    - `mcr.microsoft.com/presidio-analyzer:2.2.362@sha256:286e3fa7f3a7426e775e8564fe1870f1ba8f999d3ab8bbb8cc46a44355d9d6e9`
    - `mcr.microsoft.com/presidio-anonymizer:2.2.362@sha256:a10a12a2a613d13cf29d3ad3641e3258444dd8c90403dd644a0a114c472c2483`
-2. **No Postgres.** `master_key` only, and `DATABASE_URL` stays unset. The `litellm` environment is `OPENROUTER_API_KEY`, `LITELLM_MASTER_KEY` (`sk-` prefix), `OR_SITE_URL`, `OR_APP_NAME` and `LITELLM_LOCAL_MODEL_COST_MAP=True`. Mount `infra/litellm.yaml`, `infra/zdr_guard.py` and `infra/presidio-recognizers.yaml` read-only. Run with `--config /app/config/litellm.yaml --port 4000`.
+2. **No Postgres.** `master_key` only, and `DATABASE_URL` stays unset. The `litellm` environment is `OPENROUTER_API_KEY`, `LITELLM_MASTER_KEY` (`sk-` prefix), `OR_SITE_URL`, `OR_APP_NAME` and `LITELLM_LOCAL_MODEL_COST_MAP=True`. Mount `infra/litellm.yaml`, `infra/litellm/zdr_guard.py` and `infra/litellm/presidio-recognizers.yaml` read-only. Run with `--config /app/config/litellm.yaml --port 4000`.
 3. **OpenRouter account (manual, once):**
    - **Note (2026-10-26):** Phase 10 replaces this decision. The five account-level ZDR toggles go off. ZDR moves to key guardrails. The `zdr/*` and `open/*` wildcard routes carry the data policy. See [phase-10-models.md](phase-10-models.md), decisions 1 to 3.
    - Turn on the ZDR toggle for all five model groups in https://openrouter.ai/settings/privacy.
-   - Create a guardrail with all `enforce_zdr_*` true and a model allowlist of the five model ids below. Assign the guardrail to the LiteLLM key.
+   - Create a guardrail with all `enforce_zdr_*` true and a model allowlist of the five model ids of the `zdr/` aliases. Assign the guardrail to the LiteLLM key.
 4. **Presidio backstop:** one BLOCK-only `pre_call` guardrail with `presidio_language: en`, plus a mounted recognizer registry that adds `FiPersonalIdentityCodeRecognizer` for `en`. The analyzer gets `RECOGNIZER_REGISTRY_CONF_FILE=/app/conf/presidio-recognizers.yaml`. No `fi` spaCy model and no custom image.
 5. **No `logging_only` guardrail for now.** It masks only the copy sent to logging integrations, and this stack has none. If one is added later, it would also hide real values from the section-14 leak test, which greps the LiteLLM request log. That test must then read the upstream body instead. This deviates from the section-6 row.
 6. **`infra/models.json` follow-up:** update the costs to the EU endpoint prices. `zdr/strong`: input 2.2, output 11, cacheRead 0.11, cacheWrite 2.75. `zdr/fast` and `zdr/task-small`: 0.11 / 0.55 / 0.011 / 0.138. `contextWindow` can stay at 200000 as a cost cap. Both models accept 1M.
+   Done: `infra/models.json` has these costs. `contextWindow` is now 1000000.
 
-Draft `infra/litellm.yaml`:
-
-```yaml
-# Every alias must carry extra_body.provider {zdr: true, data_collection: deny}.
-# zdr_guard refuses any request that resolves to an alias without it.
-model_list:
-  - model_name: zdr/strong
-    litellm_params:
-      model: openrouter/anthropic/claude-sonnet-5.5
-      api_key: os.environ/OPENROUTER_API_KEY
-      extra_body:
-        provider:
-          zdr: true
-          data_collection: deny
-          order: [google-vertex/europe, amazon-bedrock]
-          allow_fallbacks: false
-
-  - model_name: zdr/fast
-    litellm_params:
-      model: openrouter/anthropic/claude-haiku-5.5
-      api_key: os.environ/OPENROUTER_API_KEY
-      extra_body:
-        reasoning: { effort: none }
-        provider:
-          zdr: true
-          data_collection: deny
-          order: [google-vertex/europe, amazon-bedrock/eu-west-1]
-          allow_fallbacks: false
-
-  - model_name: zdr/task-small
-    litellm_params:
-      model: openrouter/anthropic/claude-haiku-5.5
-      api_key: os.environ/OPENROUTER_API_KEY
-      extra_body:
-        reasoning: { effort: none }
-        provider:
-          zdr: true
-          data_collection: deny
-          order: [google-vertex/europe, amazon-bedrock/eu-west-1]
-          allow_fallbacks: false
-
-  # OpenRouter ignores order/only for STT; ZDR here relies on account + key guardrail.
-  - model_name: zdr/stt
-    litellm_params:
-      model: openai/openai/whisper-large-v3
-      api_key: os.environ/OPENROUTER_API_KEY
-      api_base: https://openrouter.ai/api/v1
-      extra_body:
-        provider: { zdr: true, data_collection: deny }
-    model_info: { mode: audio_transcription }
-
-  # Remote fallback only; phase 4 decides between this and a local model.
-  - model_name: zdr/embed
-    litellm_params:
-      model: openrouter/qwen/qwen3-embedding-8b
-      api_key: os.environ/OPENROUTER_API_KEY
-      extra_body:
-        provider: { zdr: true, data_collection: deny }
-
-guardrails:
-  - guardrail_name: zdr-guard
-    litellm_params:
-      guardrail: zdr_guard.ZdrGuard
-      mode: pre_call
-      default_on: true
-
-  - guardrail_name: pii-block
-    litellm_params:
-      guardrail: presidio
-      mode: pre_call
-      default_on: true
-      presidio_analyzer_api_base: http://presidio-analyzer:3000
-      presidio_anonymizer_api_base: http://presidio-anonymizer:3000
-      presidio_language: en
-      pii_entities_config:
-        FI_PERSONAL_IDENTITY_CODE: BLOCK
-        IBAN_CODE: BLOCK
-        CREDIT_CARD: BLOCK
-
-general_settings:
-  master_key: os.environ/LITELLM_MASTER_KEY
-```
-
-Draft `infra/zdr_guard.py` (the version that passed the probe table in finding 6):
-
-```python
-"""LiteLLM pre_call guardrail: every request must resolve to a ZDR-pinned deployment.
-
-Refuses (HTTP 400):
-- a model name that is not a model_list alias;
-- an alias whose deployments lack extra_body.provider {zdr: true, data_collection: deny};
-- client-sent routing fields, because a client `extra_body` replaces the configured one.
-"""
-from fastapi import HTTPException
-from litellm.integrations.custom_guardrail import CustomGuardrail
-
-CLIENT_ROUTING_FIELDS = ("extra_body", "provider", "models", "route")
-
-
-class ZdrGuard(CustomGuardrail):
-    async def async_pre_call_hook(self, user_api_key_dict, cache, data, call_type):
-        from litellm.proxy.proxy_server import llm_router
-
-        sent = [f for f in CLIENT_ROUTING_FIELDS if f in data]
-        if sent:
-            raise HTTPException(status_code=400, detail=f"zdr_guard: client routing fields not allowed: {sent}")
-        model = data.get("model")
-        deployments = [d for d in (llm_router.model_list if llm_router else []) if d["model_name"] == model]
-        if not deployments:
-            raise HTTPException(status_code=400, detail=f"zdr_guard: unknown model alias {model!r}")
-        for d in deployments:
-            p = (d["litellm_params"].get("extra_body") or {}).get("provider") or {}
-            if p.get("zdr") is not True or p.get("data_collection") != "deny":
-                raise HTTPException(status_code=400, detail=f"zdr_guard: alias {model!r} is not ZDR-pinned")
-        return data
-```
-
-Draft `infra/presidio-recognizers.yaml`:
-
-```yaml
-supported_languages:
-  - en
-global_regex_flags: 26
-recognizers:
-  - name: FiPersonalIdentityCodeRecognizer
-    type: predefined
-    supported_languages:
-      - language: en
-        context: [hetu, henkilötunnus, personbeteckning, personal identity code]
-  - name: IbanRecognizer
-    type: predefined
-  - name: CreditCardRecognizer
-    type: predefined
-```
+The shipped files are [`infra/litellm.yaml`](../../infra/litellm.yaml), [`infra/litellm/zdr_guard.py`](../../infra/litellm/zdr_guard.py) and [`infra/litellm/presidio-recognizers.yaml`](../../infra/litellm/presidio-recognizers.yaml). Phases 10 and 14 changed the draft that this record held. Phase 10 added the `zdr/*` and `open/*` wildcard routes ([phase-10-models.md](phase-10-models.md)). Phase 14 added the allowlist of request keys ([phase-14-search.md](phase-14-search.md)).
 
 ## Consequences
 
@@ -397,7 +265,9 @@ recognizers:
 - The pa-server stream parser must accept OpenRouter's usage chunk, which has one empty choice.
 - pa-server STT calls send `response_format=json`, keep chunks under 60 s, and go to LiteLLM `/v1/audio/transcriptions` with `model: zdr/stt`.
 - Version bumps follow section 14. `v1.105.3` becomes eligible on 2026-10-28.
+  Not taken: `infra/compose.yaml` still pins `v1.105.1`. Outcome not recorded.
 - UNVERIFIED items: Finnish STT quality, `reasoning.effort: none` on Haiku 5.5, `provider[zdr]` in STT multipart, and a newer Presidio release on GitHub.
+  Outcomes: Finnish STT quality is a user-only gate item ([phase-7.md](phase-7.md)). `reasoning.effort: none` on Haiku 5.5: outcome not recorded. `provider[zdr]` in STT multipart: not verified; ZDR for `zdr/stt` rests on the key guardrail only ([phase-10-models.md](phase-10-models.md), consequence 8). Presidio: 2.2.365 exists; the bump is open ([phase-30-audits.md](phase-30-audits.md)).
 
 ## Verified on
 
