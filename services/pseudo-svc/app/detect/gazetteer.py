@@ -179,7 +179,7 @@ LOWER_STOP = frozenset("max min jan may mark will eli dan ron rose hope grace fa
 
 
 def cap(word: str) -> str:
-    """laura -> Laura, anna-liisan -> Anna-Liisan."""
+    """maija -> Maija, anna-liisan -> Anna-Liisan."""
     return "-".join(p[:1].upper() + p[1:] for p in word.split("-"))
 
 
