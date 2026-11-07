@@ -14,7 +14,9 @@ export default defineConfig({
   // The GitHub runner streams replies slower than a laptop: 88 of 89 flows pass there, and the
   // one that fails changes from run to run on the 5 s default.
   expect: { timeout: process.env.CI ? 15_000 : 5_000 },
-  retries: 0,
+  // Even at 15 s, one test of ~570 times out on some runs, and a different one each time. One
+  // retry on CI; the report still lists the test as flaky.
+  retries: process.env.CI ? 1 : 0,
   // The html report is what CI uploads on failure (`playwright-report/`).
   reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
   globalSetup: './src/global-setup.ts',
